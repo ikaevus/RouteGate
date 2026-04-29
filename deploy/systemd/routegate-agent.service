@@ -1,0 +1,16 @@
+[Unit]
+Description=RouteGate Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/routegate/agent.env
+ExecStart=/usr/local/bin/routegate-agent
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

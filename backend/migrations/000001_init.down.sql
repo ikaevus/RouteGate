@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS config_versions;
+DROP TABLE IF EXISTS routing_profiles;
+DROP TABLE IF EXISTS vpn_accounts;
+DROP TABLE IF EXISTS agent_heartbeats;
+DROP TABLE IF EXISTS agents;
+DROP TABLE IF EXISTS servers;
+DROP TABLE IF EXISTS user_roles;
+DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS users;

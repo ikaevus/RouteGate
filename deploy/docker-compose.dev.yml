@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: routegate-postgres-dev
+    environment:
+      POSTGRES_DB: routegate
+      POSTGRES_USER: routegate
+      POSTGRES_PASSWORD: routegate_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - routegate_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routegate -d routegate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  manager:
+    build:
+      context: ../backend
+    container_name: routegate-manager-dev
+    environment:
+      ROUTEGATE_ENV: dev
+      ROUTEGATE_HTTP_ADDR: ":8080"
+      ROUTEGATE_DATABASE_URL: "postgres://routegate:routegate_dev_password@postgres:5432/routegate?sslmode=disable"
+      ROUTEGATE_LOG_LEVEL: debug
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  routegate_pg_data:

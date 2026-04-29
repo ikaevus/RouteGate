@@ -1,0 +1,20 @@
+.env
+*.local
+*.log
+.DS_Store
+
+# Go
+bin/
+coverage.out
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE
+.vscode/
+.idea/
+
+# Database volumes
+*.sqlite
