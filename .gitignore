@@ -18,3 +18,6 @@ dist/
 
 # Database volumes
 *.sqlite
+
+# TypeScript build cache
+*.tsbuildinfo
