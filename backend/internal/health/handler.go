@@ -1,10 +1,11 @@
 package health
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/artuazh/routegate/backend/internal/httpx"
 )
 
 type Handler struct {
@@ -22,10 +23,7 @@ func NewHandler(logger *slog.Logger) *Handler {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	_ = json.NewEncoder(w).Encode(Response{
+	httpx.WriteJSON(w, http.StatusOK, Response{
 		Status:    "ok",
 		Service:   "routegate-manager",
 		Timestamp: time.Now().UTC(),

@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/artuazh/routegate/backend/internal/httpx"
 )
 
 const devToken = "routegate-dev-token"
@@ -47,31 +49,31 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var request LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, StatusResponse{
-			Status:    "invalid_request",
-			Timestamp: time.Now().UTC(),
-		})
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
+			"invalid_request",
+			"Request body must be valid JSON.",
+		))
 		return
 	}
 
 	if request.Email == "" || request.Password == "" {
-		writeJSON(w, http.StatusBadRequest, StatusResponse{
-			Status:    "email_and_password_required",
-			Timestamp: time.Now().UTC(),
-		})
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
+			"email_and_password_required",
+			"Email and password are required.",
+		))
 		return
 	}
 
 	h.logger.Info("dev login accepted", "email", request.Email)
 
-	writeJSON(w, http.StatusOK, LoginResponse{
+	httpx.WriteJSON(w, http.StatusOK, LoginResponse{
 		Token: devToken,
 		User:  devUser(request.Email),
 	})
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, StatusResponse{
+	httpx.WriteJSON(w, http.StatusOK, StatusResponse{
 		Status:    "ok",
 		Timestamp: time.Now().UTC(),
 	})
@@ -80,14 +82,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "Bearer "+devToken {
-		writeJSON(w, http.StatusUnauthorized, StatusResponse{
-			Status:    "unauthorized",
-			Timestamp: time.Now().UTC(),
-		})
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error(
+			"unauthorized",
+			"Authentication is required.",
+		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, MeResponse{
+	httpx.WriteJSON(w, http.StatusOK, MeResponse{
 		User: devUser("admin@routegate.local"),
 	})
 }
@@ -99,10 +101,4 @@ func devUser(email string) User {
 		DisplayName: "RouteGate Dev Admin",
 		Roles:       []string{"admin"},
 	}
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(payload)
 }
