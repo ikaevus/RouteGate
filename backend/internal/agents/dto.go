@@ -29,8 +29,3 @@ type HeartbeatResponse struct {
 	Status    string    `json:"status"`
 	Timestamp time.Time `json:"timestamp"`
 }
-
-type ErrorResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}

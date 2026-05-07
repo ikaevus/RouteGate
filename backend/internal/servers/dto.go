@@ -11,8 +11,3 @@ type CreateServerRequest struct {
 type ListServersResponse struct {
 	Items []Server `json:"items"`
 }
-
-type ErrorResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}

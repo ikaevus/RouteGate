@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/artuazh/routegate/backend/internal/httpx"
 )
 
 type Handler struct {
@@ -27,14 +29,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	items, err := h.service.List(r.Context())
 	if err != nil {
 		h.logger.Error("list servers failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-			Status:  "database_error",
-			Message: "Failed to list servers.",
-		})
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
+			"database_error",
+			"Failed to list servers.",
+		))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ListServersResponse{
+	httpx.WriteJSON(w, http.StatusOK, ListServersResponse{
 		Items: items,
 	})
 }
@@ -43,38 +45,32 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var request CreateServerRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Status:  "invalid_request",
-			Message: "Request body must be valid JSON.",
-		})
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
+			"invalid_request",
+			"Request body must be valid JSON.",
+		))
 		return
 	}
 
 	server, err := h.service.Create(r.Context(), request)
 	if err != nil {
 		if errors.Is(err, ErrServerNameRequired) {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{
-				Status:  "name_required",
-				Message: "Server name is required.",
-			})
+			httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
+				"name_required",
+				"Server name is required.",
+			))
 			return
 		}
 
 		h.logger.Error("create server failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-			Status:  "database_error",
-			Message: "Failed to create server.",
-		})
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
+			"database_error",
+			"Failed to create server.",
+		))
 		return
 	}
 
 	h.logger.Info("server created", "id", server.ID, "name", server.Name)
 
-	writeJSON(w, http.StatusCreated, server)
-}
-
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(payload)
+	httpx.WriteJSON(w, http.StatusCreated, server)
 }
