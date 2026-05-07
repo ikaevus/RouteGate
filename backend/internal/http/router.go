@@ -4,19 +4,21 @@ import (
 	"log/slog"
 	stdhttp "net/http"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/artuazh/routegate/backend/internal/agents"
 	"github.com/artuazh/routegate/backend/internal/auth"
 	"github.com/artuazh/routegate/backend/internal/health"
 	"github.com/artuazh/routegate/backend/internal/servers"
 )
 
-func NewRouter(logger *slog.Logger) stdhttp.Handler {
+func NewRouter(logger *slog.Logger, pool *pgxpool.Pool) stdhttp.Handler {
 	mux := stdhttp.NewServeMux()
 
 	healthHandler := health.NewHandler(logger)
 	authHandler := auth.NewHandler(logger)
-	serversHandler := servers.NewHandler(logger)
-	agentsHandler := agents.NewHandler(logger)
+	serversHandler := servers.NewHandler(logger, pool)
+	agentsHandler := agents.NewHandler(logger, pool)
 
 	mux.HandleFunc("GET /api/admin/health", healthHandler.Get)
 	mux.HandleFunc("GET /api/agent/health", healthHandler.Get)

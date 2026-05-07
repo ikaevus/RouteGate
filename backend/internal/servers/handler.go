@@ -1,18 +1,19 @@
 package servers
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
 	logger *slog.Logger
-	mu     sync.RWMutex
-	items  []Server
+	pool   *pgxpool.Pool
 }
 
 type Server struct {
@@ -43,32 +44,83 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-func NewHandler(logger *slog.Logger) *Handler {
-	now := time.Now().UTC()
-
+func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 	return &Handler{
 		logger: logger,
-		items: []Server{
-			{
-				ID:        "srv-dev-001",
-				Name:      "Demo Finland VPS",
-				Hostname:  "fi-demo.routegate.local",
-				PublicIP:  "203.0.113.10",
-				Location:  "Finland",
-				Provider:  "Demo",
-				Status:    "online",
-				CreatedAt: now,
-			},
-		},
+		pool:   pool,
 	}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	rows, err := h.pool.Query(r.Context(), `
+		SELECT
+			id::text,
+			name,
+			COALESCE(hostname, ''),
+			COALESCE(public_ip::text, ''),
+			COALESCE(location, ''),
+			COALESCE(provider, ''),
+			status,
+			created_at
+		FROM servers
+		ORDER BY created_at DESC;
+	`)
+	if err != nil {
+		h.logger.Error("list servers failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to list servers.",
+		})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]Server, 0)
+
+	for rows.Next() {
+		var item Server
+
+		if err := rows.Scan(
+			&item.ID,
+			&item.Name,
+			&item.Hostname,
+			&item.PublicIP,
+			&item.Location,
+			&item.Provider,
+			&item.Status,
+			&item.CreatedAt,
+		); err != nil {
+			h.logger.Error("scan server failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Status:  "database_error",
+				Message: "Failed to read server row.",
+			})
+			return
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		h.logger.Error("iterate servers failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to list servers.",
+		})
+		return
+	}
+
+	if len(items) == 0 {
+		if err := h.seedDemoServer(r.Context()); err != nil {
+			h.logger.Error("seed demo server failed", "error", err)
+		}
+
+		h.List(w, r)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, ListServersResponse{
-		Items: h.items,
+		Items: items,
 	})
 }
 
@@ -97,26 +149,84 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().UTC()
+	var server Server
 
-	server := Server{
-		ID:        "srv-dev-" + now.Format("20060102150405"),
-		Name:      request.Name,
-		Hostname:  request.Hostname,
-		PublicIP:  request.PublicIP,
-		Location:  request.Location,
-		Provider:  request.Provider,
-		Status:    "unknown",
-		CreatedAt: now,
+	if err := h.pool.QueryRow(r.Context(), `
+		INSERT INTO servers (
+			name,
+			hostname,
+			public_ip,
+			location,
+			provider,
+			status
+		)
+		VALUES (
+			$1,
+			NULLIF($2, ''),
+			NULLIF($3, '')::inet,
+			NULLIF($4, ''),
+			NULLIF($5, ''),
+			'unknown'
+		)
+		RETURNING
+			id::text,
+			name,
+			COALESCE(hostname, ''),
+			COALESCE(public_ip::text, ''),
+			COALESCE(location, ''),
+			COALESCE(provider, ''),
+			status,
+			created_at;
+	`,
+		request.Name,
+		request.Hostname,
+		request.PublicIP,
+		request.Location,
+		request.Provider,
+	).Scan(
+		&server.ID,
+		&server.Name,
+		&server.Hostname,
+		&server.PublicIP,
+		&server.Location,
+		&server.Provider,
+		&server.Status,
+		&server.CreatedAt,
+	); err != nil {
+		h.logger.Error("create server failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to create server.",
+		})
+		return
 	}
 
-	h.mu.Lock()
-	h.items = append([]Server{server}, h.items...)
-	h.mu.Unlock()
-
-	h.logger.Info("dev server created", "id", server.ID, "name", server.Name)
+	h.logger.Info("server created", "id", server.ID, "name", server.Name)
 
 	writeJSON(w, http.StatusCreated, server)
+}
+
+func (h *Handler) seedDemoServer(ctx context.Context) error {
+	_, err := h.pool.Exec(ctx, `
+		INSERT INTO servers (
+			name,
+			hostname,
+			public_ip,
+			location,
+			provider,
+			status
+		)
+		VALUES (
+			'Demo Finland VPS',
+			'fi-demo.routegate.local',
+			'203.0.113.10'::inet,
+			'Finland',
+			'Demo',
+			'online'
+		);
+	`)
+
+	return err
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

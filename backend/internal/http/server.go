@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	stdhttp "net/http"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/artuazh/routegate/backend/internal/config"
 )
 
@@ -15,8 +17,8 @@ type Server struct {
 	httpServer *stdhttp.Server
 }
 
-func NewServer(cfg config.Config, logger *slog.Logger) *Server {
-	router := NewRouter(logger)
+func NewServer(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) *Server {
+	router := NewRouter(logger, pool)
 
 	return &Server{
 		cfg:    cfg,

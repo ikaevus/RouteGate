@@ -1,11 +1,22 @@
-FROM golang:1.23 AS build
+FROM golang:1.26 AS build
+
 WORKDIR /src
-COPY go.mod ./
+
+COPY go.mod go.sum ./
+
 RUN go mod download
+
 COPY . .
+
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/routegate-manager ./cmd/routegate-manager
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/routegate-manager /routegate-manager
+
+WORKDIR /app
+
+COPY --from=build /out/routegate-manager /app/routegate-manager
+COPY migrations /app/migrations
+
 EXPOSE 8080
-ENTRYPOINT ["/routegate-manager"]
+
+ENTRYPOINT ["/app/routegate-manager"]

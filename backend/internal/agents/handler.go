@@ -1,18 +1,19 @@
 package agents
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
 	logger *slog.Logger
-	mu     sync.RWMutex
-	items  []Agent
+	pool   *pgxpool.Pool
 }
 
 type Agent struct {
@@ -59,32 +60,83 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-func NewHandler(logger *slog.Logger) *Handler {
-	now := time.Now().UTC()
-
+func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 	return &Handler{
 		logger: logger,
-		items: []Agent{
-			{
-				ID:        "agt-dev-001",
-				ServerID:  "srv-dev-001",
-				Name:      "Demo Agent",
-				Version:   "0.1.0",
-				Hostname:  "fi-demo-routegate",
-				Status:    "online",
-				LastSeen:  now,
-				CreatedAt: now,
-			},
-		},
+		pool:   pool,
 	}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	rows, err := h.pool.Query(r.Context(), `
+		SELECT
+			id::text,
+			COALESCE(server_id::text, ''),
+			name,
+			COALESCE(version, ''),
+			COALESCE(hostname, ''),
+			status,
+			COALESCE(last_seen_at, created_at),
+			created_at
+		FROM agents
+		ORDER BY created_at DESC;
+	`)
+	if err != nil {
+		h.logger.Error("list agents failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to list agents.",
+		})
+		return
+	}
+	defer rows.Close()
+
+	items := make([]Agent, 0)
+
+	for rows.Next() {
+		var item Agent
+
+		if err := rows.Scan(
+			&item.ID,
+			&item.ServerID,
+			&item.Name,
+			&item.Version,
+			&item.Hostname,
+			&item.Status,
+			&item.LastSeen,
+			&item.CreatedAt,
+		); err != nil {
+			h.logger.Error("scan agent failed", "error", err)
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+				Status:  "database_error",
+				Message: "Failed to read agent row.",
+			})
+			return
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		h.logger.Error("iterate agents failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to list agents.",
+		})
+		return
+	}
+
+	if len(items) == 0 {
+		if err := h.seedDemoAgent(r.Context()); err != nil {
+			h.logger.Error("seed demo agent failed", "error", err)
+		}
+
+		h.List(w, r)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, ListAgentsResponse{
-		Items: h.items,
+		Items: items,
 	})
 }
 
@@ -112,24 +164,62 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	serverID := normalizeServerID(request.ServerID)
 	now := time.Now().UTC()
 
-	agent := Agent{
-		ID:        "agt-dev-" + now.Format("20060102150405"),
-		ServerID:  request.ServerID,
-		Name:      request.Name,
-		Version:   fallback(request.Version, "0.1.0"),
-		Hostname:  request.Hostname,
-		Status:    "online",
-		LastSeen:  now,
-		CreatedAt: now,
+	var agent Agent
+
+	if err := h.pool.QueryRow(r.Context(), `
+		INSERT INTO agents (
+			server_id,
+			name,
+			version,
+			hostname,
+			status,
+			last_seen_at
+		)
+		VALUES (
+			$1,
+			$2,
+			NULLIF($3, ''),
+			NULLIF($4, ''),
+			'online',
+			$5
+		)
+		RETURNING
+			id::text,
+			COALESCE(server_id::text, ''),
+			name,
+			COALESCE(version, ''),
+			COALESCE(hostname, ''),
+			status,
+			COALESCE(last_seen_at, created_at),
+			created_at;
+	`,
+		serverID,
+		request.Name,
+		fallback(request.Version, "0.1.0"),
+		request.Hostname,
+		now,
+	).Scan(
+		&agent.ID,
+		&agent.ServerID,
+		&agent.Name,
+		&agent.Version,
+		&agent.Hostname,
+		&agent.Status,
+		&agent.LastSeen,
+		&agent.CreatedAt,
+	); err != nil {
+		h.logger.Error("register agent failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to register agent.",
+		})
+		return
 	}
 
-	h.mu.Lock()
-	h.items = append([]Agent{agent}, h.items...)
-	h.mu.Unlock()
-
-	h.logger.Info("dev agent registered", "id", agent.ID, "name", agent.Name)
+	h.logger.Info("agent registered", "id", agent.ID, "name", agent.Name)
 
 	writeJSON(w, http.StatusCreated, RegisterAgentResponse{
 		Agent: agent,
@@ -164,36 +254,108 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	status := fallback(request.Status, "online")
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	for index := range h.items {
-		if h.items[index].ID == request.AgentID {
-			h.items[index].Status = status
-			h.items[index].LastSeen = now
-
-			if request.Version != "" {
-				h.items[index].Version = request.Version
-			}
-
-			if request.Hostname != "" {
-				h.items[index].Hostname = request.Hostname
-			}
-
-			h.logger.Debug("dev agent heartbeat accepted", "id", request.AgentID, "status", status)
-
-			writeJSON(w, http.StatusOK, HeartbeatResponse{
-				Status:    "ok",
-				Timestamp: now,
-			})
-			return
-		}
+	commandTag, err := h.pool.Exec(r.Context(), `
+		UPDATE agents
+		SET
+			status = $1,
+			last_seen_at = $2,
+			version = COALESCE(NULLIF($3, ''), version),
+			hostname = COALESCE(NULLIF($4, ''), hostname),
+			updated_at = now()
+		WHERE id = $5::uuid;
+	`,
+		status,
+		now,
+		request.Version,
+		request.Hostname,
+		request.AgentID,
+	)
+	if err != nil {
+		h.logger.Error("agent heartbeat failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
+			Status:  "database_error",
+			Message: "Failed to update agent heartbeat.",
+		})
+		return
 	}
 
-	writeJSON(w, http.StatusNotFound, ErrorResponse{
-		Status:  "agent_not_found",
-		Message: "Agent was not found.",
+	if commandTag.RowsAffected() == 0 {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{
+			Status:  "agent_not_found",
+			Message: "Agent was not found.",
+		})
+		return
+	}
+
+	_, _ = h.pool.Exec(r.Context(), `
+		INSERT INTO agent_heartbeats (
+			agent_id,
+			payload
+		)
+		VALUES (
+			$1::uuid,
+			jsonb_build_object(
+				'status', $2::text,
+				'version', $3::text,
+				'hostname', $4::text
+			)
+		);
+	`,
+		request.AgentID,
+		status,
+		request.Version,
+		request.Hostname,
+	)
+
+	h.logger.Debug("agent heartbeat accepted", "id", request.AgentID, "status", status)
+
+	writeJSON(w, http.StatusOK, HeartbeatResponse{
+		Status:    "ok",
+		Timestamp: now,
 	})
+}
+
+func (h *Handler) seedDemoAgent(ctx context.Context) error {
+	var serverID string
+
+	if err := h.pool.QueryRow(ctx, `
+		SELECT id::text
+		FROM servers
+		ORDER BY created_at ASC
+		LIMIT 1;
+	`).Scan(&serverID); err != nil {
+		return err
+	}
+
+	_, err := h.pool.Exec(ctx, `
+		INSERT INTO agents (
+			server_id,
+			name,
+			version,
+			hostname,
+			status,
+			last_seen_at
+		)
+		VALUES (
+			$1::uuid,
+			'Demo Agent',
+			'0.1.0',
+			'fi-demo-routegate',
+			'online',
+			now()
+		);
+	`, serverID)
+
+	return err
+}
+
+func normalizeServerID(value string) any {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.HasPrefix(value, "srv-dev-") {
+		return nil
+	}
+
+	return value
 }
 
 func fallback(value string, defaultValue string) string {
