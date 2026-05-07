@@ -24,6 +24,10 @@ services:
       ROUTEGATE_ENV: dev
       ROUTEGATE_HTTP_ADDR: ":8080"
       ROUTEGATE_DATABASE_URL: "postgres://routegate:routegate_dev_password@postgres:5432/routegate?sslmode=disable"
+      ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL: "admin@routegate.local"
+      ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+      ROUTEGATE_BOOTSTRAP_ADMIN_DISPLAY_NAME: "RouteGate Dev Admin"
     ports:
       - "8080:8080"
     depends_on:
