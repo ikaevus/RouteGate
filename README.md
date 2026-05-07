@@ -1,86 +1,256 @@
-# RouteGate Foundation v0.1
+# RouteGate
 
-RouteGate is a self-hosted routing and VPN management platform concept.
+RouteGate is a self-hosted VPN and routing management platform concept.
 
-This archive contains the first practical project skeleton:
+The current repository contains the Foundation implementation for the RouteGate Manager, Agent shell, Admin UI, PostgreSQL persistence, and local developer environment.
 
-- Go backend: `routegate-manager`
-- Go Linux agent: `routegate-agent`
-- React/TypeScript frontend skeleton
-- PostgreSQL dev environment
-- SQL migrations
-- systemd unit example
-- PowerShell helper scripts
-- initial architecture notes
+## Current status
 
-## Repository layout
+Foundation is active and includes:
 
-```text
-routegate/
-├─ backend/
-├─ agent/
-├─ frontend/
-├─ deploy/
-├─ docs/
-├─ scripts/
-├─ .env.example
-├─ Makefile
-└─ README.md
-```
+- Go backend Manager API.
+- React / TypeScript Admin UI.
+- PostgreSQL persistence.
+- Docker Compose development stack.
+- Server registry shell.
+- Agent registry and heartbeat shell.
+- Development auth shell.
+- Dashboard overview.
+- Request ID middleware.
+- Panic recovery middleware.
+- Development CORS middleware.
+- Shared JSON response helpers.
+- API conventions document.
+- OpenAPI seed.
+- Developer Makefile commands.
+
+## Architecture
+
+Current Foundation stack:
+
+    Browser
+      |
+      v
+    RouteGate Frontend :5173
+      |
+      v
+    Vite dev proxy /api/*
+      |
+      v
+    RouteGate Manager :8080
+      |
+      v
+    PostgreSQL :5432
+
+Main repository areas:
+
+    backend/    Go RouteGate Manager API
+    agent/      Go RouteGate Agent skeleton
+    frontend/   React / TypeScript Admin UI
+    deploy/     Docker Compose and deployment files
+    docs/       Architecture, API, operations and decision notes
+    scripts/    Helper scripts
+
+## Requirements
+
+For local development:
+
+- Git
+- Go 1.25+
+- Node.js 24+
+- npm
+- Docker
+- Docker Compose
+- VS Code recommended
+
+The backend Docker image currently uses Go 1.26.
 
 ## Quick start
 
-### 1. Copy environment file
+Start the full development stack:
 
-```bash
-cp .env.example .env
-```
+    make dev
 
-### 2. Start PostgreSQL
+This starts:
 
-```bash
-docker compose -f deploy/docker-compose.dev.yml up -d postgres
-```
+    routegate-postgres-dev
+    routegate-manager-dev
+    routegate-frontend-dev
 
-### 3. Run Manager locally
+Open the Admin UI:
 
-```bash
-cd backend
-go mod tidy
-go run ./cmd/routegate-manager
-```
+    http://127.0.0.1:5173
 
-Healthcheck:
+Manager health through Vite proxy:
 
-```bash
-curl http://localhost:8080/api/admin/health
-```
+    curl -i http://127.0.0.1:5173/api/admin/health
 
-### 4. Run Agent locally
+Direct Manager health:
 
-```bash
-cd agent
-go mod tidy
-go run ./cmd/routegate-agent
-```
+    curl -i http://127.0.0.1:8080/api/admin/health
 
-## Current MVP scope
+## Developer commands
 
-Foundation v0.1 is intentionally small:
+    make help
+    make dev
+    make down
+    make restart
+    make rebuild
+    make logs
+    make ps
+    make backend-test
+    make frontend-install
+    make frontend-build
+    make check
+    make db-reset
+    make clean
 
-- Manager starts HTTP API
-- `/api/admin/health` works
-- config is read from environment variables
-- Agent has a runnable skeleton
-- migration files define first database tables
-- frontend has a documented empty structure
+Common workflow:
 
-## Next recommended steps
+    make check
+    make dev
 
-1. Add database connection with pgx.
-2. Add migration runner.
-3. Implement `/api/agent/register`.
-4. Implement `/api/agent/heartbeat`.
-5. Add frontend Vite app.
-6. Add auth tables and login flow.
+Stop stack:
 
+    make down
+
+Reset development database volume:
+
+    make db-reset
+
+## Ports
+
+| Service | Port | Description |
+|---|---:|---|
+| Frontend | 5173 | Vite dev server |
+| Manager API | 8080 | Go backend API |
+| PostgreSQL | 5432 | Development database |
+
+## Development auth shell
+
+The current authentication flow is a Foundation placeholder.
+
+Login page:
+
+    http://127.0.0.1:5173/login
+
+Default dev credentials:
+
+    email:    admin@routegate.local
+    password: admin
+
+Current dev token:
+
+    routegate-dev-token
+
+Production authentication is not implemented yet.
+
+## API endpoints
+
+Current Foundation endpoints:
+
+    GET  /api/admin/health
+    POST /api/admin/auth/login
+    POST /api/admin/auth/logout
+    GET  /api/admin/me
+
+    GET  /api/admin/servers
+    POST /api/admin/servers
+
+    GET  /api/admin/agents
+
+    GET  /api/agent/health
+    POST /api/agent/register
+    POST /api/agent/heartbeat
+
+API documentation:
+
+    docs/api/conventions.md
+    docs/api/openapi.yaml
+
+## Backend structure
+
+The backend uses a modular monolith structure.
+
+Typical module layout:
+
+    handler.go      HTTP request/response layer
+    service.go      validation and business flow
+    repository.go   PostgreSQL access
+    model.go        domain model
+    dto.go          API DTOs
+
+Implemented modules using this pattern:
+
+    backend/internal/servers
+    backend/internal/agents
+
+Shared backend packages:
+
+    backend/internal/config
+    backend/internal/db
+    backend/internal/http
+    backend/internal/httpx
+    backend/internal/health
+    backend/internal/auth
+
+## Database and migrations
+
+PostgreSQL is used as the main database.
+
+Migrations live in:
+
+    backend/migrations
+
+The Manager applies migrations at startup in the development stack.
+
+Current migration files:
+
+    000001_init.up.sql
+    000001_init.down.sql
+    000002_agent_identity.up.sql
+    000002_agent_identity.down.sql
+
+## Current Foundation milestones
+
+Completed:
+
+    MVP-0: dev stack
+    MVP-1: auth shell
+    MVP-2: server registry shell
+    MVP-3: agent registry shell
+    MVP-4: dashboard overview
+    MVP-5: PostgreSQL persistence
+    MVP-6: repository layer cleanup
+    MVP-7: service layer
+    MVP-8: shared HTTP response helpers
+    MVP-9: middleware stack
+    MVP-10: API conventions + OpenAPI seed
+    MVP-11: developer Makefile commands
+    MVP-12: README refresh
+
+## Next likely workstreams
+
+Recommended next workstreams:
+
+    Auth / Users / Roles
+    Server Registry / Agents
+    Config Render / Validate / Apply / Rollback
+    Agent runtime implementation
+    Audit Log
+    Routing Profiles / Split Tunnel
+    VPN Accounts / Subscriptions / QR
+
+## Notes
+
+The current implementation is still Foundation-level.
+
+Important limitations:
+
+- Auth is development-only.
+- Agent token handling is development-only.
+- Server and agent APIs are minimal.
+- No production RBAC yet.
+- No audit log writes yet.
+- No config rendering or apply workflow yet.
+- No real sing-box integration yet.
