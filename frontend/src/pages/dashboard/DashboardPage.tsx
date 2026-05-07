@@ -1,11 +1,25 @@
 import { useQuery } from '@tanstack/react-query';
-import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { getMe } from '../../entities/auth/api/authApi';
+import { getAgents } from '../../entities/agent/api/agentApi';
+import { getServers } from '../../entities/server/api/serverApi';
+import { getManagerHealth } from '../../entities/health/api/healthApi';
 
 export function DashboardPage() {
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
     queryFn: getManagerHealth,
+    refetchInterval: 10_000,
+  });
+
+  const serversQuery = useQuery({
+    queryKey: ['servers'],
+    queryFn: getServers,
+    refetchInterval: 10_000,
+  });
+
+  const agentsQuery = useQuery({
+    queryKey: ['agents'],
+    queryFn: getAgents,
     refetchInterval: 10_000,
   });
 
@@ -28,6 +42,11 @@ export function DashboardPage() {
   const managerTimestamp = managerHealthQuery.isSuccess
     ? managerHealthQuery.data.timestamp
     : '—';
+
+  const serversCount = serversQuery.data?.items.length ?? 0;
+  const agentsCount = agentsQuery.data?.items.length ?? 0;
+  const onlineAgentsCount =
+    agentsQuery.data?.items.filter((agent) => agent.status === 'online').length ?? 0;
 
   return (
     <section className="page">
@@ -56,14 +75,26 @@ export function DashboardPage() {
 
         <div className="card">
           <div className="card-title">Servers</div>
-          <div className="card-value">0</div>
-          <div className="card-meta">Server registry is not implemented yet.</div>
+          <div className="card-value">
+            {serversQuery.isLoading ? '...' : serversCount}
+          </div>
+          <div className="card-meta">
+            {serversQuery.isError
+              ? 'Failed to load servers.'
+              : 'Registered server records from Manager API.'}
+          </div>
         </div>
 
         <div className="card">
           <div className="card-title">Agents</div>
-          <div className="card-value">0</div>
-          <div className="card-meta">Agent heartbeat is not implemented yet.</div>
+          <div className="card-value">
+            {agentsQuery.isLoading ? '...' : agentsCount}
+          </div>
+          <div className="card-meta">
+            {agentsQuery.isError
+              ? 'Failed to load agents.'
+              : `${onlineAgentsCount} online agent(s).`}
+          </div>
         </div>
 
         <div className="card">
@@ -72,7 +103,9 @@ export function DashboardPage() {
             {meQuery.isSuccess ? meQuery.data.user.displayName : 'Guest'}
           </div>
           <div className="card-meta">
-            {meQuery.isSuccess ? meQuery.data.user.email : 'Open Login and sign in with dev credentials.'}
+            {meQuery.isSuccess
+              ? meQuery.data.user.email
+              : 'Open Login and sign in with dev credentials.'}
           </div>
         </div>
       </div>
@@ -89,7 +122,33 @@ export function DashboardPage() {
           <div className="status-row">
             <span>Manager API</span>
             <strong>
-              {managerHealthQuery.isSuccess ? 'online' : managerHealthQuery.isError ? 'offline' : 'checking'}
+              {managerHealthQuery.isSuccess
+                ? 'online'
+                : managerHealthQuery.isError
+                  ? 'offline'
+                  : 'checking'}
+            </strong>
+          </div>
+
+          <div className="status-row">
+            <span>Server registry</span>
+            <strong>
+              {serversQuery.isSuccess
+                ? `${serversCount} registered`
+                : serversQuery.isError
+                  ? 'error'
+                  : 'checking'}
+            </strong>
+          </div>
+
+          <div className="status-row">
+            <span>Agent registry</span>
+            <strong>
+              {agentsQuery.isSuccess
+                ? `${agentsCount} registered`
+                : agentsQuery.isError
+                  ? 'error'
+                  : 'checking'}
             </strong>
           </div>
 
