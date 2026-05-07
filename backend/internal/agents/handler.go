@@ -2,27 +2,29 @@ package agents
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
-	logger     *slog.Logger
-	repository *Repository
+	logger  *slog.Logger
+	service *Service
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
+	repository := NewRepository(pool)
+
 	return &Handler{
-		logger:     logger,
-		repository: NewRepository(pool),
+		logger:  logger,
+		service: NewService(repository),
 	}
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	items, err := h.repository.List(r.Context())
+	items, err := h.service.List(r.Context())
 	if err != nil {
 		h.logger.Error("list agents failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
@@ -30,22 +32,6 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			Message: "Failed to list agents.",
 		})
 		return
-	}
-
-	if len(items) == 0 {
-		if err := h.repository.SeedDemo(r.Context()); err != nil {
-			h.logger.Error("seed demo agent failed", "error", err)
-		}
-
-		items, err = h.repository.List(r.Context())
-		if err != nil {
-			h.logger.Error("list agents after seed failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{
-				Status:  "database_error",
-				Message: "Failed to list agents.",
-			})
-			return
-		}
 	}
 
 	writeJSON(w, http.StatusOK, ListAgentsResponse{
@@ -64,21 +50,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request.ServerID = strings.TrimSpace(request.ServerID)
-	request.Name = strings.TrimSpace(request.Name)
-	request.Version = strings.TrimSpace(request.Version)
-	request.Hostname = strings.TrimSpace(request.Hostname)
-
-	if request.Name == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Status:  "name_required",
-			Message: "Agent name is required.",
-		})
-		return
-	}
-
-	agent, err := h.repository.Register(r.Context(), request)
+	agent, err := h.service.Register(r.Context(), request)
 	if err != nil {
+		if errors.Is(err, ErrAgentNameRequired) {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Status:  "name_required",
+				Message: "Agent name is required.",
+			})
+			return
+		}
+
 		h.logger.Error("register agent failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Status:  "database_error",
@@ -106,33 +87,28 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request.AgentID = strings.TrimSpace(request.AgentID)
-	request.Version = strings.TrimSpace(request.Version)
-	request.Hostname = strings.TrimSpace(request.Hostname)
-	request.Status = strings.TrimSpace(request.Status)
-
-	if request.AgentID == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{
-			Status:  "agent_id_required",
-			Message: "Agent ID is required.",
-		})
-		return
-	}
-
-	timestamp, found, err := h.repository.Heartbeat(r.Context(), request)
+	timestamp, err := h.service.Heartbeat(r.Context(), request)
 	if err != nil {
+		if errors.Is(err, ErrAgentIDRequired) {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{
+				Status:  "agent_id_required",
+				Message: "Agent ID is required.",
+			})
+			return
+		}
+
+		if errors.Is(err, ErrAgentNotFound) {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{
+				Status:  "agent_not_found",
+				Message: "Agent was not found.",
+			})
+			return
+		}
+
 		h.logger.Error("agent heartbeat failed", "error", err)
 		writeJSON(w, http.StatusInternalServerError, ErrorResponse{
 			Status:  "database_error",
 			Message: "Failed to update agent heartbeat.",
-		})
-		return
-	}
-
-	if !found {
-		writeJSON(w, http.StatusNotFound, ErrorResponse{
-			Status:  "agent_not_found",
-			Message: "Agent was not found.",
 		})
 		return
 	}
