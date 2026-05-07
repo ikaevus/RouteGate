@@ -12,9 +12,9 @@ services:
       - routegate_pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U routegate -d routegate"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   manager:
     build:
@@ -24,12 +24,22 @@ services:
       ROUTEGATE_ENV: dev
       ROUTEGATE_HTTP_ADDR: ":8080"
       ROUTEGATE_DATABASE_URL: "postgres://routegate:routegate_dev_password@postgres:5432/routegate?sslmode=disable"
-      ROUTEGATE_LOG_LEVEL: debug
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: routegate-frontend-dev
+    environment:
+      VITE_API_BASE_URL: "http://localhost:8080"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - manager
 
 volumes:
   routegate_pg_data:
