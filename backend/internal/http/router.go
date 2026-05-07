@@ -34,5 +34,11 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool) stdhttp.Handler {
 	mux.HandleFunc("POST /api/agent/register", agentsHandler.Register)
 	mux.HandleFunc("POST /api/agent/heartbeat", agentsHandler.Heartbeat)
 
-	return loggingMiddleware(logger, mux)
+	return chain(
+		mux,
+		recoverMiddleware(logger),
+		requestIDMiddleware(),
+		corsMiddleware(),
+		loggingMiddleware(logger),
+	)
 }
