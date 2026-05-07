@@ -363,3 +363,29 @@ a {
     grid-template-columns: 1fr;
   }
 }
+
+.agents-table-row {
+  grid-template-columns: 1.5fr 1fr 0.8fr 1.4fr 100px 110px;
+}
+
+.small-button {
+  border: 1px solid rgba(96, 165, 250, 0.38);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.16);
+  color: #bfdbfe;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.small-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+@media (max-width: 980px) {
+  .agents-table-row {
+    grid-template-columns: 1fr;
+  }
+}
