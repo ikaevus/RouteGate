@@ -1,11 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
+import { getMe } from '../../entities/auth/api/authApi';
 
 export function DashboardPage() {
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
     queryFn: getManagerHealth,
     refetchInterval: 10_000,
+  });
+
+  const meQuery = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    retry: false,
   });
 
   const managerStatusLabel = managerHealthQuery.isSuccess
@@ -57,6 +64,16 @@ export function DashboardPage() {
           <div className="card-title">Agents</div>
           <div className="card-value">0</div>
           <div className="card-meta">Agent heartbeat is not implemented yet.</div>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Current user</div>
+          <div className="card-value card-value-small">
+            {meQuery.isSuccess ? meQuery.data.user.displayName : 'Guest'}
+          </div>
+          <div className="card-meta">
+            {meQuery.isSuccess ? meQuery.data.user.email : 'Open Login and sign in with dev credentials.'}
+          </div>
         </div>
       </div>
 
