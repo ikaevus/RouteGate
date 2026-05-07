@@ -1,0 +1,455 @@
+openapi: 3.0.3
+info:
+  title: RouteGate Manager API
+  version: 0.1.0
+  description: Foundation OpenAPI seed for RouteGate Manager and Agent APIs.
+
+servers:
+  - url: http://localhost:8080
+    description: Local Manager API
+  - url: http://localhost:5173
+    description: Vite dev proxy
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Servers
+  - name: Agents
+
+paths:
+  /api/admin/health:
+    get:
+      tags: [Health]
+      summary: Get Manager health
+      responses:
+        "200":
+          description: Manager health response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/agent/health:
+    get:
+      tags: [Health]
+      summary: Get Agent API health
+      responses:
+        "200":
+          description: Agent API health response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/admin/auth/login:
+    post:
+      tags: [Auth]
+      summary: Development login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/admin/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Development logout
+      responses:
+        "200":
+          description: Logout accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+  /api/admin/me:
+    get:
+      tags: [Auth]
+      summary: Get current admin user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/admin/servers:
+    get:
+      tags: [Servers]
+      summary: List registered servers
+      responses:
+        "200":
+          description: Server list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListServersResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: [Servers]
+      summary: Create server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServerRequest"
+      responses:
+        "201":
+          description: Server created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Server"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/admin/agents:
+    get:
+      tags: [Agents]
+      summary: List registered agents
+      responses:
+        "200":
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentsResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/agent/register:
+    post:
+      tags: [Agents]
+      summary: Register development agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterAgentRequest"
+      responses:
+        "201":
+          description: Agent registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterAgentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/agent/heartbeat:
+    post:
+      tags: [Agents]
+      summary: Send agent heartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HeartbeatRequest"
+      responses:
+        "200":
+          description: Heartbeat accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeartbeatResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    Unauthorized:
+      description: Authentication is required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFound:
+      description: Entity was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: routegate-manager
+        timestamp:
+          type: string
+          format: date-time
+
+    StatusResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          example: invalid_request
+        message:
+          type: string
+          example: Request body must be valid JSON.
+
+    AuthUser:
+      type: object
+      required: [id, email, displayName, roles]
+      properties:
+        id:
+          type: string
+          example: dev-admin
+        email:
+          type: string
+          example: admin@routegate.local
+        displayName:
+          type: string
+          example: RouteGate Dev Admin
+        roles:
+          type: array
+          items:
+            type: string
+          example: [admin]
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          example: admin@routegate.local
+        password:
+          type: string
+          example: admin
+
+    LoginResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+          example: routegate-dev-token
+        user:
+          $ref: "#/components/schemas/AuthUser"
+
+    MeResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+
+    Server:
+      type: object
+      required: [id, name, hostname, publicIp, location, provider, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Demo Finland VPS
+        hostname:
+          type: string
+          example: fi-demo.routegate.local
+        publicIp:
+          type: string
+          example: 203.0.113.10
+        location:
+          type: string
+          example: Finland
+        provider:
+          type: string
+          example: Demo
+        status:
+          type: string
+          example: online
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateServerRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: My VPS
+        hostname:
+          type: string
+          example: vps.example.local
+        publicIp:
+          type: string
+          example: 203.0.113.20
+        location:
+          type: string
+          example: Finland
+        provider:
+          type: string
+          example: Hostkey
+
+    ListServersResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Server"
+
+    Agent:
+      type: object
+      required: [id, serverId, name, version, hostname, status, lastSeen, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          nullable: true
+        name:
+          type: string
+          example: Demo Agent
+        version:
+          type: string
+          example: 0.1.0
+        hostname:
+          type: string
+          example: fi-demo-routegate
+        status:
+          type: string
+          example: online
+        lastSeen:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ListAgentsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+
+    RegisterAgentRequest:
+      type: object
+      required: [name]
+      properties:
+        serverId:
+          type: string
+          example: srv-dev-001
+        name:
+          type: string
+          example: Local Test Agent
+        version:
+          type: string
+          example: 0.1.0
+        hostname:
+          type: string
+          example: codespace-agent
+
+    RegisterAgentResponse:
+      type: object
+      required: [agent, token]
+      properties:
+        agent:
+          $ref: "#/components/schemas/Agent"
+        token:
+          type: string
+          example: routegate-agent-dev-token
+
+    HeartbeatRequest:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        version:
+          type: string
+          example: 0.1.0
+        hostname:
+          type: string
+          example: codespace-agent
+        status:
+          type: string
+          example: online
+
+    HeartbeatResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
