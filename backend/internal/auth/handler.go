@@ -2,103 +2,84 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/artuazh/routegate/backend/internal/httpx"
 )
 
-const devToken = "routegate-dev-token"
-
 type Handler struct {
 	logger *slog.Logger
+	repo   *Repository
+	ttl    time.Duration
 }
 
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type LoginResponse struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
-}
-
-type User struct {
-	ID          string   `json:"id"`
-	Email       string   `json:"email"`
-	DisplayName string   `json:"displayName"`
-	Roles       []string `json:"roles"`
-}
-
-type MeResponse struct {
-	User User `json:"user"`
-}
-
-type StatusResponse struct {
-	Status    string    `json:"status"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-func NewHandler(logger *slog.Logger) *Handler {
-	return &Handler{logger: logger}
+func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, ttl time.Duration) *Handler {
+	return &Handler{logger: logger, repo: NewRepository(pool), ttl: ttl}
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var request LoginRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
-			"invalid_request",
-			"Request body must be valid JSON.",
-		))
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Request body must be valid JSON."))
 		return
 	}
-
-	if request.Email == "" || request.Password == "" {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
-			"email_and_password_required",
-			"Email and password are required.",
-		))
+	login := strings.TrimSpace(request.Login)
+	if login == "" {
+		login = strings.TrimSpace(request.Email)
+	}
+	if login == "" || request.Password == "" {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("login_and_password_required", "Login and password are required."))
 		return
 	}
-
-	h.logger.Info("dev login accepted", "email", request.Email)
-
-	httpx.WriteJSON(w, http.StatusOK, LoginResponse{
-		Token: devToken,
-		User:  devUser(request.Email),
-	})
+	response, err := h.repo.Authenticate(r.Context(), login, request.Password, r.UserAgent(), clientIP(r), h.ttl)
+	if err != nil {
+		if !errors.Is(err, ErrInvalidCredentials) {
+			h.logger.Error("login failed", "error", err)
+		}
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("invalid_credentials", "Invalid login or password."))
+		return
+	}
+	h.logger.Info("login accepted", "user_id", response.User.ID)
+	httpx.WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, StatusResponse{
-		Status:    "ok",
-		Timestamp: time.Now().UTC(),
-	})
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
+		return
+	}
+	if err := h.repo.RevokeSession(r.Context(), user.SessionID); err != nil {
+		h.logger.Error("logout failed", "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to log out."))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, StatusResponse{Status: "ok", Timestamp: time.Now().UTC()})
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "Bearer "+devToken {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error(
-			"unauthorized",
-			"Authentication is required.",
-		))
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
 		return
 	}
-
-	httpx.WriteJSON(w, http.StatusOK, MeResponse{
-		User: devUser("admin@routegate.local"),
-	})
+	httpx.WriteJSON(w, http.StatusOK, MeResponse{User: user.UserProfile})
 }
 
-func devUser(email string) User {
-	return User{
-		ID:          "dev-admin",
-		Email:       email,
-		DisplayName: "RouteGate Dev Admin",
-		Roles:       []string{"admin"},
+func clientIP(r *http.Request) string {
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		return strings.TrimSpace(strings.Split(forwarded, ",")[0])
 	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

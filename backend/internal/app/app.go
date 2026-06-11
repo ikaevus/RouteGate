@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/artuazh/routegate/backend/internal/auth"
 	"github.com/artuazh/routegate/backend/internal/config"
 	"github.com/artuazh/routegate/backend/internal/db"
 	routegatehttp "github.com/artuazh/routegate/backend/internal/http"
@@ -37,6 +38,24 @@ func (a *App) Start(ctx context.Context) error {
 
 	if err := db.Migrate(ctx, pool, "migrations", a.logger); err != nil {
 		return err
+	}
+
+	authRepo := auth.NewRepository(pool)
+	if err := authRepo.EnsureBuiltIns(ctx); err != nil {
+		return err
+	}
+	hasSuperAdmin, err := authRepo.HasSuperAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	if !hasSuperAdmin {
+		if a.cfg.BootstrapAdminEmail == "" || a.cfg.BootstrapAdminPassword == "" {
+			a.logger.Warn("no super_admin user exists; set ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL and ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD to bootstrap the first SuperAdmin")
+		} else if err := authRepo.CreateBootstrapSuperAdmin(ctx, a.cfg.BootstrapAdminEmail, a.cfg.BootstrapAdminUsername, a.cfg.BootstrapAdminPassword, a.cfg.BootstrapAdminDisplayName); err != nil {
+			return err
+		} else {
+			a.logger.Info("bootstrapped first SuperAdmin", "email", a.cfg.BootstrapAdminEmail)
+		}
 	}
 
 	a.server = routegatehttp.NewServer(a.cfg, a.logger, pool)

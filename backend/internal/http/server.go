@@ -18,7 +18,7 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) *Server {
-	router := NewRouter(logger, pool)
+	router := NewRouter(cfg, logger, pool)
 
 	return &Server{
 		cfg:    cfg,

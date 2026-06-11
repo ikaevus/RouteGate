@@ -15,6 +15,8 @@ tags:
   - name: Auth
   - name: Servers
   - name: Agents
+  - name: Users
+  - name: Roles
 
 paths:
   /api/admin/health:
@@ -44,7 +46,7 @@ paths:
   /api/admin/auth/login:
     post:
       tags: [Auth]
-      summary: Development login
+      summary: Login with email or username
       requestBody:
         required: true
         content:
@@ -60,11 +62,37 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email or username
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/admin/auth/logout:
     post:
       tags: [Auth]
-      summary: Development logout
+      summary: Revoke current session
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Logout accepted
@@ -72,6 +100,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logout accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/admin/me:
     get:
@@ -89,10 +133,26 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/admin/servers:
     get:
       tags: [Servers]
-      summary: List registered servers
+      summary: List registered servers for legacy frontend compatibility
       responses:
         "200":
           description: Server list
@@ -105,7 +165,7 @@ paths:
 
     post:
       tags: [Servers]
-      summary: Create server
+      summary: Create server for legacy frontend compatibility
       requestBody:
         required: true
         content:
@@ -127,7 +187,7 @@ paths:
   /api/admin/agents:
     get:
       tags: [Agents]
-      summary: List registered agents
+      summary: List registered agents for legacy frontend compatibility
       responses:
         "200":
           description: Agent list
@@ -137,6 +197,204 @@ paths:
                 $ref: "#/components/schemas/ListAgentsResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/servers:
+    get:
+      tags: [Servers]
+      summary: List registered servers
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Server list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListServersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Servers]
+      summary: Create server
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServerRequest"
+      responses:
+        "201":
+          description: Server created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Server"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/agents:
+    get:
+      tags: [Agents]
+      summary: List registered agents
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/users:
+    get:
+      tags: [Users]
+      summary: List Manager users
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListUsersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Users]
+      summary: Create Manager, portal, or agent user identity
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      tags: [Users]
+      summary: Update user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /api/v1/users/{id}/disable:
+    post:
+      tags: [Users]
+      summary: Disable user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Disabled user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /api/v1/users/{id}/enable:
+    post:
+      tags: [Users]
+      summary: Enable user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Enabled user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /api/v1/roles:
+    get:
+      tags: [Roles]
+      summary: List roles
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Role list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRolesResponse"
+
+  /api/v1/permissions:
+    get:
+      tags: [Roles]
+      summary: List permissions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Permission list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPermissionsResponse"
 
   /api/agent/register:
     post:
@@ -258,29 +516,47 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, displayName, roles]
+      required: [id, email, user_type, status, roles, permissions]
       properties:
         id:
           type: string
-          example: dev-admin
+          format: uuid
         email:
           type: string
           example: admin@routegate.local
-        displayName:
+        username:
           type: string
-          example: RouteGate Dev Admin
+          example: admin
+        display_name:
+          type: string
+          example: RouteGate Admin
+        user_type:
+          type: string
+          enum: [human, vpn_user, agent]
+        status:
+          type: string
+          enum: [active, disabled, locked, pending]
         roles:
           type: array
           items:
             type: string
-          example: [admin]
+          example: [super_admin]
+        permissions:
+          type: array
+          items:
+            type: string
+          example: [users:read]
 
     LoginRequest:
       type: object
-      required: [email, password]
+      required: [login, password]
       properties:
+        login:
+          type: string
+          example: admin@routegate.local
         email:
           type: string
+          description: Legacy compatibility alias for login.
           example: admin@routegate.local
         password:
           type: string
@@ -288,11 +564,14 @@ components:
 
     LoginResponse:
       type: object
-      required: [token, user]
+      required: [token, expires_at, user]
       properties:
         token:
           type: string
-          example: routegate-dev-token
+          example: opaque-token-returned-once
+        expires_at:
+          type: string
+          format: date-time
         user:
           $ref: "#/components/schemas/AuthUser"
 
@@ -302,6 +581,79 @@ components:
       properties:
         user:
           $ref: "#/components/schemas/AuthUser"
+
+
+    User:
+      allOf:
+        - $ref: "#/components/schemas/AuthUser"
+
+    CreateUserRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        display_name:
+          type: string
+        user_type:
+          type: string
+          enum: [human, vpn_user, agent]
+        status:
+          type: string
+          enum: [active, disabled, locked, pending]
+        roles:
+          type: array
+          items:
+            type: string
+
+    ListUsersResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+
+    Role:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string }
+        built_in: { type: boolean }
+        permissions:
+          type: array
+          items: { type: string }
+
+    Permission:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string }
+
+    ListRolesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Role"
+
+    ListPermissionsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
 
     Server:
       type: object

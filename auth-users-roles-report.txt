@@ -1,0 +1,189 @@
+RouteGate Auth / Users / Roles v0.1 — implementation report
+Commit: 14abe5f Implement auth users roles foundation
+
+1. LIST OF CHANGED FILES
+
+backend/internal/app/app.go
+backend/internal/auth/handler.go
+backend/internal/auth/middleware.go
+backend/internal/auth/middleware_test.go
+backend/internal/auth/model.go
+backend/internal/auth/password.go
+backend/internal/auth/password_test.go
+backend/internal/auth/repository.go
+backend/internal/config/config.go
+backend/internal/http/router.go
+backend/internal/http/server.go
+backend/internal/roles/handler.go
+backend/internal/users/handler.go
+backend/migrations/000003_auth_foundation.down.sql
+backend/migrations/000003_auth_foundation.up.sql
+docs/api/admin-api.md
+docs/api/openapi.yaml
+deploy/docker-compose.dev.yml
+
+2. MIGRATIONS
+
+Added migration files:
+
+- backend/migrations/000003_auth_foundation.up.sql
+- backend/migrations/000003_auth_foundation.down.sql
+
+000003_auth_foundation.up.sql:
+
+- Extends users with username, user_type, status, and last_login_at.
+- Makes password_hash nullable to allow non-human identities such as agents or VPN users.
+- Makes display_name nullable.
+- Maps legacy is_active into status.
+- Adds constraints for user_type:
+  - human
+  - vpn_user
+  - agent
+- Adds constraints for status:
+  - active
+  - disabled
+  - locked
+  - pending
+- Extends roles with description, built_in, and updated_at.
+- Adds permissions table.
+- Adds role_permissions table.
+- Adds auth_sessions table with:
+  - id
+  - user_id
+  - token_hash
+  - expires_at
+  - revoked_at
+  - created_at
+  - last_used_at
+  - user_agent
+  - ip_address
+- Adds supporting indexes for auth_sessions, user_roles, and role_permissions.
+
+000003_auth_foundation.down.sql:
+
+- Drops the auth/session and permission-related indexes.
+- Drops auth_sessions.
+- Drops role_permissions.
+- Drops permissions.
+- Removes the new roles columns.
+- Removes the new users columns and constraints.
+- Restores password_hash and display_name NOT NULL.
+
+How migrations run:
+
+No new migration framework was added. The existing backend startup flow still runs migrations automatically with db.Migrate(ctx, pool, "migrations", logger). After migrations, the backend seeds built-in permissions/roles and attempts SuperAdmin bootstrap if needed.
+
+3. NEW ENV VARIABLES
+
+ROUTEGATE_AUTH_SESSION_TTL_HOURS
+- Optional.
+- Token/session TTL in hours.
+- Default: 24.
+
+ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL
+- Required only when no super_admin exists and the first SuperAdmin should be bootstrapped.
+- Email for the first SuperAdmin.
+
+ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME
+- Optional.
+- Username for the first SuperAdmin.
+
+ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD
+- Required only when no super_admin exists and the first SuperAdmin should be bootstrapped.
+- Password is hashed before storage.
+- Plaintext password is never logged.
+
+ROUTEGATE_BOOTSTRAP_ADMIN_DISPLAY_NAME
+- Optional.
+- Display name for the first SuperAdmin.
+
+4. RUN COMMANDS
+
+Run full dev stack via Makefile:
+
+make dev
+
+or:
+
+make up
+
+Run full dev stack directly with Docker Compose:
+
+docker compose -f deploy/docker-compose.dev.yml up --build
+
+Run backend tests:
+
+cd backend && go test ./...
+
+Example first SuperAdmin bootstrap before starting backend:
+
+export ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL='admin@example.com'
+export ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME='admin'
+export ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD='change-me'
+export ROUTEGATE_BOOTSTRAP_ADMIN_DISPLAY_NAME='RouteGate Admin'
+export ROUTEGATE_AUTH_SESSION_TTL_HOURS='24'
+make dev
+
+Bootstrap behavior:
+
+- On backend startup, migrations run first.
+- Built-in permissions and roles are seeded after migrations.
+- If no user with role super_admin exists, backend creates one from ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL and ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD when provided.
+- If super_admin already exists, backend does not create another one automatically.
+- If no super_admin exists and required bootstrap env variables are missing, backend logs a warning.
+
+5. CURL EXAMPLES
+
+Login:
+
+curl -sS -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"login":"admin@example.com","password":"secret"}'
+
+Me:
+
+TOKEN='<token from login response>'
+curl -sS http://localhost:8080/api/v1/auth/me \
+  -H "Authorization: Bearer ${TOKEN}"
+
+List users:
+
+curl -sS http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer ${TOKEN}"
+
+Logout:
+
+curl -sS -X POST http://localhost:8080/api/v1/auth/logout \
+  -H "Authorization: Bearer ${TOKEN}"
+
+6. GO TEST ./... RESULTS
+
+Command executed:
+
+cd backend && go test ./...
+
+Result:
+
+?   	github.com/artuazh/routegate/backend/cmd/routegate-manager	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/agents	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/app	[no test files]
+ok  	github.com/artuazh/routegate/backend/internal/auth	(cached)
+?   	github.com/artuazh/routegate/backend/internal/config	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/db	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/health	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/http	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/httpx	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/roles	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/servers	[no test files]
+?   	github.com/artuazh/routegate/backend/internal/users	[no test files]
+
+7. DELIBERATELY NOT DONE
+
+- Did not add OAuth, LDAP/AD, 2FA, or refresh-token rotation because they are explicitly out of scope for v0.1.
+- Did not build frontend UI for users, roles, permissions, or portal access because the task was backend-only.
+- Did not replace the existing frontend-facing /api/admin compatibility routes; they were preserved to avoid breaking the current frontend. Legacy /api/admin server/agent list/create routes are intentionally public in dev compatibility mode, while /api/v1 equivalents are permission-protected.
+- Did not fully redesign agent registration/heartbeat authentication; agent permissions and role foundation were added, but current agent endpoints were left compatible with the existing foundation flow.
+- Did not introduce a new migration framework; the existing migration style and startup migrator were used.
+- Did not store plaintext passwords or plaintext tokens. Passwords are hashed before storage, and only token hashes are stored in auth_sessions.
+- Did not add external OAuth/JWT infrastructure. Opaque random tokens are used for MVP sessions.
+- Did not add broad integration tests requiring a live PostgreSQL container because the existing test setup is primarily package-level Go tests and the local environment did not provide Docker during verification.
