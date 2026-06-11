@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/artuazh/routegate/backend/internal/agents"
@@ -100,8 +101,14 @@ func (r *Repository) UpdateServer(ctx context.Context, id string, input UpdateSe
 }
 
 func (r *Repository) DeleteServer(ctx context.Context, id string) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM servers WHERE id = $1::uuid`, id)
-	return err
+	result, err := r.pool.Exec(ctx, `DELETE FROM servers WHERE id = $1::uuid`, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (r *Repository) GetServerWithAgent(ctx context.Context, serverID string) (ServerWithAgent, error) {
