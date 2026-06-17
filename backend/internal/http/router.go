@@ -38,6 +38,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/auth/logout", authn(stdhttp.HandlerFunc(authHandler.Logout)))
 
 	mux.HandleFunc("GET /api/admin/servers", serversHandler.LegacyList)
+	mux.HandleFunc("GET /api/admin/servers/{id}", serversHandler.LegacyGet)
 	mux.HandleFunc("POST /api/admin/servers", serversHandler.LegacyCreate)
 	mux.Handle("GET /api/v1/servers", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(serversHandler.List))))
 	mux.Handle("POST /api/v1/servers", authn(auth.RequirePermission("servers:create")(stdhttp.HandlerFunc(serversHandler.Create))))

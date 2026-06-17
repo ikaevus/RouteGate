@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/artuazh/routegate/backend/internal/agents"
 )
 
@@ -19,6 +21,7 @@ type fakeServerRepository struct {
 	created      Server
 	list         []ServerWithAgent
 	getByID      Server
+	getByIDErr   error
 	getWithAgent ServerWithAgent
 	updated      Server
 	updateInput  UpdateServerInput
@@ -35,7 +38,7 @@ func (f *fakeServerRepository) ListServersWithAgent(context.Context, ServerFilte
 }
 
 func (f *fakeServerRepository) GetServerByID(context.Context, string) (Server, error) {
-	return f.getByID, nil
+	return f.getByID, f.getByIDErr
 }
 
 func (f *fakeServerRepository) GetServerWithAgent(context.Context, string) (ServerWithAgent, error) {
@@ -111,6 +114,60 @@ func TestUpdateServerPreservesOmittedFields(t *testing.T) {
 	}
 	if repository.updateInput.Description != nil || repository.updateInput.PublicIP != nil {
 		t.Fatalf("omitted fields must remain nil: %+v", repository.updateInput)
+	}
+}
+
+func TestLegacyGetReturnsServer(t *testing.T) {
+	repository := &fakeServerRepository{
+		getByID: Server{
+			ID:       "server-id",
+			Name:     "fi-01",
+			Hostname: "fi-01.example",
+			PublicIP: "203.0.113.10",
+			Location: "Finland",
+			Provider: "Demo",
+			Status:   StatusActive,
+		},
+	}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodGet, "/api/admin/servers/server-id", nil)
+	request.SetPathValue("id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.LegacyGet(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, field := range []string{"id", "name", "hostname", "publicIp", "location", "provider", "status", "createdAt"} {
+		if _, ok := payload[field]; !ok {
+			t.Fatalf("response missing %s: %v", field, payload)
+		}
+	}
+}
+
+func TestLegacyGetReturnsNotFound(t *testing.T) {
+	repository := &fakeServerRepository{getByIDErr: pgx.ErrNoRows}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodGet, "/api/admin/servers/missing-id", nil)
+	request.SetPathValue("id", "missing-id")
+	response := httptest.NewRecorder()
+
+	handler.LegacyGet(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNotFound, response.Body.String())
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["status"] != "server_not_found" || payload["message"] == "" {
+		t.Fatalf("unexpected error response: %v", payload)
 	}
 }
 

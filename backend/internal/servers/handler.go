@@ -62,6 +62,21 @@ func (h *Handler) LegacyList(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, LegacyListServersResponse{Items: items})
 }
 
+// LegacyGet returns one server for the original admin endpoint.
+func (h *Handler) LegacyGet(w http.ResponseWriter, r *http.Request) {
+	server, err := h.servers.GetServerByID(r.Context(), r.PathValue("id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get legacy server", err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, server)
+}
+
 // LegacyCreate preserves hostname handling for the original admin endpoint.
 func (h *Handler) LegacyCreate(w http.ResponseWriter, r *http.Request) {
 	var request CreateServerRequest
