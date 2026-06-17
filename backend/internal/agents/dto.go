@@ -6,6 +6,35 @@ type ListAgentsResponse struct {
 	Items []Agent `json:"items"`
 }
 
+type AgentRegistrationRequest struct {
+	RegistrationToken string       `json:"registrationToken"`
+	Hostname          string       `json:"hostname"`
+	AgentVersion      string       `json:"agentVersion"`
+	OS                string       `json:"os"`
+	Arch              string       `json:"arch"`
+	Capabilities      Capabilities `json:"capabilities"`
+}
+
+type AgentRegistrationResponse struct {
+	AgentID    string `json:"agentId"`
+	ServerID   string `json:"serverId"`
+	AgentToken string `json:"agentToken"`
+}
+
+type AgentHeartbeatRequest struct {
+	AgentVersion *string      `json:"agentVersion,omitempty"`
+	Capabilities Capabilities `json:"capabilities,omitempty"`
+}
+
+type AgentHeartbeatResponse struct {
+	OK           bool   `json:"ok"`
+	AgentID      string `json:"agentId"`
+	ServerID     string `json:"serverId"`
+	ServerStatus string `json:"serverStatus"`
+}
+
+// RegisterAgentRequest and the legacy heartbeat DTOs are retained until the
+// older service layer is removed.
 type RegisterAgentRequest struct {
 	ServerID string `json:"serverId"`
 	Name     string `json:"name"`
