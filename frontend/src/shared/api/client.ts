@@ -1,5 +1,15 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 function getAuthToken(): string | null {
   return localStorage.getItem('routegate.auth.token');
 }
@@ -21,7 +31,7 @@ export async function apiGet<TResponse>(path: string): Promise<TResponse> {
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: GET ${path} returned ${response.status}`);
+    throw new ApiError(`API request failed: GET ${path} returned ${response.status}`, response.status);
   }
 
   return response.json() as Promise<TResponse>;
@@ -40,7 +50,7 @@ export async function apiPost<TRequest, TResponse>(
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: POST ${path} returned ${response.status}`);
+    throw new ApiError(`API request failed: POST ${path} returned ${response.status}`, response.status);
   }
 
   return response.json() as Promise<TResponse>;

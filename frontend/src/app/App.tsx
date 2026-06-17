@@ -1,6 +1,7 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ServersPage } from '../pages/servers/ServersPage';
+import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
 import { AgentsPage } from '../pages/agents/AgentsPage';
 import { LoginPage } from '../pages/login/LoginPage';
 
@@ -28,6 +29,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/servers" element={<ServersPage />} />
+          <Route path="/servers/:serverId" element={<ServerDetailsPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
