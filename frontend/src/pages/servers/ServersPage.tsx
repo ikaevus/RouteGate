@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getServers, type Server } from '../../entities/server/api/serverApi';
 
 function formatDate(value?: string | null): string {
@@ -21,9 +22,9 @@ function StatusBadge({ status }: { status?: string | null }) {
 
 function ServerRow({ server }: { server: Server }) {
   return (
-    <div className="table-row servers-table-row">
+    <Link className="table-row servers-table-row table-row-link" to={`/servers/${server.id}`}>
       <div>
-        <strong>{formatValue(server.name)}</strong>
+        <strong className="text-link">{formatValue(server.name)}</strong>
         <span>{formatValue(server.description)}</span>
       </div>
       <div>{formatValue(server.provider)}</div>
@@ -42,7 +43,7 @@ function ServerRow({ server }: { server: Server }) {
       <div>{formatValue(server.agent?.agentVersion)}</div>
       <div>{formatDate(server.agent?.lastSeenAt)}</div>
       <div>{formatDate(server.createdAt)}</div>
-    </div>
+    </Link>
   );
 }
 
