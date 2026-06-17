@@ -196,14 +196,15 @@ func (r *Repository) CreateRegistrationToken(ctx context.Context, input CreateRe
 	return token, err
 }
 
-func (r *Repository) GetValidRegistrationTokenByHash(ctx context.Context, tokenHash string) (ServerRegistrationToken, error) {
+func (r *Repository) ConsumeValidRegistrationTokenByHash(ctx context.Context, tokenHash string) (ServerRegistrationToken, error) {
 	var token ServerRegistrationToken
 	err := r.pool.QueryRow(ctx, `
-		SELECT id::text, server_id::text, token_hash, expires_at, used_at, created_at
-		FROM server_registration_tokens
+		UPDATE server_registration_tokens
+		SET used_at = now()
 		WHERE token_hash = $1
 		  AND used_at IS NULL
 		  AND (expires_at IS NULL OR expires_at > now())
+		RETURNING id::text, server_id::text, token_hash, expires_at, used_at, created_at
 	`, tokenHash).Scan(
 		&token.ID,
 		&token.ServerID,
@@ -215,12 +216,12 @@ func (r *Repository) GetValidRegistrationTokenByHash(ctx context.Context, tokenH
 	return token, err
 }
 
-func (r *Repository) MarkRegistrationTokenUsed(ctx context.Context, tokenID string) error {
+func (r *Repository) ActivateServer(ctx context.Context, serverID string) error {
 	_, err := r.pool.Exec(ctx, `
-		UPDATE server_registration_tokens
-		SET used_at = now()
-		WHERE id = $1::uuid AND used_at IS NULL
-	`, tokenID)
+		UPDATE servers
+		SET status = 'active', updated_at = now()
+		WHERE id = $1::uuid
+	`, serverID)
 	return err
 }
 

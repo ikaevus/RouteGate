@@ -57,8 +57,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/users/{id}/enable", authn(auth.RequirePermission("users:disable")(stdhttp.HandlerFunc(usersHandler.Enable))))
 	mux.Handle("GET /api/v1/roles", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListRoles))))
 	mux.Handle("GET /api/v1/permissions", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListPermissions))))
-	mux.HandleFunc("POST /api/agent/register", agentsHandler.Register)
-	mux.HandleFunc("POST /api/agent/heartbeat", agentsHandler.Heartbeat)
+	mux.HandleFunc("POST /api/v1/agent/register", agentsHandler.Register)
+	mux.HandleFunc("POST /api/v1/agent/heartbeat", agentsHandler.Heartbeat)
 
 	return chain(
 		mux,

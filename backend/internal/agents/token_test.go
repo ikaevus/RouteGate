@@ -32,3 +32,22 @@ func TestGenerateRegistrationToken(t *testing.T) {
 		t.Fatal("two generated registration tokens were identical")
 	}
 }
+
+func TestGenerateAgentToken(t *testing.T) {
+	t.Parallel()
+
+	first, err := GenerateAgentToken()
+	if err != nil {
+		t.Fatalf("GenerateAgentToken() error = %v", err)
+	}
+	second, err := GenerateAgentToken()
+	if err != nil {
+		t.Fatalf("GenerateAgentToken() second error = %v", err)
+	}
+	if !strings.HasPrefix(first, "rg_agent_") {
+		t.Fatalf("token %q does not have rg_agent_ prefix", first)
+	}
+	if first == second {
+		t.Fatal("two generated agent tokens were identical")
+	}
+}
