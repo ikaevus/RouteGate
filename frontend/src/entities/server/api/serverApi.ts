@@ -36,11 +36,11 @@ export interface ListServersResponse {
 }
 
 export function getServers(): Promise<ListServersResponse> {
-  return apiGet<ListServersResponse>('/api/v1/servers');
+  return apiGet<ListServersResponse>('/api/admin/servers');
 }
 
 export function getServer(serverId: string): Promise<Server> {
-  return apiGet<Server>(`/api/v1/servers/${encodeURIComponent(serverId)}`);
+  return apiGet<Server>(`/api/admin/servers/${encodeURIComponent(serverId)}`);
 }
 
 export function createServerRegistrationToken(
