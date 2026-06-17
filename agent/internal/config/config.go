@@ -1,60 +1,136 @@
 package config
 
 import (
-	"log/slog"
+	"bufio"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
+const DefaultPath = "/etc/routegate/agent.yaml"
+
 type Config struct {
-	ManagerURL   string
-	AgentID      string
-	AgentToken   string
-	PollInterval time.Duration
-	LogLevel     slog.Level
+	ManagerURL               string
+	RegistrationToken        string
+	AgentID                  string
+	ServerID                 string
+	AgentToken               string
+	HeartbeatIntervalSeconds int
 }
 
-func Load() Config {
-	return Config{
-		ManagerURL:   env("ROUTEGATE_AGENT_MANAGER_URL", "http://localhost:8080"),
-		AgentID:      env("ROUTEGATE_AGENT_ID", "local-dev-agent"),
-		AgentToken:   env("ROUTEGATE_AGENT_TOKEN", "dev-agent-token-change-me"),
-		PollInterval: time.Duration(envInt("ROUTEGATE_AGENT_POLL_INTERVAL_SECONDS", 15)) * time.Second,
-		LogLevel:     parseLogLevel(env("ROUTEGATE_LOG_LEVEL", "info")),
+func Load(path string) (Config, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("read config: %w", err)
 	}
+	defer file.Close()
+	cfg := Config{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := stripComment(scanner.Text())
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return Config{}, fmt.Errorf("parse config: invalid line %q", scanner.Text())
+		}
+		key = strings.TrimSpace(key)
+		value = trimYAMLScalar(value)
+		switch key {
+		case "manager_url":
+			cfg.ManagerURL = value
+		case "registration_token":
+			cfg.RegistrationToken = value
+		case "agent_id":
+			cfg.AgentID = value
+		case "server_id":
+			cfg.ServerID = value
+		case "agent_token":
+			cfg.AgentToken = value
+		case "heartbeat_interval_seconds":
+			if value == "" {
+				continue
+			}
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return Config{}, fmt.Errorf("parse heartbeat_interval_seconds: %w", err)
+			}
+			cfg.HeartbeatIntervalSeconds = parsed
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return Config{}, fmt.Errorf("read config: %w", err)
+	}
+	cfg.ManagerURL = strings.TrimRight(strings.TrimSpace(cfg.ManagerURL), "/")
+	cfg.RegistrationToken = strings.TrimSpace(cfg.RegistrationToken)
+	cfg.AgentID = strings.TrimSpace(cfg.AgentID)
+	cfg.ServerID = strings.TrimSpace(cfg.ServerID)
+	cfg.AgentToken = strings.TrimSpace(cfg.AgentToken)
+	if cfg.HeartbeatIntervalSeconds <= 0 {
+		cfg.HeartbeatIntervalSeconds = 30
+	}
+	if cfg.ManagerURL == "" {
+		return Config{}, errors.New("manager_url is required")
+	}
+	return cfg, nil
 }
 
-func env(key, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
+func (c Config) HeartbeatInterval() time.Duration {
+	return time.Duration(c.HeartbeatIntervalSeconds) * time.Second
+}
+
+func (c Config) Save(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds)
+	if c.RegistrationToken != "" {
+		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds)
+	}
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
+}
+
+func (c Config) HasAgentCredentials() bool  { return c.AgentToken != "" }
+func (c Config) HasRegistrationToken() bool { return c.RegistrationToken != "" }
+
+func stripComment(line string) string {
+	inSingle, inDouble := false, false
+	for i, r := range line {
+		switch r {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case '#':
+			if !inSingle && !inDouble {
+				return line[:i]
+			}
+		}
+	}
+	return line
+}
+
+func trimYAMLScalar(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		if unquoted, err := strconv.Unquote(value); err == nil {
+			return unquoted
+		}
+		if value[0] == '\'' && value[len(value)-1] == '\'' {
+			return strings.ReplaceAll(value[1:len(value)-1], "''", "'")
+		}
 	}
 	return value
-}
-
-func envInt(key string, fallback int) int {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func parseLogLevel(value string) slog.Level {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
 }
