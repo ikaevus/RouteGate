@@ -335,6 +335,11 @@ a {
   color: #86efac !important;
 }
 
+.badge-active {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac !important;
+}
+
 .badge-unknown {
   background: rgba(245, 158, 11, 0.16);
   color: #fcd34d !important;
@@ -386,6 +391,32 @@ a {
 
 @media (max-width: 980px) {
   .agents-table-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.servers-page {
+  max-width: 1280px;
+}
+
+.servers-table-panel {
+  overflow-x: auto;
+}
+
+.servers-table {
+  min-width: 1120px;
+}
+
+.servers-table-row {
+  grid-template-columns: 1.5fr 0.9fr 0.9fr 1fr 0.8fr 0.8fr 0.8fr 1.2fr 1.2fr;
+}
+
+@media (max-width: 980px) {
+  .servers-table {
+    min-width: 0;
+  }
+
+  .servers-table-row {
     grid-template-columns: 1fr;
   }
 }
