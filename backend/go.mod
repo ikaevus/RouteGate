@@ -1,4 +1,4 @@
-module github.com/artuazh/routegate/backend
+module github.com/ikaevus/routegate/backend
 
 go 1.25.0
 
