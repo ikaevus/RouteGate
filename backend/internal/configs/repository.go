@@ -162,6 +162,43 @@ func (r *Repository) MarkConfigVersionValidated(ctx context.Context, serverID, v
 	`, serverID, versionID, StatusValidated))
 }
 
+func (r *Repository) CreateConfigApplyJob(ctx context.Context, input CreateConfigApplyJobInput) (ConfigApplyJob, error) {
+	action := input.Action
+	if action == "" {
+		action = ApplyJobActionApply
+	}
+	requestPayload := input.RequestPayload
+	if requestPayload == nil {
+		requestPayload = map[string]any{}
+	}
+
+	return scanConfigApplyJob(r.pool.QueryRow(ctx, `
+		INSERT INTO config_apply_jobs (
+			server_id,
+			agent_id,
+			config_version_id,
+			action,
+			status,
+			request_payload
+		)
+		VALUES ($1::uuid, NULLIF($2, '')::uuid, $3::uuid, $4, $5, $6::jsonb)
+		RETURNING
+			id::text,
+			server_id::text,
+			COALESCE(agent_id::text, ''),
+			config_version_id::text,
+			action,
+			status,
+			request_payload,
+			result_payload,
+			COALESCE(error_message, ''),
+			created_at,
+			updated_at,
+			started_at,
+			completed_at
+	`, input.ServerID, input.AgentID, input.ConfigVersionID, action, ApplyJobStatusPending, requestPayload))
+}
+
 func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 	var info ServerConfigInfo
 	var agentID sql.NullString
@@ -236,4 +273,31 @@ func scanConfigVersion(row scanner) (ConfigVersion, error) {
 	}
 	version.RenderedConfig = renderedConfig
 	return version, nil
+}
+
+func scanConfigApplyJob(row scanner) (ConfigApplyJob, error) {
+	var job ConfigApplyJob
+	var requestPayload []byte
+	var resultPayload []byte
+	err := row.Scan(
+		&job.ID,
+		&job.ServerID,
+		&job.AgentID,
+		&job.ConfigVersionID,
+		&job.Action,
+		&job.Status,
+		&requestPayload,
+		&resultPayload,
+		&job.ErrorMessage,
+		&job.CreatedAt,
+		&job.UpdatedAt,
+		&job.StartedAt,
+		&job.CompletedAt,
+	)
+	if err != nil {
+		return ConfigApplyJob{}, err
+	}
+	job.RequestPayload = requestPayload
+	job.ResultPayload = resultPayload
+	return job, nil
 }
