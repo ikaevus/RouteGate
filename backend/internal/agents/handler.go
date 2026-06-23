@@ -22,6 +22,8 @@ type agentAPIRepository interface {
 	CreateOrReplaceAgentForServer(context.Context, CreateOrReplaceAgentInput) (Agent, error)
 	ActivateServer(context.Context, string) error
 	UpdateAgentHeartbeat(context.Context, UpdateAgentHeartbeatInput) (Agent, error)
+	ClaimNextConfigTask(context.Context, string) (*AgentConfigTask, error)
+	CompleteConfigTask(context.Context, CompleteConfigTaskInput) error
 }
 
 type Handler struct {
@@ -191,10 +193,79 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) NextTask(w http.ResponseWriter, r *http.Request) {
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
+		return
+	}
+
+	task, err := h.repository.ClaimNextConfigTask(r.Context(), HashToken(token))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
+		return
+	}
+	if err != nil {
+		h.logger.Error("claim next agent task failed", "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to fetch next agent task."))
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, AgentNextTaskResponse{Task: task})
+}
+
+func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
+		return
+	}
+
+	var request CompleteAgentTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Request body must be valid JSON."))
+		return
+	}
+	request.Status = strings.TrimSpace(request.Status)
+	if !validConfigTaskCompletionStatus(request.Status) {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_status", "Task status must be one of: succeeded, failed."))
+		return
+	}
+
+	jobID := r.PathValue("job_id")
+	err := h.repository.CompleteConfigTask(r.Context(), CompleteConfigTaskInput{
+		TokenHash:     HashToken(token),
+		JobID:         jobID,
+		Status:        request.Status,
+		ErrorMessage:  request.ErrorMessage,
+		ResultPayload: request.ResultPayload,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("task_not_found", "Task not found for this agent."))
+		return
+	}
+	if err != nil {
+		h.logger.Error("complete agent task failed", "error", err, "job_id", jobID)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to complete agent task."))
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, CompleteAgentTaskResponse{OK: true, TaskID: jobID, Status: request.Status})
+}
+
 func bearerToken(header string) (string, bool) {
 	parts := strings.Fields(header)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
 		return "", false
 	}
 	return parts[1], true
+}
+
+func validConfigTaskCompletionStatus(status string) bool {
+	switch status {
+	case ConfigApplyJobStatusSucceeded, ConfigApplyJobStatusFailed:
+		return true
+	default:
+		return false
+	}
 }
