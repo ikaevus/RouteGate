@@ -14,6 +14,14 @@ type ValidateConfigResponse struct {
 	ValidationResult ValidationResult `json:"validationResult"`
 }
 
+type ApplyConfigRequest struct {
+	Comment string `json:"comment,omitempty"`
+}
+
+type ApplyConfigResponse struct {
+	Job ConfigApplyJob `json:"job"`
+}
+
 type ListConfigVersionsResponse struct {
 	Items []ConfigVersion `json:"items"`
 }
