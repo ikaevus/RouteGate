@@ -105,6 +105,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		report := map[string]any{
 			"stage":           "failed",
 			"validate":        "skipped",
+			"apply":           "skipped",
 			"configVersionId": task.ConfigVersionID,
 			"configHash":      task.ConfigHash,
 		}
@@ -119,6 +120,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		report := map[string]any{
 			"stage":           "succeeded",
 			"validate":        "failed",
+			"apply":           "skipped",
 			"stagedPath":      stageResult.StagedPath,
 			"configVersionId": stageResult.ConfigVersionID,
 			"configHash":      stageResult.ConfigHash,
@@ -131,10 +133,31 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
+	applyResult, err := tasks.NewApplier(r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir).Apply(stageResult.StagedPath, stageResult.ConfigVersionID)
+	if err != nil {
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "succeeded",
+			"apply":           "failed",
+			"stagedPath":      stageResult.StagedPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         validationResult.Command,
+			"output":          validationResult.Output,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("apply staged config failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
 	report := map[string]any{
 		"stage":           "succeeded",
 		"validate":        "succeeded",
+		"apply":           "succeeded",
 		"stagedPath":      stageResult.StagedPath,
+		"activePath":      applyResult.ActivePath,
+		"backupPath":      applyResult.BackupPath,
 		"configVersionId": stageResult.ConfigVersionID,
 		"configHash":      stageResult.ConfigHash,
 		"command":         validationResult.Command,
@@ -143,6 +166,6 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
 		return err
 	}
-	r.logger.Info("config task staged and validated", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath)
+	r.logger.Info("config task staged, validated and applied", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath)
 	return nil
 }
