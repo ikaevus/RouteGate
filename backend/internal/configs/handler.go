@@ -3,6 +3,7 @@ package configs
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -28,7 +29,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 	var request RenderConfigRequest
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
 			writeInvalidRequest(w, "Request body must be valid JSON.")
 			return
 		}
