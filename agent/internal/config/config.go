@@ -13,6 +13,7 @@ import (
 
 const DefaultPath = "/etc/routegate/agent.yaml"
 const DefaultConfigStagingDir = "/var/lib/routegate-agent/configs"
+const DefaultSingBoxPath = "sing-box"
 
 type Config struct {
 	ManagerURL               string
@@ -22,6 +23,7 @@ type Config struct {
 	AgentToken               string
 	HeartbeatIntervalSeconds int
 	ConfigStagingDir         string
+	SingBoxPath              string
 }
 
 func Load(path string) (Config, error) {
@@ -65,6 +67,8 @@ func Load(path string) (Config, error) {
 			cfg.HeartbeatIntervalSeconds = parsed
 		case "config_staging_dir":
 			cfg.ConfigStagingDir = value
+		case "sing_box_path":
+			cfg.SingBoxPath = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -76,11 +80,15 @@ func Load(path string) (Config, error) {
 	cfg.ServerID = strings.TrimSpace(cfg.ServerID)
 	cfg.AgentToken = strings.TrimSpace(cfg.AgentToken)
 	cfg.ConfigStagingDir = strings.TrimSpace(cfg.ConfigStagingDir)
+	cfg.SingBoxPath = strings.TrimSpace(cfg.SingBoxPath)
 	if cfg.HeartbeatIntervalSeconds <= 0 {
 		cfg.HeartbeatIntervalSeconds = 30
 	}
 	if cfg.ConfigStagingDir == "" {
 		cfg.ConfigStagingDir = DefaultConfigStagingDir
+	}
+	if cfg.SingBoxPath == "" {
+		cfg.SingBoxPath = DefaultSingBoxPath
 	}
 	if cfg.ManagerURL == "" {
 		return Config{}, errors.New("manager_url is required")
@@ -100,9 +108,13 @@ func (c Config) Save(path string) error {
 	if stagingDir == "" {
 		stagingDir = DefaultConfigStagingDir
 	}
-	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir)
+	singBoxPath := c.SingBoxPath
+	if singBoxPath == "" {
+		singBoxPath = DefaultSingBoxPath
+	}
+	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nsing_box_path: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, singBoxPath)
 	if c.RegistrationToken != "" {
-		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir)
+		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nsing_box_path: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, singBoxPath)
 	}
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		return fmt.Errorf("write config: %w", err)
