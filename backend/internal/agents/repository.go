@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -179,6 +180,98 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 	return agent, nil
 }
 
+func (r *Repository) ClaimNextConfigTask(ctx context.Context, tokenHash string) (*AgentConfigTask, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var agent Agent
+	if agent, err = scanAgent(tx.QueryRow(ctx, agentSelect+` WHERE token_hash = $1`, tokenHash)); err != nil {
+		return nil, err
+	}
+
+	task, err := scanAgentConfigTask(tx.QueryRow(ctx, `
+		WITH next_job AS (
+			SELECT j.id
+			FROM config_apply_jobs j
+			WHERE j.server_id = $1::uuid
+			  AND (j.agent_id IS NULL OR j.agent_id = $2::uuid)
+			  AND j.status = 'pending'
+			ORDER BY j.created_at ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE config_apply_jobs j
+		SET
+			agent_id = $2::uuid,
+			status = 'in_progress',
+			started_at = COALESCE(j.started_at, now()),
+			updated_at = now()
+		FROM next_job, config_versions cv
+		WHERE j.id = next_job.id
+		  AND cv.id = j.config_version_id
+		RETURNING
+			j.id::text,
+			j.server_id::text,
+			j.agent_id::text,
+			j.config_version_id::text,
+			j.action,
+			j.status,
+			cv.rendered_config,
+			cv.config_hash,
+			j.created_at,
+			j.started_at
+	`, agent.ServerID, agent.ID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return nil, commitErr
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+func (r *Repository) CompleteConfigTask(ctx context.Context, input CompleteConfigTaskInput) error {
+	resultPayload := input.ResultPayload
+	if resultPayload == nil {
+		resultPayload = map[string]any{}
+	}
+	payloadBytes, err := json.Marshal(resultPayload)
+	if err != nil {
+		return err
+	}
+
+	result, err := r.pool.Exec(ctx, `
+		UPDATE config_apply_jobs j
+		SET
+			status = $3,
+			result_payload = $4::jsonb,
+			error_message = NULLIF($5, ''),
+			completed_at = now(),
+			updated_at = now()
+		FROM agents a
+		WHERE j.id = $1::uuid
+		  AND a.token_hash = $2
+		  AND j.agent_id = a.id
+		  AND j.status = 'in_progress'
+	`, input.JobID, input.TokenHash, input.Status, payloadBytes, strings.TrimSpace(input.ErrorMessage))
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (r *Repository) CreateRegistrationToken(ctx context.Context, input CreateRegistrationTokenInput) (ServerRegistrationToken, error) {
 	var token ServerRegistrationToken
 	err := r.pool.QueryRow(ctx, `
@@ -328,6 +421,32 @@ func scanAgent(row scanner) (Agent, error) {
 		agent.LastSeen = *agent.LastSeenAt
 	}
 	return agent, nil
+}
+
+func scanAgentConfigTask(row scanner) (AgentConfigTask, error) {
+	var task AgentConfigTask
+	var renderedConfig []byte
+	var startedAt sql.NullTime
+	err := row.Scan(
+		&task.ID,
+		&task.ServerID,
+		&task.AgentID,
+		&task.ConfigVersionID,
+		&task.Action,
+		&task.Status,
+		&renderedConfig,
+		&task.ConfigHash,
+		&task.CreatedAt,
+		&startedAt,
+	)
+	if err != nil {
+		return AgentConfigTask{}, err
+	}
+	task.RenderedConfig = renderedConfig
+	if startedAt.Valid {
+		task.StartedAt = &startedAt.Time
+	}
+	return task, nil
 }
 
 func optionalString(value *string) any {

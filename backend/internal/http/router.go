@@ -9,6 +9,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
+	"github.com/ikaevus/routegate/backend/internal/configs"
 	"github.com/ikaevus/routegate/backend/internal/health"
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
@@ -23,6 +24,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	authHandler := auth.NewHandler(logger, pool, cfg.AuthSessionTTL)
 	serversHandler := servers.NewHandler(logger, pool)
 	agentsHandler := agents.NewHandler(logger, pool)
+	configsHandler := configs.NewHandler(logger, pool)
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
 	authn := auth.Middleware(authRepo)
@@ -46,6 +48,11 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.Update))))
 	mux.Handle("DELETE /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:delete")(stdhttp.HandlerFunc(serversHandler.Delete))))
 	mux.Handle("POST /api/v1/servers/{server_id}/registration-token", authn(auth.RequirePermission("agents:register")(stdhttp.HandlerFunc(serversHandler.CreateRegistrationToken))))
+	mux.Handle("POST /api/v1/servers/{server_id}/config/render", authn(auth.RequirePermission("configs:render")(stdhttp.HandlerFunc(configsHandler.Render))))
+	mux.Handle("GET /api/v1/servers/{server_id}/config/versions", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.List))))
+	mux.Handle("GET /api/v1/servers/{server_id}/config/versions/{version_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.Get))))
+	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/validate", authn(auth.RequirePermission("configs:validate")(stdhttp.HandlerFunc(configsHandler.Validate))))
+	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/apply", authn(auth.RequirePermission("configs:apply")(stdhttp.HandlerFunc(configsHandler.Apply))))
 
 	mux.HandleFunc("GET /api/admin/agents", agentsHandler.List)
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
@@ -60,6 +67,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/permissions", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListPermissions))))
 	mux.HandleFunc("POST /api/v1/agent/register", agentsHandler.Register)
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", agentsHandler.Heartbeat)
+	mux.HandleFunc("GET /api/v1/agent/tasks/next", agentsHandler.NextTask)
+	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result", agentsHandler.CompleteTask)
 
 	return chain(
 		mux,
