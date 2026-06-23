@@ -1,0 +1,104 @@
+package configs
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/artuazh/routegate/backend/internal/httpx"
+)
+
+type Handler struct {
+	logger  *slog.Logger
+	service *Service
+}
+
+func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
+	repository := NewRepository(pool)
+	return &Handler{
+		logger:  logger,
+		service: NewService(repository),
+	}
+}
+
+func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
+	var request RenderConfigRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeInvalidRequest(w, "Request body must be valid JSON.")
+			return
+		}
+	}
+
+	response, err := h.service.Render(r.Context(), r.PathValue("server_id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "render config", err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusCreated, response)
+}
+
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	items, err := h.service.List(r.Context(), r.PathValue("server_id"))
+	if err != nil {
+		h.databaseError(w, "list config versions", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ListConfigVersionsResponse{Items: items})
+}
+
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	version, err := h.service.Get(r.Context(), r.PathValue("server_id"), r.PathValue("version_id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeConfigVersionNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get config version", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, version)
+}
+
+func (h *Handler) Validate(w http.ResponseWriter, r *http.Request) {
+	response, err := h.service.Validate(r.Context(), r.PathValue("server_id"), r.PathValue("version_id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeConfigVersionNotFound(w)
+		return
+	}
+	if errors.Is(err, ErrInvalidRenderedConfig) {
+		httpx.WriteJSON(w, http.StatusBadRequest, response)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "validate config version", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
+	h.logger.Error(operation+" failed", "error", err)
+	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Database operation failed."))
+}
+
+func writeInvalidRequest(w http.ResponseWriter, message string) {
+	httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", message))
+}
+
+func writeServerNotFound(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("server_not_found", "Server not found."))
+}
+
+func writeConfigVersionNotFound(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("config_version_not_found", "Config version not found."))
+}
