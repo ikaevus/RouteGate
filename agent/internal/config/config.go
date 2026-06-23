@@ -16,6 +16,7 @@ const DefaultConfigStagingDir = "/var/lib/routegate-agent/configs"
 const DefaultActiveConfigPath = "/etc/sing-box/config.json"
 const DefaultConfigBackupDir = "/var/lib/routegate-agent/backups"
 const DefaultSingBoxPath = "sing-box"
+const DefaultSingBoxServiceName = "sing-box"
 
 type Config struct {
 	ManagerURL               string
@@ -28,6 +29,7 @@ type Config struct {
 	ActiveConfigPath         string
 	ConfigBackupDir          string
 	SingBoxPath              string
+	SingBoxServiceName       string
 }
 
 func Load(path string) (Config, error) {
@@ -77,6 +79,8 @@ func Load(path string) (Config, error) {
 			cfg.ConfigBackupDir = value
 		case "sing_box_path":
 			cfg.SingBoxPath = value
+		case "sing_box_service_name":
+			cfg.SingBoxServiceName = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -91,6 +95,7 @@ func Load(path string) (Config, error) {
 	cfg.ActiveConfigPath = strings.TrimSpace(cfg.ActiveConfigPath)
 	cfg.ConfigBackupDir = strings.TrimSpace(cfg.ConfigBackupDir)
 	cfg.SingBoxPath = strings.TrimSpace(cfg.SingBoxPath)
+	cfg.SingBoxServiceName = strings.TrimSpace(cfg.SingBoxServiceName)
 	if cfg.HeartbeatIntervalSeconds <= 0 {
 		cfg.HeartbeatIntervalSeconds = 30
 	}
@@ -105,6 +110,9 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.SingBoxPath == "" {
 		cfg.SingBoxPath = DefaultSingBoxPath
+	}
+	if cfg.SingBoxServiceName == "" {
+		cfg.SingBoxServiceName = DefaultSingBoxServiceName
 	}
 	if cfg.ManagerURL == "" {
 		return Config{}, errors.New("manager_url is required")
@@ -136,9 +144,13 @@ func (c Config) Save(path string) error {
 	if singBoxPath == "" {
 		singBoxPath = DefaultSingBoxPath
 	}
-	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath)
+	serviceName := c.SingBoxServiceName
+	if serviceName == "" {
+		serviceName = DefaultSingBoxServiceName
+	}
+	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName)
 	if c.RegistrationToken != "" {
-		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath)
+		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName)
 	}
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		return fmt.Errorf("write config: %w", err)

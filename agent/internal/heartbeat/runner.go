@@ -151,10 +151,62 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
+	service := tasks.NewServiceController(r.cfg.SingBoxServiceName)
+	restartResult, err := service.Restart(ctx)
+	if err != nil {
+		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "succeeded",
+			"apply":           "succeeded",
+			"restart":         "failed",
+			"healthcheck":     "skipped",
+			"rollback":        rollbackStatus,
+			"stagedPath":      stageResult.StagedPath,
+			"activePath":      applyResult.ActivePath,
+			"backupPath":      applyResult.BackupPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         restartResult.Command,
+			"output":          restartResult.Output,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("restart sing-box failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
+	healthResult, err := service.IsActive(ctx)
+	if err != nil {
+		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "succeeded",
+			"apply":           "succeeded",
+			"restart":         "succeeded",
+			"healthcheck":     "failed",
+			"rollback":        rollbackStatus,
+			"stagedPath":      stageResult.StagedPath,
+			"activePath":      applyResult.ActivePath,
+			"backupPath":      applyResult.BackupPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         healthResult.Command,
+			"output":          healthResult.Output,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("sing-box healthcheck failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
 	report := map[string]any{
 		"stage":           "succeeded",
 		"validate":        "succeeded",
 		"apply":           "succeeded",
+		"restart":         "succeeded",
+		"healthcheck":     "succeeded",
+		"rollback":        "skipped",
 		"stagedPath":      stageResult.StagedPath,
 		"activePath":      applyResult.ActivePath,
 		"backupPath":      applyResult.BackupPath,
@@ -162,10 +214,24 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		"configHash":      stageResult.ConfigHash,
 		"command":         validationResult.Command,
 		"output":          validationResult.Output,
+		"restartCommand":  restartResult.Command,
+		"healthCommand":   healthResult.Command,
 	}
 	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
 		return err
 	}
 	r.logger.Info("config task staged, validated and applied", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath)
 	return nil
+}
+
+func (r *Runner) rollbackAppliedConfig(result tasks.ApplyResult) string {
+	if result.BackupPath == "" {
+		return "skipped_no_backup"
+	}
+	if err := tasks.NewApplier(r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir).Rollback(result.BackupPath); err != nil {
+		r.logger.Warn("rollback active config failed", "error", err, "backup_path", result.BackupPath, "active_path", result.ActivePath)
+		return "failed"
+	}
+	r.logger.Warn("rolled back active config", "backup_path", result.BackupPath, "active_path", result.ActivePath)
+	return "succeeded"
 }
