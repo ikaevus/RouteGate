@@ -18,6 +18,15 @@ const (
 	StatusFailed           = "failed"
 )
 
+const (
+	ApplyJobActionApply = "apply"
+
+	ApplyJobStatusPending    = "pending"
+	ApplyJobStatusInProgress = "in_progress"
+	ApplyJobStatusSucceeded  = "succeeded"
+	ApplyJobStatusFailed     = "failed"
+)
+
 const SchemaVersion = "routegate.config.v1"
 
 type ConfigVersion struct {
@@ -29,6 +38,22 @@ type ConfigVersion struct {
 	RenderedConfig json.RawMessage `json:"renderedConfig"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	AppliedAt      *time.Time      `json:"appliedAt,omitempty"`
+}
+
+type ConfigApplyJob struct {
+	ID              string          `json:"id"`
+	ServerID        string          `json:"serverId"`
+	AgentID         string          `json:"agentId,omitempty"`
+	ConfigVersionID string          `json:"configVersionId"`
+	Action          string          `json:"action"`
+	Status          string          `json:"status"`
+	RequestPayload  json.RawMessage `json:"requestPayload"`
+	ResultPayload   json.RawMessage `json:"resultPayload"`
+	ErrorMessage    string          `json:"errorMessage,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       time.Time       `json:"updatedAt"`
+	StartedAt       *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
 }
 
 type ValidationResult struct {
@@ -119,4 +144,12 @@ type CreateConfigVersionInput struct {
 	Status         string
 	ConfigHash     string
 	RenderedConfig RenderedConfig
+}
+
+type CreateConfigApplyJobInput struct {
+	ServerID        string
+	AgentID         string
+	ConfigVersionID string
+	Action          string
+	RequestPayload  map[string]any
 }
