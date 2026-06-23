@@ -87,6 +87,35 @@ func (h *Handler) Validate(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, response)
 }
 
+func (h *Handler) Apply(w http.ResponseWriter, r *http.Request) {
+	var request ApplyConfigRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+			writeInvalidRequest(w, "Request body must be valid JSON.")
+			return
+		}
+	}
+
+	response, err := h.service.Apply(r.Context(), r.PathValue("server_id"), r.PathValue("version_id"), request)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeConfigVersionNotFound(w)
+		return
+	}
+	if errors.Is(err, ErrConfigVersionNotValidated) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_not_validated", "Config version must be validated before apply."))
+		return
+	}
+	if errors.Is(err, ErrConfigApplyAgentMissing) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("agent_missing", "Server must have a registered agent before config apply."))
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "create config apply job", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusAccepted, response)
+}
+
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
 	h.logger.Error(operation+" failed", "error", err)
 	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Database operation failed."))
