@@ -6,10 +6,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/artuazh/routegate/backend/internal/auth"
-	"github.com/artuazh/routegate/backend/internal/config"
-	"github.com/artuazh/routegate/backend/internal/db"
-	routegatehttp "github.com/artuazh/routegate/backend/internal/http"
+	"github.com/ikaevus/routegate/backend/internal/auth"
+	"github.com/ikaevus/routegate/backend/internal/config"
+	"github.com/ikaevus/routegate/backend/internal/db"
+	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
 )
 
 type App struct {

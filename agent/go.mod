@@ -1,3 +1,3 @@
-module github.com/artuazh/routegate/agent
+module github.com/ikaevus/routegate/agent
 
 go 1.23

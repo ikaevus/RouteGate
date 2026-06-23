@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/artuazh/routegate/backend/internal/app"
-	"github.com/artuazh/routegate/backend/internal/config"
+	"github.com/ikaevus/routegate/backend/internal/app"
+	"github.com/ikaevus/routegate/backend/internal/config"
 )
 
 func main() {

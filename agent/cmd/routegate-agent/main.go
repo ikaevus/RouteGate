@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/artuazh/routegate/agent/internal/config"
-	"github.com/artuazh/routegate/agent/internal/heartbeat"
+	"github.com/ikaevus/routegate/agent/internal/config"
+	"github.com/ikaevus/routegate/agent/internal/heartbeat"
 )
 
 func main() {

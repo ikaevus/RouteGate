@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/artuazh/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
 type Handler struct {

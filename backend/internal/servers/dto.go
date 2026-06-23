@@ -3,7 +3,7 @@ package servers
 import (
 	"time"
 
-	"github.com/artuazh/routegate/backend/internal/agents"
+	"github.com/ikaevus/routegate/backend/internal/agents"
 )
 
 type CreateServerRequest struct {

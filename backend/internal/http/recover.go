@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	stdhttp "net/http"
 
-	"github.com/artuazh/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
 func recoverMiddleware(logger *slog.Logger) middleware {

@@ -6,14 +6,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/artuazh/routegate/backend/internal/agents"
-	"github.com/artuazh/routegate/backend/internal/auth"
-	"github.com/artuazh/routegate/backend/internal/config"
-	"github.com/artuazh/routegate/backend/internal/configs"
-	"github.com/artuazh/routegate/backend/internal/health"
-	"github.com/artuazh/routegate/backend/internal/roles"
-	"github.com/artuazh/routegate/backend/internal/servers"
-	"github.com/artuazh/routegate/backend/internal/users"
+	"github.com/ikaevus/routegate/backend/internal/agents"
+	"github.com/ikaevus/routegate/backend/internal/auth"
+	"github.com/ikaevus/routegate/backend/internal/config"
+	"github.com/ikaevus/routegate/backend/internal/configs"
+	"github.com/ikaevus/routegate/backend/internal/health"
+	"github.com/ikaevus/routegate/backend/internal/roles"
+	"github.com/ikaevus/routegate/backend/internal/servers"
+	"github.com/ikaevus/routegate/backend/internal/users"
 )
 
 func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdhttp.Handler {
