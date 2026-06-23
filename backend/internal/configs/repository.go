@@ -1,0 +1,239 @@
+package configs
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Repository struct {
+	pool *pgxpool.Pool
+}
+
+func NewRepository(pool *pgxpool.Pool) *Repository {
+	return &Repository{pool: pool}
+}
+
+func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (ServerConfigInfo, error) {
+	return scanServerConfigInfo(r.pool.QueryRow(ctx, `
+		SELECT
+			s.id::text,
+			s.name,
+			COALESCE(s.hostname, ''),
+			COALESCE(s.public_ip::text, ''),
+			COALESCE(s.private_ip::text, ''),
+			COALESCE(s.location, ''),
+			COALESCE(s.provider, ''),
+			s.status,
+			a.id::text,
+			COALESCE(a.hostname, ''),
+			COALESCE(a.os, ''),
+			COALESCE(a.arch, ''),
+			COALESCE(a.agent_version, ''),
+			COALESCE(a.status, ''),
+			a.capabilities
+		FROM servers s
+		LEFT JOIN agents a ON a.server_id = s.id
+		WHERE s.id = $1::uuid
+	`, serverID))
+}
+
+func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfigVersionInput) (ConfigVersion, error) {
+	configBytes, err := json.Marshal(input.RenderedConfig)
+	if err != nil {
+		return ConfigVersion{}, err
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ConfigVersion{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var lockedID string
+	if err := tx.QueryRow(ctx, `SELECT id::text FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&lockedID); err != nil {
+		return ConfigVersion{}, err
+	}
+
+	var nextVersion int
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(MAX(version), 0) + 1
+		FROM config_versions
+		WHERE server_id = $1::uuid
+	`, input.ServerID).Scan(&nextVersion); err != nil {
+		return ConfigVersion{}, err
+	}
+
+	version, err := scanConfigVersion(tx.QueryRow(ctx, `
+		INSERT INTO config_versions (
+			server_id,
+			version,
+			config_hash,
+			status,
+			rendered_config
+		)
+		VALUES ($1::uuid, $2, $3, $4, $5::jsonb)
+		RETURNING
+			id::text,
+			server_id::text,
+			version,
+			config_hash,
+			status,
+			rendered_config,
+			created_at,
+			applied_at
+	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes))
+	if err != nil {
+		return ConfigVersion{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return ConfigVersion{}, err
+	}
+	return version, nil
+}
+
+func (r *Repository) ListConfigVersions(ctx context.Context, serverID string) ([]ConfigVersion, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			id::text,
+			server_id::text,
+			version,
+			config_hash,
+			status,
+			rendered_config,
+			created_at,
+			applied_at
+		FROM config_versions
+		WHERE server_id = $1::uuid
+		ORDER BY version DESC
+	`, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []ConfigVersion{}
+	for rows.Next() {
+		item, err := scanConfigVersion(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) GetConfigVersion(ctx context.Context, serverID, versionID string) (ConfigVersion, error) {
+	return scanConfigVersion(r.pool.QueryRow(ctx, `
+		SELECT
+			id::text,
+			server_id::text,
+			version,
+			config_hash,
+			status,
+			rendered_config,
+			created_at,
+			applied_at
+		FROM config_versions
+		WHERE server_id = $1::uuid
+		  AND id = $2::uuid
+	`, serverID, versionID))
+}
+
+func (r *Repository) MarkConfigVersionValidated(ctx context.Context, serverID, versionID string) (ConfigVersion, error) {
+	return scanConfigVersion(r.pool.QueryRow(ctx, `
+		UPDATE config_versions
+		SET status = $3
+		WHERE server_id = $1::uuid
+		  AND id = $2::uuid
+		RETURNING
+			id::text,
+			server_id::text,
+			version,
+			config_hash,
+			status,
+			rendered_config,
+			created_at,
+			applied_at
+	`, serverID, versionID, StatusValidated))
+}
+
+func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
+	var info ServerConfigInfo
+	var agentID sql.NullString
+	var agentHostname sql.NullString
+	var agentOS sql.NullString
+	var agentArch sql.NullString
+	var agentVersion sql.NullString
+	var agentStatus sql.NullString
+	var capabilitiesBytes []byte
+
+	err := row.Scan(
+		&info.ID,
+		&info.Name,
+		&info.Hostname,
+		&info.PublicIP,
+		&info.PrivateIP,
+		&info.Location,
+		&info.Provider,
+		&info.Status,
+		&agentID,
+		&agentHostname,
+		&agentOS,
+		&agentArch,
+		&agentVersion,
+		&agentStatus,
+		&capabilitiesBytes,
+	)
+	if err != nil {
+		return ServerConfigInfo{}, err
+	}
+	if !agentID.Valid {
+		return info, nil
+	}
+
+	agent := &AgentConfigInfo{
+		ID:           agentID.String,
+		Hostname:     agentHostname.String,
+		OS:           agentOS.String,
+		Arch:         agentArch.String,
+		AgentVersion: agentVersion.String,
+		Status:       agentStatus.String,
+		Capabilities: map[string]any{},
+	}
+	if len(capabilitiesBytes) > 0 {
+		if err := json.Unmarshal(capabilitiesBytes, &agent.Capabilities); err != nil {
+			return ServerConfigInfo{}, err
+		}
+	}
+	info.Agent = agent
+	return info, nil
+}
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanConfigVersion(row scanner) (ConfigVersion, error) {
+	var version ConfigVersion
+	var renderedConfig []byte
+	err := row.Scan(
+		&version.ID,
+		&version.ServerID,
+		&version.Version,
+		&version.ConfigHash,
+		&version.Status,
+		&renderedConfig,
+		&version.CreatedAt,
+		&version.AppliedAt,
+	)
+	if err != nil {
+		return ConfigVersion{}, err
+	}
+	version.RenderedConfig = renderedConfig
+	return version, nil
+}
