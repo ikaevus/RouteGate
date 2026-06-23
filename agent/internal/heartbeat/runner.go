@@ -100,10 +100,11 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return nil
 	}
 
-	result, err := tasks.NewStager(r.cfg.ConfigStagingDir).Stage(*task)
+	stageResult, err := tasks.NewStager(r.cfg.ConfigStagingDir).Stage(*task)
 	if err != nil {
 		report := map[string]any{
 			"stage":           "failed",
+			"validate":        "skipped",
 			"configVersionId": task.ConfigVersionID,
 			"configHash":      task.ConfigHash,
 		}
@@ -113,15 +114,35 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
+	validationResult, err := tasks.NewValidator(r.cfg.SingBoxPath).Check(ctx, stageResult.StagedPath)
+	if err != nil {
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "failed",
+			"stagedPath":      stageResult.StagedPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         validationResult.Command,
+			"output":          validationResult.Output,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("validate staged config failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
 	report := map[string]any{
 		"stage":           "succeeded",
-		"stagedPath":      result.StagedPath,
-		"configVersionId": result.ConfigVersionID,
-		"configHash":      result.ConfigHash,
+		"validate":        "succeeded",
+		"stagedPath":      stageResult.StagedPath,
+		"configVersionId": stageResult.ConfigVersionID,
+		"configHash":      stageResult.ConfigHash,
+		"command":         validationResult.Command,
+		"output":          validationResult.Output,
 	}
 	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
 		return err
 	}
-	r.logger.Info("config task staged", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", result.StagedPath)
+	r.logger.Info("config task staged and validated", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath)
 	return nil
 }
