@@ -52,6 +52,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.List))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions/{version_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.Get))))
 	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/validate", authn(auth.RequirePermission("configs:validate")(stdhttp.HandlerFunc(configsHandler.Validate))))
+	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/apply", authn(auth.RequirePermission("configs:apply")(stdhttp.HandlerFunc(configsHandler.Apply))))
 
 	mux.HandleFunc("GET /api/admin/agents", agentsHandler.List)
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
@@ -66,6 +67,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/permissions", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListPermissions))))
 	mux.HandleFunc("POST /api/v1/agent/register", agentsHandler.Register)
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", agentsHandler.Heartbeat)
+	mux.HandleFunc("GET /api/v1/agent/tasks/next", agentsHandler.NextTask)
+	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result", agentsHandler.CompleteTask)
 
 	return chain(
 		mux,
