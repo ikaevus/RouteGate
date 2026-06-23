@@ -10,6 +10,8 @@ import (
 )
 
 var ErrInvalidRenderedConfig = errors.New("rendered config is invalid")
+var ErrConfigVersionNotValidated = errors.New("config version is not validated")
+var ErrConfigApplyAgentMissing = errors.New("server has no registered agent")
 
 type configRepository interface {
 	GetServerConfigInfo(context.Context, string) (ServerConfigInfo, error)
@@ -17,6 +19,7 @@ type configRepository interface {
 	ListConfigVersions(context.Context, string) ([]ConfigVersion, error)
 	GetConfigVersion(context.Context, string, string) (ConfigVersion, error)
 	MarkConfigVersionValidated(context.Context, string, string) (ConfigVersion, error)
+	CreateConfigApplyJob(context.Context, CreateConfigApplyJobInput) (ConfigApplyJob, error)
 }
 
 type Service struct {
@@ -93,6 +96,38 @@ func (s *Service) Validate(ctx context.Context, serverID, versionID string) (Val
 		return ValidateConfigResponse{}, err
 	}
 	return ValidateConfigResponse{ConfigVersion: version, ValidationResult: validation}, nil
+}
+
+func (s *Service) Apply(ctx context.Context, serverID, versionID string, request ApplyConfigRequest) (ApplyConfigResponse, error) {
+	version, err := s.repository.GetConfigVersion(ctx, serverID, versionID)
+	if err != nil {
+		return ApplyConfigResponse{}, err
+	}
+	if version.Status != StatusValidated {
+		return ApplyConfigResponse{}, ErrConfigVersionNotValidated
+	}
+
+	info, err := s.repository.GetServerConfigInfo(ctx, serverID)
+	if err != nil {
+		return ApplyConfigResponse{}, err
+	}
+	if info.Agent == nil {
+		return ApplyConfigResponse{}, ErrConfigApplyAgentMissing
+	}
+
+	job, err := s.repository.CreateConfigApplyJob(ctx, CreateConfigApplyJobInput{
+		ServerID:        serverID,
+		AgentID:         info.Agent.ID,
+		ConfigVersionID: version.ID,
+		Action:          ApplyJobActionApply,
+		RequestPayload: map[string]any{
+			"comment": request.Comment,
+		},
+	})
+	if err != nil {
+		return ApplyConfigResponse{}, err
+	}
+	return ApplyConfigResponse{Job: job}, nil
 }
 
 func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedConfig {
