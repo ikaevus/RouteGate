@@ -17,6 +17,61 @@ export interface RegistrationTokenResponse {
   expiresAt: string;
 }
 
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface ConfigVersion {
+  id: string;
+  serverId: string;
+  version: number;
+  configHash: string;
+  status: string;
+  renderedConfig: Record<string, unknown>;
+  createdAt: string;
+  appliedAt?: string | null;
+}
+
+export interface ConfigApplyJob {
+  id: string;
+  serverId: string;
+  agentId?: string;
+  configVersionId: string;
+  action: string;
+  status: string;
+  requestPayload: Record<string, unknown>;
+  resultPayload: Record<string, unknown>;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface RenderConfigResponse {
+  configVersion: ConfigVersion;
+  validationResult: ValidationResult;
+}
+
+export interface ValidateConfigResponse {
+  configVersion: ConfigVersion;
+  validationResult: ValidationResult;
+}
+
+export interface ApplyConfigResponse {
+  job: ConfigApplyJob;
+}
+
+export interface ListConfigVersionsResponse {
+  items: ConfigVersion[];
+}
+
+export interface ListConfigApplyJobsResponse {
+  items: ConfigApplyJob[];
+}
+
 export interface Server {
   id: string;
   name: string;
@@ -48,5 +103,41 @@ export function createServerRegistrationToken(
 ): Promise<RegistrationTokenResponse> {
   return apiPost<undefined, RegistrationTokenResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/registration-token`,
+  );
+}
+
+export function getConfigVersions(serverId: string): Promise<ListConfigVersionsResponse> {
+  return apiGet<ListConfigVersionsResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions`,
+  );
+}
+
+export function renderConfig(serverId: string): Promise<RenderConfigResponse> {
+  return apiPost<undefined, RenderConfigResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/render`,
+  );
+}
+
+export function validateConfigVersion(
+  serverId: string,
+  versionId: string,
+): Promise<ValidateConfigResponse> {
+  return apiPost<undefined, ValidateConfigResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}/validate`,
+  );
+}
+
+export function applyConfigVersion(
+  serverId: string,
+  versionId: string,
+): Promise<ApplyConfigResponse> {
+  return apiPost<undefined, ApplyConfigResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}/apply`,
+  );
+}
+
+export function getConfigApplyJobs(serverId: string): Promise<ListConfigApplyJobsResponse> {
+  return apiGet<ListConfigApplyJobsResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/apply-jobs`,
   );
 }
