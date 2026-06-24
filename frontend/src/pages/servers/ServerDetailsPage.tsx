@@ -1,10 +1,17 @@
 import { useState, type ReactNode } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
 import {
+  applyConfigVersion,
   createServerRegistrationToken,
+  getConfigApplyJobs,
+  getConfigVersions,
   getServer,
+  renderConfig,
+  validateConfigVersion,
+  type ConfigApplyJob,
+  type ConfigVersion,
   type RegistrationTokenResponse,
 } from '../../entities/server/api/serverApi';
 
@@ -46,8 +53,44 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+function shortHash(value?: string | null): string {
+  return value && value.length > 12 ? value.slice(0, 12) : formatValue(value);
+}
+
+function formatStageValue(value: unknown): string {
+  if (typeof value === 'string' && value.trim() !== '') {
+    return value;
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'number') {
+    return String(value);
+  }
+  if (value && typeof value === 'object') {
+    return 'reported';
+  }
+  return '—';
+}
+
+function StageSummary({ resultPayload }: { resultPayload?: Record<string, unknown> | null }) {
+  const stages = ['stage', 'validate', 'apply', 'restart', 'healthcheck', 'rollback'];
+
+  return (
+    <div className="stage-summary">
+      {stages.map((stage) => (
+        <span className="stage-pill" key={stage}>
+          <span>{stage}</span>
+          <strong>{formatStageValue(resultPayload?.[stage])}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function ServerDetailsPage() {
   const { serverId } = useParams<{ serverId: string }>();
+  const queryClient = useQueryClient();
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
 
   const serverQuery = useQuery({
@@ -64,6 +107,40 @@ export function ServerDetailsPage() {
     onSuccess: (response) => {
       setRegistrationToken(response);
     },
+  });
+
+  const configVersionsQuery = useQuery({
+    queryKey: ['server-config-versions', serverId],
+    queryFn: () => getConfigVersions(serverId ?? ''),
+    enabled: Boolean(serverId),
+  });
+
+  const applyJobsQuery = useQuery({
+    queryKey: ['server-config-apply-jobs', serverId],
+    queryFn: () => getConfigApplyJobs(serverId ?? ''),
+    enabled: Boolean(serverId),
+  });
+
+  const refreshConfigQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['server-config-versions', serverId] }),
+      queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', serverId] }),
+    ]);
+  };
+
+  const renderConfigMutation = useMutation({
+    mutationFn: () => renderConfig(serverId ?? ''),
+    onSuccess: refreshConfigQueries,
+  });
+
+  const validateConfigMutation = useMutation({
+    mutationFn: (versionId: string) => validateConfigVersion(serverId ?? '', versionId),
+    onSuccess: refreshConfigQueries,
+  });
+
+  const applyConfigMutation = useMutation({
+    mutationFn: (versionId: string) => applyConfigVersion(serverId ?? '', versionId),
+    onSuccess: refreshConfigQueries,
   });
 
   if (!serverId) {
@@ -114,6 +191,9 @@ export function ServerDetailsPage() {
   }
 
   const agent = server.agent;
+  const configVersions = configVersionsQuery.data?.items ?? [];
+  const applyJobs = applyJobsQuery.data?.items ?? [];
+  const versionsById = new Map(configVersions.map((version) => [version.id, version]));
   const configSnippet = registrationToken
     ? `manager_url: "http://localhost:8080"\nregistration_token: "${registrationToken.registrationToken}"\nheartbeat_interval_seconds: 30`
     : '';
@@ -197,6 +277,139 @@ export function ServerDetailsPage() {
             <DetailRow label="Expires at">{formatDate(registrationToken.expiresAt)}</DetailRow>
             <div className="panel-title token-snippet-title">Example agent config</div>
             <pre className="code-block">{configSnippet}</pre>
+          </div>
+        )}
+      </div>
+
+      <div className="panel admin-table-panel">
+        <div className="panel-header">
+          <div>
+            <div className="panel-title">Config versions</div>
+            <p className="panel-subtitle">Rendered configs for this server and their deploy state.</p>
+          </div>
+          <button
+            className="small-button"
+            type="button"
+            disabled={renderConfigMutation.isPending}
+            onClick={() => renderConfigMutation.mutate()}
+          >
+            {renderConfigMutation.isPending ? 'Rendering...' : 'Render config'}
+          </button>
+        </div>
+
+        {configVersionsQuery.isError && (
+          <div className="form-message form-message-error">Failed to load config versions.</div>
+        )}
+
+        {renderConfigMutation.isError && (
+          <div className="form-message form-message-error">Failed to render config.</div>
+        )}
+
+        {(validateConfigMutation.isError || applyConfigMutation.isError) && (
+          <div className="form-message form-message-error">
+            Config action failed. Check server agent state and permissions.
+          </div>
+        )}
+
+        {configVersionsQuery.isLoading ? (
+          <p className="empty-state">Loading config versions...</p>
+        ) : configVersions.length === 0 ? (
+          <p className="empty-state">No config versions rendered yet.</p>
+        ) : (
+          <div className="admin-table config-versions-table">
+            <div className="admin-table-row admin-table-head config-versions-table-row">
+              <span>Version</span>
+              <span>Status</span>
+              <span>Hash</span>
+              <span>Created</span>
+              <span>Applied</span>
+              <span>Actions</span>
+            </div>
+            {configVersions.map((version: ConfigVersion) => {
+              const isValidating =
+                validateConfigMutation.isPending && validateConfigMutation.variables === version.id;
+              const isApplying =
+                applyConfigMutation.isPending && applyConfigMutation.variables === version.id;
+
+              return (
+                <div className="admin-table-row config-versions-table-row" key={version.id}>
+                  <strong>v{version.version}</strong>
+                  <StatusBadge status={version.status} />
+                  <code>{shortHash(version.configHash)}</code>
+                  <span>{formatDate(version.createdAt)}</span>
+                  <span>{formatDate(version.appliedAt)}</span>
+                  <div className="table-actions">
+                    <button
+                      className="small-button"
+                      type="button"
+                      disabled={isValidating}
+                      onClick={() => validateConfigMutation.mutate(version.id)}
+                    >
+                      {isValidating ? 'Validating...' : 'Validate'}
+                    </button>
+                    <button
+                      className="small-button"
+                      type="button"
+                      disabled={version.status !== 'validated' || isApplying}
+                      onClick={() => applyConfigMutation.mutate(version.id)}
+                    >
+                      {isApplying ? 'Applying...' : 'Apply'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="panel admin-table-panel">
+        <div className="panel-header">
+          <div>
+            <div className="panel-title">Apply jobs</div>
+            <p className="panel-subtitle">Agent-side config deployment progress and results.</p>
+          </div>
+        </div>
+
+        {applyJobsQuery.isError && (
+          <div className="form-message form-message-error">Failed to load apply jobs.</div>
+        )}
+
+        {applyJobsQuery.isLoading ? (
+          <p className="empty-state">Loading apply jobs...</p>
+        ) : applyJobs.length === 0 ? (
+          <p className="empty-state">No apply jobs have been queued yet.</p>
+        ) : (
+          <div className="admin-table apply-jobs-table">
+            <div className="admin-table-row admin-table-head apply-jobs-table-row">
+              <span>Status</span>
+              <span>Action</span>
+              <span>Version</span>
+              <span>Stages</span>
+              <span>Error</span>
+              <span>Timestamps</span>
+            </div>
+            {applyJobs.map((job: ConfigApplyJob) => {
+              const version = versionsById.get(job.configVersionId);
+
+              return (
+                <div className="admin-table-row apply-jobs-table-row" key={job.id}>
+                  <StatusBadge status={job.status} />
+                  <strong>{job.action}</strong>
+                  <div className="timestamp-stack">
+                    <strong>{version ? `v${version.version}` : 'Version unknown'}</strong>
+                    <span>{shortHash(job.configVersionId)}</span>
+                  </div>
+                  <StageSummary resultPayload={job.resultPayload} />
+                  <span>{formatValue(job.errorMessage)}</span>
+                  <div className="timestamp-stack">
+                    <span>Created {formatDate(job.createdAt)}</span>
+                    <span>Updated {formatDate(job.updatedAt)}</span>
+                    <span>Completed {formatDate(job.completedAt)}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

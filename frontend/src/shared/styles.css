@@ -177,6 +177,24 @@ a {
   font-weight: 700;
 }
 
+.panel-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panel-header .panel-title {
+  margin-bottom: 4px;
+}
+
+.panel-subtitle {
+  color: #94a3b8;
+  font-size: 13px !important;
+  margin: 0;
+}
+
 .status-list {
   display: grid;
   gap: 10px;
@@ -338,6 +356,35 @@ a {
 .badge-active {
   background: rgba(34, 197, 94, 0.16);
   color: #86efac !important;
+}
+
+.badge-validated,
+.badge-applied,
+.badge-commit-confirmed,
+.badge-succeeded {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac !important;
+}
+
+.badge-rendered,
+.badge-staged,
+.badge-pending {
+  background: rgba(59, 130, 246, 0.16);
+  color: #bfdbfe !important;
+}
+
+.badge-apply-in-progress,
+.badge-rollback-in-progress,
+.badge-in-progress {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d !important;
+}
+
+.badge-validation-failed,
+.badge-failed,
+.badge-rolled-back {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5 !important;
 }
 
 .badge-unknown {
@@ -536,9 +583,120 @@ a {
   margin-top: 4px;
 }
 
+.admin-table-panel {
+  overflow-x: auto;
+}
+
+.admin-table {
+  display: grid;
+  min-width: 980px;
+}
+
+.admin-table-row {
+  align-items: center;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: grid;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.admin-table-row:first-child {
+  border-top: 0;
+}
+
+.admin-table-head {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding-top: 0;
+  text-transform: uppercase;
+}
+
+.admin-table-row strong {
+  color: #e5e7eb;
+  font-size: 13px;
+}
+
+.admin-table-row span,
+.admin-table-row code {
+  color: #94a3b8;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-table-row code {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.72);
+  color: #dbeafe;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  justify-self: start;
+  padding: 4px 7px;
+}
+
+.config-versions-table-row {
+  grid-template-columns: 0.55fr 0.9fr 1fr 1.25fr 1.25fr 1.25fr;
+}
+
+.apply-jobs-table-row {
+  grid-template-columns: 0.85fr 0.7fr 0.8fr 2.2fr 1.2fr 1.7fr;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stage-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stage-pill {
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.42);
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px 7px;
+}
+
+.stage-pill span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.stage-pill strong {
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.timestamp-stack {
+  display: grid;
+  gap: 4px;
+}
+
 @media (max-width: 980px) {
   .details-layout,
   .detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-header {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .admin-table {
+    min-width: 0;
+  }
+
+  .config-versions-table-row,
+  .apply-jobs-table-row {
     grid-template-columns: 1fr;
   }
 }
