@@ -25,3 +25,7 @@ type ApplyConfigResponse struct {
 type ListConfigVersionsResponse struct {
 	Items []ConfigVersion `json:"items"`
 }
+
+type ListConfigApplyJobsResponse struct {
+	Items []ConfigApplyJob `json:"items"`
+}
