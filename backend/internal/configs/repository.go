@@ -199,6 +199,64 @@ func (r *Repository) CreateConfigApplyJob(ctx context.Context, input CreateConfi
 	`, input.ServerID, input.AgentID, input.ConfigVersionID, action, ApplyJobStatusPending, requestPayload))
 }
 
+func (r *Repository) ListConfigApplyJobs(ctx context.Context, serverID string) ([]ConfigApplyJob, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			id::text,
+			server_id::text,
+			COALESCE(agent_id::text, ''),
+			config_version_id::text,
+			action,
+			status,
+			request_payload,
+			result_payload,
+			COALESCE(error_message, ''),
+			created_at,
+			updated_at,
+			started_at,
+			completed_at
+		FROM config_apply_jobs
+		WHERE server_id = $1::uuid
+		ORDER BY created_at DESC
+	`, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []ConfigApplyJob{}
+	for rows.Next() {
+		item, err := scanConfigApplyJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) GetConfigApplyJob(ctx context.Context, serverID, jobID string) (ConfigApplyJob, error) {
+	return scanConfigApplyJob(r.pool.QueryRow(ctx, `
+		SELECT
+			id::text,
+			server_id::text,
+			COALESCE(agent_id::text, ''),
+			config_version_id::text,
+			action,
+			status,
+			request_payload,
+			result_payload,
+			COALESCE(error_message, ''),
+			created_at,
+			updated_at,
+			started_at,
+			completed_at
+		FROM config_apply_jobs
+		WHERE server_id = $1::uuid
+		  AND id = $2::uuid
+	`, serverID, jobID))
+}
+
 func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 	var info ServerConfigInfo
 	var agentID sql.NullString

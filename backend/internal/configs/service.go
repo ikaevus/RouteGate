@@ -20,6 +20,8 @@ type configRepository interface {
 	GetConfigVersion(context.Context, string, string) (ConfigVersion, error)
 	MarkConfigVersionValidated(context.Context, string, string) (ConfigVersion, error)
 	CreateConfigApplyJob(context.Context, CreateConfigApplyJobInput) (ConfigApplyJob, error)
+	ListConfigApplyJobs(context.Context, string) ([]ConfigApplyJob, error)
+	GetConfigApplyJob(context.Context, string, string) (ConfigApplyJob, error)
 }
 
 type Service struct {
@@ -128,6 +130,14 @@ func (s *Service) Apply(ctx context.Context, serverID, versionID string, request
 		return ApplyConfigResponse{}, err
 	}
 	return ApplyConfigResponse{Job: job}, nil
+}
+
+func (s *Service) ListApplyJobs(ctx context.Context, serverID string) ([]ConfigApplyJob, error) {
+	return s.repository.ListConfigApplyJobs(ctx, serverID)
+}
+
+func (s *Service) GetApplyJob(ctx context.Context, serverID, jobID string) (ConfigApplyJob, error) {
+	return s.repository.GetConfigApplyJob(ctx, serverID, jobID)
 }
 
 func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedConfig {
