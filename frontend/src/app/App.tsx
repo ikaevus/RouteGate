@@ -5,6 +5,7 @@ import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
 import { AgentsPage } from '../pages/agents/AgentsPage';
 import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSettingsPage';
 import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
+import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPage';
 import { LoginPage } from '../pages/login/LoginPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 
@@ -56,6 +57,7 @@ function AdminShell() {
           <Link to="/agents">Agents</Link>
           <Link to="/protocol-settings">Protocol Settings</Link>
           <Link to="/vpn-accounts">VPN Accounts</Link>
+          <Link to="/routing-profiles">Routing Profiles</Link>
           <Link to="/portal">User Portal</Link>
           <Link to="/login">Login</Link>
         </nav>
@@ -71,6 +73,8 @@ function AdminShell() {
           <Route path="/protocol-settings/:serverId" element={<ProtocolSettingsPage />} />
           <Route path="/vpn-accounts" element={<VpnAccountsPage />} />
           <Route path="/vpn-accounts/:accountId" element={<VpnAccountsPage />} />
+          <Route path="/routing-profiles" element={<RoutingProfilesPage />} />
+          <Route path="/routing-profiles/:profileId" element={<RoutingProfilesPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
