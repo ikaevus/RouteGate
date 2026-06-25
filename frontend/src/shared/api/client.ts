@@ -4,10 +4,17 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+interface ApiErrorPayload {
+  status?: string;
+  message?: string;
+  error?: string;
 }
 
 function getAuthToken(): string | null {
@@ -24,6 +31,32 @@ function buildHeaders(extraHeaders?: HeadersInit): HeadersInit {
   };
 }
 
+async function buildApiError(response: Response, method: string, path: string): Promise<ApiError> {
+  const fallback = `API request failed: ${method} ${path} returned ${response.status}`;
+
+  try {
+    const text = await response.text();
+    if (!text) {
+      return new ApiError(fallback, response.status);
+    }
+
+    try {
+      const payload = JSON.parse(text) as ApiErrorPayload;
+      const message = typeof payload.message === 'string' && payload.message.trim() !== ''
+        ? payload.message
+        : fallback;
+      const code = typeof payload.status === 'string' && payload.status.trim() !== ''
+        ? payload.status
+        : undefined;
+      return new ApiError(message, response.status, code);
+    } catch {
+      return new ApiError(text, response.status);
+    }
+  } catch {
+    return new ApiError(fallback, response.status);
+  }
+}
+
 export async function apiGet<TResponse>(path: string): Promise<TResponse> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
@@ -31,7 +64,7 @@ export async function apiGet<TResponse>(path: string): Promise<TResponse> {
   });
 
   if (!response.ok) {
-    throw new ApiError(`API request failed: GET ${path} returned ${response.status}`, response.status);
+    throw await buildApiError(response, 'GET', path);
   }
 
   return response.json() as Promise<TResponse>;
@@ -50,7 +83,7 @@ export async function apiPost<TRequest, TResponse>(
   });
 
   if (!response.ok) {
-    throw new ApiError(`API request failed: POST ${path} returned ${response.status}`, response.status);
+    throw await buildApiError(response, 'POST', path);
   }
 
   return response.json() as Promise<TResponse>;
@@ -69,7 +102,7 @@ export async function apiPut<TRequest, TResponse>(
   });
 
   if (!response.ok) {
-    throw new ApiError(`API request failed: PUT ${path} returned ${response.status}`, response.status);
+    throw await buildApiError(response, 'PUT', path);
   }
 
   return response.json() as Promise<TResponse>;
@@ -88,7 +121,7 @@ export async function apiPatch<TRequest, TResponse>(
   });
 
   if (!response.ok) {
-    throw new ApiError(`API request failed: PATCH ${path} returned ${response.status}`, response.status);
+    throw await buildApiError(response, 'PATCH', path);
   }
 
   return response.json() as Promise<TResponse>;
@@ -101,6 +134,6 @@ export async function apiDelete(path: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new ApiError(`API request failed: DELETE ${path} returned ${response.status}`, response.status);
+    throw await buildApiError(response, 'DELETE', path);
   }
 }
