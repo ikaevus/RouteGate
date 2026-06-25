@@ -14,6 +14,7 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
+	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
 
 const timeout = 10 * time.Second
@@ -64,6 +65,17 @@ type completeTaskRequest struct {
 	ResultPayload map[string]any `json:"resultPayload,omitempty"`
 }
 
+type reportTrafficUsageRequest struct {
+	Events []traffic.UsageEvent `json:"events"`
+}
+
+type ReportTrafficUsageResponse struct {
+	OK       bool   `json:"ok"`
+	AgentID  string `json:"agentId"`
+	ServerID string `json:"serverId"`
+	Accepted int    `json:"accepted"`
+}
+
 func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminfo.Info) (RegisterResponse, error) {
 	req := registerRequest{RegistrationToken: cfg.RegistrationToken, Hostname: info.Hostname, AgentVersion: info.AgentVersion, OS: info.OS, Arch: info.Arch, Capabilities: info.Capabilities}
 	var res RegisterResponse
@@ -107,6 +119,17 @@ func (c *Client) CompleteTaskSucceeded(ctx context.Context, agentToken, jobID st
 
 func (c *Client) CompleteTaskFailed(ctx context.Context, agentToken, jobID string, message string, result map[string]any) error {
 	return c.CompleteTask(ctx, agentToken, jobID, completeTaskRequest{Status: "failed", ErrorMessage: message, ResultPayload: result})
+}
+
+func (c *Client) ReportTrafficUsage(ctx context.Context, agentToken string, events []traffic.UsageEvent) (ReportTrafficUsageResponse, error) {
+	if len(events) == 0 {
+		return ReportTrafficUsageResponse{OK: true, Accepted: 0}, nil
+	}
+	var res ReportTrafficUsageResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/traffic-usage", agentToken, reportTrafficUsageRequest{Events: events}, &res); err != nil {
+		return ReportTrafficUsageResponse{}, err
+	}
+	return res, nil
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body any, out any) error {
