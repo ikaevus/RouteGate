@@ -23,6 +23,7 @@ type Account struct {
 	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
 	MaxDevices  *int       `json:"maxDevices,omitempty"`
 	ServerID    string     `json:"serverId,omitempty"`
+	VLESSUUID   string     `json:"vlessUuid,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
@@ -40,17 +41,41 @@ type SubscriptionToken struct {
 }
 
 type SubscriptionProfile struct {
-	Account Account
-	Server  *SubscriptionServer
+	Account     Account
+	Server      *SubscriptionServer
+	Credentials SubscriptionCredentials
+}
+
+type SubscriptionCredentials struct {
+	VLESS   VLESSCredentials
+	Reality RealityCredentials
+}
+
+type VLESSCredentials struct {
+	UUID    string
+	Flow    string
+	Network string
+}
+
+type RealityCredentials struct {
+	PublicKey  string
+	ShortID    string
+	ServerName string
 }
 
 type SubscriptionServer struct {
-	ID       string
-	Name     string
-	Hostname string
-	PublicIP string
-	Location string
-	Provider string
+	ID                string
+	Name              string
+	Hostname          string
+	PublicIP          string
+	Location          string
+	Provider          string
+	VLESSPort         int
+	VLESSFlow         string
+	VLESSNetwork      string
+	RealityPublicKey  string
+	RealityShortID    string
+	RealityServerName string
 }
 
 type CreateAccountInput struct {
