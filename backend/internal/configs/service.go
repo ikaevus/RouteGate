@@ -6,12 +6,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
+
+	"github.com/ikaevus/routegate/backend/internal/traffic"
 )
 
 var ErrInvalidRenderedConfig = errors.New("rendered config is invalid")
 var ErrConfigVersionNotValidated = errors.New("config version is not validated")
 var ErrConfigApplyAgentMissing = errors.New("server has no registered agent")
+
+const (
+	singBoxVLESSInboundTag = "vless-in"
+	defaultVLESSPort      = 443
+)
 
 type configRepository interface {
 	GetServerConfigInfo(context.Context, string) (ServerConfigInfo, error)
@@ -153,6 +161,7 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 			Provider:  info.Provider,
 			Status:    info.Status,
 		},
+		VPNAccounts: []ConfigVPNAccount{},
 		SingBox: SingBoxConfig{
 			Log:      SingBoxLog{Level: "info"},
 			Inbounds: []map[string]any{},
@@ -186,7 +195,72 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 		}
 	}
 
+	accounts := renderableVPNAccounts(info.VPNAccounts)
+	if len(accounts) > 0 {
+		users := make([]map[string]any, 0, len(accounts))
+		for _, account := range accounts {
+			config.VPNAccounts = append(config.VPNAccounts, ConfigVPNAccount{
+				ID:          account.ID,
+				DisplayName: accountDisplayName(account),
+				Status:      account.Status,
+				VLESSUUID:   account.VLESSUUID,
+			})
+
+			user := map[string]any{
+				"uuid": account.VLESSUUID,
+				"name": accountDisplayName(account),
+			}
+			if flow := strings.TrimSpace(account.VLESSFlow); flow != "" {
+				user["flow"] = flow
+			}
+			users = append(users, user)
+		}
+
+		config.SingBox.Inbounds = append(config.SingBox.Inbounds, map[string]any{
+			"type":        "vless",
+			"tag":         singBoxVLESSInboundTag,
+			"listen":      "::",
+			"listen_port": serverVLESSPort(info),
+			"users":       users,
+		})
+	}
+
 	return config
+}
+
+func renderableVPNAccounts(accounts []VPNAccountConfigInfo) []VPNAccountConfigInfo {
+	renderable := make([]VPNAccountConfigInfo, 0, len(accounts))
+	for _, account := range accounts {
+		if !isVPNAccountRenderable(account) {
+			continue
+		}
+		renderable = append(renderable, account)
+	}
+	return renderable
+}
+
+func isVPNAccountRenderable(account VPNAccountConfigInfo) bool {
+	if account.Status != "active" {
+		return false
+	}
+	if strings.TrimSpace(account.VLESSUUID) == "" {
+		return false
+	}
+	return account.TrafficEnforcementStatus != traffic.TrafficLimitEnforcementOverLimit
+}
+
+func accountDisplayName(account VPNAccountConfigInfo) string {
+	if displayName := strings.TrimSpace(account.DisplayName); displayName != "" {
+		return displayName
+	}
+	return account.ID
+}
+
+func serverVLESSPort(info ServerConfigInfo) int {
+	if info.VLESSPort > 0 {
+		return info.VLESSPort
+	}
+	return defaultVLESSPort
 }
 
 func ValidateRenderedConfig(config RenderedConfig) ValidationResult {
