@@ -3,6 +3,8 @@ import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ServersPage } from '../pages/servers/ServersPage';
 import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
 import { AgentsPage } from '../pages/agents/AgentsPage';
+import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSettingsPage';
+import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { LoginPage } from '../pages/login/LoginPage';
 
 export function App() {
@@ -21,6 +23,8 @@ export function App() {
           <Link to="/">Dashboard</Link>
           <Link to="/servers">Servers</Link>
           <Link to="/agents">Agents</Link>
+          <Link to="/protocol-settings">Protocol Settings</Link>
+          <Link to="/vpn-accounts">VPN Accounts</Link>
           <Link to="/login">Login</Link>
         </nav>
       </aside>
@@ -31,6 +35,10 @@ export function App() {
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/servers/:serverId" element={<ServerDetailsPage />} />
           <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/protocol-settings" element={<ProtocolSettingsPage />} />
+          <Route path="/protocol-settings/:serverId" element={<ProtocolSettingsPage />} />
+          <Route path="/vpn-accounts" element={<VpnAccountsPage />} />
+          <Route path="/vpn-accounts/:accountId" element={<VpnAccountsPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

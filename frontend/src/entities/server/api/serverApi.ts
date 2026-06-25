@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../../../shared/api/client';
+import { apiGet, apiPatch, apiPost } from '../../../shared/api/client';
 
 export interface ServerAgent {
   id: string;
@@ -72,6 +72,32 @@ export interface ListConfigApplyJobsResponse {
   items: ConfigApplyJob[];
 }
 
+export interface ProtocolSettingsResponse {
+  serverId: string;
+  protocol: string;
+  vless: {
+    port: number;
+    flow?: string;
+    network?: string;
+  };
+  reality: {
+    enabled: boolean;
+    publicKey?: string;
+    shortId?: string;
+    serverName?: string;
+  };
+  updatedAt: string;
+}
+
+export interface UpdateProtocolSettingsRequest {
+  vlessPort: number;
+  vlessFlow: string;
+  vlessNetwork: string;
+  realityPublicKey: string;
+  realityShortId: string;
+  realityServerName: string;
+}
+
 export interface Server {
   id: string;
   name: string;
@@ -103,6 +129,22 @@ export function createServerRegistrationToken(
 ): Promise<RegistrationTokenResponse> {
   return apiPost<undefined, RegistrationTokenResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/registration-token`,
+  );
+}
+
+export function getProtocolSettings(serverId: string): Promise<ProtocolSettingsResponse> {
+  return apiGet<ProtocolSettingsResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings`,
+  );
+}
+
+export function updateProtocolSettings(
+  serverId: string,
+  request: UpdateProtocolSettingsRequest,
+): Promise<ProtocolSettingsResponse> {
+  return apiPatch<UpdateProtocolSettingsRequest, ProtocolSettingsResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings`,
+    request,
   );
 }
 
