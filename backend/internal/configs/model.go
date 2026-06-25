@@ -71,7 +71,11 @@ type ServerConfigInfo struct {
 	Location    string
 	Provider    string
 	Status      string
+	VLESSPort   int
+	VLESSFlow   string
+	VLESSNetwork string
 	Agent       *AgentConfigInfo
+	VPNAccounts []VPNAccountConfigInfo
 }
 
 type AgentConfigInfo struct {
@@ -84,12 +88,23 @@ type AgentConfigInfo struct {
 	Capabilities map[string]any
 }
 
+type VPNAccountConfigInfo struct {
+	ID                       string
+	DisplayName              string
+	Status                   string
+	VLESSUUID                string
+	VLESSFlow                string
+	VLESSNetwork             string
+	TrafficEnforcementStatus string
+}
+
 type RenderedConfig struct {
-	SchemaVersion string         `json:"schemaVersion"`
-	Server        ConfigServer   `json:"server"`
-	Agent         *ConfigAgent   `json:"agent,omitempty"`
-	SingBox       SingBoxConfig  `json:"singBox"`
-	Metadata      ConfigMetadata `json:"metadata"`
+	SchemaVersion string             `json:"schemaVersion"`
+	Server        ConfigServer       `json:"server"`
+	Agent         *ConfigAgent       `json:"agent,omitempty"`
+	VPNAccounts   []ConfigVPNAccount `json:"vpnAccounts"`
+	SingBox       SingBoxConfig      `json:"singBox"`
+	Metadata      ConfigMetadata     `json:"metadata"`
 }
 
 type ConfigServer struct {
@@ -111,6 +126,13 @@ type ConfigAgent struct {
 	AgentVersion string         `json:"agentVersion"`
 	Status       string         `json:"status"`
 	Capabilities map[string]any `json:"capabilities"`
+}
+
+type ConfigVPNAccount struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	Status      string `json:"status"`
+	VLESSUUID   string `json:"vlessUuid"`
 }
 
 type ConfigMetadata struct {

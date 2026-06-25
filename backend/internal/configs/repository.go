@@ -18,7 +18,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (ServerConfigInfo, error) {
-	return scanServerConfigInfo(r.pool.QueryRow(ctx, `
+	info, err := scanServerConfigInfo(r.pool.QueryRow(ctx, `
 		SELECT
 			s.id::text,
 			s.name,
@@ -28,6 +28,9 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 			COALESCE(s.location, ''),
 			COALESCE(s.provider, ''),
 			s.status,
+			COALESCE(s.vless_port, 443),
+			COALESCE(s.vless_flow, ''),
+			COALESCE(s.vless_network, 'tcp'),
 			a.id::text,
 			COALESCE(a.hostname, ''),
 			COALESCE(a.os, ''),
@@ -39,6 +42,48 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 		LEFT JOIN agents a ON a.server_id = s.id
 		WHERE s.id = $1::uuid
 	`, serverID))
+	if err != nil {
+		return ServerConfigInfo{}, err
+	}
+
+	accounts, err := r.listServerVPNAccounts(ctx, serverID)
+	if err != nil {
+		return ServerConfigInfo{}, err
+	}
+	info.VPNAccounts = accounts
+	return info, nil
+}
+
+func (r *Repository) listServerVPNAccounts(ctx context.Context, serverID string) ([]VPNAccountConfigInfo, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			a.id::text,
+			a.display_name,
+			a.status,
+			COALESCE(a.vless_uuid::text, ''),
+			COALESCE(s.vless_flow, ''),
+			COALESCE(s.vless_network, 'tcp'),
+			COALESCE(tl.enforcement_status, 'not_enforced')
+		FROM vpn_accounts a
+		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN traffic_limits tl ON tl.vpn_account_id = a.id
+		WHERE a.server_id = $1::uuid
+		ORDER BY a.created_at ASC
+	`, serverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	accounts := make([]VPNAccountConfigInfo, 0)
+	for rows.Next() {
+		account, err := scanVPNAccountConfigInfo(rows)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
 }
 
 func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfigVersionInput) (ConfigVersion, error) {
@@ -259,6 +304,7 @@ func (r *Repository) GetConfigApplyJob(ctx context.Context, serverID, jobID stri
 
 func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 	var info ServerConfigInfo
+	var vlessPort sql.NullInt32
 	var agentID sql.NullString
 	var agentHostname sql.NullString
 	var agentOS sql.NullString
@@ -276,6 +322,9 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 		&info.Location,
 		&info.Provider,
 		&info.Status,
+		&vlessPort,
+		&info.VLESSFlow,
+		&info.VLESSNetwork,
 		&agentID,
 		&agentHostname,
 		&agentOS,
@@ -286,6 +335,15 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 	)
 	if err != nil {
 		return ServerConfigInfo{}, err
+	}
+	if vlessPort.Valid {
+		info.VLESSPort = int(vlessPort.Int32)
+	}
+	if info.VLESSPort <= 0 {
+		info.VLESSPort = 443
+	}
+	if info.VLESSNetwork == "" {
+		info.VLESSNetwork = "tcp"
 	}
 	if !agentID.Valid {
 		return info, nil
@@ -311,6 +369,23 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 
 type scanner interface {
 	Scan(dest ...any) error
+}
+
+func scanVPNAccountConfigInfo(row scanner) (VPNAccountConfigInfo, error) {
+	var account VPNAccountConfigInfo
+	err := row.Scan(
+		&account.ID,
+		&account.DisplayName,
+		&account.Status,
+		&account.VLESSUUID,
+		&account.VLESSFlow,
+		&account.VLESSNetwork,
+		&account.TrafficEnforcementStatus,
+	)
+	if err != nil {
+		return VPNAccountConfigInfo{}, err
+	}
+	return account, nil
 }
 
 func scanConfigVersion(row scanner) (ConfigVersion, error) {
