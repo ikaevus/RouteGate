@@ -50,6 +50,9 @@ func TestRenderSingBoxClientConfigStructure(t *testing.T) {
 	if config.Outbounds[1].Type != "direct" || config.Outbounds[1].Tag != "direct" {
 		t.Fatalf("unexpected fallback outbound: %+v", config.Outbounds[1])
 	}
+	if len(config.Route.Rules) != 0 {
+		t.Fatalf("expected no route rules without routing profile, got %+v", config.Route.Rules)
+	}
 	if config.Route.Final != "routegate-out" {
 		t.Fatalf("expected route final routegate-out, got %q", config.Route.Final)
 	}
@@ -66,6 +69,61 @@ func TestRenderSingBoxClientConfigStructure(t *testing.T) {
 		if _, ok := decoded[key]; !ok {
 			t.Fatalf("expected marshaled config to contain %q: %s", key, string(encoded))
 		}
+	}
+}
+
+func TestRenderSingBoxClientConfigRendersSplitTunnelRules(t *testing.T) {
+	config, err := RenderSingBoxClientConfig(SubscriptionProfile{
+		Account: Account{ID: "account-1", DisplayName: "Alice", Status: StatusActive, VLESSUUID: testVLESSUUID},
+		Server:  &SubscriptionServer{ID: "server-1", Name: "Finland", PublicIP: "203.0.113.10"},
+		RoutingProfile: &RoutingProfile{
+			ID:   "profile-1",
+			Name: "Default split tunnel",
+			Rules: []RoutingProfileRule{
+				{
+					ID:             "rule-direct",
+					Name:           "Domestic direct",
+					Priority:       100,
+					Action:         RoutingActionDirect,
+					DomainSuffixes: []string{"gosuslugi.ru", "mos.ru"},
+					GeoIPs:         []string{"ru"},
+				},
+				{
+					ID:             "rule-vpn",
+					Name:           "Video via VPN",
+					Priority:       200,
+					Action:         RoutingActionVPN,
+					DomainSuffixes: []string{"youtube.com"},
+					DomainKeywords: []string{"googlevideo"},
+				},
+				{
+					ID:       "rule-block",
+					Name:     "Block malware test",
+					Priority: 300,
+					Action:   RoutingActionBlock,
+					Domains:  []string{"malware.example"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render sing-box config: %v", err)
+	}
+
+	if len(config.Route.Rules) != 3 {
+		t.Fatalf("route rules = %d, want 3: %+v", len(config.Route.Rules), config.Route.Rules)
+	}
+	if config.Route.Rules[0]["outbound"] != singBoxDirectTag {
+		t.Fatalf("expected direct first rule, got %+v", config.Route.Rules[0])
+	}
+	if config.Route.Rules[1]["outbound"] != singBoxOutboundTag {
+		t.Fatalf("expected VPN second rule, got %+v", config.Route.Rules[1])
+	}
+	if config.Route.Rules[2]["outbound"] != singBoxBlockTag {
+		t.Fatalf("expected block third rule, got %+v", config.Route.Rules[2])
+	}
+	if len(config.Outbounds) != 3 || config.Outbounds[2].Tag != singBoxBlockTag {
+		t.Fatalf("expected block outbound to be added, got %+v", config.Outbounds)
 	}
 }
 
