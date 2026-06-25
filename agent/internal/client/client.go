@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
+	"github.com/ikaevus/routegate/agent/internal/tasks"
 )
 
 const timeout = 10 * time.Second
@@ -52,10 +54,20 @@ type HeartbeatResponse struct {
 	ServerStatus string `json:"serverStatus"`
 }
 
+type nextTaskResponse struct {
+	Task *tasks.ConfigTask `json:"task,omitempty"`
+}
+
+type completeTaskRequest struct {
+	Status        string         `json:"status"`
+	ErrorMessage  string         `json:"errorMessage,omitempty"`
+	ResultPayload map[string]any `json:"resultPayload,omitempty"`
+}
+
 func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminfo.Info) (RegisterResponse, error) {
 	req := registerRequest{RegistrationToken: cfg.RegistrationToken, Hostname: info.Hostname, AgentVersion: info.AgentVersion, OS: info.OS, Arch: info.Arch, Capabilities: info.Capabilities}
 	var res RegisterResponse
-	if err := c.postJSON(ctx, "/api/v1/agent/register", "", req, &res); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/register", "", req, &res); err != nil {
 		return RegisterResponse{}, err
 	}
 	if res.AgentID == "" || res.ServerID == "" || res.AgentToken == "" {
@@ -67,22 +79,52 @@ func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminf
 func (c *Client) Heartbeat(ctx context.Context, agentToken string, info systeminfo.Info) (HeartbeatResponse, error) {
 	req := heartbeatRequest{AgentVersion: info.AgentVersion, Capabilities: info.Capabilities}
 	var res HeartbeatResponse
-	if err := c.postJSON(ctx, "/api/v1/agent/heartbeat", agentToken, req, &res); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/heartbeat", agentToken, req, &res); err != nil {
 		return HeartbeatResponse{}, err
 	}
 	return res, nil
 }
 
-func (c *Client) postJSON(ctx context.Context, path, bearer string, body any, out any) error {
-	data, err := json.Marshal(body)
+func (c *Client) NextTask(ctx context.Context, agentToken string) (*tasks.ConfigTask, error) {
+	var res nextTaskResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/agent/tasks/next", agentToken, nil, &res); err != nil {
+		return nil, err
+	}
+	return res.Task, nil
+}
+
+func (c *Client) CompleteTask(ctx context.Context, agentToken, jobID string, req completeTaskRequest) error {
+	if strings.TrimSpace(jobID) == "" {
+		return fmt.Errorf("job id is required")
+	}
+	path := "/api/v1/agent/tasks/" + url.PathEscape(jobID) + "/result"
+	return c.doJSON(ctx, http.MethodPost, path, agentToken, req, nil)
+}
+
+func (c *Client) CompleteTaskSucceeded(ctx context.Context, agentToken, jobID string, result map[string]any) error {
+	return c.CompleteTask(ctx, agentToken, jobID, completeTaskRequest{Status: "succeeded", ResultPayload: result})
+}
+
+func (c *Client) CompleteTaskFailed(ctx context.Context, agentToken, jobID string, message string, result map[string]any) error {
+	return c.CompleteTask(ctx, agentToken, jobID, completeTaskRequest{Status: "failed", ErrorMessage: message, ResultPayload: result})
+}
+
+func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body any, out any) error {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.managerURL+path, reader)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.managerURL+path, bytes.NewReader(data))
-	if err != nil {
-		return err
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Content-Type", "application/json")
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
@@ -93,7 +135,7 @@ func (c *Client) postJSON(ctx context.Context, path, bearer string, body any, ou
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s failed with status %d: %s", path, resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return fmt.Errorf("%s %s failed with status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	if out != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, out); err != nil {

@@ -3,12 +3,14 @@ package heartbeat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/client"
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
+	"github.com/ikaevus/routegate/agent/internal/tasks"
 )
 
 type Runner struct {
@@ -27,10 +29,16 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 		return err
 	}
 	if once {
-		return r.sendHeartbeat(ctx)
+		if err := r.sendHeartbeat(ctx); err != nil {
+			return err
+		}
+		return r.processNextTask(ctx)
 	}
 	if err := r.sendHeartbeat(ctx); err != nil {
 		r.logger.Warn("heartbeat failed", "error", err)
+	}
+	if err := r.processNextTask(ctx); err != nil {
+		r.logger.Warn("process config task failed", "error", err)
 	}
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval())
 	defer ticker.Stop()
@@ -41,6 +49,9 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 		case <-ticker.C:
 			if err := r.sendHeartbeat(ctx); err != nil {
 				r.logger.Warn("heartbeat failed", "error", err)
+			}
+			if err := r.processNextTask(ctx); err != nil {
+				r.logger.Warn("process config task failed", "error", err)
 			}
 		}
 	}
@@ -76,5 +87,62 @@ func (r *Runner) sendHeartbeat(ctx context.Context) error {
 		return err
 	}
 	r.logger.Info("heartbeat accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "server_status", res.ServerStatus)
+	return nil
+}
+
+func (r *Runner) processNextTask(ctx context.Context) error {
+	task, err := r.client.NextTask(ctx, r.cfg.AgentToken)
+	if err != nil {
+		return err
+	}
+	if task == nil {
+		r.logger.Debug("no config task available")
+		return nil
+	}
+
+	stageResult, err := tasks.NewStager(r.cfg.ConfigStagingDir).Stage(*task)
+	if err != nil {
+		report := map[string]any{
+			"stage":           "failed",
+			"validate":        "skipped",
+			"configVersionId": task.ConfigVersionID,
+			"configHash":      task.ConfigHash,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("stage config task failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
+	validationResult, err := tasks.NewValidator(r.cfg.SingBoxPath).Check(ctx, stageResult.StagedPath)
+	if err != nil {
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "failed",
+			"stagedPath":      stageResult.StagedPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         validationResult.Command,
+			"output":          validationResult.Output,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("validate staged config failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
+	report := map[string]any{
+		"stage":           "succeeded",
+		"validate":        "succeeded",
+		"stagedPath":      stageResult.StagedPath,
+		"configVersionId": stageResult.ConfigVersionID,
+		"configHash":      stageResult.ConfigHash,
+		"command":         validationResult.Command,
+		"output":          validationResult.Output,
+	}
+	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
+		return err
+	}
+	r.logger.Info("config task staged and validated", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath)
 	return nil
 }
