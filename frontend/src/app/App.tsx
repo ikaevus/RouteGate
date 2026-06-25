@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ServersPage } from '../pages/servers/ServersPage';
 import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
@@ -6,8 +6,39 @@ import { AgentsPage } from '../pages/agents/AgentsPage';
 import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSettingsPage';
 import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { LoginPage } from '../pages/login/LoginPage';
+import { PortalPage } from '../pages/portal/PortalPage';
 
-export function App() {
+function PortalShell() {
+  return (
+    <div className="portal-app-shell">
+      <header className="portal-topbar">
+        <Link className="portal-brand" to="/portal">
+          <div className="brand-mark">RG</div>
+          <div>
+            <div className="brand-title">RouteGate</div>
+            <div className="brand-subtitle">User Portal</div>
+          </div>
+        </Link>
+
+        <nav className="portal-topnav">
+          <Link to="/portal">Portal Dashboard</Link>
+          <Link to="/">Admin UI</Link>
+          <Link to="/login">Login</Link>
+        </nav>
+      </header>
+
+      <main className="portal-main">
+        <Routes>
+          <Route path="/portal" element={<PortalPage />} />
+          <Route path="/portal/profiles/:profileId" element={<PortalPage />} />
+          <Route path="*" element={<Navigate to="/portal" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+function AdminShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -25,6 +56,7 @@ export function App() {
           <Link to="/agents">Agents</Link>
           <Link to="/protocol-settings">Protocol Settings</Link>
           <Link to="/vpn-accounts">VPN Accounts</Link>
+          <Link to="/portal">User Portal</Link>
           <Link to="/login">Login</Link>
         </nav>
       </aside>
@@ -45,4 +77,14 @@ export function App() {
       </main>
     </div>
   );
+}
+
+export function App() {
+  const location = useLocation();
+
+  if (location.pathname.startsWith('/portal')) {
+    return <PortalShell />;
+  }
+
+  return <AdminShell />;
 }
