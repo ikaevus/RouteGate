@@ -1,9 +1,14 @@
-import { type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
+  createVpnAccountSubscriptionToken,
+  getPublicSubscription,
   getVpnAccountCredentials,
+  getVpnAccountSubscriptionQRCode,
   getVpnAccounts,
+  rotateVpnAccountSubscriptionToken,
+  type SubscriptionTokenResponse,
   type VpnAccount,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 
@@ -57,6 +62,13 @@ function VpnAccountRow({ account, selected }: { account: VpnAccount; selected: b
 
 export function VpnAccountsPage() {
   const { accountId } = useParams<{ accountId: string }>();
+  const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
+  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSubscriptionToken(null);
+    setCopiedTarget(null);
+  }, [accountId]);
 
   const accountsQuery = useQuery({
     queryKey: ['vpn-accounts'],
@@ -69,16 +81,68 @@ export function VpnAccountsPage() {
     enabled: Boolean(accountId),
   });
 
+  const qrQuery = useQuery({
+    queryKey: ['vpn-account-subscription-qr', accountId, subscriptionToken?.subscriptionToken],
+    queryFn: () => getVpnAccountSubscriptionQRCode(accountId ?? '', subscriptionToken?.subscriptionToken ?? ''),
+    enabled: Boolean(accountId && subscriptionToken?.subscriptionToken),
+  });
+
+  const publicSubscriptionQuery = useQuery({
+    queryKey: ['public-subscription-preview', subscriptionToken?.subscriptionToken],
+    queryFn: () => getPublicSubscription(subscriptionToken?.subscriptionToken ?? ''),
+    enabled: Boolean(subscriptionToken?.subscriptionToken),
+  });
+
+  const createSubscriptionTokenMutation = useMutation({
+    mutationFn: () => createVpnAccountSubscriptionToken(accountId ?? ''),
+    onMutate: () => {
+      setSubscriptionToken(null);
+      setCopiedTarget(null);
+    },
+    onSuccess: (response) => {
+      setSubscriptionToken(response);
+    },
+  });
+
+  const rotateSubscriptionTokenMutation = useMutation({
+    mutationFn: () => rotateVpnAccountSubscriptionToken(accountId ?? ''),
+    onMutate: () => {
+      setSubscriptionToken(null);
+      setCopiedTarget(null);
+    },
+    onSuccess: (response) => {
+      setSubscriptionToken(response);
+    },
+  });
+
+  const copyToClipboard = async (target: string, value: string) => {
+    if (!navigator.clipboard) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(value);
+    setCopiedTarget(target);
+    window.setTimeout(() => setCopiedTarget(null), 1800);
+  };
+
   const accounts = accountsQuery.data?.items ?? [];
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const credentials = credentialsQuery.data;
+  const qr = qrQuery.data;
+  const publicSubscription = publicSubscriptionQuery.data;
+  const renderedConfig = publicSubscription?.config.rendered;
+  const renderedConfigText = renderedConfig
+    ? JSON.stringify(renderedConfig.content, null, 2)
+    : '';
+  const isSubscriptionBusy =
+    createSubscriptionTokenMutation.isPending || rotateSubscriptionTokenMutation.isPending;
 
   return (
     <section className="page vpn-accounts-page">
       <div className="page-header">
         <div>
           <h1>VPN Accounts</h1>
-          <p>View VLESS / Reality credentials for managed VPN accounts.</p>
+          <p>View VLESS / Reality credentials, subscription URLs, and client config previews.</p>
         </div>
 
         <div className="status-pill">
@@ -173,6 +237,141 @@ export function VpnAccountsPage() {
             </div>
           )}
         </div>
+
+        {accountId && selectedAccount && (
+          <div className="panel subscription-panel">
+            <div className="panel-header">
+              <div>
+                <div className="panel-title">Subscription and client config</div>
+                <p className="panel-subtitle">
+                  Generate a one-time visible subscription token and preview the rendered client payload.
+                </p>
+              </div>
+              <div className="table-actions">
+                <button
+                  className="small-button"
+                  type="button"
+                  disabled={isSubscriptionBusy}
+                  onClick={() => createSubscriptionTokenMutation.mutate()}
+                >
+                  {createSubscriptionTokenMutation.isPending ? 'Generating...' : 'Generate subscription'}
+                </button>
+                <button
+                  className="small-button"
+                  type="button"
+                  disabled={isSubscriptionBusy}
+                  onClick={() => rotateSubscriptionTokenMutation.mutate()}
+                >
+                  {rotateSubscriptionTokenMutation.isPending ? 'Rotating...' : 'Rotate token'}
+                </button>
+              </div>
+            </div>
+
+            {(createSubscriptionTokenMutation.isError || rotateSubscriptionTokenMutation.isError) && (
+              <div className="form-message form-message-error">Failed to create subscription token.</div>
+            )}
+
+            {!subscriptionToken && (
+              <p className="empty-state">Generate a subscription to show URL, QR payload, and client config preview.</p>
+            )}
+
+            {subscriptionToken && (
+              <div className="subscription-result">
+                <div className="form-message form-message-warning">
+                  Save this subscription URL now. The raw token is shown only once and is not stored by the frontend.
+                </div>
+
+                <div className="detail-list credentials-detail-list">
+                  <DetailRow label="Subscription token">
+                    <code>{subscriptionToken.subscriptionToken}</code>
+                  </DetailRow>
+                  <DetailRow label="Subscription URL">
+                    <span className="copyable-value">
+                      <code>{subscriptionToken.subscriptionUrl}</code>
+                      <button
+                        className="small-button"
+                        type="button"
+                        onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}
+                      >
+                        {copiedTarget === 'subscription-url' ? 'Copied' : 'Copy'}
+                      </button>
+                    </span>
+                  </DetailRow>
+                  <DetailRow label="Expires at">{formatDate(subscriptionToken.expiresAt)}</DetailRow>
+                </div>
+
+                {qrQuery.isLoading && <p className="empty-state">Loading QR payload...</p>}
+                {qrQuery.isError && (
+                  <div className="form-message form-message-error">Failed to load subscription QR payload.</div>
+                )}
+                {qr && (
+                  <div className="qr-payload-panel">
+                    <div>
+                      <div className="panel-title token-snippet-title">Subscription QR payload</div>
+                      <p className="panel-subtitle">Format: {formatValue(qr.format)}</p>
+                    </div>
+                    <pre className="code-block">{qr.qrText}</pre>
+                    <button
+                      className="small-button"
+                      type="button"
+                      onClick={() => void copyToClipboard('qr-text', qr.qrText)}
+                    >
+                      {copiedTarget === 'qr-text' ? 'Copied' : 'Copy QR text'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="client-config-preview">
+                  <div className="panel-header client-config-header">
+                    <div>
+                      <div className="panel-title token-snippet-title">Client config preview</div>
+                      <p className="panel-subtitle">
+                        Public subscription response and rendered sing-box config for this account.
+                      </p>
+                    </div>
+                    {renderedConfig && (
+                      <button
+                        className="small-button"
+                        type="button"
+                        onClick={() => void copyToClipboard('client-config', renderedConfigText)}
+                      >
+                        {copiedTarget === 'client-config' ? 'Copied' : 'Copy config'}
+                      </button>
+                    )}
+                  </div>
+
+                  {publicSubscriptionQuery.isLoading && (
+                    <p className="empty-state">Loading client config preview...</p>
+                  )}
+
+                  {publicSubscriptionQuery.isError && (
+                    <div className="form-message form-message-error">Failed to load public subscription preview.</div>
+                  )}
+
+                  {publicSubscription && (
+                    <div className="subscription-meta-grid">
+                      <DetailRow label="Subscription format">{formatValue(publicSubscription.format)}</DetailRow>
+                      <DetailRow label="Config status"><StatusBadge status={publicSubscription.config.status} /></DetailRow>
+                      <DetailRow label="Config format">{formatValue(renderedConfig?.format ?? publicSubscription.config.format)}</DetailRow>
+                      <DetailRow label="Generated at">{formatDate(publicSubscription.generatedAt)}</DetailRow>
+                      <DetailRow label="Server endpoint">{formatValue(publicSubscription.server?.endpoint)}</DetailRow>
+                    </div>
+                  )}
+
+                  {publicSubscription?.config.message && (
+                    <div className="form-message form-message-warning">{publicSubscription.config.message}</div>
+                  )}
+
+                  {renderedConfig ? (
+                    <pre className="code-block client-config-code">{renderedConfigText}</pre>
+                  ) : publicSubscription && (
+                    <p className="empty-state">No rendered client config is available for this subscription yet.</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
