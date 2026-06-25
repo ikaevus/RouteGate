@@ -37,6 +37,7 @@ func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput
 			expires_at,
 			max_devices,
 			COALESCE(server_id::text, ''),
+			COALESCE(vless_uuid::text, ''),
 			created_at,
 			updated_at
 	`, input.DisplayName, input.Email, status, input.ExpiresAt, input.MaxDevices, input.ServerID))
@@ -92,6 +93,7 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 			expires_at,
 			max_devices,
 			COALESCE(server_id::text, ''),
+			COALESCE(vless_uuid::text, ''),
 			created_at,
 			updated_at
 	`,
@@ -118,6 +120,7 @@ func (r *Repository) SetAccountStatus(ctx context.Context, id string, status str
 			expires_at,
 			max_devices,
 			COALESCE(server_id::text, ''),
+			COALESCE(vless_uuid::text, ''),
 			created_at,
 			updated_at
 	`, id, status))
@@ -214,6 +217,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			a.expires_at,
 			a.max_devices,
 			COALESCE(a.server_id::text, ''),
+			COALESCE(a.vless_uuid::text, ''),
 			a.created_at,
 			a.updated_at,
 			s.id::text,
@@ -221,7 +225,13 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(s.hostname, ''),
 			COALESCE(s.public_ip::text, ''),
 			COALESCE(s.location, ''),
-			COALESCE(s.provider, '')
+			COALESCE(s.provider, ''),
+			s.vless_port,
+			COALESCE(s.vless_flow, ''),
+			COALESCE(s.vless_network, ''),
+			COALESCE(s.reality_public_key, ''),
+			COALESCE(s.reality_short_id, ''),
+			COALESCE(s.reality_server_name, '')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
 		WHERE a.id = $1::uuid
@@ -246,6 +256,7 @@ const accountSelect = `
 		expires_at,
 		max_devices,
 		COALESCE(server_id::text, ''),
+		COALESCE(vless_uuid::text, ''),
 		created_at,
 		updated_at
 	FROM vpn_accounts`
@@ -279,6 +290,7 @@ func scanAccount(row scanner) (Account, error) {
 		&expiresAt,
 		&maxDevices,
 		&account.ServerID,
+		&account.VLESSUUID,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 	)
@@ -329,6 +341,8 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	var expiresAt sql.NullTime
 	var maxDevices sql.NullInt32
 	var serverID, serverName, serverHostname, serverPublicIP, serverLocation, serverProvider sql.NullString
+	var vlessPort sql.NullInt32
+	var vlessFlow, vlessNetwork, realityPublicKey, realityShortID, realityServerName sql.NullString
 
 	err := row.Scan(
 		&profile.Account.ID,
@@ -338,6 +352,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&expiresAt,
 		&maxDevices,
 		&profile.Account.ServerID,
+		&profile.Account.VLESSUUID,
 		&profile.Account.CreatedAt,
 		&profile.Account.UpdatedAt,
 		&serverID,
@@ -346,6 +361,12 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&serverPublicIP,
 		&serverLocation,
 		&serverProvider,
+		&vlessPort,
+		&vlessFlow,
+		&vlessNetwork,
+		&realityPublicKey,
+		&realityShortID,
+		&realityServerName,
 	)
 	if err != nil {
 		return SubscriptionProfile{}, err
@@ -357,14 +378,32 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		value := int(maxDevices.Int32)
 		profile.Account.MaxDevices = &value
 	}
+	profile.Credentials.VLESS.UUID = profile.Account.VLESSUUID
 	if serverID.Valid {
-		profile.Server = &SubscriptionServer{
-			ID:       serverID.String,
-			Name:     serverName.String,
-			Hostname: serverHostname.String,
-			PublicIP: serverPublicIP.String,
-			Location: serverLocation.String,
-			Provider: serverProvider.String,
+		server := SubscriptionServer{
+			ID:                serverID.String,
+			Name:              serverName.String,
+			Hostname:          serverHostname.String,
+			PublicIP:          serverPublicIP.String,
+			Location:          serverLocation.String,
+			Provider:          serverProvider.String,
+			VLESSPort:         defaultSingBoxServerPort,
+			VLESSFlow:         vlessFlow.String,
+			VLESSNetwork:      vlessNetwork.String,
+			RealityPublicKey:  realityPublicKey.String,
+			RealityShortID:    realityShortID.String,
+			RealityServerName: realityServerName.String,
+		}
+		if vlessPort.Valid {
+			server.VLESSPort = int(vlessPort.Int32)
+		}
+		profile.Server = &server
+		profile.Credentials.VLESS.Flow = server.VLESSFlow
+		profile.Credentials.VLESS.Network = server.VLESSNetwork
+		profile.Credentials.Reality = RealityCredentials{
+			PublicKey:  server.RealityPublicKey,
+			ShortID:    server.RealityShortID,
+			ServerName: server.RealityServerName,
 		}
 	}
 	return profile, nil
