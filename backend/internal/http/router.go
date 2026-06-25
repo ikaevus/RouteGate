@@ -86,7 +86,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.Get))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/credentials", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetCredentials))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/traffic", authn(auth.RequirePermission("traffic:read")(stdhttp.HandlerFunc(trafficHandler.GetAccountUsage))))
-	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/traffic-limit", authn(auth.RequirePermission("traffic:manage")(stdhttp.HandlerFunc(trafficHandler.UpdateAccountLimit))))
+	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/traffic-limit", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(trafficHandler.UpdateAccountLimit))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.Update))))
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.Delete))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/suspend", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.Suspend))))
