@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,6 +28,7 @@ type accountRepository interface {
 	RevokeActiveSubscriptionTokens(context.Context, string) error
 	GetActiveSubscriptionTokenByHash(context.Context, string, string) (SubscriptionToken, error)
 	FindActiveSubscriptionTokenByHash(context.Context, string) (SubscriptionToken, error)
+	GetSubscriptionProfileByAccountID(context.Context, string) (SubscriptionProfile, error)
 	MarkSubscriptionTokenUsed(context.Context, string) error
 }
 
@@ -245,6 +247,26 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 		h.databaseError(w, "get public subscription", err)
 		return
 	}
+
+	now := time.Now()
+	profile, err := h.accounts.GetSubscriptionProfileByAccountID(r.Context(), token.VPNAccountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_account_not_found", "VPN account for subscription token not found."))
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get subscription profile", err)
+		return
+	}
+	if profile.Account.Status != StatusActive {
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("subscription_inactive", "VPN account is not active."))
+		return
+	}
+	if profile.Account.ExpiresAt != nil && !profile.Account.ExpiresAt.After(now) {
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("subscription_expired", "VPN account is expired."))
+		return
+	}
+
 	if err := h.accounts.MarkSubscriptionTokenUsed(r.Context(), token.ID); err != nil {
 		h.databaseError(w, "mark subscription token used", err)
 		return
@@ -252,8 +274,22 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 
 	httpx.WriteJSON(w, http.StatusOK, PublicSubscriptionResponse{
 		Status:       "ok",
+		Format:       "routegate.subscription.v1",
+		GeneratedAt:  now,
 		VPNAccountID: token.VPNAccountID,
-		Message:      "Client config generation is not implemented yet.",
+		Account: PublicSubscriptionAccount{
+			ID:          profile.Account.ID,
+			DisplayName: profile.Account.DisplayName,
+			Status:      profile.Account.Status,
+			ExpiresAt:   profile.Account.ExpiresAt,
+			MaxDevices:  profile.Account.MaxDevices,
+		},
+		Server: publicSubscriptionServer(profile.Server),
+		Config: PublicSubscriptionConfig{
+			Type:    "sing-box",
+			Status:  "pending",
+			Message: "Client config generation is not implemented yet.",
+		},
 	})
 }
 
@@ -309,6 +345,25 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request, status strin
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, account)
+}
+
+func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionServer {
+	if server == nil {
+		return nil
+	}
+	endpoint := server.PublicIP
+	if endpoint == "" {
+		endpoint = server.Hostname
+	}
+	return &PublicSubscriptionServer{
+		ID:       server.ID,
+		Name:     server.Name,
+		Hostname: server.Hostname,
+		PublicIP: server.PublicIP,
+		Endpoint: endpoint,
+		Location: server.Location,
+		Provider: server.Provider,
+	}
 }
 
 func (h *Handler) subscriptionURL(r *http.Request, token string) string {

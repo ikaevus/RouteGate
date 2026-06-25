@@ -204,6 +204,30 @@ func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, toke
 	`, tokenHash))
 }
 
+func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id string) (SubscriptionProfile, error) {
+	return scanSubscriptionProfile(r.pool.QueryRow(ctx, `
+		SELECT
+			a.id::text,
+			a.display_name,
+			COALESCE(a.email, ''),
+			a.status,
+			a.expires_at,
+			a.max_devices,
+			COALESCE(a.server_id::text, ''),
+			a.created_at,
+			a.updated_at,
+			s.id::text,
+			COALESCE(s.name, ''),
+			COALESCE(s.hostname, ''),
+			COALESCE(s.public_ip::text, ''),
+			COALESCE(s.location, ''),
+			COALESCE(s.provider, '')
+		FROM vpn_accounts a
+		LEFT JOIN servers s ON s.id = a.server_id
+		WHERE a.id = $1::uuid
+	`, id))
+}
+
 func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE vpn_subscription_tokens
@@ -298,6 +322,52 @@ func scanSubscriptionToken(row scanner) (SubscriptionToken, error) {
 		token.RevokedAt = &revokedAt.Time
 	}
 	return token, nil
+}
+
+func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
+	var profile SubscriptionProfile
+	var expiresAt sql.NullTime
+	var maxDevices sql.NullInt32
+	var serverID, serverName, serverHostname, serverPublicIP, serverLocation, serverProvider sql.NullString
+
+	err := row.Scan(
+		&profile.Account.ID,
+		&profile.Account.DisplayName,
+		&profile.Account.Email,
+		&profile.Account.Status,
+		&expiresAt,
+		&maxDevices,
+		&profile.Account.ServerID,
+		&profile.Account.CreatedAt,
+		&profile.Account.UpdatedAt,
+		&serverID,
+		&serverName,
+		&serverHostname,
+		&serverPublicIP,
+		&serverLocation,
+		&serverProvider,
+	)
+	if err != nil {
+		return SubscriptionProfile{}, err
+	}
+	if expiresAt.Valid {
+		profile.Account.ExpiresAt = &expiresAt.Time
+	}
+	if maxDevices.Valid {
+		value := int(maxDevices.Int32)
+		profile.Account.MaxDevices = &value
+	}
+	if serverID.Valid {
+		profile.Server = &SubscriptionServer{
+			ID:       serverID.String,
+			Name:     serverName.String,
+			Hostname: serverHostname.String,
+			PublicIP: serverPublicIP.String,
+			Location: serverLocation.String,
+			Provider: serverProvider.String,
+		}
+	}
+	return profile, nil
 }
 
 func stringValue(value *string) string {

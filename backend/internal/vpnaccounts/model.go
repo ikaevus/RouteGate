@@ -39,6 +39,20 @@ type SubscriptionToken struct {
 	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
+type SubscriptionProfile struct {
+	Account Account
+	Server  *SubscriptionServer
+}
+
+type SubscriptionServer struct {
+	ID       string
+	Name     string
+	Hostname string
+	PublicIP string
+	Location string
+	Provider string
+}
+
 type CreateAccountInput struct {
 	DisplayName string
 	Email       string

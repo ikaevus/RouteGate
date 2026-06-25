@@ -32,6 +32,8 @@ type fakeAccountRepository struct {
 	findTokenHash     string
 	findToken         SubscriptionToken
 	findTokenErr      error
+	profile           SubscriptionProfile
+	profileErr        error
 	usedTokenID       string
 	markUsedErr       error
 }
@@ -111,6 +113,19 @@ func (f *fakeAccountRepository) FindActiveSubscriptionTokenByHash(_ context.Cont
 		return f.findToken, nil
 	}
 	return SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", TokenHash: tokenHash, Status: SubscriptionTokenStatusActive}, nil
+}
+
+func (f *fakeAccountRepository) GetSubscriptionProfileByAccountID(_ context.Context, id string) (SubscriptionProfile, error) {
+	if f.profileErr != nil {
+		return SubscriptionProfile{}, f.profileErr
+	}
+	if f.profile.Account.ID != "" {
+		return f.profile, nil
+	}
+	return SubscriptionProfile{
+		Account: Account{ID: id, DisplayName: "Demo", Status: StatusActive, ServerID: "server-1"},
+		Server:  &SubscriptionServer{ID: "server-1", Name: "Finland", PublicIP: "203.0.113.10", Location: "Finland", Provider: "Demo"},
+	}, nil
 }
 
 func (f *fakeAccountRepository) MarkSubscriptionTokenUsed(_ context.Context, id string) error {
@@ -275,5 +290,36 @@ func TestGetPublicSubscriptionMarksTokenUsed(t *testing.T) {
 	}
 	if repo.usedTokenID != "token-1" {
 		t.Fatalf("expected token-1 marked used, got %q", repo.usedTokenID)
+	}
+
+	var body PublicSubscriptionResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Format != "routegate.subscription.v1" || body.Config.Status != "pending" {
+		t.Fatalf("unexpected subscription response: %+v", body)
+	}
+	if body.Server == nil || body.Server.Endpoint != "203.0.113.10" {
+		t.Fatalf("expected server endpoint in subscription response, got %+v", body.Server)
+	}
+}
+
+func TestGetPublicSubscriptionRejectsInactiveAccount(t *testing.T) {
+	repo := &fakeAccountRepository{
+		findToken: SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", Status: SubscriptionTokenStatusActive},
+		profile:   SubscriptionProfile{Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusSuspended}},
+	}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/fixed-token", nil)
+	request.SetPathValue("token", "fixed-token")
+	response := httptest.NewRecorder()
+
+	handler.GetPublicSubscription(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, response.Code)
+	}
+	if repo.usedTokenID != "" {
+		t.Fatalf("expected inactive account token not marked used, got %q", repo.usedTokenID)
 	}
 }
