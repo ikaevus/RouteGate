@@ -10,6 +10,11 @@ const (
 	AccessStatusNoAccess  = "no_access"
 )
 
+const (
+	PortalSubscriptionFormat = "routegate.subscription.v1"
+	PortalQRFormat           = "subscription-url"
+)
+
 type PortalUser struct {
 	ID          string `json:"id"`
 	Email       string `json:"email"`
@@ -31,12 +36,12 @@ type PortalProfile struct {
 }
 
 type PortalDashboard struct {
-	AccessStatus       string     `json:"accessStatus"`
-	ProfilesTotal      int        `json:"profilesTotal"`
-	ProfilesActive     int        `json:"profilesActive"`
-	NearestExpiration  *time.Time `json:"nearestExpiration,omitempty"`
-	TrafficUsage       *TrafficUsageSummary `json:"trafficUsage,omitempty"`
-	Notices            []PortalNotice `json:"notices"`
+	AccessStatus      string               `json:"accessStatus"`
+	ProfilesTotal     int                  `json:"profilesTotal"`
+	ProfilesActive    int                  `json:"profilesActive"`
+	NearestExpiration *time.Time           `json:"nearestExpiration,omitempty"`
+	TrafficUsage      *TrafficUsageSummary `json:"trafficUsage,omitempty"`
+	Notices           []PortalNotice       `json:"notices"`
 }
 
 type TrafficUsageSummary struct {
@@ -51,6 +56,7 @@ type PortalNotice struct {
 type PortalSubscription struct {
 	ProfileID             string     `json:"profileId"`
 	Available             bool       `json:"available"`
+	AccessStatus          string     `json:"accessStatus"`
 	SubscriptionURL       string     `json:"subscriptionUrl,omitempty"`
 	Format                string     `json:"format"`
 	ExpiresAt             *time.Time `json:"expiresAt,omitempty"`
@@ -59,11 +65,28 @@ type PortalSubscription struct {
 }
 
 type PortalQRCode struct {
-	ProfileID string `json:"profileId"`
-	Available bool   `json:"available"`
-	QRText    string `json:"qrText,omitempty"`
-	Format    string `json:"format"`
-	Message   string `json:"message,omitempty"`
+	ProfileID    string `json:"profileId"`
+	Available    bool   `json:"available"`
+	AccessStatus string `json:"accessStatus"`
+	QRText       string `json:"qrText,omitempty"`
+	Format       string `json:"format"`
+	Message      string `json:"message,omitempty"`
+}
+
+type PortalSubscriptionToken struct {
+	ID           string     `json:"-"`
+	VPNAccountID string     `json:"-"`
+	TokenHash    string     `json:"-"`
+	Status       string     `json:"-"`
+	ExpiresAt    *time.Time `json:"-"`
+	CreatedAt    time.Time  `json:"-"`
+	UpdatedAt    time.Time  `json:"-"`
+}
+
+type CreateSubscriptionTokenInput struct {
+	VPNAccountID string
+	TokenHash    string
+	ExpiresAt    *time.Time
 }
 
 type InstructionPlatform struct {
