@@ -1,19 +1,23 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
 import {
   applyConfigVersion,
+  assignServerRoutingProfile,
+  clearServerRoutingProfile,
   createServerRegistrationToken,
   getConfigApplyJobs,
   getConfigVersions,
   getServer,
+  getServerRoutingProfile,
   renderConfig,
   validateConfigVersion,
   type ConfigApplyJob,
   type ConfigVersion,
   type RegistrationTokenResponse,
 } from '../../entities/server/api/serverApi';
+import { getRoutingProfiles } from '../../entities/routingProfile/api/routingProfileApi';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -92,12 +96,28 @@ export function ServerDetailsPage() {
   const { serverId } = useParams<{ serverId: string }>();
   const queryClient = useQueryClient();
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
+  const [selectedRoutingProfileId, setSelectedRoutingProfileId] = useState('');
 
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId ?? ''),
     enabled: Boolean(serverId),
   });
+
+  const routingProfilesQuery = useQuery({
+    queryKey: ['routing-profiles'],
+    queryFn: getRoutingProfiles,
+  });
+
+  const serverRoutingProfileQuery = useQuery({
+    queryKey: ['server-routing-profile', serverId],
+    queryFn: () => getServerRoutingProfile(serverId ?? ''),
+    enabled: Boolean(serverId),
+  });
+
+  useEffect(() => {
+    setSelectedRoutingProfileId(serverRoutingProfileQuery.data?.routingProfile?.id ?? '');
+  }, [serverRoutingProfileQuery.data?.routingProfile?.id]);
 
   const registrationTokenMutation = useMutation({
     mutationFn: () => createServerRegistrationToken(serverId ?? ''),
@@ -127,6 +147,26 @@ export function ServerDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', serverId] }),
     ]);
   };
+
+  const refreshRoutingProfileAssignment = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['server-routing-profile', serverId] }),
+      queryClient.invalidateQueries({ queryKey: ['server-config-versions', serverId] }),
+    ]);
+  };
+
+  const assignRoutingProfileMutation = useMutation({
+    mutationFn: () => assignServerRoutingProfile(serverId ?? '', { routingProfileId: selectedRoutingProfileId }),
+    onSuccess: refreshRoutingProfileAssignment,
+  });
+
+  const clearRoutingProfileMutation = useMutation({
+    mutationFn: () => clearServerRoutingProfile(serverId ?? ''),
+    onSuccess: async () => {
+      setSelectedRoutingProfileId('');
+      await refreshRoutingProfileAssignment();
+    },
+  });
 
   const renderConfigMutation = useMutation({
     mutationFn: () => renderConfig(serverId ?? ''),
@@ -191,6 +231,9 @@ export function ServerDetailsPage() {
   }
 
   const agent = server.agent;
+  const routingProfiles = routingProfilesQuery.data?.items ?? [];
+  const assignedRoutingProfile = serverRoutingProfileQuery.data?.routingProfile ?? null;
+  const canSaveRoutingProfile = selectedRoutingProfileId.trim() !== '';
   const configVersions = configVersionsQuery.data?.items ?? [];
   const applyJobs = applyJobsQuery.data?.items ?? [];
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
@@ -246,6 +289,74 @@ export function ServerDetailsPage() {
             <p className="empty-state">No agent registered yet.</p>
           )}
         </div>
+      </div>
+
+      <div className="panel routing-profile-assignment-panel">
+        <div className="panel-header">
+          <div>
+            <div className="panel-title">Routing profile</div>
+            <p className="panel-subtitle">Assign the split-tunnel profile used when rendering this server config.</p>
+          </div>
+          {assignedRoutingProfile ? <StatusBadge status={assignedRoutingProfile.isDefault ? 'default' : 'custom'} /> : <StatusBadge status="unassigned" />}
+        </div>
+
+        {serverRoutingProfileQuery.isError && (
+          <div className="form-message form-message-error">Failed to load server routing profile assignment.</div>
+        )}
+        {routingProfilesQuery.isError && (
+          <div className="form-message form-message-error">Failed to load routing profiles.</div>
+        )}
+        {(assignRoutingProfileMutation.isError || clearRoutingProfileMutation.isError) && (
+          <div className="form-message form-message-error">Failed to update routing profile assignment.</div>
+        )}
+
+        <div className="routing-profile-assignment-current">
+          <DetailRow label="Current profile">{assignedRoutingProfile ? formatValue(assignedRoutingProfile.name) : 'No explicit assignment'}</DetailRow>
+          <DetailRow label="Description">{formatValue(assignedRoutingProfile?.description)}</DetailRow>
+          <DetailRow label="Assigned at">{formatDate(serverRoutingProfileQuery.data?.createdAt)}</DetailRow>
+          <DetailRow label="Updated at">{formatDate(serverRoutingProfileQuery.data?.updatedAt)}</DetailRow>
+        </div>
+
+        <form
+          className="routing-profile-assignment-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            assignRoutingProfileMutation.mutate();
+          }}
+        >
+          <label className="field">
+            <span>Routing profile</span>
+            <select
+              value={selectedRoutingProfileId}
+              onChange={(event) => setSelectedRoutingProfileId(event.target.value)}
+            >
+              <option value="">Select routing profile...</option>
+              {routingProfiles.map((profile) => (
+                <option value={profile.id} key={profile.id}>
+                  {profile.name}{profile.isDefault ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="routing-profile-assignment-actions">
+            <button
+              className="small-button"
+              type="submit"
+              disabled={!canSaveRoutingProfile || assignRoutingProfileMutation.isPending}
+            >
+              {assignRoutingProfileMutation.isPending ? 'Saving...' : 'Save assignment'}
+            </button>
+            <button
+              className="small-button"
+              type="button"
+              disabled={clearRoutingProfileMutation.isPending || !assignedRoutingProfile}
+              onClick={() => clearRoutingProfileMutation.mutate()}
+            >
+              {clearRoutingProfileMutation.isPending ? 'Clearing...' : 'Clear assignment'}
+            </button>
+          </div>
+        </form>
       </div>
 
       <div className="panel token-panel">
