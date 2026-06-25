@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../../../shared/api/client';
+import { apiGet, apiPatch, apiPost } from '../../../shared/api/client';
 
 export interface VpnAccount {
   id: string;
@@ -33,6 +33,45 @@ export interface VpnAccountCredentialsResponse {
     shortId?: string;
     serverName?: string;
   };
+}
+
+export interface TrafficUsageSummaryResponse {
+  vpnAccountId: string;
+  period: {
+    from: string;
+    to: string;
+  };
+  usage: {
+    rxBytes: number;
+    txBytes: number;
+    totalBytes: number;
+  };
+  limit?: {
+    monthlyLimitBytes?: number | null;
+    hardLimitEnabled: boolean;
+    speedLimitBps?: number | null;
+    resetDay: number;
+    usedPercent?: number | null;
+    limitReached: boolean;
+    updatedAt: string;
+  } | null;
+}
+
+export interface UpdateTrafficLimitRequest {
+  monthlyLimitBytes?: number | null;
+  hardLimitEnabled: boolean;
+  speedLimitBps?: number | null;
+  resetDay?: number | null;
+}
+
+export interface TrafficLimitResponse {
+  vpnAccountId: string;
+  monthlyLimitBytes?: number | null;
+  hardLimitEnabled: boolean;
+  speedLimitBps?: number | null;
+  resetDay: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SubscriptionTokenResponse {
@@ -91,6 +130,24 @@ export function getVpnAccountCredentials(
 ): Promise<VpnAccountCredentialsResponse> {
   return apiGet<VpnAccountCredentialsResponse>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/credentials`,
+  );
+}
+
+export function getVpnAccountTraffic(
+  vpnAccountId: string,
+): Promise<TrafficUsageSummaryResponse> {
+  return apiGet<TrafficUsageSummaryResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/traffic`,
+  );
+}
+
+export function updateVpnAccountTrafficLimit(
+  vpnAccountId: string,
+  request: UpdateTrafficLimitRequest,
+): Promise<TrafficLimitResponse> {
+  return apiPatch<UpdateTrafficLimitRequest, TrafficLimitResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/traffic-limit`,
+    request,
   );
 }
 
