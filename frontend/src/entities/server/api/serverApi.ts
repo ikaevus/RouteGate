@@ -148,6 +148,12 @@ export function updateProtocolSettings(
   );
 }
 
+export function generateRealityKeypair(serverId: string): Promise<ProtocolSettingsResponse> {
+  return apiPost<undefined, ProtocolSettingsResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/reality-keypair`,
+  );
+}
+
 export function getConfigVersions(serverId: string): Promise<ListConfigVersionsResponse> {
   return apiGet<ListConfigVersionsResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions`,
