@@ -55,6 +55,9 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	trimStringPointer(request.RealityPublicKey)
 	trimStringPointer(request.RealityShortID)
 	trimStringPointer(request.RealityServerName)
+	if request.VLESSNetwork != nil {
+		*request.VLESSNetwork = strings.ToLower(*request.VLESSNetwork)
+	}
 
 	input := UpdateProtocolSettingsInput{
 		VLESSPort:         request.VLESSPort,
