@@ -118,8 +118,8 @@ func (r *Repository) GetUsageSummary(ctx context.Context, vpnAccountID string, f
 
 	if err := r.pool.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(rx_bytes), 0),
-			COALESCE(SUM(tx_bytes), 0)
+			COALESCE(SUM(rx_bytes), 0)::bigint,
+			COALESCE(SUM(tx_bytes), 0)::bigint
 		FROM traffic_usage_events
 		WHERE vpn_account_id = $1::uuid
 		  AND observed_at >= $2
