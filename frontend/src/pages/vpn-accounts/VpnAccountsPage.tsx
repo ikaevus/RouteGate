@@ -11,6 +11,7 @@ import {
   type SubscriptionTokenResponse,
   type VpnAccount,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -306,9 +307,14 @@ export function VpnAccountsPage() {
                 )}
                 {qr && (
                   <div className="qr-payload-panel">
+                    <ScannableQrCode
+                      value={qr.qrText}
+                      title="Subscription QR code"
+                      subtitle={`Format: ${formatValue(qr.format)}`}
+                    />
                     <div>
                       <div className="panel-title token-snippet-title">Subscription QR payload</div>
-                      <p className="panel-subtitle">Format: {formatValue(qr.format)}</p>
+                      <p className="panel-subtitle">Copyable source text used for QR rendering.</p>
                     </div>
                     <pre className="code-block">{qr.qrText}</pre>
                     <button
