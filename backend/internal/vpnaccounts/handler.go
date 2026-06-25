@@ -285,11 +285,7 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 			MaxDevices:  profile.Account.MaxDevices,
 		},
 		Server: publicSubscriptionServer(profile.Server),
-		Config: PublicSubscriptionConfig{
-			Type:    "sing-box",
-			Status:  "pending",
-			Message: "Client config generation is not implemented yet.",
-		},
+		Config: renderPublicSubscriptionConfig(profile),
 	})
 }
 
@@ -351,16 +347,12 @@ func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionSer
 	if server == nil {
 		return nil
 	}
-	endpoint := server.PublicIP
-	if endpoint == "" {
-		endpoint = server.Hostname
-	}
 	return &PublicSubscriptionServer{
 		ID:       server.ID,
 		Name:     server.Name,
 		Hostname: server.Hostname,
 		PublicIP: server.PublicIP,
-		Endpoint: endpoint,
+		Endpoint: subscriptionServerEndpoint(server),
 		Location: server.Location,
 		Provider: server.Provider,
 	}
