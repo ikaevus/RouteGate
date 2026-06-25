@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '../../../shared/api/client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../../shared/api/client';
 
 export interface ServerAgent {
   id: string;
@@ -98,6 +98,26 @@ export interface UpdateProtocolSettingsRequest {
   realityServerName: string;
 }
 
+export interface ServerRoutingProfile {
+  id: string;
+  name: string;
+  description?: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServerRoutingProfileAssignment {
+  serverId: string;
+  routingProfile?: ServerRoutingProfile | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface AssignServerRoutingProfileRequest {
+  routingProfileId: string;
+}
+
 export interface Server {
   id: string;
   name: string;
@@ -152,6 +172,28 @@ export function generateRealityKeypair(serverId: string): Promise<ProtocolSettin
   return apiPost<undefined, ProtocolSettingsResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/reality-keypair`,
   );
+}
+
+export function getServerRoutingProfile(
+  serverId: string,
+): Promise<ServerRoutingProfileAssignment> {
+  return apiGet<ServerRoutingProfileAssignment>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/routing-profile`,
+  );
+}
+
+export function assignServerRoutingProfile(
+  serverId: string,
+  request: AssignServerRoutingProfileRequest,
+): Promise<ServerRoutingProfileAssignment> {
+  return apiPut<AssignServerRoutingProfileRequest, ServerRoutingProfileAssignment>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/routing-profile`,
+    request,
+  );
+}
+
+export function clearServerRoutingProfile(serverId: string): Promise<void> {
+  return apiDelete(`/api/v1/servers/${encodeURIComponent(serverId)}/routing-profile`);
 }
 
 export function getConfigVersions(serverId: string): Promise<ListConfigVersionsResponse> {
