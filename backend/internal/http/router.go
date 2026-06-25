@@ -14,6 +14,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
+	"github.com/ikaevus/routegate/backend/internal/traffic"
 	"github.com/ikaevus/routegate/backend/internal/users"
 	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 )
@@ -30,6 +31,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
+	trafficHandler := traffic.NewHandler(logger, pool)
 	portalHandler := portal.NewHandler(logger, pool)
 	authn := auth.Middleware(authRepo)
 	portalAuth := func(handler stdhttp.HandlerFunc) stdhttp.Handler {
@@ -83,6 +85,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:create")(stdhttp.HandlerFunc(vpnAccountsHandler.Create))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.Get))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/credentials", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetCredentials))))
+	mux.Handle("GET /api/v1/vpn-accounts/{id}/traffic", authn(auth.RequirePermission("traffic:read")(stdhttp.HandlerFunc(trafficHandler.GetAccountUsage))))
+	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/traffic-limit", authn(auth.RequirePermission("traffic:manage")(stdhttp.HandlerFunc(trafficHandler.UpdateAccountLimit))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.Update))))
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.Delete))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/suspend", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.Suspend))))
@@ -106,6 +110,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", agentsHandler.Heartbeat)
 	mux.HandleFunc("GET /api/v1/agent/tasks/next", agentsHandler.NextTask)
 	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result", agentsHandler.CompleteTask)
+	mux.HandleFunc("POST /api/v1/agent/traffic-usage", trafficHandler.ReportUsage)
 
 	return chain(
 		mux,
