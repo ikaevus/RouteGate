@@ -52,7 +52,12 @@ export interface TrafficUsageSummaryResponse {
     speedLimitBps?: number | null;
     resetDay: number;
     usedPercent?: number | null;
+    remainingBytes?: number | null;
     limitReached: boolean;
+    enforced: boolean;
+    limitExceededAt?: string | null;
+    enforcementStatus: string;
+    enforcementUpdatedAt?: string | null;
     updatedAt: string;
   } | null;
 }
@@ -70,6 +75,9 @@ export interface TrafficLimitResponse {
   hardLimitEnabled: boolean;
   speedLimitBps?: number | null;
   resetDay: number;
+  limitExceededAt?: string | null;
+  enforcementStatus: string;
+  enforcementUpdatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
