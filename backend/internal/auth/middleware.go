@@ -25,7 +25,7 @@ func Middleware(repo *Repository) func(http.Handler) http.Handler {
 				httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey, user)))
+			next.ServeHTTP(w, r.WithContext(ContextWithUser(r.Context(), user)))
 		})
 	}
 }
@@ -47,6 +47,10 @@ func RequirePermission(permission string) func(http.Handler) http.Handler {
 			httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("forbidden", "Required permission is missing."))
 		})
 	}
+}
+
+func ContextWithUser(ctx context.Context, user AuthenticatedUser) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
 }
 
 func UserFromContext(ctx context.Context) (AuthenticatedUser, bool) {
