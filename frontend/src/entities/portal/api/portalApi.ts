@@ -1,4 +1,4 @@
-import { apiGet } from '../../../shared/api/client';
+import { apiGet, apiPost } from '../../../shared/api/client';
 
 export interface PortalUser {
   id: string;
@@ -39,6 +39,7 @@ export interface PortalDashboard {
 export interface PortalSubscription {
   profileId: string;
   available: boolean;
+  accessStatus: string;
   subscriptionUrl?: string;
   format: string;
   expiresAt?: string | null;
@@ -49,6 +50,7 @@ export interface PortalSubscription {
 export interface PortalQRCode {
   profileId: string;
   available: boolean;
+  accessStatus: string;
   qrText?: string;
   format: string;
   message?: string;
@@ -91,6 +93,11 @@ export interface PortalQRCodeResponse {
   qr: PortalQRCode;
 }
 
+export interface PortalSubscriptionAccessResponse {
+  subscription: PortalSubscription;
+  qr: PortalQRCode;
+}
+
 export interface PortalInstructionsResponse {
   items: InstructionPlatform[];
 }
@@ -118,6 +125,14 @@ export function getPortalProfile(profileId: string): Promise<PortalProfileRespon
 export function getPortalSubscription(profileId: string): Promise<PortalSubscriptionResponse> {
   return apiGet<PortalSubscriptionResponse>(
     `/api/portal/profiles/${encodeURIComponent(profileId)}/subscription`,
+  );
+}
+
+export function generatePortalSubscriptionAccess(
+  profileId: string,
+): Promise<PortalSubscriptionAccessResponse> {
+  return apiPost<undefined, PortalSubscriptionAccessResponse>(
+    `/api/portal/profiles/${encodeURIComponent(profileId)}/subscription-token`,
   );
 }
 
