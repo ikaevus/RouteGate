@@ -228,11 +228,16 @@ func (h *Handler) GetSubscriptionQRCode(w http.ResponseWriter, r *http.Request) 
 		h.databaseError(w, "get vpn account for subscription qr", err)
 		return
 	}
-	if _, err := h.accounts.GetActiveSubscriptionTokenByHash(r.Context(), accountID, HashSubscriptionToken(rawToken)); errors.Is(err, pgx.ErrNoRows) {
+	token, err := h.accounts.GetActiveSubscriptionTokenByHash(r.Context(), accountID, HashSubscriptionToken(rawToken))
+	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_token_not_found", "Active subscription token not found."))
 		return
 	} else if err != nil {
 		h.databaseError(w, "get subscription token for qr", err)
+		return
+	}
+	if subscriptionTokenExpired(token, time.Now()) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_token_not_found", "Active subscription token not found."))
 		return
 	}
 
@@ -263,6 +268,11 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 	}
 
 	now := time.Now()
+	if subscriptionTokenExpired(token, now) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_not_found", "Subscription token not found."))
+		return
+	}
+
 	profile, err := h.accounts.GetSubscriptionProfileByAccountID(r.Context(), token.VPNAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_account_not_found", "VPN account for subscription token not found."))
@@ -308,6 +318,10 @@ func (h *Handler) createOrRotateSubscriptionToken(w http.ResponseWriter, r *http
 	var request CreateSubscriptionTokenRequest
 	if err := decodeOptionalJSON(r.Body, &request); err != nil {
 		writeInvalidRequest(w, "Request body must be valid JSON.")
+		return
+	}
+	if subscriptionTokenExpired(SubscriptionToken{ExpiresAt: request.ExpiresAt}, time.Now()) {
+		writeInvalidRequest(w, "expiresAt must be in the future")
 		return
 	}
 	if _, err := h.accounts.GetAccountByID(r.Context(), accountID); errors.Is(err, pgx.ErrNoRows) {
@@ -396,23 +410,53 @@ func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionSer
 }
 
 func (h *Handler) subscriptionURL(r *http.Request, token string) string {
-	scheme := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
-	if scheme == "" {
-		if r.TLS != nil {
-			scheme = "https"
-		} else {
-			scheme = "http"
-		}
-	}
-	host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
-	if host == "" {
-		host = r.Host
-	}
 	return (&url.URL{
-		Scheme: scheme,
-		Host:   host,
+		Scheme: subscriptionScheme(r),
+		Host:   subscriptionHost(r),
 		Path:   "/api/v1/subscriptions/" + token,
 	}).String()
+}
+
+func subscriptionScheme(r *http.Request) string {
+	scheme := strings.ToLower(firstForwardedValue(r.Header.Get("X-Forwarded-Proto")))
+	if scheme == "https" || scheme == "http" {
+		return scheme
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func subscriptionHost(r *http.Request) string {
+	if host := firstForwardedValue(r.Header.Get("X-Forwarded-Host")); validURLHost(host) {
+		return host
+	}
+	if host := strings.TrimSpace(r.Host); validURLHost(host) {
+		return host
+	}
+	return "localhost"
+}
+
+func firstForwardedValue(value string) string {
+	value = strings.TrimSpace(value)
+	if comma := strings.Index(value, ","); comma >= 0 {
+		value = value[:comma]
+	}
+	return strings.TrimSpace(value)
+}
+
+func validURLHost(host string) bool {
+	if host == "" || strings.ContainsAny(host, "/\\@") {
+		return false
+	}
+	for _, r := range host {
+		if r <= 31 || r == 127 {
+			return false
+		}
+	}
+	parsed, err := url.Parse("//" + host)
+	return err == nil && parsed.Host == host && parsed.Hostname() != "" && parsed.Path == ""
 }
 
 func validateCreateInput(input CreateAccountInput) error {
@@ -439,6 +483,10 @@ func validateUpdateInput(input UpdateAccountInput) error {
 		return errors.New("maxDevices must be greater than zero")
 	}
 	return nil
+}
+
+func subscriptionTokenExpired(token SubscriptionToken, now time.Time) bool {
+	return token.ExpiresAt != nil && !token.ExpiresAt.After(now)
 }
 
 func decodeOptionalJSON(body io.Reader, target any) error {
