@@ -3,6 +3,7 @@ package vpnaccounts
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -208,7 +209,7 @@ func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, toke
 }
 
 func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id string) (SubscriptionProfile, error) {
-	return scanSubscriptionProfile(r.pool.QueryRow(ctx, `
+	profile, err := scanSubscriptionProfile(r.pool.QueryRow(ctx, `
 		SELECT
 			a.id::text,
 			a.display_name,
@@ -236,6 +237,21 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 		LEFT JOIN servers s ON s.id = a.server_id
 		WHERE a.id = $1::uuid
 	`, id))
+	if err != nil {
+		return SubscriptionProfile{}, err
+	}
+	if profile.Account.ServerID == "" {
+		return profile, nil
+	}
+
+	routingProfile, err := r.getSubscriptionRoutingProfile(ctx, profile.Account.ServerID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return SubscriptionProfile{}, err
+	}
+	if err == nil {
+		profile.RoutingProfile = &routingProfile
+	}
+	return profile, nil
 }
 
 func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) error {
@@ -245,6 +261,76 @@ func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) e
 		WHERE id = $1::uuid
 	`, id)
 	return err
+}
+
+func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, serverID string) (RoutingProfile, error) {
+	profile, err := scanRoutingProfile(r.pool.QueryRow(ctx, `
+		SELECT
+			p.id::text,
+			p.name,
+			COALESCE(p.description, ''),
+			p.is_default
+		FROM routing_profiles p
+		WHERE p.id = COALESCE(
+			(
+				SELECT srp.routing_profile_id
+				FROM server_routing_profiles srp
+				WHERE srp.server_id = $1::uuid
+			),
+			(
+				SELECT rp.id
+				FROM routing_profiles rp
+				WHERE rp.is_default = TRUE
+				ORDER BY rp.created_at ASC
+				LIMIT 1
+			)
+		)
+		LIMIT 1
+	`, serverID))
+	if err != nil {
+		return RoutingProfile{}, err
+	}
+
+	rules, err := r.listRoutingProfileRules(ctx, profile.ID)
+	if err != nil {
+		return RoutingProfile{}, err
+	}
+	profile.Rules = rules
+	return profile, nil
+}
+
+func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID string) ([]RoutingProfileRule, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			id::text,
+			name,
+			priority,
+			action,
+			domains,
+			domain_suffixes,
+			domain_keywords,
+			ip_cidrs,
+			geo_sites,
+			geo_ips
+		FROM routing_profile_rules
+		WHERE routing_profile_id = $1::uuid
+		  AND enabled = TRUE
+		ORDER BY priority ASC, created_at ASC
+	`, profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	rules := make([]RoutingProfileRule, 0)
+	for rows.Next() {
+		rule, err := scanRoutingProfileRule(rows)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
 }
 
 const accountSelect = `
@@ -407,6 +493,40 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		}
 	}
 	return profile, nil
+}
+
+func scanRoutingProfile(row scanner) (RoutingProfile, error) {
+	var profile RoutingProfile
+	err := row.Scan(
+		&profile.ID,
+		&profile.Name,
+		&profile.Description,
+		&profile.IsDefault,
+	)
+	if err != nil {
+		return RoutingProfile{}, err
+	}
+	return profile, nil
+}
+
+func scanRoutingProfileRule(row scanner) (RoutingProfileRule, error) {
+	var rule RoutingProfileRule
+	err := row.Scan(
+		&rule.ID,
+		&rule.Name,
+		&rule.Priority,
+		&rule.Action,
+		&rule.Domains,
+		&rule.DomainSuffixes,
+		&rule.DomainKeywords,
+		&rule.IPCIDRs,
+		&rule.GeoSites,
+		&rule.GeoIPs,
+	)
+	if err != nil {
+		return RoutingProfileRule{}, err
+	}
+	return rule, nil
 }
 
 func stringValue(value *string) string {
