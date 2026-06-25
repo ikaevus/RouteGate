@@ -19,10 +19,10 @@ const (
 )
 
 type SingBoxClientConfig struct {
-	Log       *SingBoxLog        `json:"log,omitempty"`
-	Inbounds  []SingBoxInbound   `json:"inbounds"`
-	Outbounds []SingBoxOutbound  `json:"outbounds"`
-	Route     SingBoxRoute       `json:"route"`
+	Log       *SingBoxLog       `json:"log,omitempty"`
+	Inbounds  []SingBoxInbound  `json:"inbounds"`
+	Outbounds []SingBoxOutbound `json:"outbounds"`
+	Route     SingBoxRoute      `json:"route"`
 }
 
 type SingBoxLog struct {
