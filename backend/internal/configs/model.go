@@ -63,19 +63,20 @@ type ValidationResult struct {
 }
 
 type ServerConfigInfo struct {
-	ID          string
-	Name        string
-	Hostname    string
-	PublicIP    string
-	PrivateIP   string
-	Location    string
-	Provider    string
-	Status      string
-	VLESSPort   int
-	VLESSFlow   string
-	VLESSNetwork string
-	Agent       *AgentConfigInfo
-	VPNAccounts []VPNAccountConfigInfo
+	ID             string
+	Name           string
+	Hostname       string
+	PublicIP       string
+	PrivateIP      string
+	Location       string
+	Provider       string
+	Status         string
+	VLESSPort      int
+	VLESSFlow      string
+	VLESSNetwork   string
+	Agent          *AgentConfigInfo
+	VPNAccounts    []VPNAccountConfigInfo
+	RoutingProfile *RoutingProfileConfigInfo
 }
 
 type AgentConfigInfo struct {
@@ -98,13 +99,35 @@ type VPNAccountConfigInfo struct {
 	TrafficEnforcementStatus string
 }
 
+type RoutingProfileConfigInfo struct {
+	ID          string
+	Name        string
+	Description string
+	IsDefault   bool
+	Rules       []RoutingProfileRuleConfigInfo
+}
+
+type RoutingProfileRuleConfigInfo struct {
+	ID             string
+	Name           string
+	Priority       int
+	Action         string
+	Domains        []string
+	DomainSuffixes []string
+	DomainKeywords []string
+	IPCIDRs        []string
+	GeoSites       []string
+	GeoIPs         []string
+}
+
 type RenderedConfig struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	Server        ConfigServer       `json:"server"`
-	Agent         *ConfigAgent       `json:"agent,omitempty"`
-	VPNAccounts   []ConfigVPNAccount `json:"vpnAccounts"`
-	SingBox       SingBoxConfig      `json:"singBox"`
-	Metadata      ConfigMetadata     `json:"metadata"`
+	SchemaVersion  string                `json:"schemaVersion"`
+	Server         ConfigServer          `json:"server"`
+	Agent          *ConfigAgent          `json:"agent,omitempty"`
+	VPNAccounts    []ConfigVPNAccount    `json:"vpnAccounts"`
+	RoutingProfile *ConfigRoutingProfile `json:"routingProfile,omitempty"`
+	SingBox        SingBoxConfig         `json:"singBox"`
+	Metadata       ConfigMetadata        `json:"metadata"`
 }
 
 type ConfigServer struct {
@@ -133,6 +156,28 @@ type ConfigVPNAccount struct {
 	DisplayName string `json:"displayName"`
 	Status      string `json:"status"`
 	VLESSUUID   string `json:"vlessUuid"`
+}
+
+type ConfigRoutingProfile struct {
+	ID          string                     `json:"id"`
+	Name        string                     `json:"name"`
+	Description string                     `json:"description,omitempty"`
+	IsDefault   bool                       `json:"isDefault"`
+	Rules       []ConfigRoutingProfileRule `json:"rules"`
+}
+
+type ConfigRoutingProfileRule struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Priority       int      `json:"priority"`
+	Action         string   `json:"action"`
+	Outbound       string   `json:"outbound"`
+	Domains        []string `json:"domains,omitempty"`
+	DomainSuffixes []string `json:"domainSuffixes,omitempty"`
+	DomainKeywords []string `json:"domainKeywords,omitempty"`
+	IPCIDRs        []string `json:"ipCidrs,omitempty"`
+	GeoSites       []string `json:"geoSites,omitempty"`
+	GeoIPs         []string `json:"geoIps,omitempty"`
 }
 
 type ConfigMetadata struct {
