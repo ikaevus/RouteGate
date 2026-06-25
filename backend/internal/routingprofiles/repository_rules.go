@@ -28,7 +28,7 @@ func (r *Repository) ListRules(ctx context.Context, profileID string) ([]Routing
 }
 
 func (r *Repository) CreateRule(ctx context.Context, input CreateRoutingProfileRuleInput) (RoutingProfileRule, error) {
-	return scanRoutingProfileRule(r.pool.QueryRow(ctx, `
+	rule, err := scanRoutingProfileRule(r.pool.QueryRow(ctx, `
 		INSERT INTO routing_profile_rules (
 			routing_profile_id, name, priority, action, domains, domain_suffixes,
 			domain_keywords, ip_cidrs, geo_sites, geo_ips, enabled
@@ -51,10 +51,14 @@ func (r *Repository) CreateRule(ctx context.Context, input CreateRoutingProfileR
 		input.GeoIPs,
 		input.Enabled,
 	))
+	if err != nil {
+		return RoutingProfileRule{}, mapRuleWriteError(err)
+	}
+	return rule, nil
 }
 
 func (r *Repository) UpdateRule(ctx context.Context, profileID string, ruleID string, input UpdateRoutingProfileRuleInput) (RoutingProfileRule, error) {
-	return scanRoutingProfileRule(r.pool.QueryRow(ctx, `
+	rule, err := scanRoutingProfileRule(r.pool.QueryRow(ctx, `
 		UPDATE routing_profile_rules
 		SET
 			name = CASE WHEN $3 THEN $4 ELSE name END,
@@ -87,6 +91,10 @@ func (r *Repository) UpdateRule(ctx context.Context, profileID string, ruleID st
 		input.GeoIPs != nil, stringSliceValue(input.GeoIPs),
 		input.Enabled != nil, boolValue(input.Enabled),
 	))
+	if err != nil {
+		return RoutingProfileRule{}, mapRuleWriteError(err)
+	}
+	return rule, nil
 }
 
 func (r *Repository) DeleteRule(ctx context.Context, profileID string, ruleID string) error {
@@ -98,4 +106,14 @@ func (r *Repository) DeleteRule(ctx context.Context, profileID string, ruleID st
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func mapRuleWriteError(err error) error {
+	if isForeignKeyViolation(err) {
+		return pgx.ErrNoRows
+	}
+	if isCheckViolation(err) {
+		return ErrRoutingProfileRuleInvalid
+	}
+	return err
 }
