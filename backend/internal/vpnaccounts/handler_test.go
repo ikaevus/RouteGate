@@ -123,8 +123,16 @@ func (f *fakeAccountRepository) GetSubscriptionProfileByAccountID(_ context.Cont
 		return f.profile, nil
 	}
 	return SubscriptionProfile{
-		Account: Account{ID: id, DisplayName: "Demo", Status: StatusActive, ServerID: "server-1"},
-		Server:  &SubscriptionServer{ID: "server-1", Name: "Finland", PublicIP: "203.0.113.10", Location: "Finland", Provider: "Demo"},
+		Account: Account{ID: id, DisplayName: "Demo", Status: StatusActive, ServerID: "server-1", VLESSUUID: testVLESSUUID},
+		Server: &SubscriptionServer{
+			ID:           "server-1",
+			Name:         "Finland",
+			PublicIP:     "203.0.113.10",
+			Location:     "Finland",
+			Provider:     "Demo",
+			VLESSPort:    defaultSingBoxServerPort,
+			VLESSNetwork: "tcp",
+		},
 	}, nil
 }
 
@@ -312,11 +320,58 @@ func TestGetPublicSubscriptionMarksTokenUsed(t *testing.T) {
 	if len(config.Outbounds) == 0 {
 		t.Fatal("expected sing-box outbounds")
 	}
-	if config.Outbounds[0].Type != "vless" || config.Outbounds[0].Server != "203.0.113.10" || config.Outbounds[0].ServerPort != 443 {
+	if config.Outbounds[0].Type != "vless" || config.Outbounds[0].Server != "203.0.113.10" || config.Outbounds[0].ServerPort != 443 || config.Outbounds[0].UUID != testVLESSUUID {
 		t.Fatalf("unexpected sing-box vless outbound: %+v", config.Outbounds[0])
 	}
 	if config.Route.Final != "routegate-out" {
 		t.Fatalf("expected route final routegate-out, got %q", config.Route.Final)
+	}
+}
+
+func TestGetPublicSubscriptionIncludesRealityCredentials(t *testing.T) {
+	repo := &fakeAccountRepository{
+		findToken: SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", Status: SubscriptionTokenStatusActive},
+		profile: SubscriptionProfile{
+			Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusActive, ServerID: "server-1", VLESSUUID: testVLESSUUID},
+			Server: &SubscriptionServer{
+				ID:                "server-1",
+				Name:              "Finland",
+				Hostname:          "fi.routegate.example",
+				VLESSPort:         443,
+				VLESSFlow:         "xtls-rprx-vision",
+				VLESSNetwork:      "tcp",
+				RealityPublicKey:  "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0",
+				RealityShortID:    "0123456789abcdef",
+				RealityServerName: "www.example.com",
+			},
+		},
+	}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/fixed-token", nil)
+	request.SetPathValue("token", "fixed-token")
+	response := httptest.NewRecorder()
+
+	handler.GetPublicSubscription(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+	var body PublicSubscriptionResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Config.Rendered == nil {
+		t.Fatal("expected rendered sing-box config")
+	}
+	vless := body.Config.Rendered.Content.Outbounds[0]
+	if vless.Flow != "xtls-rprx-vision" {
+		t.Fatalf("expected VLESS flow, got %q", vless.Flow)
+	}
+	if vless.TLS == nil || vless.TLS.Reality == nil {
+		t.Fatalf("expected Reality TLS config, got %+v", vless.TLS)
+	}
+	if vless.TLS.ServerName != "www.example.com" || vless.TLS.Reality.PublicKey != "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0" || vless.TLS.Reality.ShortID != "0123456789abcdef" {
+		t.Fatalf("unexpected Reality TLS config: %+v", vless.TLS)
 	}
 }
 
