@@ -36,6 +36,7 @@ type Handler struct {
 	servers                   serverRepository
 	registrationTokens        registrationTokenRepository
 	generateRegistrationToken func() (string, error)
+	generateRealityKeypair    func() (RealityKeypair, error)
 	now                       func() time.Time
 }
 
@@ -47,6 +48,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 		servers:                   repository,
 		registrationTokens:        agents.NewRepository(pool),
 		generateRegistrationToken: agents.GenerateRegistrationToken,
+		generateRealityKeypair:    GenerateRealityKeypair,
 		now:                       time.Now,
 	}
 }
