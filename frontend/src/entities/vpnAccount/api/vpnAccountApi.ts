@@ -1,4 +1,4 @@
-import { apiGet } from '../../../shared/api/client';
+import { apiGet, apiPost } from '../../../shared/api/client';
 
 export interface VpnAccount {
   id: string;
@@ -35,6 +35,53 @@ export interface VpnAccountCredentialsResponse {
   };
 }
 
+export interface SubscriptionTokenResponse {
+  vpnAccountId: string;
+  subscriptionToken: string;
+  subscriptionUrl: string;
+  expiresAt?: string | null;
+}
+
+export interface SubscriptionQRCodeResponse {
+  vpnAccountId: string;
+  subscriptionUrl: string;
+  qrText: string;
+  format: string;
+}
+
+export interface PublicSubscriptionResponse {
+  status: string;
+  format: string;
+  generatedAt: string;
+  vpnAccountId: string;
+  account: {
+    id: string;
+    displayName: string;
+    status: string;
+    expiresAt?: string | null;
+    maxDevices?: number | null;
+  };
+  server?: {
+    id: string;
+    name: string;
+    hostname?: string;
+    publicIp?: string;
+    endpoint?: string;
+    location?: string;
+    provider?: string;
+  } | null;
+  config: {
+    type: string;
+    format: string;
+    status: string;
+    message?: string;
+    rendered?: {
+      format: string;
+      content: Record<string, unknown>;
+    } | null;
+  };
+}
+
 export function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
   return apiGet<ListVpnAccountsResponse>('/api/v1/vpn-accounts');
 }
@@ -44,5 +91,40 @@ export function getVpnAccountCredentials(
 ): Promise<VpnAccountCredentialsResponse> {
   return apiGet<VpnAccountCredentialsResponse>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/credentials`,
+  );
+}
+
+export function createVpnAccountSubscriptionToken(
+  vpnAccountId: string,
+): Promise<SubscriptionTokenResponse> {
+  return apiPost<undefined, SubscriptionTokenResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/subscription-token`,
+  );
+}
+
+export function rotateVpnAccountSubscriptionToken(
+  vpnAccountId: string,
+): Promise<SubscriptionTokenResponse> {
+  return apiPost<undefined, SubscriptionTokenResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/subscription-token/rotate`,
+  );
+}
+
+export function getVpnAccountSubscriptionQRCode(
+  vpnAccountId: string,
+  subscriptionToken: string,
+): Promise<SubscriptionQRCodeResponse> {
+  const params = new URLSearchParams({ token: subscriptionToken });
+
+  return apiGet<SubscriptionQRCodeResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/qr?${params.toString()}`,
+  );
+}
+
+export function getPublicSubscription(
+  subscriptionToken: string,
+): Promise<PublicSubscriptionResponse> {
+  return apiGet<PublicSubscriptionResponse>(
+    `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
   );
 }

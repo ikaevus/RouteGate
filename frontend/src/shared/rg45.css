@@ -65,7 +65,8 @@
   border-color: rgba(96, 165, 250, 0.28);
 }
 
-.credentials-panel {
+.credentials-panel,
+.subscription-panel {
   align-self: start;
 }
 
@@ -78,10 +79,63 @@
   padding: 4px 7px;
 }
 
+.subscription-result,
+.qr-payload-panel,
+.client-config-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.subscription-result {
+  margin-top: 4px;
+}
+
+.copyable-value {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.copyable-value code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.qr-payload-panel,
+.client-config-preview {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 14px;
+}
+
+.qr-payload-panel .small-button {
+  justify-self: start;
+}
+
+.client-config-header {
+  margin-bottom: 0;
+}
+
+.subscription-meta-grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.subscription-meta-grid .detail-row {
+  grid-template-columns: 150px minmax(0, 1fr);
+}
+
+.client-config-code {
+  max-height: 520px;
+}
+
 @media (max-width: 980px) {
   .protocol-settings-grid,
   .protocol-server-table-row,
-  .vpn-accounts-table-row {
+  .vpn-accounts-table-row,
+  .subscription-meta-grid {
     grid-template-columns: 1fr;
   }
 
