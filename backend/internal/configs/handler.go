@@ -116,6 +116,28 @@ func (h *Handler) Apply(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusAccepted, response)
 }
 
+func (h *Handler) ListApplyJobs(w http.ResponseWriter, r *http.Request) {
+	items, err := h.service.ListApplyJobs(r.Context(), r.PathValue("server_id"))
+	if err != nil {
+		h.databaseError(w, "list config apply jobs", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ListConfigApplyJobsResponse{Items: items})
+}
+
+func (h *Handler) GetApplyJob(w http.ResponseWriter, r *http.Request) {
+	job, err := h.service.GetApplyJob(r.Context(), r.PathValue("server_id"), r.PathValue("job_id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeConfigApplyJobNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get config apply job", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, job)
+}
+
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
 	h.logger.Error(operation+" failed", "error", err)
 	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Database operation failed."))
@@ -131,4 +153,8 @@ func writeServerNotFound(w http.ResponseWriter) {
 
 func writeConfigVersionNotFound(w http.ResponseWriter) {
 	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("config_version_not_found", "Config version not found."))
+}
+
+func writeConfigApplyJobNotFound(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("config_apply_job_not_found", "Config apply job not found."))
 }

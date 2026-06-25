@@ -66,6 +66,26 @@ func (a Applier) Apply(stagedPath, configVersionID string) (ApplyResult, error) 
 	return result, nil
 }
 
+func (a Applier) Rollback(backupPath string) error {
+	backupPath = strings.TrimSpace(backupPath)
+	if backupPath == "" {
+		return fmt.Errorf("backup config path is required")
+	}
+	if strings.TrimSpace(a.activePath) == "" {
+		return fmt.Errorf("active config path is required")
+	}
+	if _, err := os.Stat(backupPath); err != nil {
+		return fmt.Errorf("read backup config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(a.activePath), 0o750); err != nil {
+		return fmt.Errorf("create active config dir: %w", err)
+	}
+	if err := copyFileAtomic(backupPath, a.activePath, 0o600); err != nil {
+		return fmt.Errorf("restore backup config: %w", err)
+	}
+	return nil
+}
+
 func copyFileAtomic(src, dst string, perm os.FileMode) error {
 	input, err := os.Open(src)
 	if err != nil {
