@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,7 +96,7 @@ func (h *Handler) ReportUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrVPNAccountNotFound) {
-		writeInvalidRequest(w, "usage report references an unknown VPN account")
+		writeInvalidRequest(w, "usage report references an unknown or foreign VPN account")
 		return
 	}
 	if err != nil {
@@ -217,26 +218,7 @@ func bearerToken(header string) (string, bool) {
 }
 
 func eventError(index int, message string) string {
-	return "events[" + strconvItoa(index) + "]: " + message
-}
-
-func strconvItoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	negative := value < 0
-	if negative {
-		value = -value
-	}
-	digits := make([]byte, 0, 10)
-	for value > 0 {
-		digits = append([]byte{byte('0' + value%10)}, digits...)
-		value /= 10
-	}
-	if negative {
-		digits = append([]byte{'-'}, digits...)
-	}
-	return string(digits)
+	return "events[" + strconv.Itoa(index) + "]: " + message
 }
 
 func decodeOptionalJSON(body io.Reader, target any) error {
