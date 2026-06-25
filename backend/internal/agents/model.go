@@ -1,6 +1,9 @@
 package agents
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 const (
 	StatusRegistered = "registered"
@@ -8,6 +11,12 @@ const (
 	StatusOffline    = "offline"
 	StatusDisabled   = "disabled"
 	StatusError      = "error"
+)
+
+const (
+	ConfigApplyJobStatusInProgress = "in_progress"
+	ConfigApplyJobStatusSucceeded  = "succeeded"
+	ConfigApplyJobStatusFailed     = "failed"
 )
 
 type Capabilities map[string]any
@@ -31,6 +40,27 @@ type Agent struct {
 	Name     string    `json:"name,omitempty"`
 	Version  string    `json:"version,omitempty"`
 	LastSeen time.Time `json:"lastSeen,omitempty"`
+}
+
+type AgentConfigTask struct {
+	ID              string          `json:"id"`
+	ServerID        string          `json:"serverId"`
+	AgentID         string          `json:"agentId"`
+	ConfigVersionID string          `json:"configVersionId"`
+	Action          string          `json:"action"`
+	Status          string          `json:"status"`
+	RenderedConfig  json.RawMessage `json:"renderedConfig"`
+	ConfigHash      string          `json:"configHash"`
+	CreatedAt       time.Time       `json:"createdAt"`
+	StartedAt       *time.Time      `json:"startedAt,omitempty"`
+}
+
+type CompleteConfigTaskInput struct {
+	TokenHash     string
+	JobID         string
+	Status        string
+	ErrorMessage  string
+	ResultPayload map[string]any
 }
 
 type CreateOrReplaceAgentInput struct {

@@ -26,6 +26,11 @@ type fakeAgentAPIRepository struct {
 	heartbeatInput     UpdateAgentHeartbeatInput
 	heartbeatAgent     Agent
 	heartbeatErr       error
+	claimedTokenHash   string
+	claimedTask        *AgentConfigTask
+	claimErr           error
+	completeInput      CompleteConfigTaskInput
+	completeErr        error
 }
 
 func (f *fakeAgentAPIRepository) ConsumeValidRegistrationTokenByHash(_ context.Context, hash string) (ServerRegistrationToken, error) {
@@ -53,6 +58,16 @@ func (f *fakeAgentAPIRepository) ActivateServer(_ context.Context, serverID stri
 func (f *fakeAgentAPIRepository) UpdateAgentHeartbeat(_ context.Context, input UpdateAgentHeartbeatInput) (Agent, error) {
 	f.heartbeatInput = input
 	return f.heartbeatAgent, f.heartbeatErr
+}
+
+func (f *fakeAgentAPIRepository) ClaimNextConfigTask(_ context.Context, tokenHash string) (*AgentConfigTask, error) {
+	f.claimedTokenHash = tokenHash
+	return f.claimedTask, f.claimErr
+}
+
+func (f *fakeAgentAPIRepository) CompleteConfigTask(_ context.Context, input CompleteConfigTaskInput) error {
+	f.completeInput = input
+	return f.completeErr
 }
 
 func TestRegisterRejectsMissingRegistrationToken(t *testing.T) {
@@ -233,6 +248,54 @@ func TestHeartbeatAcceptsValidBearerToken(t *testing.T) {
 	}
 	if !payload.OK || payload.AgentID != "agent-id" || payload.ServerID != "server-id" || payload.ServerStatus != activeServerStatus {
 		t.Fatalf("unexpected response: %+v", payload)
+	}
+}
+
+func TestNextTaskAcceptsValidBearerToken(t *testing.T) {
+	repository := &fakeAgentAPIRepository{claimedTask: &AgentConfigTask{ID: "job-id", ServerID: "server-id", AgentID: "agent-id", ConfigVersionID: "version-id", Action: "apply", Status: ConfigApplyJobStatusInProgress}}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/agent/tasks/next", nil)
+	request.Header.Set("Authorization", "Bearer rg_agent_valid")
+	response := httptest.NewRecorder()
+
+	handler.NextTask(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if repository.claimedTokenHash != HashToken("rg_agent_valid") {
+		t.Fatalf("claimed token hash = %q, want hashed bearer token", repository.claimedTokenHash)
+	}
+	var payload AgentNextTaskResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.Task == nil || payload.Task.ID != "job-id" {
+		t.Fatalf("unexpected task response: %+v", payload)
+	}
+}
+
+func TestCompleteTaskAcceptsSucceededResult(t *testing.T) {
+	repository := &fakeAgentAPIRepository{}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/job-id/result", strings.NewReader(`{"status":"succeeded","resultPayload":{"healthcheck":"ok"}}`))
+	request.SetPathValue("job_id", "job-id")
+	request.Header.Set("Authorization", "Bearer rg_agent_valid")
+	response := httptest.NewRecorder()
+
+	handler.CompleteTask(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if repository.completeInput.TokenHash != HashToken("rg_agent_valid") || repository.completeInput.JobID != "job-id" {
+		t.Fatalf("unexpected complete input: %+v", repository.completeInput)
+	}
+	if repository.completeInput.Status != ConfigApplyJobStatusSucceeded {
+		t.Fatalf("status = %q, want succeeded", repository.completeInput.Status)
+	}
+	if repository.completeInput.ResultPayload["healthcheck"] != "ok" {
+		t.Fatalf("result payload = %+v", repository.completeInput.ResultPayload)
 	}
 }
 

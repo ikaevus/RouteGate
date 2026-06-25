@@ -33,6 +33,22 @@ type AgentHeartbeatResponse struct {
 	ServerStatus string `json:"serverStatus"`
 }
 
+type AgentNextTaskResponse struct {
+	Task *AgentConfigTask `json:"task,omitempty"`
+}
+
+type CompleteAgentTaskRequest struct {
+	Status        string         `json:"status"`
+	ErrorMessage  string         `json:"errorMessage,omitempty"`
+	ResultPayload map[string]any `json:"resultPayload,omitempty"`
+}
+
+type CompleteAgentTaskResponse struct {
+	OK     bool   `json:"ok"`
+	TaskID string `json:"taskId"`
+	Status string `json:"status"`
+}
+
 // RegisterAgentRequest and the legacy heartbeat DTOs are retained until the
 // older service layer is removed.
 type RegisterAgentRequest struct {
