@@ -52,15 +52,22 @@ function formatPercent(value?: number | null): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 }
 
-function parseOptionalNumber(value: string, label: string): number | null {
+function parseOptionalNumber(
+  value: string,
+  label: string,
+  options: { allowZero: boolean } = { allowZero: false },
+): number | null {
   const trimmed = value.trim();
   if (trimmed === '') {
     return null;
   }
 
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`${label} must be a non-negative number or empty.`);
+  const isBelowMinimum = options.allowZero ? parsed < 0 : parsed <= 0;
+  if (!Number.isFinite(parsed) || isBelowMinimum) {
+    throw new Error(
+      `${label} must be a ${options.allowZero ? 'non-negative' : 'positive'} number or empty.`,
+    );
   }
 
   return parsed;
@@ -120,6 +127,8 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
 
   const traffic = trafficQuery.data;
   const limit = traffic?.limit;
+  const monthlyLimitBytes = limit?.monthlyLimitBytes;
+  const hasMonthlyLimit = monthlyLimitBytes !== undefined && monthlyLimitBytes !== null;
   const usedPercent = useMemo(() => {
     if (!traffic) {
       return null;
@@ -129,19 +138,19 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
       return limit.usedPercent;
     }
 
-    if (limit?.monthlyLimitBytes) {
-      return (traffic.usage.totalBytes / limit.monthlyLimitBytes) * 100;
+    if (monthlyLimitBytes !== undefined && monthlyLimitBytes !== null && monthlyLimitBytes > 0) {
+      return (traffic.usage.totalBytes / monthlyLimitBytes) * 100;
     }
 
     return null;
-  }, [limit?.monthlyLimitBytes, limit?.usedPercent, traffic]);
+  }, [limit?.usedPercent, monthlyLimitBytes, traffic]);
 
   const progressPercent = Math.min(100, Math.max(0, usedPercent ?? 0));
-  const limitBadge = !limit?.monthlyLimitBytes
+  const limitBadge = !hasMonthlyLimit
     ? { className: 'badge badge-pending', label: 'No limit' }
-    : limit.limitReached
+    : limit?.limitReached
       ? { className: 'badge badge-failed', label: 'Limit reached' }
-      : limit.hardLimitEnabled
+      : limit?.hardLimitEnabled
         ? { className: 'badge badge-in-progress', label: 'Hard limit' }
         : { className: 'badge badge-active', label: 'Soft limit' };
 
@@ -149,7 +158,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
     event.preventDefault();
 
     try {
-      const monthlyLimit = parseOptionalNumber(monthlyLimitGiB, 'Monthly limit');
+      const monthlyLimit = parseOptionalNumber(monthlyLimitGiB, 'Monthly limit', { allowZero: true });
       const speedLimit = parseOptionalNumber(speedLimitMbps, 'Speed limit');
       const parsedResetDay = Number.parseInt(resetDay, 10);
 
@@ -210,8 +219,8 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
               <div>
                 <div className="traffic-limit-title">Monthly limit</div>
                 <p className="panel-subtitle">
-                  {limit?.monthlyLimitBytes
-                    ? `${formatBytes(traffic.usage.totalBytes)} used of ${formatBytes(limit.monthlyLimitBytes)}`
+                  {hasMonthlyLimit
+                    ? `${formatBytes(traffic.usage.totalBytes)} used of ${formatBytes(monthlyLimitBytes)}`
                     : 'No monthly traffic limit is configured for this account.'}
                 </p>
               </div>
