@@ -35,6 +35,13 @@ type RoutingProfileRule struct {
 	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
+type ServerRoutingProfileAssignment struct {
+	ServerID       string          `json:"serverId"`
+	RoutingProfile *RoutingProfile `json:"routingProfile"`
+	CreatedAt      *time.Time      `json:"createdAt,omitempty"`
+	UpdatedAt      *time.Time      `json:"updatedAt,omitempty"`
+}
+
 type ListRoutingProfilesResponse struct {
 	Items []RoutingProfile `json:"items"`
 }
@@ -51,6 +58,10 @@ type UpdateRoutingProfileRequest struct {
 	IsDefault   *bool   `json:"isDefault,omitempty"`
 }
 
+type AssignServerRoutingProfileRequest struct {
+	RoutingProfileID string `json:"routingProfileId"`
+}
+
 type CreateRoutingProfileInput struct {
 	Name        string
 	Description string
@@ -61,6 +72,11 @@ type UpdateRoutingProfileInput struct {
 	Name        *string
 	Description *string
 	IsDefault   *bool
+}
+
+type AssignServerRoutingProfileInput struct {
+	ServerID         string
+	RoutingProfileID string
 }
 
 type CreateRoutingProfileRuleRequest struct {
