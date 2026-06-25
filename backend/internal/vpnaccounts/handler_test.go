@@ -296,11 +296,27 @@ func TestGetPublicSubscriptionMarksTokenUsed(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Format != "routegate.subscription.v1" || body.Config.Status != "pending" {
+	if body.Format != "routegate.subscription.v1" || body.Config.Format != ClientConfigFormat || body.Config.Status != "rendered" {
 		t.Fatalf("unexpected subscription response: %+v", body)
 	}
 	if body.Server == nil || body.Server.Endpoint != "203.0.113.10" {
 		t.Fatalf("expected server endpoint in subscription response, got %+v", body.Server)
+	}
+	if body.Config.Rendered == nil {
+		t.Fatal("expected rendered sing-box config in subscription response")
+	}
+	if body.Config.Rendered.Format != SingBoxClientConfigFormat {
+		t.Fatalf("expected rendered format %q, got %q", SingBoxClientConfigFormat, body.Config.Rendered.Format)
+	}
+	config := body.Config.Rendered.Content
+	if len(config.Outbounds) == 0 {
+		t.Fatal("expected sing-box outbounds")
+	}
+	if config.Outbounds[0].Type != "vless" || config.Outbounds[0].Server != "203.0.113.10" || config.Outbounds[0].ServerPort != 443 {
+		t.Fatalf("unexpected sing-box vless outbound: %+v", config.Outbounds[0])
+	}
+	if config.Route.Final != "routegate-out" {
+		t.Fatalf("expected route final routegate-out, got %q", config.Route.Final)
 	}
 }
 
