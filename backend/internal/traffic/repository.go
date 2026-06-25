@@ -72,6 +72,7 @@ func (r *Repository) ReportUsage(ctx context.Context, tokenHash string, events [
 				$7::jsonb
 			FROM vpn_accounts a
 			WHERE a.id = $3::uuid
+			  AND a.server_id = $1::uuid
 		`, agent.ServerID, agent.ID, event.VPNAccountID, event.RxBytes, event.TxBytes, event.ObservedAt, string(metadataBytes))
 		if err != nil {
 			return TrafficUsageReport{}, err
