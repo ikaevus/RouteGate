@@ -1,0 +1,213 @@
+.portal-app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.16), transparent 30rem),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.2), transparent 34rem),
+    #020617;
+}
+
+.portal-topbar {
+  align-items: center;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(2, 6, 23, 0.86);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 18px 32px;
+}
+
+.portal-brand {
+  align-items: center;
+  display: inline-flex;
+  gap: 12px;
+}
+
+.portal-topnav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.portal-topnav a {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 999px;
+  color: #cbd5e1;
+  padding: 8px 12px;
+}
+
+.portal-topnav a:hover {
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.36);
+  color: #ffffff;
+}
+
+.portal-main {
+  padding: 32px;
+}
+
+.portal-page {
+  max-width: 1280px;
+}
+
+.portal-message,
+.portal-notices {
+  margin-top: 18px;
+}
+
+.portal-notices {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 24px;
+}
+
+.portal-card .badge {
+  vertical-align: middle;
+}
+
+.portal-layout,
+.portal-profile-panels,
+.portal-profile-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.portal-profile-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.portal-profiles-table {
+  min-width: 980px;
+}
+
+.portal-profiles-table-row {
+  grid-template-columns: 1.4fr 0.7fr 0.7fr 1fr 1fr;
+}
+
+.portal-profile-row-link {
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.portal-profile-row-link:hover,
+.portal-profile-row-selected {
+  background: rgba(96, 165, 250, 0.08);
+  border-color: rgba(96, 165, 250, 0.28);
+}
+
+.portal-qr-panel {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.portal-qr-panel .small-button {
+  justify-self: start;
+}
+
+.portal-instructions-panel {
+  margin-top: 24px;
+}
+
+.portal-instructions-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.portal-instruction-buttons,
+.portal-instruction-card {
+  display: grid;
+  gap: 12px;
+}
+
+.portal-instruction-button {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.42);
+  color: #e5e7eb;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+}
+
+.portal-instruction-button:hover,
+.portal-instruction-button-selected {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(96, 165, 250, 0.36);
+}
+
+.portal-instruction-button span {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.portal-instruction-detail {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.32);
+  padding: 18px;
+}
+
+.portal-section-title {
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.portal-step-list,
+.portal-note-list {
+  color: #cbd5e1;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.badge-suspended,
+.badge-expired,
+.badge-no-access {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5 !important;
+}
+
+@media (max-width: 1100px) {
+  .portal-card-grid,
+  .portal-profile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-instructions-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .portal-topbar {
+    align-items: stretch;
+    display: grid;
+    padding: 18px;
+  }
+
+  .portal-main {
+    padding: 20px;
+  }
+
+  .portal-card-grid,
+  .portal-profile-grid,
+  .portal-profiles-table-row {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-profiles-table {
+    min-width: 0;
+  }
+}
