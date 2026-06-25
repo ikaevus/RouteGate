@@ -16,6 +16,8 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 )
 
+const portalAccessPermission = "portal:access"
+
 type portalRepository interface {
 	ListProfilesForUser(context.Context, string) ([]PortalProfile, error)
 	GetProfileForUser(context.Context, string, string) (PortalProfile, error)
@@ -37,9 +39,8 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := activePortalUserFromRequest(w, r)
 	if !ok {
-		writeUnauthorized(w)
 		return
 	}
 
@@ -47,9 +48,8 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := activePortalUserFromRequest(w, r)
 	if !ok {
-		writeUnauthorized(w)
 		return
 	}
 
@@ -63,9 +63,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListProfiles(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := activePortalUserFromRequest(w, r)
 	if !ok {
-		writeUnauthorized(w)
 		return
 	}
 
@@ -186,10 +185,18 @@ func (h *Handler) GetQRCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListInstructions(w http.ResponseWriter, r *http.Request) {
+	if _, ok := activePortalUserFromRequest(w, r); !ok {
+		return
+	}
+
 	httpx.WriteJSON(w, http.StatusOK, InstructionsResponse{Items: instructionPlatforms})
 }
 
 func (h *Handler) GetInstruction(w http.ResponseWriter, r *http.Request) {
+	if _, ok := activePortalUserFromRequest(w, r); !ok {
+		return
+	}
+
 	platform := strings.ToLower(strings.TrimSpace(r.PathValue("platform")))
 	instruction, ok := instructionsByPlatform[platform]
 	if !ok {
@@ -201,9 +208,8 @@ func (h *Handler) GetInstruction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) profileForUser(w http.ResponseWriter, r *http.Request) (PortalProfile, bool) {
-	user, ok := auth.UserFromContext(r.Context())
+	user, ok := activePortalUserFromRequest(w, r)
 	if !ok {
-		writeUnauthorized(w)
 		return PortalProfile{}, false
 	}
 
@@ -218,6 +224,33 @@ func (h *Handler) profileForUser(w http.ResponseWriter, r *http.Request) (Portal
 	}
 
 	return profile, true
+}
+
+func activePortalUserFromRequest(w http.ResponseWriter, r *http.Request) (auth.AuthenticatedUser, bool) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeUnauthorized(w)
+		return auth.AuthenticatedUser{}, false
+	}
+	if user.Status != "active" {
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("portal_user_inactive", "Portal access is available only for active users."))
+		return auth.AuthenticatedUser{}, false
+	}
+	if !hasPermission(user, portalAccessPermission) {
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("forbidden", "Required permission is missing."))
+		return auth.AuthenticatedUser{}, false
+	}
+
+	return user, true
+}
+
+func hasPermission(user auth.AuthenticatedUser, permission string) bool {
+	for _, p := range user.Permissions {
+		if p == permission {
+			return true
+		}
+	}
+	return false
 }
 
 func buildDashboard(profiles []PortalProfile) PortalDashboard {
