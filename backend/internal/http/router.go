@@ -13,6 +13,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/health"
 	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
+	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
 	"github.com/ikaevus/routegate/backend/internal/traffic"
 	"github.com/ikaevus/routegate/backend/internal/users"
@@ -32,6 +33,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	rolesHandler := roles.NewHandler(logger, pool)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
+	routingProfilesHandler := routingprofiles.NewHandler(logger, pool)
 	portalHandler := portal.NewHandler(logger, pool)
 	authn := auth.Middleware(authRepo)
 	portalAuth := func(handler stdhttp.HandlerFunc) stdhttp.Handler {
@@ -77,6 +79,15 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/apply", authn(auth.RequirePermission("configs:apply")(stdhttp.HandlerFunc(configsHandler.Apply))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.ListApplyJobs))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs/{job_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.GetApplyJob))))
+
+	mux.Handle("GET /api/v1/routing-profiles", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.List))))
+	mux.Handle("POST /api/v1/routing-profiles", authn(auth.RequirePermission("routing_profiles:create")(stdhttp.HandlerFunc(routingProfilesHandler.Create))))
+	mux.Handle("GET /api/v1/routing-profiles/{profile_id}", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.Get))))
+	mux.Handle("PATCH /api/v1/routing-profiles/{profile_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.Update))))
+	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}", authn(auth.RequirePermission("routing_profiles:delete")(stdhttp.HandlerFunc(routingProfilesHandler.Delete))))
+	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/rules", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.CreateRule))))
+	mux.Handle("PATCH /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateRule))))
+	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteRule))))
 
 	mux.HandleFunc("GET /api/admin/agents", agentsHandler.List)
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
