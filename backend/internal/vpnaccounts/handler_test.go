@@ -1,0 +1,125 @@
+package vpnaccounts
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type fakeAccountRepository struct {
+	createdInput CreateAccountInput
+	created      Account
+	statusID     string
+	status       string
+	statusResult Account
+	getErr       error
+}
+
+func (f *fakeAccountRepository) CreateAccount(_ context.Context, input CreateAccountInput) (Account, error) {
+	f.createdInput = input
+	if f.created.ID != "" {
+		return f.created, nil
+	}
+	return Account{ID: "account-1", DisplayName: input.DisplayName, Status: input.Status, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+}
+
+func (f *fakeAccountRepository) ListAccounts(context.Context, AccountFilter) ([]Account, error) {
+	return nil, nil
+}
+
+func (f *fakeAccountRepository) GetAccountByID(context.Context, string) (Account, error) {
+	if f.getErr != nil {
+		return Account{}, f.getErr
+	}
+	return Account{}, nil
+}
+
+func (f *fakeAccountRepository) UpdateAccount(context.Context, string, UpdateAccountInput) (Account, error) {
+	return Account{}, nil
+}
+
+func (f *fakeAccountRepository) SetAccountStatus(_ context.Context, id string, status string) (Account, error) {
+	f.statusID = id
+	f.status = status
+	if f.statusResult.ID != "" {
+		return f.statusResult, nil
+	}
+	return Account{ID: id, DisplayName: "Demo", Status: status, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+}
+
+func (f *fakeAccountRepository) DeleteAccount(context.Context, string) error {
+	return nil
+}
+
+func newTestHandler(repo *fakeAccountRepository) *Handler {
+	return &Handler{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		accounts: repo,
+	}
+}
+
+func TestCreateRejectsMissingDisplayName(t *testing.T) {
+	handler := newTestHandler(&fakeAccountRepository{})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/vpn-accounts", strings.NewReader("{\"email\":\"user@example.com\"}"))
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+	}
+}
+
+func TestCreateDefaultsStatusToCreated(t *testing.T) {
+	repo := &fakeAccountRepository{}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/vpn-accounts", strings.NewReader("{\"displayName\":\"Alice\",\"email\":\"alice@example.com\"}"))
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, response.Code)
+	}
+	if repo.createdInput.Status != StatusCreated {
+		t.Fatalf("expected default status %q, got %q", StatusCreated, repo.createdInput.Status)
+	}
+}
+
+func TestSuspendSetsSuspendedStatus(t *testing.T) {
+	repo := &fakeAccountRepository{}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/vpn-accounts/account-1/suspend", nil)
+	request.SetPathValue("id", "account-1")
+	response := httptest.NewRecorder()
+
+	handler.Suspend(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+	if repo.statusID != "account-1" || repo.status != StatusSuspended {
+		t.Fatalf("expected suspended account-1, got id=%q status=%q", repo.statusID, repo.status)
+	}
+}
+
+func TestGetReturnsNotFound(t *testing.T) {
+	repo := &fakeAccountRepository{getErr: pgx.ErrNoRows}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/vpn-accounts/missing", nil)
+	request.SetPathValue("id", "missing")
+	response := httptest.NewRecorder()
+
+	handler.Get(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, response.Code)
+	}
+}
