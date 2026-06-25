@@ -10,6 +10,11 @@ const (
 	StatusRevoked   = "revoked"
 )
 
+const (
+	SubscriptionTokenStatusActive  = "active"
+	SubscriptionTokenStatusRevoked = "revoked"
+)
+
 type Account struct {
 	ID          string     `json:"id"`
 	DisplayName string     `json:"displayName"`
@@ -20,6 +25,32 @@ type Account struct {
 	ServerID    string     `json:"serverId,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
+}
+
+type SubscriptionToken struct {
+	ID           string     `json:"id"`
+	VPNAccountID string     `json:"vpnAccountId"`
+	TokenHash    string     `json:"-"`
+	Status       string     `json:"status"`
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
+	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
+	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+}
+
+type SubscriptionProfile struct {
+	Account Account
+	Server  *SubscriptionServer
+}
+
+type SubscriptionServer struct {
+	ID       string
+	Name     string
+	Hostname string
+	PublicIP string
+	Location string
+	Provider string
 }
 
 type CreateAccountInput struct {
@@ -38,6 +69,12 @@ type UpdateAccountInput struct {
 	ExpiresAt   *time.Time
 	MaxDevices  *int
 	ServerID    *string
+}
+
+type CreateSubscriptionTokenInput struct {
+	VPNAccountID string
+	TokenHash    string
+	ExpiresAt    *time.Time
 }
 
 type AccountFilter struct {
