@@ -36,17 +36,3 @@ CREATE INDEX IF NOT EXISTS idx_traffic_usage_events_server_observed_at
 
 CREATE INDEX IF NOT EXISTS idx_traffic_usage_events_agent_reported_at
     ON traffic_usage_events(agent_id, reported_at DESC);
-
-INSERT INTO permissions (code, name, description)
-VALUES ('traffic:manage', 'traffic:manage', 'Manage VPN traffic limits.')
-ON CONFLICT (code)
-DO UPDATE SET
-    name = EXCLUDED.name,
-    description = EXCLUDED.description;
-
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r, permissions p
-WHERE r.code IN ('super_admin', 'admin')
-  AND p.code = 'traffic:manage'
-ON CONFLICT DO NOTHING;
