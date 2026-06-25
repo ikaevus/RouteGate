@@ -15,6 +15,7 @@ import (
 type protocolSettingsRepository interface {
 	GetProtocolSettings(context.Context, string) (ProtocolSettings, error)
 	UpdateProtocolSettings(context.Context, string, UpdateProtocolSettingsInput) (ProtocolSettings, error)
+	UpdateRealityKeypair(context.Context, string, UpdateRealityKeypairInput) (ProtocolSettings, error)
 }
 
 func (h *Handler) GetProtocolSettings(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +80,36 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	}
 	if err != nil {
 		h.databaseError(w, "update protocol settings", err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
+}
+
+func (h *Handler) GenerateRealityKeypair(w http.ResponseWriter, r *http.Request) {
+	repository, ok := h.protocolSettingsRepository()
+	if !ok {
+		h.databaseError(w, "get protocol settings repository", errors.New("protocol settings repository is unavailable"))
+		return
+	}
+
+	keypair, err := h.generateRealityKeypair()
+	if err != nil {
+		h.logger.Error("generate Reality keypair failed", "server_id", r.PathValue("server_id"), "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("keypair_generation_failed", "Failed to generate Reality keypair."))
+		return
+	}
+
+	settings, err := repository.UpdateRealityKeypair(r.Context(), r.PathValue("server_id"), UpdateRealityKeypairInput{
+		PrivateKey: keypair.PrivateKey,
+		PublicKey:  keypair.PublicKey,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "update Reality keypair", err)
 		return
 	}
 

@@ -216,6 +216,7 @@ func testHandler(servers serverRepository, tokens registrationTokenRepository) *
 		servers:                   servers,
 		registrationTokens:        tokens,
 		generateRegistrationToken: agents.GenerateRegistrationToken,
+		generateRealityKeypair:    GenerateRealityKeypair,
 		now:                       time.Now,
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 var fakeProtocolSettingsResult ProtocolSettings
 var fakeProtocolSettingsInput UpdateProtocolSettingsInput
+var fakeRealityKeypairInput UpdateRealityKeypairInput
 
 func (f *fakeServerRepository) GetProtocolSettings(context.Context, string) (ProtocolSettings, error) {
 	return fakeProtocolSettingsResult, nil
@@ -39,6 +40,14 @@ func (f *fakeServerRepository) UpdateProtocolSettings(_ context.Context, serverI
 	if input.RealityServerName != nil {
 		result.RealityServerName = *input.RealityServerName
 	}
+	return result, nil
+}
+
+func (f *fakeServerRepository) UpdateRealityKeypair(_ context.Context, serverID string, input UpdateRealityKeypairInput) (ProtocolSettings, error) {
+	fakeRealityKeypairInput = input
+	result := fakeProtocolSettingsResult
+	result.ServerID = serverID
+	result.RealityPublicKey = input.PublicKey
 	return result, nil
 }
 
@@ -122,5 +131,44 @@ func TestUpdateProtocolSettingsRejectsInvalidPort(t *testing.T) {
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+}
+
+func TestGenerateRealityKeypairStoresPrivateKeyAndReturnsOnlyPublicSettings(t *testing.T) {
+	fakeProtocolSettingsResult = ProtocolSettings{
+		ServerID:          "server-id",
+		VLESSPort:         443,
+		VLESSNetwork:      "tcp",
+		RealityShortID:    "0123456789abcdef",
+		RealityServerName: "www.example.com",
+		UpdatedAt:         time.Date(2026, time.June, 25, 13, 0, 0, 0, time.UTC),
+	}
+	fakeRealityKeypairInput = UpdateRealityKeypairInput{}
+	handler := testHandler(&fakeServerRepository{}, &fakeRegistrationTokenRepository{})
+	handler.generateRealityKeypair = func() (RealityKeypair, error) {
+		return RealityKeypair{PrivateKey: "private-key-secret", PublicKey: "public-key"}, nil
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/reality-keypair", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.GenerateRealityKeypair(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if fakeRealityKeypairInput.PrivateKey != "private-key-secret" || fakeRealityKeypairInput.PublicKey != "public-key" {
+		t.Fatalf("unexpected keypair storage input: %+v", fakeRealityKeypairInput)
+	}
+	if strings.Contains(response.Body.String(), "private-key-secret") || strings.Contains(response.Body.String(), "privateKey") {
+		t.Fatalf("response exposed private key: %s", response.Body.String())
+	}
+
+	var payload ProtocolSettingsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload.Reality.Enabled || payload.Reality.PublicKey != "public-key" {
+		t.Fatalf("unexpected Reality response: %+v", payload.Reality)
 	}
 }

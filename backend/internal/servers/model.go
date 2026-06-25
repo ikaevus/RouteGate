@@ -44,6 +44,11 @@ type ProtocolSettings struct {
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
+type RealityKeypair struct {
+	PrivateKey string
+	PublicKey  string
+}
+
 type CreateServerInput struct {
 	Name        string
 	Description string
@@ -71,6 +76,11 @@ type UpdateProtocolSettingsInput struct {
 	RealityPublicKey  *string
 	RealityShortID    *string
 	RealityServerName *string
+}
+
+type UpdateRealityKeypairInput struct {
+	PrivateKey string
+	PublicKey  string
 }
 
 type ServerFilter struct {

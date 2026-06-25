@@ -51,6 +51,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:delete")(stdhttp.HandlerFunc(serversHandler.Delete))))
 	mux.Handle("GET /api/v1/servers/{server_id}/protocol-settings", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(serversHandler.GetProtocolSettings))))
 	mux.Handle("PATCH /api/v1/servers/{server_id}/protocol-settings", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.UpdateProtocolSettings))))
+	mux.Handle("POST /api/v1/servers/{server_id}/protocol-settings/reality-keypair", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.GenerateRealityKeypair))))
 	mux.Handle("POST /api/v1/servers/{server_id}/registration-token", authn(auth.RequirePermission("agents:register")(stdhttp.HandlerFunc(serversHandler.CreateRegistrationToken))))
 	mux.Handle("POST /api/v1/servers/{server_id}/config/render", authn(auth.RequirePermission("configs:render")(stdhttp.HandlerFunc(configsHandler.Render))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.List))))
