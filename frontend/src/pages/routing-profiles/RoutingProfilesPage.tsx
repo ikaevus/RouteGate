@@ -41,6 +41,10 @@ function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : '-';
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
+}
+
 function StatusBadge({ value }: { value: string }) {
   const className = value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
   return <span className={`badge badge-${className}`}>{value}</span>;
@@ -52,6 +56,10 @@ function splitList(value: string): string[] {
 
 function joinList(values?: string[]): string {
   return values?.join('\n') ?? '';
+}
+
+function hasMatcherText(ruleText: Record<string, string>): boolean {
+  return Object.values(ruleText).some((value) => splitList(value).length > 0);
 }
 
 function ruleToForm(rule?: RoutingProfileRule): RuleForm {
@@ -177,6 +185,8 @@ export function RoutingProfilesPage() {
 
   function handleRuleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canSaveRule) return;
+
     saveRuleMutation.mutate({
       ...ruleForm,
       name: ruleForm.name.trim(),
@@ -205,7 +215,10 @@ export function RoutingProfilesPage() {
   const profiles = profilesQuery.data?.items ?? [];
   const selectedProfile = profileQuery.data;
   const rules = selectedProfile?.rules ?? [];
-  const canSaveRule = ruleForm.name.trim() !== '' && Number.isInteger(ruleForm.priority) && ruleForm.priority >= 0;
+  const canSaveRule = ruleForm.name.trim() !== ''
+    && Number.isInteger(ruleForm.priority)
+    && ruleForm.priority >= 0
+    && hasMatcherText(ruleText);
 
   return (
     <section className='page routing-profiles-page'>
@@ -227,8 +240,9 @@ export function RoutingProfilesPage() {
             <button className='small-button' type='submit' disabled={createProfileMutation.isPending}>Create profile</button>
           </div>
 
+          {createProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(createProfileMutation.error, 'Failed to create routing profile.')}</div>}
           {profilesQuery.isLoading && <p className='empty-state'>Loading routing profiles...</p>}
-          {profilesQuery.isError && <div className='form-message form-message-error'>Failed to load routing profiles.</div>}
+          {profilesQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profilesQuery.error, 'Failed to load routing profiles.')}</div>}
           {profiles.length > 0 && (
             <div className='admin-table routing-profiles-table'>
               <div className='admin-table-row admin-table-head routing-profiles-table-row'><span>Profile</span><span>Type</span><span>Updated</span></div>
@@ -239,7 +253,7 @@ export function RoutingProfilesPage() {
 
         {!profileId && <div className='panel'><p className='empty-state'>Select a routing profile to manage rules.</p></div>}
         {profileQuery.isLoading && <p className='empty-state'>Loading selected routing profile...</p>}
-        {profileQuery.isError && <div className='form-message form-message-error'>Failed to load selected routing profile.</div>}
+        {profileQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profileQuery.error, 'Failed to load selected routing profile.')}</div>}
 
         {selectedProfile && (
           <>
@@ -254,7 +268,8 @@ export function RoutingProfilesPage() {
                   <button className='small-button' type='submit' disabled={profileName.trim() === '' || updateProfileMutation.isPending}>Save profile</button>
                 </div>
               </div>
-              {(updateProfileMutation.isError || deleteProfileMutation.isError) && <div className='form-message form-message-error'>Failed to update routing profile.</div>}
+              {updateProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(updateProfileMutation.error, 'Failed to update routing profile.')}</div>}
+              {deleteProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteProfileMutation.error, 'Failed to delete routing profile.')}</div>}
               <div className='routing-profile-form-grid'>
                 <label className='field'><span>Name</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
                 <label className='field'><span>Description</span><input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} /></label>
@@ -266,14 +281,15 @@ export function RoutingProfilesPage() {
               <div className='panel-header'>
                 <div>
                   <div className='panel-title'>{editingRuleId ? 'Edit routing rule' : 'Add routing rule'}</div>
-                  <p className='panel-subtitle'>One value per line or comma-separated. Disabled rules are saved but ignored by rendering.</p>
+                  <p className='panel-subtitle'>One value per line or comma-separated. At least one matcher is required.</p>
                 </div>
                 <div className='table-actions'>
                   {editingRuleId && <button className='small-button' type='button' onClick={resetRuleForm}>Cancel edit</button>}
                   <button className='small-button' type='submit' disabled={!canSaveRule || saveRuleMutation.isPending}>Save rule</button>
                 </div>
               </div>
-              {saveRuleMutation.isError && <div className='form-message form-message-error'>Failed to save routing rule.</div>}
+              {saveRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(saveRuleMutation.error, 'Failed to save routing rule.')}</div>}
+              {!hasMatcherText(ruleText) && <div className='form-message form-message-warning'>Add at least one domain, CIDR, GeoSite, or GeoIP matcher before saving.</div>}
               <div className='routing-rule-form-grid'>
                 <label className='field'><span>Name</span><input value={ruleForm.name} onChange={(event) => setRuleForm((current) => ({ ...current, name: event.target.value }))} /></label>
                 <label className='field'><span>Priority</span><input min='0' type='number' value={ruleForm.priority} onChange={(event) => setRuleForm((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
@@ -292,7 +308,7 @@ export function RoutingProfilesPage() {
 
             <div className='panel admin-table-panel routing-rules-panel'>
               <div className='panel-header'><div><div className='panel-title'>Rules</div><p className='panel-subtitle'>Rules are applied by priority, then creation time.</p></div><div className='status-pill'>{rules.length} rules</div></div>
-              {deleteRuleMutation.isError && <div className='form-message form-message-error'>Failed to delete routing rule.</div>}
+              {deleteRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteRuleMutation.error, 'Failed to delete routing rule.')}</div>}
               {rules.length === 0 ? <p className='empty-state'>No routing rules in this profile yet.</p> : (
                 <div className='admin-table routing-rules-table'>
                   <div className='admin-table-row admin-table-head routing-rules-table-row'><span>Rule</span><span>Priority</span><span>Action</span><span>Status</span><span>Matchers</span><span>Actions</span></div>
