@@ -23,6 +23,11 @@ type fakeRoutingProfileRepository struct {
 	createRuleInput CreateRoutingProfileRuleInput
 	updateRuleInput UpdateRoutingProfileRuleInput
 	deleteRuleID    string
+
+	assignment      ServerRoutingProfileAssignment
+	assignmentErr   error
+	assignInput     AssignServerRoutingProfileInput
+	deletedServerID string
 }
 
 func (f *fakeRoutingProfileRepository) ListProfiles(context.Context) ([]RoutingProfile, error) {
