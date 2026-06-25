@@ -11,17 +11,32 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
+	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
 
 type Runner struct {
-	cfg        config.Config
-	configPath string
-	client     *client.Client
-	logger     *slog.Logger
+	cfg               config.Config
+	configPath        string
+	client            *client.Client
+	logger            *slog.Logger
+	trafficCollector  traffic.Collector
+	trafficTracker    *traffic.DeltaTracker
+	lastTrafficReport time.Time
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
-	return &Runner{cfg: cfg, configPath: configPath, client: client.New(cfg.ManagerURL), logger: logger}
+	runner := &Runner{
+		cfg:              cfg,
+		configPath:       configPath,
+		client:           client.New(cfg.ManagerURL),
+		logger:           logger,
+		trafficCollector: traffic.NoopCollector{},
+		trafficTracker:   traffic.NewDeltaTracker(),
+	}
+	if cfg.TrafficCollectionEnabled {
+		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
+	}
+	return runner
 }
 
 func (r *Runner) Run(ctx context.Context, once bool) error {
@@ -32,13 +47,22 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 		if err := r.sendHeartbeat(ctx); err != nil {
 			return err
 		}
-		return r.processNextTask(ctx)
+		if err := r.processNextTask(ctx); err != nil {
+			return err
+		}
+		if err := r.reportTrafficUsage(ctx); err != nil {
+			r.logger.Warn("report traffic usage failed", "error", err)
+		}
+		return nil
 	}
 	if err := r.sendHeartbeat(ctx); err != nil {
 		r.logger.Warn("heartbeat failed", "error", err)
 	}
 	if err := r.processNextTask(ctx); err != nil {
 		r.logger.Warn("process config task failed", "error", err)
+	}
+	if err := r.reportTrafficUsage(ctx); err != nil {
+		r.logger.Warn("report traffic usage failed", "error", err)
 	}
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval())
 	defer ticker.Stop()
@@ -52,6 +76,9 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 			}
 			if err := r.processNextTask(ctx); err != nil {
 				r.logger.Warn("process config task failed", "error", err)
+			}
+			if err := r.reportTrafficUsage(ctx); err != nil {
+				r.logger.Warn("report traffic usage failed", "error", err)
 			}
 		}
 	}
@@ -87,6 +114,34 @@ func (r *Runner) sendHeartbeat(ctx context.Context) error {
 		return err
 	}
 	r.logger.Info("heartbeat accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "server_status", res.ServerStatus)
+	return nil
+}
+
+func (r *Runner) reportTrafficUsage(ctx context.Context) error {
+	if !r.cfg.TrafficCollectionEnabled {
+		return nil
+	}
+	now := time.Now().UTC()
+	if !r.lastTrafficReport.IsZero() && now.Sub(r.lastTrafficReport) < r.cfg.TrafficCollectionInterval() {
+		return nil
+	}
+	r.lastTrafficReport = now
+
+	snapshots, err := r.trafficCollector.Collect(ctx)
+	if err != nil {
+		return err
+	}
+	usageEvents := r.trafficTracker.BuildUsageEvents(snapshots)
+	if len(usageEvents) == 0 {
+		r.logger.Debug("no traffic usage delta available", "snapshots", len(snapshots))
+		return nil
+	}
+
+	res, err := r.client.ReportTrafficUsage(ctx, r.cfg.AgentToken, usageEvents)
+	if err != nil {
+		return err
+	}
+	r.logger.Info("traffic usage report accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "accepted", res.Accepted)
 	return nil
 }
 

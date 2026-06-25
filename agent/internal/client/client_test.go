@@ -1,0 +1,70 @@
+package client
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/ikaevus/routegate/agent/internal/traffic"
+)
+
+func TestReportTrafficUsageSendsEvents(t *testing.T) {
+	observedAt := time.Date(2026, time.June, 25, 10, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/agent/traffic-usage" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer agent-token" {
+			t.Fatalf("unexpected authorization header: %q", r.Header.Get("Authorization"))
+		}
+
+		var request struct {
+			Events []traffic.UsageEvent `json:"events"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if len(request.Events) != 1 {
+			t.Fatalf("expected one event, got %d", len(request.Events))
+		}
+		if request.Events[0].VPNAccountID != "account-1" || request.Events[0].RxBytes != 128 || request.Events[0].TxBytes != 256 {
+			t.Fatalf("unexpected traffic event: %+v", request.Events[0])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"agentId":"agent-1","serverId":"server-1","accepted":1}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	response, err := client.ReportTrafficUsage(context.Background(), "agent-token", []traffic.UsageEvent{{
+		VPNAccountID: "account-1",
+		RxBytes:      128,
+		TxBytes:      256,
+		ObservedAt:   observedAt,
+	}})
+	if err != nil {
+		t.Fatalf("report traffic usage: %v", err)
+	}
+	if !response.OK || response.Accepted != 1 || response.AgentID != "agent-1" || response.ServerID != "server-1" {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestReportTrafficUsageSkipsEmptyEvents(t *testing.T) {
+	client := New("http://127.0.0.1:1")
+
+	response, err := client.ReportTrafficUsage(context.Background(), "agent-token", nil)
+	if err != nil {
+		t.Fatalf("report empty traffic usage: %v", err)
+	}
+	if !response.OK || response.Accepted != 0 {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
