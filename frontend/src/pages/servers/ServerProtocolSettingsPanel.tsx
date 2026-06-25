@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  generateRealityKeypair,
   getProtocolSettings,
   updateProtocolSettings,
   type UpdateProtocolSettingsRequest,
@@ -81,6 +82,14 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
     },
   });
 
+  const realityKeypairMutation = useMutation({
+    mutationFn: () => generateRealityKeypair(serverId),
+    onSuccess: async (response) => {
+      setForm(toFormState(response));
+      await queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', serverId] });
+    },
+  });
+
   function updateField(field: keyof ProtocolSettingsFormState, value: string) {
     setForm((current) => ({
       ...current,
@@ -98,7 +107,9 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
     Number.isInteger(portNumber) &&
     portNumber >= 1 &&
     portNumber <= 65535 &&
-    !updateSettingsMutation.isPending;
+    !updateSettingsMutation.isPending &&
+    !realityKeypairMutation.isPending;
+  const keypairActionLabel = form.realityPublicKey.trim() === '' ? 'Generate Reality keypair' : 'Rotate Reality keypair';
 
   return (
     <form className="panel protocol-settings-panel" onSubmit={handleSubmit}>
@@ -107,11 +118,22 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           <div className="panel-title">VLESS / Reality protocol settings</div>
           <p className="panel-subtitle">
             Server-side public settings used when rendering account credentials and client configs.
+            Reality private keys are stored server-side and are never displayed here.
           </p>
         </div>
-        <button className="small-button" type="submit" disabled={!canSave}>
-          {updateSettingsMutation.isPending ? 'Saving...' : 'Save settings'}
-        </button>
+        <div className="table-actions">
+          <button
+            className="small-button"
+            type="button"
+            disabled={realityKeypairMutation.isPending || updateSettingsMutation.isPending || !settingsQuery.data}
+            onClick={() => realityKeypairMutation.mutate()}
+          >
+            {realityKeypairMutation.isPending ? 'Generating...' : keypairActionLabel}
+          </button>
+          <button className="small-button" type="submit" disabled={!canSave}>
+            {updateSettingsMutation.isPending ? 'Saving...' : 'Save settings'}
+          </button>
+        </div>
       </div>
 
       {settingsQuery.isLoading && <p className="empty-state">Loading protocol settings...</p>}
@@ -126,8 +148,16 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
         </div>
       )}
 
+      {realityKeypairMutation.isError && (
+        <div className="form-message form-message-error">Failed to generate Reality keypair.</div>
+      )}
+
       {updateSettingsMutation.isSuccess && (
         <div className="form-message">Protocol settings saved.</div>
+      )}
+
+      {realityKeypairMutation.isSuccess && (
+        <div className="form-message">Reality keypair generated. Only the public key is shown.</div>
       )}
 
       {settingsQuery.data && (
@@ -198,6 +228,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           <div className="protocol-settings-meta">
             <span>Protocol: {settingsQuery.data.protocol}</span>
             <span>Reality: {settingsQuery.data.reality.enabled ? 'enabled' : 'disabled'}</span>
+            <span>Private key: server-side only</span>
             <span>Updated: {formatDate(settingsQuery.data.updatedAt)}</span>
           </div>
         </>
