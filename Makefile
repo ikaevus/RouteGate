@@ -63,7 +63,7 @@ db-reset:
 	docker compose -f $(COMPOSE_FILE) down -v
 
 dev-traffic-usage:
-	scripts/dev-traffic-usage.sh "$$VPN_ACCOUNT_ID" "$$RX_BYTES" "$$TX_BYTES" "$${TRAFFIC_USAGE_FILE:-}"
+	bash scripts/dev-traffic-usage.sh "$$VPN_ACCOUNT_ID" "$$RX_BYTES" "$$TX_BYTES" "$${TRAFFIC_USAGE_FILE:-}"
 
 clean:
 	rm -rf frontend/dist
