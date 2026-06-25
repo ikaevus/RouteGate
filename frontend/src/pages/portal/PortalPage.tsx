@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import {
+  generatePortalSubscriptionAccess,
   getPortalDashboard,
   getPortalInstruction,
   getPortalInstructions,
@@ -90,6 +91,7 @@ function InstructionButton({
 
 export function PortalPage() {
   const { profileId } = useParams<{ profileId: string }>();
+  const queryClient = useQueryClient();
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
 
@@ -135,6 +137,18 @@ export function PortalPage() {
     retry: false,
   });
 
+  const subscriptionAccessMutation = useMutation({
+    mutationFn: () => generatePortalSubscriptionAccess(selectedProfile?.id ?? ''),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['portal-profile-subscription', data.subscription.profileId], {
+        subscription: data.subscription,
+      });
+      queryClient.setQueryData(['portal-profile-qr', data.qr.profileId], {
+        qr: data.qr,
+      });
+    },
+  });
+
   const instructionsQuery = useQuery({
     queryKey: ['portal-instructions'],
     queryFn: getPortalInstructions,
@@ -160,6 +174,7 @@ export function PortalPage() {
   const portalUser = meQuery.data?.user;
   const subscription = subscriptionQuery.data?.subscription;
   const qr = qrQuery.data?.qr;
+  const canGenerateSubscription = selectedProfile?.accessStatus === 'active';
 
   const copyToClipboard = async (target: string, value?: string) => {
     if (!value || !navigator.clipboard) {
@@ -308,17 +323,37 @@ export function PortalPage() {
               <div className="panel subscription-panel">
                 <div className="panel-header">
                   <div>
-                    <div className="panel-title">Subscription metadata</div>
+                    <div className="panel-title">Subscription self-service</div>
                     <p className="panel-subtitle">
-                      The portal only displays backend-provided subscription data.
+                      Generate a fresh subscription URL and QR code for this VPN profile.
                     </p>
                   </div>
+                  <button
+                    className="small-button"
+                    type="button"
+                    disabled={!canGenerateSubscription || subscriptionAccessMutation.isPending}
+                    onClick={() => subscriptionAccessMutation.mutate()}
+                  >
+                    {subscriptionAccessMutation.isPending ? 'Generating...' : 'Generate / refresh'}
+                  </button>
                 </div>
 
                 {subscriptionQuery.isLoading && <p className="empty-state">Loading subscription metadata...</p>}
 
                 {subscriptionQuery.isError && (
                   <div className="form-message form-message-error">Failed to load subscription metadata.</div>
+                )}
+
+                {subscriptionAccessMutation.isError && (
+                  <div className="form-message form-message-error">
+                    Failed to generate subscription access. Check that this VPN profile is active.
+                  </div>
+                )}
+
+                {subscriptionAccessMutation.isSuccess && (
+                  <div className="form-message">
+                    Subscription access was generated. Copy the URL or scan the QR code now.
+                  </div>
                 )}
 
                 {subscription && (
@@ -328,6 +363,7 @@ export function PortalPage() {
                         <code>{formatValue(subscription.profileId)}</code>
                       </DetailRow>
                       <DetailRow label="Available">{subscription.available ? 'yes' : 'no'}</DetailRow>
+                      <DetailRow label="Access"><StatusBadge status={subscription.accessStatus} /></DetailRow>
                       <DetailRow label="Format">{formatValue(subscription.format)}</DetailRow>
                       <DetailRow label="Expires at">{formatDate(subscription.expiresAt)}</DetailRow>
                       <DetailRow label="Token rotation required">
@@ -387,6 +423,7 @@ export function PortalPage() {
                         <code>{formatValue(qr.profileId)}</code>
                       </DetailRow>
                       <DetailRow label="Available">{qr.available ? 'yes' : 'no'}</DetailRow>
+                      <DetailRow label="Access"><StatusBadge status={qr.accessStatus} /></DetailRow>
                       <DetailRow label="Format">{formatValue(qr.format)}</DetailRow>
                     </div>
 
