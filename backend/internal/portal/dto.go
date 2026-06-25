@@ -26,6 +26,11 @@ type QRCodeResponse struct {
 	QR PortalQRCode `json:"qr"`
 }
 
+type SubscriptionAccessResponse struct {
+	Subscription PortalSubscription `json:"subscription"`
+	QR           PortalQRCode       `json:"qr"`
+}
+
 type InstructionsResponse struct {
 	Items []InstructionPlatform `json:"items"`
 }
