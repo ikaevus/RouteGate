@@ -1,5 +1,3 @@
-DROP INDEX IF EXISTS idx_vpn_accounts_vless_uuid;
-
 ALTER TABLE vpn_accounts
     DROP CONSTRAINT IF EXISTS vpn_accounts_vless_uuid_unique;
 
