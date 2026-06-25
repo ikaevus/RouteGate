@@ -11,6 +11,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/configs"
 	"github.com/ikaevus/routegate/backend/internal/health"
+	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
 	"github.com/ikaevus/routegate/backend/internal/users"
@@ -29,7 +30,11 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
+	portalHandler := portal.NewHandler(logger, pool)
 	authn := auth.Middleware(authRepo)
+	portalAuth := func(handler stdhttp.HandlerFunc) stdhttp.Handler {
+		return authn(auth.RequirePermission("portal:access")(stdhttp.HandlerFunc(handler)))
+	}
 
 	mux.HandleFunc("GET /api/admin/health", healthHandler.Get)
 	mux.HandleFunc("GET /api/agent/health", healthHandler.Get)
@@ -40,6 +45,15 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/auth/me", authn(stdhttp.HandlerFunc(authHandler.Me)))
 	mux.Handle("POST /api/v1/auth/login", stdhttp.HandlerFunc(authHandler.Login))
 	mux.Handle("POST /api/v1/auth/logout", authn(stdhttp.HandlerFunc(authHandler.Logout)))
+
+	mux.Handle("GET /api/portal/me", portalAuth(portalHandler.Me))
+	mux.Handle("GET /api/portal/dashboard", portalAuth(portalHandler.Dashboard))
+	mux.Handle("GET /api/portal/profiles", portalAuth(portalHandler.ListProfiles))
+	mux.Handle("GET /api/portal/profiles/{id}", portalAuth(portalHandler.GetProfile))
+	mux.Handle("GET /api/portal/profiles/{id}/subscription", portalAuth(portalHandler.GetSubscription))
+	mux.Handle("GET /api/portal/profiles/{id}/qr", portalAuth(portalHandler.GetQRCode))
+	mux.Handle("GET /api/portal/instructions", portalAuth(portalHandler.ListInstructions))
+	mux.Handle("GET /api/portal/instructions/{platform}", portalAuth(portalHandler.GetInstruction))
 
 	mux.HandleFunc("GET /api/admin/servers", serversHandler.LegacyList)
 	mux.HandleFunc("GET /api/admin/servers/{id}", serversHandler.LegacyGet)
