@@ -11,6 +11,8 @@ const (
 
 	singBoxOutboundTag = "routegate-out"
 	singBoxInboundTag  = "mixed-in"
+	singBoxDirectTag   = "direct"
+	singBoxBlockTag    = "block"
 )
 
 const (
@@ -49,9 +51,9 @@ type SingBoxOutbound struct {
 }
 
 type SingBoxTLS struct {
-	Enabled    bool                `json:"enabled"`
-	ServerName string              `json:"server_name,omitempty"`
-	Reality    *SingBoxTLSReality  `json:"reality,omitempty"`
+	Enabled    bool               `json:"enabled"`
+	ServerName string             `json:"server_name,omitempty"`
+	Reality    *SingBoxTLSReality `json:"reality,omitempty"`
 }
 
 type SingBoxTLSReality struct {
@@ -61,7 +63,8 @@ type SingBoxTLSReality struct {
 }
 
 type SingBoxRoute struct {
-	Final string `json:"final"`
+	Rules []map[string]any `json:"rules,omitempty"`
+	Final string           `json:"final"`
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
@@ -110,6 +113,18 @@ func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig
 		vlessOutbound.Flow = flow
 	}
 
+	routeRules, needsBlockOutbound := renderClientRoutingRules(profile.RoutingProfile)
+	outbounds := []SingBoxOutbound{
+		vlessOutbound,
+		{
+			Type: "direct",
+			Tag:  singBoxDirectTag,
+		},
+	}
+	if needsBlockOutbound {
+		outbounds = append(outbounds, SingBoxOutbound{Type: "block", Tag: singBoxBlockTag})
+	}
+
 	return SingBoxClientConfig{
 		Log: &SingBoxLog{
 			Level:     "info",
@@ -123,15 +138,82 @@ func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig
 				ListenPort: defaultMixedListenPort,
 			},
 		},
-		Outbounds: []SingBoxOutbound{
-			vlessOutbound,
-			{
-				Type: "direct",
-				Tag:  "direct",
-			},
+		Outbounds: outbounds,
+		Route: SingBoxRoute{
+			Rules: routeRules,
+			Final: singBoxOutboundTag,
 		},
-		Route: SingBoxRoute{Final: singBoxOutboundTag},
 	}, nil
+}
+
+func renderClientRoutingRules(profile *RoutingProfile) ([]map[string]any, bool) {
+	if profile == nil {
+		return nil, false
+	}
+
+	rules := make([]map[string]any, 0, len(profile.Rules))
+	needsBlockOutbound := false
+	for _, rule := range profile.Rules {
+		outbound := clientRoutingOutboundForAction(rule.Action)
+		if outbound == "" {
+			continue
+		}
+		rendered := singBoxRouteRule(rule, outbound)
+		if len(rendered) == 0 {
+			continue
+		}
+		if outbound == singBoxBlockTag {
+			needsBlockOutbound = true
+		}
+		rules = append(rules, rendered)
+	}
+	return rules, needsBlockOutbound
+}
+
+func clientRoutingOutboundForAction(action string) string {
+	switch strings.TrimSpace(action) {
+	case RoutingActionDirect:
+		return singBoxDirectTag
+	case RoutingActionVPN:
+		return singBoxOutboundTag
+	case RoutingActionBlock:
+		return singBoxBlockTag
+	default:
+		return ""
+	}
+}
+
+func singBoxRouteRule(rule RoutingProfileRule, outbound string) map[string]any {
+	rendered := map[string]any{"outbound": outbound}
+	addStringList(rendered, "domain", rule.Domains)
+	addStringList(rendered, "domain_suffix", rule.DomainSuffixes)
+	addStringList(rendered, "domain_keyword", rule.DomainKeywords)
+	addStringList(rendered, "ip_cidr", rule.IPCIDRs)
+	addStringList(rendered, "geosite", rule.GeoSites)
+	addStringList(rendered, "geoip", rule.GeoIPs)
+	if len(rendered) == 1 {
+		return map[string]any{}
+	}
+	return rendered
+}
+
+func addStringList(target map[string]any, key string, values []string) {
+	cleaned := cleanStrings(values)
+	if len(cleaned) > 0 {
+		target[key] = cleaned
+	}
+}
+
+func cleanStrings(values []string) []string {
+	cleaned := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
 }
 
 func subscriptionVLESSUUID(profile SubscriptionProfile) string {
