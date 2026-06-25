@@ -107,6 +107,20 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, account)
 }
 
+func (h *Handler) GetCredentials(w http.ResponseWriter, r *http.Request) {
+	profile, err := h.accounts.GetSubscriptionProfileByAccountID(r.Context(), r.PathValue("id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeAccountNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get vpn account credentials", err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, adminCredentialsResponse(profile))
+}
+
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	var request UpdateAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -341,6 +355,29 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request, status strin
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, account)
+}
+
+func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentialsResponse {
+	response := VLESSRealityCredentialsResponse{
+		VPNAccountID: profile.Account.ID,
+		Protocol:     "vless",
+		VLESS: AdminVLESSCredentials{
+			UUID:    profile.Credentials.VLESS.UUID,
+			Flow:    profile.Credentials.VLESS.Flow,
+			Network: profile.Credentials.VLESS.Network,
+		},
+		Reality: AdminRealityCredentials{
+			PublicKey:  profile.Credentials.Reality.PublicKey,
+			ShortID:    profile.Credentials.Reality.ShortID,
+			ServerName: profile.Credentials.Reality.ServerName,
+		},
+	}
+	response.Reality.Enabled = response.Reality.PublicKey != ""
+	if profile.Server != nil {
+		response.ServerID = profile.Server.ID
+		response.Endpoint = subscriptionServerEndpoint(profile.Server)
+	}
+	return response
 }
 
 func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionServer {
