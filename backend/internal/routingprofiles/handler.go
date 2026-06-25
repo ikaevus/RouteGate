@@ -185,6 +185,10 @@ func (h *Handler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		writeProfileNotFound(w)
 		return
 	}
+	if errors.Is(err, ErrRoutingProfileRuleInvalid) {
+		writeInvalidRequest(w, "routing profile rule is invalid")
+		return
+	}
 	if err != nil {
 		h.databaseError(w, "create routing profile rule", err)
 		return
@@ -228,6 +232,10 @@ func (h *Handler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	rule, err := h.profiles.UpdateRule(r.Context(), r.PathValue("profile_id"), r.PathValue("rule_id"), input)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeRuleNotFound(w)
+		return
+	}
+	if errors.Is(err, ErrRoutingProfileRuleInvalid) {
+		writeInvalidRequest(w, "routing profile rule is invalid")
 		return
 	}
 	if err != nil {
