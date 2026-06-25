@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/dev-traffic-usage.sh <vpn-account-id> <rx-bytes> <tx-bytes> [traffic-file]
+  bash scripts/dev-traffic-usage.sh <vpn-account-id> <rx-bytes> <tx-bytes> [traffic-file]
 
 Writes a RouteGate Agent file-collector traffic counter payload for local development.
 The counters are absolute values. Keep the Agent process running and increase these
@@ -15,8 +15,8 @@ Environment:
                               Defaults to /tmp/routegate-dev-traffic-usage.json.
 
 Example:
-  scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1000000 2000000
-  scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1500000 2600000
+  bash scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1000000 2000000
+  bash scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1500000 2600000
 EOF
 }
 
