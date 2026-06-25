@@ -13,7 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/artuazh/routegate/backend/internal/agents"
+	"github.com/ikaevus/routegate/backend/internal/agents"
 )
 
 type fakeServerRepository struct {

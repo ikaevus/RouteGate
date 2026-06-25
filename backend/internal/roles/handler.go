@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/artuazh/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
 type Handler struct {

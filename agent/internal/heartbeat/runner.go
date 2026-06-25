@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/artuazh/routegate/agent/internal/client"
-	"github.com/artuazh/routegate/agent/internal/config"
-	"github.com/artuazh/routegate/agent/internal/systeminfo"
+	"github.com/ikaevus/routegate/agent/internal/client"
+	"github.com/ikaevus/routegate/agent/internal/config"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 )
 
 type Runner struct {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/artuazh/routegate/agent/internal/config"
-	"github.com/artuazh/routegate/agent/internal/systeminfo"
+	"github.com/ikaevus/routegate/agent/internal/config"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 )
 
 const timeout = 10 * time.Second
