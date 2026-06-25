@@ -52,6 +52,14 @@ function formatPercent(value?: number | null): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 }
 
+function formatStatus(value?: string | null): string {
+  if (!value) {
+    return 'not enforced';
+  }
+
+  return value.replace(/_/g, ' ');
+}
+
 function parseOptionalNumber(
   value: string,
   label: string,
@@ -148,11 +156,18 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   const progressPercent = Math.min(100, Math.max(0, usedPercent ?? 0));
   const limitBadge = !hasMonthlyLimit
     ? { className: 'badge badge-pending', label: 'No limit' }
-    : limit?.limitReached
-      ? { className: 'badge badge-failed', label: 'Limit reached' }
-      : limit?.hardLimitEnabled
-        ? { className: 'badge badge-in-progress', label: 'Hard limit' }
-        : { className: 'badge badge-active', label: 'Soft limit' };
+    : limit?.enforced
+      ? { className: 'badge badge-failed', label: 'Over limit' }
+      : limit?.limitReached
+        ? { className: 'badge badge-failed', label: 'Limit reached' }
+        : limit?.hardLimitEnabled
+          ? { className: 'badge badge-in-progress', label: 'Hard limit' }
+          : { className: 'badge badge-active', label: 'Soft limit' };
+  const enforcementBadge = limit?.enforced
+    ? { className: 'badge badge-failed', label: 'Enforced' }
+    : limit?.enforcementStatus === 'within_limit'
+      ? { className: 'badge badge-active', label: 'Within limit' }
+      : { className: 'badge badge-pending', label: 'Not enforced' };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -183,7 +198,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
         <div>
           <div className="panel-title">Traffic usage and limits</div>
           <p className="panel-subtitle">
-            Current billing-period usage summary and per-account monthly traffic policy.
+            Current billing-period usage summary, per-account traffic policy, and persisted enforcement state.
           </p>
         </div>
       </div>
@@ -233,9 +248,28 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
 
             <div className="traffic-limit-meta">
               <span>Used: {formatPercent(usedPercent)}</span>
+              <span>Remaining: {formatBytes(limit?.remainingBytes)}</span>
               <span>Reset day: {limit?.resetDay ?? 1}</span>
               <span>Speed limit: {limit?.speedLimitBps ? `${formatNumberInput(limit.speedLimitBps / BPS_PER_MBIT)} Mbps` : 'not set'}</span>
               <span>Updated: {formatDateTime(limit?.updatedAt)}</span>
+            </div>
+          </div>
+
+          <div className="traffic-limit-card">
+            <div className="traffic-limit-header">
+              <div>
+                <div className="traffic-limit-title">Enforcement state</div>
+                <p className="panel-subtitle">
+                  RouteGate now persists over-limit state; runtime config exclusion will be connected in a later apply step.
+                </p>
+              </div>
+              <span className={enforcementBadge.className}>{enforcementBadge.label}</span>
+            </div>
+
+            <div className="traffic-limit-meta">
+              <span>Status: {formatStatus(limit?.enforcementStatus)}</span>
+              <span>Exceeded at: {formatDateTime(limit?.limitExceededAt)}</span>
+              <span>Evaluated: {formatDateTime(limit?.enforcementUpdatedAt)}</span>
             </div>
           </div>
 
@@ -243,7 +277,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
             <div>
               <div className="panel-title token-snippet-title">Limit settings</div>
               <p className="panel-subtitle">
-                Empty monthly limit means unlimited traffic. Speed limit is stored as a foundation value and is not enforced yet.
+                Empty monthly limit means unlimited traffic. Hard limit marks this account for persisted over-limit enforcement state.
               </p>
             </div>
 
@@ -293,7 +327,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                   />
                   <span>Hard limit</span>
                 </label>
-                <p>Mark the policy as strict for later enforcement logic.</p>
+                <p>Persist over-limit state when reported usage reaches the configured limit.</p>
               </div>
             </div>
 

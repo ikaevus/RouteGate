@@ -42,6 +42,7 @@ func (r *Repository) ReportUsage(ctx context.Context, tokenHash string, events [
 	}
 	defer tx.Rollback(ctx)
 
+	affectedAccounts := map[string]struct{}{}
 	for _, event := range events {
 		metadata := event.Metadata
 		if metadata == nil {
@@ -79,6 +80,13 @@ func (r *Repository) ReportUsage(ctx context.Context, tokenHash string, events [
 		}
 		if result.RowsAffected() == 0 {
 			return TrafficUsageReport{}, ErrVPNAccountNotFound
+		}
+		affectedAccounts[event.VPNAccountID] = struct{}{}
+	}
+
+	for vpnAccountID := range affectedAccounts {
+		if err := r.evaluateAccountLimitTx(ctx, tx, vpnAccountID); err != nil {
+			return TrafficUsageReport{}, err
 		}
 	}
 
@@ -143,16 +151,7 @@ func (r *Repository) GetUsageSummary(ctx context.Context, vpnAccountID string, f
 }
 
 func (r *Repository) GetLimit(ctx context.Context, vpnAccountID string) (TrafficLimit, error) {
-	return scanTrafficLimit(r.pool.QueryRow(ctx, `
-		SELECT
-			vpn_account_id::text,
-			monthly_limit_bytes,
-			hard_limit_enabled,
-			speed_limit_bps,
-			reset_day,
-			created_at,
-			updated_at
-		FROM traffic_limits
+	return scanTrafficLimit(r.pool.QueryRow(ctx, trafficLimitSelectSQL+`
 		WHERE vpn_account_id = $1::uuid
 	`, vpnAccountID))
 }
@@ -163,7 +162,13 @@ func (r *Repository) UpsertLimit(ctx context.Context, vpnAccountID string, input
 		resetDay = DefaultResetDay
 	}
 
-	limit, err := scanTrafficLimit(r.pool.QueryRow(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return TrafficLimit{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(ctx, `
 		INSERT INTO traffic_limits (
 			vpn_account_id,
 			monthly_limit_bytes,
@@ -186,19 +191,80 @@ func (r *Repository) UpsertLimit(ctx context.Context, vpnAccountID string, input
 			speed_limit_bps = EXCLUDED.speed_limit_bps,
 			reset_day = EXCLUDED.reset_day,
 			updated_at = now()
-		RETURNING
-			vpn_account_id::text,
-			monthly_limit_bytes,
-			hard_limit_enabled,
-			speed_limit_bps,
-			reset_day,
-			created_at,
-			updated_at
-	`, vpnAccountID, input.MonthlyLimitBytes, input.HardLimitEnabled, input.SpeedLimitBps, resetDay))
-	if errors.Is(err, pgx.ErrNoRows) {
+	`, vpnAccountID, input.MonthlyLimitBytes, input.HardLimitEnabled, input.SpeedLimitBps, resetDay)
+	if err != nil {
+		return TrafficLimit{}, err
+	}
+	if result.RowsAffected() == 0 {
 		return TrafficLimit{}, ErrVPNAccountNotFound
 	}
-	return limit, err
+
+	if err := r.evaluateAccountLimitTx(ctx, tx, vpnAccountID); err != nil {
+		return TrafficLimit{}, err
+	}
+
+	limit, err := scanTrafficLimit(tx.QueryRow(ctx, trafficLimitSelectSQL+`
+		WHERE vpn_account_id = $1::uuid
+	`, vpnAccountID))
+	if err != nil {
+		return TrafficLimit{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return TrafficLimit{}, err
+	}
+
+	return limit, nil
+}
+
+func (r *Repository) evaluateAccountLimitTx(ctx context.Context, tx pgx.Tx, vpnAccountID string) error {
+	_, err := tx.Exec(ctx, `
+		WITH usage_totals AS (
+			SELECT
+				$1::uuid AS vpn_account_id,
+				COALESCE(SUM(total_bytes), 0)::bigint AS total_bytes
+			FROM traffic_usage_events
+			WHERE vpn_account_id = $1::uuid
+		), next_state AS (
+			SELECT
+				l.vpn_account_id,
+				CASE
+					WHEN l.hard_limit_enabled
+					 AND l.monthly_limit_bytes IS NOT NULL
+					 AND l.monthly_limit_bytes > 0
+					 AND u.total_bytes >= l.monthly_limit_bytes
+						THEN 'over_limit'
+					WHEN l.hard_limit_enabled
+					 AND l.monthly_limit_bytes IS NOT NULL
+					 AND l.monthly_limit_bytes > 0
+						THEN 'within_limit'
+					ELSE 'not_enforced'
+				END AS enforcement_status,
+				CASE
+					WHEN l.hard_limit_enabled
+					 AND l.monthly_limit_bytes IS NOT NULL
+					 AND l.monthly_limit_bytes > 0
+					 AND u.total_bytes >= l.monthly_limit_bytes
+						THEN COALESCE(l.limit_exceeded_at, now())
+					ELSE NULL
+				END AS limit_exceeded_at
+			FROM traffic_limits l
+			JOIN usage_totals u ON u.vpn_account_id = l.vpn_account_id
+		)
+		UPDATE traffic_limits l
+		SET
+			limit_exceeded_at = s.limit_exceeded_at,
+			enforcement_status = s.enforcement_status,
+			enforcement_updated_at = now(),
+			updated_at = now()
+		FROM next_state s
+		WHERE l.vpn_account_id = s.vpn_account_id
+		  AND (
+			l.limit_exceeded_at IS DISTINCT FROM s.limit_exceeded_at
+			OR l.enforcement_status IS DISTINCT FROM s.enforcement_status
+		  )
+	`, vpnAccountID)
+	return err
 }
 
 func (r *Repository) reportingAgentByTokenHash(ctx context.Context, tokenHash string) (reportingAgent, error) {
@@ -228,10 +294,28 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
+const trafficLimitSelectSQL = `
+	SELECT
+		vpn_account_id::text,
+		monthly_limit_bytes,
+		hard_limit_enabled,
+		speed_limit_bps,
+		reset_day,
+		limit_exceeded_at,
+		enforcement_status,
+		enforcement_updated_at,
+		created_at,
+		updated_at
+	FROM traffic_limits
+`
+
 func scanTrafficLimit(row scanner) (TrafficLimit, error) {
 	var limit TrafficLimit
 	var monthlyLimitBytes sql.NullInt64
 	var speedLimitBps sql.NullInt64
+	var limitExceededAt sql.NullTime
+	var enforcementStatus sql.NullString
+	var enforcementUpdatedAt sql.NullTime
 
 	err := row.Scan(
 		&limit.VPNAccountID,
@@ -239,6 +323,9 @@ func scanTrafficLimit(row scanner) (TrafficLimit, error) {
 		&limit.HardLimitEnabled,
 		&speedLimitBps,
 		&limit.ResetDay,
+		&limitExceededAt,
+		&enforcementStatus,
+		&enforcementUpdatedAt,
 		&limit.CreatedAt,
 		&limit.UpdatedAt,
 	)
@@ -253,21 +340,48 @@ func scanTrafficLimit(row scanner) (TrafficLimit, error) {
 		value := speedLimitBps.Int64
 		limit.SpeedLimitBps = &value
 	}
+	if limitExceededAt.Valid {
+		value := limitExceededAt.Time
+		limit.LimitExceededAt = &value
+	}
+	if enforcementStatus.Valid && enforcementStatus.String != "" {
+		limit.EnforcementStatus = enforcementStatus.String
+	} else {
+		limit.EnforcementStatus = TrafficLimitEnforcementNotEnforced
+	}
+	if enforcementUpdatedAt.Valid {
+		value := enforcementUpdatedAt.Time
+		limit.EnforcementUpdatedAt = &value
+	}
 	return limit, nil
 }
 
 func buildLimitState(limit TrafficLimit, totalBytes int64) *TrafficLimitState {
 	state := &TrafficLimitState{
-		MonthlyLimitBytes: limit.MonthlyLimitBytes,
-		HardLimitEnabled:  limit.HardLimitEnabled,
-		SpeedLimitBps:     limit.SpeedLimitBps,
-		ResetDay:          limit.ResetDay,
-		UpdatedAt:         limit.UpdatedAt,
+		MonthlyLimitBytes:    limit.MonthlyLimitBytes,
+		HardLimitEnabled:     limit.HardLimitEnabled,
+		SpeedLimitBps:        limit.SpeedLimitBps,
+		ResetDay:             limit.ResetDay,
+		LimitExceededAt:      limit.LimitExceededAt,
+		EnforcementStatus:    limit.EnforcementStatus,
+		EnforcementUpdatedAt: limit.EnforcementUpdatedAt,
+		UpdatedAt:            limit.UpdatedAt,
 	}
+	if state.EnforcementStatus == "" {
+		state.EnforcementStatus = TrafficLimitEnforcementNotEnforced
+	}
+	state.Enforced = state.EnforcementStatus == TrafficLimitEnforcementOverLimit
+
 	if limit.MonthlyLimitBytes != nil && *limit.MonthlyLimitBytes > 0 {
 		usedPercent := float64(totalBytes) / float64(*limit.MonthlyLimitBytes) * 100
 		state.UsedPercent = &usedPercent
 		state.LimitReached = totalBytes >= *limit.MonthlyLimitBytes
+
+		remainingBytes := *limit.MonthlyLimitBytes - totalBytes
+		if remainingBytes < 0 {
+			remainingBytes = 0
+		}
+		state.RemainingBytes = &remainingBytes
 	}
 	return state
 }
