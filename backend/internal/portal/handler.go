@@ -1,9 +1,11 @@
 package portal
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -11,17 +13,26 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 )
 
+type portalRepository interface {
+	ListProfilesForUser(context.Context, string) ([]PortalProfile, error)
+	GetProfileForUser(context.Context, string, string) (PortalProfile, error)
+	CreateSubscriptionToken(context.Context, CreateSubscriptionTokenInput) (PortalSubscriptionToken, error)
+}
+
 type Handler struct {
-	logger   *slog.Logger
-	profiles *Repository
+	logger                    *slog.Logger
+	profiles                  portalRepository
+	generateSubscriptionToken func() (string, error)
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 	return &Handler{
-		logger:   logger,
-		profiles: NewRepository(pool),
+		logger:                    logger,
+		profiles:                  NewRepository(pool),
+		generateSubscriptionToken: vpnaccounts.GenerateSubscriptionToken,
 	}
 }
 
@@ -82,16 +93,74 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	message := "Generate or refresh the subscription link to reveal a new user-facing URL. RouteGate stores only the token hash, so existing raw tokens cannot be shown again."
+	requiresTokenRotation := profile.AccessStatus == AccessStatusActive
+	if profile.AccessStatus != AccessStatusActive {
+		message = "Subscription self-service is unavailable because this VPN profile is not active."
+	}
+
 	response := PortalSubscription{
 		ProfileID:             profile.ID,
 		Available:             false,
-		Format:                "routegate.subscription.v1",
+		AccessStatus:          profile.AccessStatus,
+		Format:                PortalSubscriptionFormat,
 		ExpiresAt:             profile.ExpiresAt,
-		RequiresTokenRotation: true,
-		Message:               "Self-service subscription link retrieval is not enabled yet. Ask an administrator to issue or rotate the subscription token.",
+		RequiresTokenRotation: requiresTokenRotation,
+		Message:               message,
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, SubscriptionResponse{Subscription: response})
+}
+
+func (h *Handler) GenerateSubscriptionAccess(w http.ResponseWriter, r *http.Request) {
+	profile, ok := h.profileForUser(w, r)
+	if !ok {
+		return
+	}
+	if profile.AccessStatus != AccessStatusActive {
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("portal_subscription_unavailable", "Subscription self-service is available only for active VPN profiles."))
+		return
+	}
+
+	rawToken, err := h.generateSubscriptionToken()
+	if err != nil {
+		h.logger.Error("generate portal subscription token failed", "profile_id", profile.ID, "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("token_generation_failed", "Failed to generate subscription token."))
+		return
+	}
+
+	created, err := h.profiles.CreateSubscriptionToken(r.Context(), CreateSubscriptionTokenInput{
+		VPNAccountID: profile.ID,
+		TokenHash:    vpnaccounts.HashSubscriptionToken(rawToken),
+		ExpiresAt:    profile.ExpiresAt,
+	})
+	if err != nil {
+		h.databaseError(w, "create portal subscription token", err)
+		return
+	}
+
+	subscriptionURL := portalSubscriptionURL(r, rawToken)
+	response := SubscriptionAccessResponse{
+		Subscription: PortalSubscription{
+			ProfileID:             profile.ID,
+			Available:             true,
+			AccessStatus:          profile.AccessStatus,
+			SubscriptionURL:       subscriptionURL,
+			Format:                PortalSubscriptionFormat,
+			ExpiresAt:             created.ExpiresAt,
+			RequiresTokenRotation: false,
+			Message:               "Subscription link was generated. Copy it now; RouteGate does not store raw subscription tokens.",
+		},
+		QR: PortalQRCode{
+			ProfileID:    profile.ID,
+			Available:    true,
+			AccessStatus: profile.AccessStatus,
+			QRText:       subscriptionURL,
+			Format:       PortalQRFormat,
+		},
+	}
+
+	httpx.WriteJSON(w, http.StatusCreated, response)
 }
 
 func (h *Handler) GetQRCode(w http.ResponseWriter, r *http.Request) {
@@ -100,11 +169,17 @@ func (h *Handler) GetQRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	message := "Generate or refresh the subscription link to render a new QR code. Existing raw tokens cannot be recovered from token hashes."
+	if profile.AccessStatus != AccessStatusActive {
+		message = "QR rendering is unavailable because this VPN profile is not active."
+	}
+
 	response := PortalQRCode{
-		ProfileID: profile.ID,
-		Available: false,
-		Format:    "subscription-url",
-		Message:   "QR rendering requires an available user-facing subscription link. Self-service subscription link retrieval is not enabled yet.",
+		ProfileID:    profile.ID,
+		Available:    false,
+		AccessStatus: profile.AccessStatus,
+		Format:       PortalQRFormat,
+		Message:      message,
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, QRCodeResponse{QR: response})
@@ -184,6 +259,56 @@ func buildDashboard(profiles []PortalProfile) PortalDashboard {
 	}
 
 	return dashboard
+}
+
+func portalSubscriptionURL(r *http.Request, token string) string {
+	return (&url.URL{
+		Scheme: portalSubscriptionScheme(r),
+		Host:   portalSubscriptionHost(r),
+		Path:   "/api/v1/subscriptions/" + token,
+	}).String()
+}
+
+func portalSubscriptionScheme(r *http.Request) string {
+	scheme := strings.ToLower(firstForwardedValue(r.Header.Get("X-Forwarded-Proto")))
+	if scheme == "https" || scheme == "http" {
+		return scheme
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func portalSubscriptionHost(r *http.Request) string {
+	if host := firstForwardedValue(r.Header.Get("X-Forwarded-Host")); validURLHost(host) {
+		return host
+	}
+	if host := strings.TrimSpace(r.Host); validURLHost(host) {
+		return host
+	}
+	return "localhost"
+}
+
+func firstForwardedValue(value string) string {
+	value = strings.TrimSpace(value)
+	if comma := strings.Index(value, ","); comma >= 0 {
+		value = value[:comma]
+	}
+	return strings.TrimSpace(value)
+}
+
+func validURLHost(host string) bool {
+	if host == "" || strings.ContainsAny(host, "/\\@") {
+		return false
+	}
+	for _, r := range host {
+		if r <= 31 || r == 127 {
+			return false
+		}
+	}
+	parsed, err := url.Parse("//" + host)
+	return err == nil && parsed.Host == host && parsed.Hostname() != "" && parsed.Path == ""
 }
 
 func writeUnauthorized(w http.ResponseWriter) {

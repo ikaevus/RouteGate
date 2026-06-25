@@ -44,6 +44,42 @@ func (r *Repository) GetProfileForUser(ctx context.Context, email string, profil
 	`, profileID, email))
 }
 
+func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSubscriptionTokenInput) (PortalSubscriptionToken, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return PortalSubscriptionToken{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE vpn_subscription_tokens
+		SET status = 'revoked', revoked_at = now(), updated_at = now()
+		WHERE vpn_account_id = $1::uuid AND status = 'active'
+	`, input.VPNAccountID); err != nil {
+		return PortalSubscriptionToken{}, err
+	}
+
+	token, err := scanPortalSubscriptionToken(tx.QueryRow(ctx, `
+		INSERT INTO vpn_subscription_tokens (vpn_account_id, token_hash, expires_at)
+		VALUES ($1::uuid, $2, $3)
+		RETURNING
+			id::text,
+			vpn_account_id::text,
+			token_hash,
+			status,
+			expires_at,
+			created_at,
+			updated_at
+	`, input.VPNAccountID, input.TokenHash, input.ExpiresAt))
+	if err != nil {
+		return PortalSubscriptionToken{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PortalSubscriptionToken{}, err
+	}
+	return token, nil
+}
+
 const portalProfileSelect = `
 	SELECT
 		a.id::text,
@@ -89,6 +125,27 @@ func scanPortalProfile(row scanner) (PortalProfile, error) {
 	}
 	profile.AccessStatus = accessStatus(profile, time.Now().UTC())
 	return profile, nil
+}
+
+func scanPortalSubscriptionToken(row scanner) (PortalSubscriptionToken, error) {
+	var token PortalSubscriptionToken
+	var expiresAt sql.NullTime
+	err := row.Scan(
+		&token.ID,
+		&token.VPNAccountID,
+		&token.TokenHash,
+		&token.Status,
+		&expiresAt,
+		&token.CreatedAt,
+		&token.UpdatedAt,
+	)
+	if err != nil {
+		return PortalSubscriptionToken{}, err
+	}
+	if expiresAt.Valid {
+		token.ExpiresAt = &expiresAt.Time
+	}
+	return token, nil
 }
 
 func accessStatus(profile PortalProfile, now time.Time) string {

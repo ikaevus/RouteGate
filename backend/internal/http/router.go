@@ -51,6 +51,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/portal/profiles", portalAuth(portalHandler.ListProfiles))
 	mux.Handle("GET /api/portal/profiles/{id}", portalAuth(portalHandler.GetProfile))
 	mux.Handle("GET /api/portal/profiles/{id}/subscription", portalAuth(portalHandler.GetSubscription))
+	mux.Handle("POST /api/portal/profiles/{id}/subscription-token", portalAuth(portalHandler.GenerateSubscriptionAccess))
 	mux.Handle("GET /api/portal/profiles/{id}/qr", portalAuth(portalHandler.GetQRCode))
 	mux.Handle("GET /api/portal/instructions", portalAuth(portalHandler.ListInstructions))
 	mux.Handle("GET /api/portal/instructions/{platform}", portalAuth(portalHandler.GetInstruction))
