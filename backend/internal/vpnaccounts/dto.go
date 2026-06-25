@@ -71,11 +71,11 @@ type PublicSubscriptionServer struct {
 }
 
 type PublicSubscriptionConfig struct {
-	Type     string                              `json:"type"`
-	Format   string                              `json:"format"`
-	Status   string                              `json:"status"`
-	Message  string                              `json:"message,omitempty"`
-	Rendered *PublicSubscriptionRenderedConfig   `json:"rendered,omitempty"`
+	Type     string                            `json:"type"`
+	Format   string                            `json:"format"`
+	Status   string                            `json:"status"`
+	Message  string                            `json:"message,omitempty"`
+	Rendered *PublicSubscriptionRenderedConfig `json:"rendered,omitempty"`
 }
 
 type PublicSubscriptionRenderedConfig struct {
