@@ -12,7 +12,7 @@ import (
 func TestCreateSubscriptionTokenRejectsExpiredExpiresAt(t *testing.T) {
 	repo := &fakeAccountRepository{}
 	handler := newTestHandler(repo)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/vpn-accounts/account-1/subscription-token", strings.NewReader(`{"expiresAt":"2000-01-01T00:00:00Z"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/vpn-accounts/account-1/subscription-token", strings.NewReader("{\"expiresAt\":\"2000-01-01T00:00:00Z\"}"))
 	request.SetPathValue("id", "account-1")
 	response := httptest.NewRecorder()
 
