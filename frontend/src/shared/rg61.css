@@ -1,0 +1,107 @@
+.field textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.82);
+  color: #e5e7eb;
+  font-size: 15px;
+  min-height: 108px;
+  outline: none;
+  padding: 11px 12px;
+  resize: vertical;
+}
+
+.field textarea:focus {
+  border-color: rgba(96, 165, 250, 0.86);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22);
+}
+
+.routing-profiles-page {
+  max-width: 1280px;
+}
+
+.routing-profiles-layout {
+  display: grid;
+  gap: 24px;
+}
+
+.routing-profiles-table {
+  min-width: 980px;
+}
+
+.routing-profiles-table-row {
+  grid-template-columns: 1.6fr 0.6fr 0.9fr;
+}
+
+.routing-rules-table {
+  min-width: 1180px;
+}
+
+.routing-rules-table-row {
+  grid-template-columns: 1.4fr 0.55fr 0.55fr 0.6fr 1.4fr 0.75fr;
+}
+
+.routing-profile-details-panel,
+.routing-rule-form,
+.routing-rules-panel {
+  align-self: start;
+}
+
+.routing-profile-form-grid,
+.routing-rule-form-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 260px;
+}
+
+.routing-rule-form-grid {
+  grid-template-columns: minmax(0, 1.2fr) 160px 180px 260px;
+}
+
+.routing-rule-matchers-grid {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.routing-profile-default-field,
+.routing-rule-enabled-field {
+  align-self: end;
+}
+
+.badge-default,
+.badge-direct,
+.badge-enabled {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac !important;
+}
+
+.badge-custom,
+.badge-vpn {
+  background: rgba(59, 130, 246, 0.16);
+  color: #bfdbfe !important;
+}
+
+.badge-block,
+.badge-disabled {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5 !important;
+}
+
+@media (max-width: 980px) {
+  .routing-profiles-table-row,
+  .routing-rules-table-row,
+  .routing-profile-form-grid,
+  .routing-rule-form-grid,
+  .routing-rule-matchers-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .routing-profiles-table,
+  .routing-rules-table {
+    min-width: 0;
+  }
+}
