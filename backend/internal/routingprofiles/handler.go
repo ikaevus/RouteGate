@@ -79,6 +79,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := h.profiles.CreateProfile(r.Context(), input)
+	if errors.Is(err, ErrRoutingProfileNameAlreadyExists) {
+		writeProfileNameConflict(w)
+		return
+	}
 	if err != nil {
 		h.databaseError(w, "create routing profile", err)
 		return
@@ -111,6 +115,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		writeProfileNotFound(w)
 		return
 	}
+	if errors.Is(err, ErrRoutingProfileNameAlreadyExists) {
+		writeProfileNameConflict(w)
+		return
+	}
 	if err != nil {
 		h.databaseError(w, "update routing profile", err)
 		return
@@ -127,6 +135,10 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrDefaultProfileCannotBeDeleted) {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("default_profile", "Default routing profile cannot be deleted."))
+		return
+	}
+	if errors.Is(err, ErrRoutingProfileAssigned) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("routing_profile_assigned", "Routing profile is assigned to one or more servers and cannot be deleted."))
 		return
 	}
 	if err != nil {
@@ -240,75 +252,6 @@ func (h *Handler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func validateCreateProfileInput(input CreateRoutingProfileInput) error {
-	if input.Name == "" {
-		return errors.New("name is required")
-	}
-	return nil
-}
-
-func validateUpdateProfileInput(input UpdateRoutingProfileInput) error {
-	if input.Name != nil && *input.Name == "" {
-		return errors.New("name is required")
-	}
-	return nil
-}
-
-func validateCreateRuleInput(input CreateRoutingProfileRuleInput) error {
-	if input.RoutingProfileID == "" {
-		return errors.New("routing profile id is required")
-	}
-	if input.Name == "" {
-		return errors.New("name is required")
-	}
-	if !ValidAction(input.Action) {
-		return errors.New("action must be one of: direct, vpn, block")
-	}
-	if input.Priority < 0 {
-		return errors.New("priority must be zero or greater")
-	}
-	return nil
-}
-
-func validateUpdateRuleInput(input UpdateRoutingProfileRuleInput) error {
-	if input.Name != nil && *input.Name == "" {
-		return errors.New("name is required")
-	}
-	if input.Action != nil && !ValidAction(*input.Action) {
-		return errors.New("action must be one of: direct, vpn, block")
-	}
-	if input.Priority != nil && *input.Priority < 0 {
-		return errors.New("priority must be zero or greater")
-	}
-	return nil
-}
-
-func cleanStrings(values []string) []string {
-	cleaned := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		cleaned = append(cleaned, value)
-	}
-	return cleaned
-}
-
-func cleanStringSlicePointer(values *[]string) {
-	if values == nil {
-		return
-	}
-	cleaned := cleanStrings(*values)
-	*values = cleaned
-}
-
-func trimStringPointer(value *string) {
-	if value != nil {
-		*value = strings.TrimSpace(*value)
-	}
-}
-
 func writeInvalidRequest(w http.ResponseWriter, message string) {
 	httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", message))
 }
@@ -319,6 +262,10 @@ func writeProfileNotFound(w http.ResponseWriter) {
 
 func writeRuleNotFound(w http.ResponseWriter) {
 	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("routing_rule_not_found", "Routing profile rule not found."))
+}
+
+func writeProfileNameConflict(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusConflict, httpx.Error("routing_profile_name_exists", "Routing profile name already exists."))
 }
 
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
