@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,6 +52,15 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 		return ServerConfigInfo{}, err
 	}
 	info.VPNAccounts = accounts
+
+	profile, err := r.getServerRoutingProfile(ctx, serverID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return ServerConfigInfo{}, err
+	}
+	if err == nil {
+		info.RoutingProfile = &profile
+	}
+
 	return info, nil
 }
 
@@ -84,6 +94,76 @@ func (r *Repository) listServerVPNAccounts(ctx context.Context, serverID string)
 		accounts = append(accounts, account)
 	}
 	return accounts, rows.Err()
+}
+
+func (r *Repository) getServerRoutingProfile(ctx context.Context, serverID string) (RoutingProfileConfigInfo, error) {
+	profile, err := scanRoutingProfileConfigInfo(r.pool.QueryRow(ctx, `
+		SELECT
+			p.id::text,
+			p.name,
+			COALESCE(p.description, ''),
+			p.is_default
+		FROM routing_profiles p
+		WHERE p.id = COALESCE(
+			(
+				SELECT srp.routing_profile_id
+				FROM server_routing_profiles srp
+				WHERE srp.server_id = $1::uuid
+			),
+			(
+				SELECT rp.id
+				FROM routing_profiles rp
+				WHERE rp.is_default = TRUE
+				ORDER BY rp.created_at ASC
+				LIMIT 1
+			)
+		)
+		LIMIT 1
+	`, serverID))
+	if err != nil {
+		return RoutingProfileConfigInfo{}, err
+	}
+
+	rules, err := r.listRoutingProfileRules(ctx, profile.ID)
+	if err != nil {
+		return RoutingProfileConfigInfo{}, err
+	}
+	profile.Rules = rules
+	return profile, nil
+}
+
+func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID string) ([]RoutingProfileRuleConfigInfo, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+			id::text,
+			name,
+			priority,
+			action,
+			domains,
+			domain_suffixes,
+			domain_keywords,
+			ip_cidrs,
+			geo_sites,
+			geo_ips
+		FROM routing_profile_rules
+		WHERE routing_profile_id = $1::uuid
+		  AND enabled = TRUE
+		ORDER BY priority ASC, created_at ASC
+	`, profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	rules := make([]RoutingProfileRuleConfigInfo, 0)
+	for rows.Next() {
+		rule, err := scanRoutingProfileRuleConfigInfo(rows)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
 }
 
 func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfigVersionInput) (ConfigVersion, error) {
@@ -386,6 +466,40 @@ func scanVPNAccountConfigInfo(row scanner) (VPNAccountConfigInfo, error) {
 		return VPNAccountConfigInfo{}, err
 	}
 	return account, nil
+}
+
+func scanRoutingProfileConfigInfo(row scanner) (RoutingProfileConfigInfo, error) {
+	var profile RoutingProfileConfigInfo
+	err := row.Scan(
+		&profile.ID,
+		&profile.Name,
+		&profile.Description,
+		&profile.IsDefault,
+	)
+	if err != nil {
+		return RoutingProfileConfigInfo{}, err
+	}
+	return profile, nil
+}
+
+func scanRoutingProfileRuleConfigInfo(row scanner) (RoutingProfileRuleConfigInfo, error) {
+	var rule RoutingProfileRuleConfigInfo
+	err := row.Scan(
+		&rule.ID,
+		&rule.Name,
+		&rule.Priority,
+		&rule.Action,
+		&rule.Domains,
+		&rule.DomainSuffixes,
+		&rule.DomainKeywords,
+		&rule.IPCIDRs,
+		&rule.GeoSites,
+		&rule.GeoIPs,
+	)
+	if err != nil {
+		return RoutingProfileRuleConfigInfo{}, err
+	}
+	return rule, nil
 }
 
 func scanConfigVersion(row scanner) (ConfigVersion, error) {
