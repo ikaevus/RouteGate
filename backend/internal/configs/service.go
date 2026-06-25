@@ -18,7 +18,15 @@ var ErrConfigApplyAgentMissing = errors.New("server has no registered agent")
 
 const (
 	singBoxVLESSInboundTag = "vless-in"
+	singBoxDirectTag       = "direct"
+	singBoxBlockTag        = "block"
 	defaultVLESSPort      = 443
+)
+
+const (
+	routingActionDirect = "direct"
+	routingActionVPN    = "vpn"
+	routingActionBlock  = "block"
 )
 
 type configRepository interface {
@@ -167,11 +175,11 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 			Inbounds: []map[string]any{},
 			Outbounds: []SingBoxOutbound{{
 				Type: "direct",
-				Tag:  "direct",
+				Tag:  singBoxDirectTag,
 			}},
 			Route: SingBoxRoute{
 				Rules: []map[string]any{},
-				Final: "direct",
+				Final: singBoxDirectTag,
 			},
 		},
 		Metadata: ConfigMetadata{
@@ -225,7 +233,119 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 		})
 	}
 
+	applyServerRoutingProfile(&config, info.RoutingProfile)
+
 	return config
+}
+
+func applyServerRoutingProfile(config *RenderedConfig, profile *RoutingProfileConfigInfo) {
+	if profile == nil {
+		return
+	}
+
+	config.RoutingProfile = &ConfigRoutingProfile{
+		ID:          profile.ID,
+		Name:        profile.Name,
+		Description: strings.TrimSpace(profile.Description),
+		IsDefault:   profile.IsDefault,
+		Rules:       []ConfigRoutingProfileRule{},
+	}
+
+	for _, rule := range profile.Rules {
+		outbound := routingOutboundForAction(rule.Action)
+		config.RoutingProfile.Rules = append(config.RoutingProfile.Rules, ConfigRoutingProfileRule{
+			ID:             rule.ID,
+			Name:           rule.Name,
+			Priority:       rule.Priority,
+			Action:         rule.Action,
+			Outbound:       outbound,
+			Domains:        cleanStrings(rule.Domains),
+			DomainSuffixes: cleanStrings(rule.DomainSuffixes),
+			DomainKeywords: cleanStrings(rule.DomainKeywords),
+			IPCIDRs:        cleanStrings(rule.IPCIDRs),
+			GeoSites:       cleanStrings(rule.GeoSites),
+			GeoIPs:         cleanStrings(rule.GeoIPs),
+		})
+
+		serverOutbound, ok := serverRoutingOutboundForAction(rule.Action)
+		if !ok {
+			continue
+		}
+		routeRule := singBoxRouteRule(rule, serverOutbound)
+		if len(routeRule) == 0 {
+			continue
+		}
+		if serverOutbound == singBoxBlockTag {
+			ensureSingBoxOutbound(config, SingBoxOutbound{Type: "block", Tag: singBoxBlockTag})
+		}
+		config.SingBox.Route.Rules = append(config.SingBox.Route.Rules, routeRule)
+	}
+}
+
+func serverRoutingOutboundForAction(action string) (string, bool) {
+	switch strings.TrimSpace(action) {
+	case routingActionDirect:
+		return singBoxDirectTag, true
+	case routingActionBlock:
+		return singBoxBlockTag, true
+	default:
+		return "", false
+	}
+}
+
+func routingOutboundForAction(action string) string {
+	switch strings.TrimSpace(action) {
+	case routingActionDirect:
+		return singBoxDirectTag
+	case routingActionBlock:
+		return singBoxBlockTag
+	case routingActionVPN:
+		return routingActionVPN
+	default:
+		return ""
+	}
+}
+
+func singBoxRouteRule(rule RoutingProfileRuleConfigInfo, outbound string) map[string]any {
+	rendered := map[string]any{"outbound": outbound}
+	addStringList(rendered, "domain", rule.Domains)
+	addStringList(rendered, "domain_suffix", rule.DomainSuffixes)
+	addStringList(rendered, "domain_keyword", rule.DomainKeywords)
+	addStringList(rendered, "ip_cidr", rule.IPCIDRs)
+	addStringList(rendered, "geosite", rule.GeoSites)
+	addStringList(rendered, "geoip", rule.GeoIPs)
+	if len(rendered) == 1 {
+		return map[string]any{}
+	}
+	return rendered
+}
+
+func addStringList(target map[string]any, key string, values []string) {
+	cleaned := cleanStrings(values)
+	if len(cleaned) > 0 {
+		target[key] = cleaned
+	}
+}
+
+func cleanStrings(values []string) []string {
+	cleaned := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
+}
+
+func ensureSingBoxOutbound(config *RenderedConfig, outbound SingBoxOutbound) {
+	for _, existing := range config.SingBox.Outbounds {
+		if existing.Tag == outbound.Tag {
+			return
+		}
+	}
+	config.SingBox.Outbounds = append(config.SingBox.Outbounds, outbound)
 }
 
 func renderableVPNAccounts(accounts []VPNAccountConfigInfo) []VPNAccountConfigInfo {

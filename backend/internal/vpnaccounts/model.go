@@ -15,6 +15,12 @@ const (
 	SubscriptionTokenStatusRevoked = "revoked"
 )
 
+const (
+	RoutingActionDirect = "direct"
+	RoutingActionVPN    = "vpn"
+	RoutingActionBlock  = "block"
+)
+
 type Account struct {
 	ID          string     `json:"id"`
 	DisplayName string     `json:"displayName"`
@@ -41,9 +47,10 @@ type SubscriptionToken struct {
 }
 
 type SubscriptionProfile struct {
-	Account     Account
-	Server      *SubscriptionServer
-	Credentials SubscriptionCredentials
+	Account        Account
+	Server         *SubscriptionServer
+	Credentials    SubscriptionCredentials
+	RoutingProfile *RoutingProfile
 }
 
 type SubscriptionCredentials struct {
@@ -76,6 +83,27 @@ type SubscriptionServer struct {
 	RealityPublicKey  string
 	RealityShortID    string
 	RealityServerName string
+}
+
+type RoutingProfile struct {
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Description string               `json:"description,omitempty"`
+	IsDefault   bool                 `json:"isDefault"`
+	Rules       []RoutingProfileRule `json:"rules"`
+}
+
+type RoutingProfileRule struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Priority       int      `json:"priority"`
+	Action         string   `json:"action"`
+	Domains        []string `json:"domains,omitempty"`
+	DomainSuffixes []string `json:"domainSuffixes,omitempty"`
+	DomainKeywords []string `json:"domainKeywords,omitempty"`
+	IPCIDRs        []string `json:"ipCidrs,omitempty"`
+	GeoSites       []string `json:"geoSites,omitempty"`
+	GeoIPs         []string `json:"geoIps,omitempty"`
 }
 
 type CreateAccountInput struct {

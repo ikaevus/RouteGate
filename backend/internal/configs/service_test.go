@@ -172,6 +172,86 @@ func TestBuildRenderedConfigSkipsInactiveVPNAccounts(t *testing.T) {
 	}
 }
 
+func TestBuildRenderedConfigRendersServerRoutingProfileRules(t *testing.T) {
+	config := buildRenderedConfig(ServerConfigInfo{
+		ID:     "server-id",
+		Name:   "fi-01",
+		Status: "active",
+		RoutingProfile: &RoutingProfileConfigInfo{
+			ID:        "profile-1",
+			Name:      "Default split tunnel",
+			IsDefault: true,
+			Rules: []RoutingProfileRuleConfigInfo{
+				{
+					ID:             "rule-direct",
+					Name:           "Domestic services direct",
+					Priority:       100,
+					Action:         routingActionDirect,
+					DomainSuffixes: []string{"gosuslugi.ru", "mos.ru"},
+					GeoIPs:         []string{"ru"},
+				},
+				{
+					ID:       "rule-block",
+					Name:     "Block malware test",
+					Priority: 200,
+					Action:   routingActionBlock,
+					Domains:  []string{"malware.example"},
+				},
+			},
+		},
+	}, time.Date(2026, time.June, 25, 12, 0, 0, 0, time.UTC))
+
+	if config.RoutingProfile == nil {
+		t.Fatal("expected rendered routing profile")
+	}
+	if len(config.RoutingProfile.Rules) != 2 {
+		t.Fatalf("routing profile rules = %d, want 2", len(config.RoutingProfile.Rules))
+	}
+	if len(config.SingBox.Route.Rules) != 2 {
+		t.Fatalf("sing-box route rules = %d, want 2: %+v", len(config.SingBox.Route.Rules), config.SingBox.Route.Rules)
+	}
+	if config.SingBox.Route.Rules[0]["outbound"] != singBoxDirectTag {
+		t.Fatalf("expected first route to use direct outbound, got %+v", config.SingBox.Route.Rules[0])
+	}
+	if config.SingBox.Route.Rules[1]["outbound"] != singBoxBlockTag {
+		t.Fatalf("expected second route to use block outbound, got %+v", config.SingBox.Route.Rules[1])
+	}
+	if len(config.SingBox.Outbounds) != 2 || config.SingBox.Outbounds[1].Tag != singBoxBlockTag {
+		t.Fatalf("expected block outbound to be added once, got %+v", config.SingBox.Outbounds)
+	}
+}
+
+func TestBuildRenderedConfigKeepsVPNRoutingRuleAsMetadataOnlyOnServerConfig(t *testing.T) {
+	config := buildRenderedConfig(ServerConfigInfo{
+		ID:     "server-id",
+		Name:   "fi-01",
+		Status: "active",
+		RoutingProfile: &RoutingProfileConfigInfo{
+			ID:   "profile-1",
+			Name: "Client split tunnel",
+			Rules: []RoutingProfileRuleConfigInfo{
+				{
+					ID:             "rule-vpn",
+					Name:           "Video via VPN",
+					Priority:       100,
+					Action:         routingActionVPN,
+					DomainSuffixes: []string{"youtube.com"},
+				},
+			},
+		},
+	}, time.Date(2026, time.June, 25, 12, 0, 0, 0, time.UTC))
+
+	if config.RoutingProfile == nil || len(config.RoutingProfile.Rules) != 1 {
+		t.Fatalf("expected VPN routing rule in profile metadata, got %+v", config.RoutingProfile)
+	}
+	if config.RoutingProfile.Rules[0].Outbound != routingActionVPN {
+		t.Fatalf("expected VPN metadata outbound, got %+v", config.RoutingProfile.Rules[0])
+	}
+	if len(config.SingBox.Route.Rules) != 0 {
+		t.Fatalf("server config must not render client-side VPN route action: %+v", config.SingBox.Route.Rules)
+	}
+}
+
 func TestValidateRenderedConfigWarnsWhenAgentIsMissing(t *testing.T) {
 	config := buildRenderedConfig(ServerConfigInfo{
 		ID:     "server-id",
