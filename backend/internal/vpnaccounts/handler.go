@@ -285,11 +285,7 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 			MaxDevices:  profile.Account.MaxDevices,
 		},
 		Server: publicSubscriptionServer(profile.Server),
-		Config: PublicSubscriptionConfig{
-			Type:    "sing-box",
-			Status:  "pending",
-			Message: "Client config generation is not implemented yet.",
-		},
+		Config: BuildClientConfig(profile),
 	})
 }
 
