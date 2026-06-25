@@ -20,6 +20,7 @@ var (
 	ErrDefaultProfileCannotBeDeleted   = errors.New("default routing profile cannot be deleted")
 	ErrRoutingProfileAssigned          = errors.New("routing profile is assigned to a server")
 	ErrRoutingProfileNameAlreadyExists = errors.New("routing profile name already exists")
+	ErrRoutingProfileRuleInvalid       = errors.New("routing profile rule is invalid")
 )
 
 const routingProfileNameUniqueIndex = "routing_profiles_name_ci_unique"
@@ -123,9 +124,27 @@ func mapProfileWriteError(err error) error {
 }
 
 func isUniqueViolation(err error, constraintName string) bool {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+	pgErr, ok := postgresError(err)
+	if !ok || pgErr.Code != "23505" {
 		return false
 	}
 	return pgErr.ConstraintName == constraintName || strings.Contains(pgErr.ConstraintName, constraintName)
+}
+
+func isForeignKeyViolation(err error) bool {
+	pgErr, ok := postgresError(err)
+	return ok && pgErr.Code == "23503"
+}
+
+func isCheckViolation(err error) bool {
+	pgErr, ok := postgresError(err)
+	return ok && pgErr.Code == "23514"
+}
+
+func postgresError(err error) (*pgconn.PgError, bool) {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return nil, false
+	}
+	return pgErr, true
 }
