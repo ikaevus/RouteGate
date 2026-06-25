@@ -28,6 +28,28 @@ type ListAccountsResponse struct {
 	Items []Account `json:"items"`
 }
 
+type VLESSRealityCredentialsResponse struct {
+	VPNAccountID string                      `json:"vpnAccountId"`
+	ServerID     string                      `json:"serverId,omitempty"`
+	Endpoint     string                      `json:"endpoint,omitempty"`
+	Protocol     string                      `json:"protocol"`
+	VLESS       AdminVLESSCredentials       `json:"vless"`
+	Reality     AdminRealityCredentials     `json:"reality"`
+}
+
+type AdminVLESSCredentials struct {
+	UUID    string `json:"uuid"`
+	Flow    string `json:"flow,omitempty"`
+	Network string `json:"network,omitempty"`
+}
+
+type AdminRealityCredentials struct {
+	Enabled    bool   `json:"enabled"`
+	PublicKey  string `json:"publicKey,omitempty"`
+	ShortID    string `json:"shortId,omitempty"`
+	ServerName string `json:"serverName,omitempty"`
+}
+
 type SubscriptionTokenResponse struct {
 	VPNAccountID      string     `json:"vpnAccountId"`
 	SubscriptionToken string     `json:"subscriptionToken"`

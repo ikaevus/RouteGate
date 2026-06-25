@@ -28,6 +28,15 @@ type UpdateServerRequest struct {
 	Status      *string `json:"status"`
 }
 
+type UpdateProtocolSettingsRequest struct {
+	VLESSPort         *int    `json:"vlessPort"`
+	VLESSFlow         *string `json:"vlessFlow"`
+	VLESSNetwork      *string `json:"vlessNetwork"`
+	RealityPublicKey  *string `json:"realityPublicKey"`
+	RealityShortID    *string `json:"realityShortId"`
+	RealityServerName *string `json:"realityServerName"`
+}
+
 type ServerResponse struct {
 	Server
 	Agent *agents.Agent `json:"agent,omitempty"`
@@ -47,9 +56,42 @@ type RegistrationTokenResponse struct {
 	ExpiresAt         time.Time `json:"expiresAt"`
 }
 
+type ProtocolSettingsResponse struct {
+	ServerID string `json:"serverId"`
+	Protocol string `json:"protocol"`
+	VLESS    struct {
+		Port    int    `json:"port"`
+		Flow    string `json:"flow,omitempty"`
+		Network string `json:"network,omitempty"`
+	} `json:"vless"`
+	Reality struct {
+		Enabled    bool   `json:"enabled"`
+		PublicKey  string `json:"publicKey,omitempty"`
+		ShortID    string `json:"shortId,omitempty"`
+		ServerName string `json:"serverName,omitempty"`
+	} `json:"reality"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 func newServerResponse(server ServerWithAgent) ServerResponse {
 	return ServerResponse{
 		Server: server.Server,
 		Agent:  server.Agent,
 	}
+}
+
+func newProtocolSettingsResponse(settings ProtocolSettings) ProtocolSettingsResponse {
+	response := ProtocolSettingsResponse{
+		ServerID:  settings.ServerID,
+		Protocol:  "vless",
+		UpdatedAt: settings.UpdatedAt,
+	}
+	response.VLESS.Port = settings.VLESSPort
+	response.VLESS.Flow = settings.VLESSFlow
+	response.VLESS.Network = settings.VLESSNetwork
+	response.Reality.PublicKey = settings.RealityPublicKey
+	response.Reality.ShortID = settings.RealityShortID
+	response.Reality.ServerName = settings.RealityServerName
+	response.Reality.Enabled = settings.RealityPublicKey != ""
+	return response
 }

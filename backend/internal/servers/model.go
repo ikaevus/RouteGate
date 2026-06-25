@@ -14,6 +14,8 @@ const (
 	StatusError    = "error"
 )
 
+const defaultVLESSPort = 443
+
 type Server struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -29,6 +31,17 @@ type Server struct {
 	// Hostname is retained for compatibility with the existing API while the
 	// legacy servers.hostname column remains in the schema.
 	Hostname string `json:"hostname,omitempty"`
+}
+
+type ProtocolSettings struct {
+	ServerID          string    `json:"serverId"`
+	VLESSPort         int       `json:"vlessPort"`
+	VLESSFlow         string    `json:"vlessFlow,omitempty"`
+	VLESSNetwork      string    `json:"vlessNetwork,omitempty"`
+	RealityPublicKey  string    `json:"realityPublicKey,omitempty"`
+	RealityShortID    string    `json:"realityShortId,omitempty"`
+	RealityServerName string    `json:"realityServerName,omitempty"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 type CreateServerInput struct {
@@ -49,6 +62,15 @@ type UpdateServerInput struct {
 	PublicIP    *string
 	PrivateIP   *string
 	Status      *string
+}
+
+type UpdateProtocolSettingsInput struct {
+	VLESSPort         *int
+	VLESSFlow         *string
+	VLESSNetwork      *string
+	RealityPublicKey  *string
+	RealityShortID    *string
+	RealityServerName *string
 }
 
 type ServerFilter struct {
