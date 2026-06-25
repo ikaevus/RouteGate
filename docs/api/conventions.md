@@ -108,6 +108,12 @@ Agent:
     POST /api/agent/register
     POST /api/agent/heartbeat
 
+Public subscription:
+
+    GET  /api/v1/subscriptions/{token}
+
+The public subscription endpoint returns `routegate.subscription.v1`. Its `config` field currently uses the `routegate.client_config.v1` payload envelope with account metadata, selected server endpoint, and protocol renderer status. Concrete sing-box, Clash, and V2Ray-compatible renderers are intentionally left for later RG-4x work.
+
 ## Naming conventions
 
 JSON fields use `camelCase`.
