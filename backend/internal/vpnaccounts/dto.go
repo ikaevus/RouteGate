@@ -71,7 +71,39 @@ type PublicSubscriptionServer struct {
 }
 
 type PublicSubscriptionConfig struct {
-	Type    string `json:"type"`
+	Type    string               `json:"type"`
+	Status  string               `json:"status"`
+	Message string               `json:"message,omitempty"`
+	Payload *ClientConfigPayload `json:"payload,omitempty"`
+}
+
+type ClientConfigPayload struct {
+	Version     string               `json:"version"`
+	ProfileName string               `json:"profileName"`
+	Account     ClientConfigAccount  `json:"account"`
+	Server      ClientConfigServer   `json:"server"`
+	Protocol    ClientConfigProtocol `json:"protocol"`
+}
+
+type ClientConfigAccount struct {
+	ID          string     `json:"id"`
+	DisplayName string     `json:"displayName"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	MaxDevices  *int       `json:"maxDevices,omitempty"`
+}
+
+type ClientConfigServer struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Hostname string `json:"hostname,omitempty"`
+	PublicIP string `json:"publicIp,omitempty"`
+	Endpoint string `json:"endpoint"`
+	Location string `json:"location,omitempty"`
+	Provider string `json:"provider,omitempty"`
+}
+
+type ClientConfigProtocol struct {
+	Engine  string `json:"engine"`
 	Status  string `json:"status"`
 	Message string `json:"message"`
 }
