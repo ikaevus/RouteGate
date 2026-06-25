@@ -128,7 +128,13 @@ sed -i "s/replace-with-server-registration-token/$REGISTRATION_TOKEN/" /tmp/rout
 ### 4. Write the baseline traffic counters
 
 ```bash
-scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1000000 2000000
+bash scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1000000 2000000
+```
+
+You can also use the Make target:
+
+```bash
+VPN_ACCOUNT_ID="$VPN_ACCOUNT_ID" RX_BYTES=1000000 TX_BYTES=2000000 make dev-traffic-usage
 ```
 
 ### 5. Start the Agent and keep it running
@@ -147,7 +153,13 @@ Wait until the Agent registers and sends at least one heartbeat. The first traff
 In the first terminal, write higher absolute counters:
 
 ```bash
-scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1500000 2600000
+bash scripts/dev-traffic-usage.sh "$VPN_ACCOUNT_ID" 1500000 2600000
+```
+
+Or with Make:
+
+```bash
+VPN_ACCOUNT_ID="$VPN_ACCOUNT_ID" RX_BYTES=1500000 TX_BYTES=2600000 make dev-traffic-usage
 ```
 
 Within the next Agent heartbeat cycle, the Agent should report this delta:
