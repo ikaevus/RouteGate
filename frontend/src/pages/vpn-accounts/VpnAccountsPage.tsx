@@ -12,6 +12,7 @@ import {
   type VpnAccount,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
+import { TrafficStatsPanel } from './TrafficStatsPanel';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -143,7 +144,7 @@ export function VpnAccountsPage() {
       <div className="page-header">
         <div>
           <h1>VPN Accounts</h1>
-          <p>View VLESS / Reality credentials, subscription URLs, and client config previews.</p>
+          <p>View VLESS / Reality credentials, subscription URLs, client config previews, and traffic limits.</p>
         </div>
 
         <div className="status-pill">
@@ -238,6 +239,8 @@ export function VpnAccountsPage() {
             </div>
           )}
         </div>
+
+        {accountId && selectedAccount && <TrafficStatsPanel accountId={accountId} />}
 
         {accountId && selectedAccount && (
           <div className="panel subscription-panel">

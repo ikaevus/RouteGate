@@ -162,11 +162,142 @@
   max-height: 520px;
 }
 
+.traffic-panel {
+  align-self: start;
+}
+
+.traffic-panel-content {
+  display: grid;
+  gap: 16px;
+}
+
+.traffic-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.traffic-metric-card,
+.traffic-limit-card {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.36);
+  padding: 14px;
+}
+
+.traffic-metric-card {
+  display: grid;
+  gap: 8px;
+}
+
+.traffic-metric-label,
+.traffic-metric-meta {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.traffic-metric-value {
+  color: #e5e7eb;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.traffic-limit-card {
+  display: grid;
+  gap: 12px;
+}
+
+.traffic-limit-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.traffic-limit-title {
+  color: #e5e7eb;
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.traffic-progress-track {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.86);
+  height: 12px;
+  overflow: hidden;
+}
+
+.traffic-progress-fill {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.9), rgba(6, 182, 212, 0.9));
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.traffic-limit-meta {
+  color: #94a3b8;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 10px 16px;
+}
+
+.traffic-limit-form {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+}
+
+.traffic-limit-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.traffic-checkbox-field {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.36);
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+}
+
+.traffic-checkbox-field label {
+  align-items: center;
+  color: #e5e7eb;
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.traffic-checkbox-field input {
+  accent-color: #2563eb;
+  height: 16px;
+  width: 16px;
+}
+
+.traffic-checkbox-field p {
+  color: #94a3b8;
+  font-size: 12px !important;
+  margin: 0;
+}
+
+.traffic-form-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 @media (max-width: 980px) {
   .protocol-settings-grid,
   .protocol-server-table-row,
   .vpn-accounts-table-row,
-  .subscription-meta-grid {
+  .subscription-meta-grid,
+  .traffic-summary-grid,
+  .traffic-limit-form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -181,5 +312,9 @@
 
   .qr-code-frame {
     justify-self: start;
+  }
+
+  .traffic-limit-header {
+    display: grid;
   }
 }
