@@ -296,8 +296,14 @@ func TestGetPublicSubscriptionMarksTokenUsed(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Format != "routegate.subscription.v1" || body.Config.Status != "pending" {
+	if body.Format != "routegate.subscription.v1" || body.Config.Status != "ready" {
 		t.Fatalf("unexpected subscription response: %+v", body)
+	}
+	if body.Config.Type != ClientConfigType || body.Config.Payload == nil {
+		t.Fatalf("expected generated client config payload, got %+v", body.Config)
+	}
+	if body.Config.Payload.Version != ClientConfigVersion || body.Config.Payload.Server.Endpoint != "203.0.113.10" {
+		t.Fatalf("unexpected client config payload: %+v", body.Config.Payload)
 	}
 	if body.Server == nil || body.Server.Endpoint != "203.0.113.10" {
 		t.Fatalf("expected server endpoint in subscription response, got %+v", body.Server)
