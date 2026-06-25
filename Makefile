@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 COMPOSE_FILE := deploy/docker-compose.dev.yml
 
-.PHONY: help dev up down restart rebuild logs ps backend-test agent-test frontend-install frontend-build check clean db-reset
+.PHONY: help dev up down restart rebuild logs ps backend-test agent-test frontend-install frontend-build check clean db-reset dev-traffic-usage
 
 help:
 	@echo "RouteGate developer commands"
@@ -21,6 +21,7 @@ help:
 	@echo "  make frontend-build   Build frontend"
 	@echo "  make check            Run backend tests, agent tests and frontend build"
 	@echo "  make db-reset         Stop stack and remove dev database volume"
+	@echo "  make dev-traffic-usage Write file-based dev traffic counters"
 	@echo "  make clean            Remove generated local build files"
 
 dev: up
@@ -60,6 +61,9 @@ check: backend-test agent-test frontend-build
 
 db-reset:
 	docker compose -f $(COMPOSE_FILE) down -v
+
+dev-traffic-usage:
+	bash scripts/dev-traffic-usage.sh "$$VPN_ACCOUNT_ID" "$$RX_BYTES" "$$TX_BYTES" "$${TRAFFIC_USAGE_FILE:-}"
 
 clean:
 	rm -rf frontend/dist

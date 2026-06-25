@@ -1,0 +1,11 @@
+manager_url: "http://127.0.0.1:8080"
+registration_token: "replace-with-server-registration-token"
+heartbeat_interval_seconds: 5
+config_staging_dir: "/tmp/routegate-agent/staging"
+active_config_path: "/tmp/routegate-agent/sing-box/config.json"
+config_backup_dir: "/tmp/routegate-agent/backups"
+sing_box_path: "sing-box"
+sing_box_service_name: "sing-box"
+traffic_collection_enabled: true
+traffic_collection_interval_seconds: 1
+traffic_usage_file_path: "/tmp/routegate-dev-traffic-usage.json"

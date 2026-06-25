@@ -99,16 +99,22 @@ Direct Manager health:
     make logs
     make ps
     make backend-test
+    make agent-test
     make frontend-install
     make frontend-build
     make check
     make db-reset
+    make dev-traffic-usage
     make clean
 
 Common workflow:
 
     make check
     make dev
+
+Traffic usage dev scenario:
+
+    docs/features/traffic-usage-e2e-dev-scenario.md
 
 Stop stack:
 
