@@ -123,3 +123,140 @@ Stop stack:
 Reset development database volume:
 
     make db-reset
+
+## Ports
+
+| Service | Port | Description |
+|---|---:|---|
+| Frontend | 5173 | Vite dev server |
+| Manager API | 8080 | Go backend API |
+| PostgreSQL | 5432 | Development database |
+
+## Development auth shell
+
+The current authentication flow is a Foundation placeholder.
+
+Login page:
+
+    http://127.0.0.1:5173/login
+
+Default dev credentials:
+
+    email:    admin@routegate.local
+    password: admin
+
+Current dev token:
+
+    routegate-dev-token
+
+Production authentication is not implemented yet.
+
+## API endpoints
+
+Current Foundation endpoints:
+
+    GET  /api/admin/health
+    POST /api/admin/auth/login
+    POST /api/admin/auth/logout
+    GET  /api/admin/me
+
+    GET  /api/admin/servers
+    POST /api/admin/servers
+
+    GET  /api/admin/agents
+
+    GET  /api/agent/health
+    POST /api/agent/register
+    POST /api/agent/heartbeat
+
+API documentation:
+
+    docs/api/conventions.md
+    docs/api/openapi.yaml
+
+## Backend structure
+
+The backend uses a modular monolith structure.
+
+Typical module layout:
+
+    handler.go      HTTP request/response layer
+    service.go      validation and business flow
+    repository.go   PostgreSQL access
+    model.go        domain model
+    dto.go          API DTOs
+
+Implemented modules using this pattern:
+
+    backend/internal/servers
+    backend/internal/agents
+
+Shared backend packages:
+
+    backend/internal/config
+    backend/internal/db
+    backend/internal/http
+    backend/internal/httpx
+    backend/internal/health
+    backend/internal/auth
+
+## Database and migrations
+
+PostgreSQL is used as the main database.
+
+Migrations live in:
+
+    backend/migrations
+
+The Manager applies migrations at startup in the development stack.
+
+Current migration files:
+
+    000001_init.up.sql
+    000001_init.down.sql
+    000002_agent_identity.up.sql
+    000002_agent_identity.down.sql
+
+## Current Foundation milestones
+
+Completed:
+
+    MVP-0: dev stack
+    MVP-1: auth shell
+    MVP-2: server registry shell
+    MVP-3: agent registry shell
+    MVP-4: dashboard overview
+    MVP-5: PostgreSQL persistence
+    MVP-6: repository layer cleanup
+    MVP-7: service layer
+    MVP-8: shared HTTP response helpers
+    MVP-9: middleware stack
+    MVP-10: API conventions + OpenAPI seed
+    MVP-11: developer Makefile commands
+    MVP-12: README refresh
+
+## Next likely workstreams
+
+Recommended next workstreams:
+
+    Auth / Users / Roles
+    Server Registry / Agents
+    Config Render / Validate / Apply / Rollback
+    Agent runtime implementation
+    Audit Log
+    Routing Profiles / Split Tunnel
+    VPN Accounts / Subscriptions / QR
+
+## Notes
+
+The current implementation is still Foundation-level.
+
+Important limitations:
+
+- Auth is development-only.
+- Agent token handling is development-only.
+- Server and agent APIs are minimal.
+- No production RBAC yet.
+- No audit log writes yet.
+- No config rendering or apply workflow yet.
+- No real sing-box integration yet.
