@@ -58,5 +58,3 @@ BEGIN
             CHECK (vless_network IN ('tcp', 'udp'));
     END IF;
 END $$;
-
-CREATE INDEX IF NOT EXISTS idx_vpn_accounts_vless_uuid ON vpn_accounts(vless_uuid);
