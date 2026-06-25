@@ -72,6 +72,32 @@
   align-self: end;
 }
 
+.routing-profile-assignment-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.routing-profile-assignment-current {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.routing-profile-assignment-form {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-top: 16px;
+}
+
+.routing-profile-assignment-actions {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .badge-default,
 .badge-direct,
 .badge-enabled {
@@ -86,7 +112,8 @@
 }
 
 .badge-block,
-.badge-disabled {
+.badge-disabled,
+.badge-unassigned {
   background: rgba(239, 68, 68, 0.16);
   color: #fca5a5 !important;
 }
@@ -96,12 +123,18 @@
   .routing-rules-table-row,
   .routing-profile-form-grid,
   .routing-rule-form-grid,
-  .routing-rule-matchers-grid {
+  .routing-rule-matchers-grid,
+  .routing-profile-assignment-current,
+  .routing-profile-assignment-form {
     grid-template-columns: 1fr;
   }
 
   .routing-profiles-table,
   .routing-rules-table {
     min-width: 0;
+  }
+
+  .routing-profile-assignment-actions {
+    justify-content: flex-start;
   }
 }
