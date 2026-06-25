@@ -245,10 +245,12 @@ func scanTrafficLimit(row scanner) (TrafficLimit, error) {
 		return TrafficLimit{}, err
 	}
 	if monthlyLimitBytes.Valid {
-		limit.MonthlyLimitBytes = &monthlyLimitBytes.Int64
+		value := monthlyLimitBytes.Int64
+		limit.MonthlyLimitBytes = &value
 	}
 	if speedLimitBps.Valid {
-		limit.SpeedLimitBps = &speedLimitBps.Int64
+		value := speedLimitBps.Int64
+		limit.SpeedLimitBps = &value
 	}
 	return limit, nil
 }
