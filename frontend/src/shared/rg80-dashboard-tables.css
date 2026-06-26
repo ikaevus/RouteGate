@@ -8,6 +8,7 @@
 .traffic-metrics-row span,
 .traffic-metrics-row strong {
   display: block;
+  min-width: 0;
 }
 
 .traffic-metrics-row span {
@@ -27,9 +28,16 @@
   background: linear-gradient(135deg, var(--rg-primary), var(--rg-primary-hover));
   color: #fff;
   display: flex;
+  font-size: 13px;
   font-weight: 800;
   justify-content: center;
+  line-height: 1.15;
   min-height: 42px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-action-list {
@@ -44,13 +52,21 @@
   color: #cbd5e1;
   display: flex;
   font-size: 13px;
+  gap: 10px;
   justify-content: space-between;
+  min-width: 0;
   padding: 9px 4px;
 }
 
 .quick-action-list a:hover {
   background: rgba(37, 99, 235, 0.1);
   color: #fff;
+}
+
+.quick-action-list a span:first-child,
+.quick-action-list a {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-table {
@@ -65,10 +81,15 @@
   display: grid;
   gap: 12px;
   min-height: 40px;
+  min-width: 0;
 }
 
 .dashboard-table-row:first-child {
   border-top: 0;
+}
+
+.dashboard-table-row > * {
+  min-width: 0;
 }
 
 .dashboard-table-row strong {
@@ -78,6 +99,13 @@
 .dashboard-table-row span {
   color: var(--rg-text-secondary);
   font-size: 12px;
+}
+
+.dashboard-table-row strong,
+.dashboard-table-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-table-head span {
@@ -92,7 +120,7 @@
 }
 
 .deployments-table .dashboard-table-row {
-  grid-template-columns: 1.2fr 1.2fr 0.9fr 0.8fr 0.8fr;
+  grid-template-columns: 1.35fr 1.25fr 0.9fr 0.75fr 0.75fr;
 }
 
 .server-online-dot,
@@ -146,6 +174,7 @@
   align-items: center;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   display: flex;
+  gap: 10px;
   justify-content: space-between;
   margin-top: 12px;
   padding-top: 12px;
@@ -174,9 +203,17 @@
   width: 28px;
 }
 
+.audit-row div {
+  min-width: 0;
+}
+
 .audit-row strong,
 .audit-row p {
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .audit-row p,
