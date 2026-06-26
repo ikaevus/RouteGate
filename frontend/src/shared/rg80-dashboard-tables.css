@@ -156,41 +156,58 @@
   white-space: nowrap;
 }
 
-.server-country-chip {
-  align-items: center;
-  border: 1px solid rgba(96, 165, 250, 0.22);
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.72);
-  color: #dbeafe !important;
-  display: inline-flex !important;
+.server-country-flag {
+  border: 1px solid rgba(203, 213, 225, 0.24);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.5), 0 3px 8px rgba(2, 6, 23, 0.28);
+  display: inline-block !important;
   flex: 0 0 auto;
-  font-size: 9px !important;
-  font-weight: 850;
-  height: 18px;
-  justify-content: center;
-  letter-spacing: 0.03em;
-  line-height: 1;
-  min-width: 26px;
+  height: 11px;
   overflow: hidden;
-  padding: 0 5px;
+  width: 16px;
+}
+
+.server-country-de {
+  background: linear-gradient(to bottom, #111827 0 33%, #dc2626 33% 66%, #facc15 66% 100%);
+}
+
+.server-country-nl {
+  background: linear-gradient(to bottom, #dc2626 0 33%, #ffffff 33% 66%, #2563eb 66% 100%);
+}
+
+.server-country-us {
+  background:
+    linear-gradient(to bottom, #b91c1c 0 14%, #ffffff 14% 28%, #b91c1c 28% 42%, #ffffff 42% 56%, #b91c1c 56% 70%, #ffffff 70% 84%, #b91c1c 84% 100%);
   position: relative;
 }
 
-.server-country-chip::before {
-  border-radius: 999px;
+.server-country-us::before {
+  background: #1d4ed8;
   content: "";
-  height: 5px;
-  left: 4px;
-  position: absolute;
-  top: 3px;
-  width: 5px;
+  display: block;
+  height: 6px;
+  width: 7px;
 }
 
-.server-country-de::before { background: #facc15; box-shadow: 0 5px 0 #ef4444; }
-.server-country-nl::before { background: #ef4444; box-shadow: 0 5px 0 #2563eb; }
-.server-country-us::before { background: #2563eb; box-shadow: 0 5px 0 #ef4444; }
-.server-country-sg::before { background: #ef4444; box-shadow: 0 5px 0 #ffffff; }
-.server-country-rg::before { background: #38bdf8; box-shadow: 0 5px 0 #2563eb; }
+.server-country-sg {
+  background: linear-gradient(to bottom, #dc2626 0 50%, #ffffff 50% 100%);
+  position: relative;
+}
+
+.server-country-sg::before {
+  background: #ffffff;
+  border-radius: 999px;
+  content: "";
+  height: 4px;
+  left: 3px;
+  position: absolute;
+  top: 2px;
+  width: 4px;
+}
+
+.server-country-rg {
+  background: linear-gradient(135deg, #2563eb 0 50%, #06b6d4 50% 100%);
+}
 
 .deployments-table .dashboard-table-row {
   grid-template-columns: minmax(128px, 1.25fr) minmax(96px, 1fr) minmax(104px, 0.88fr) 0.65fr 0.7fr;
