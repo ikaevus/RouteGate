@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ServersPage } from '../pages/servers/ServersPage';
 import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
@@ -8,6 +8,18 @@ import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPage';
 import { LoginPage } from '../pages/login/LoginPage';
 import { PortalPage } from '../pages/portal/PortalPage';
+import { t } from '../shared/i18n/i18n';
+
+const adminNavigationItems = [
+  { to: '/', label: t('navigation.overview'), end: true },
+  { to: '/servers', label: t('navigation.servers') },
+  { to: '/agents', label: t('navigation.agents') },
+  { to: '/protocol-settings', label: t('navigation.protocolSettings') },
+  { to: '/vpn-accounts', label: t('navigation.vpnAccounts') },
+  { to: '/routing-profiles', label: t('navigation.routingProfiles') },
+  { to: '/portal', label: t('navigation.userPortal') },
+  { to: '/login', label: t('navigation.login') },
+];
 
 function PortalShell() {
   return (
@@ -17,14 +29,14 @@ function PortalShell() {
           <div className="brand-mark">RG</div>
           <div>
             <div className="brand-title">RouteGate</div>
-            <div className="brand-subtitle">User Portal</div>
+            <div className="brand-subtitle">{t('app.portalSubtitle')}</div>
           </div>
         </Link>
 
         <nav className="portal-topnav">
-          <Link to="/portal">Portal Dashboard</Link>
-          <Link to="/">Admin UI</Link>
-          <Link to="/login">Login</Link>
+          <Link to="/portal">{t('navigation.userPortal')}</Link>
+          <Link to="/">{t('navigation.adminUi')}</Link>
+          <Link to="/login">{t('navigation.login')}</Link>
         </nav>
       </header>
 
@@ -47,19 +59,21 @@ function AdminShell() {
           <div className="brand-mark">RG</div>
           <div>
             <div className="brand-title">RouteGate</div>
-            <div className="brand-subtitle">Foundation</div>
+            <div className="brand-subtitle">{t('app.adminSubtitle')}</div>
           </div>
         </div>
 
         <nav className="nav">
-          <Link to="/">Dashboard</Link>
-          <Link to="/servers">Servers</Link>
-          <Link to="/agents">Agents</Link>
-          <Link to="/protocol-settings">Protocol Settings</Link>
-          <Link to="/vpn-accounts">VPN Accounts</Link>
-          <Link to="/routing-profiles">Routing Profiles</Link>
-          <Link to="/portal">User Portal</Link>
-          <Link to="/login">Login</Link>
+          {adminNavigationItems.map((item) => (
+            <NavLink
+              className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+              end={item.end}
+              key={item.to}
+              to={item.to}
+            >
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
       </aside>
 
