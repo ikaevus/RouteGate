@@ -12,6 +12,7 @@ import './shared/rg80-shell.css';
 import './shared/rg80-dashboard.css';
 import './shared/rg80-dashboard-tables.css';
 import './shared/rg80-feature-reference.css';
+import './shared/rg80-auth.css';
 
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');
