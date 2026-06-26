@@ -1,0 +1,283 @@
+.routegate-admin-shell {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.admin-workspace {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  min-width: 0;
+}
+
+.routegate-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100vh;
+  padding: 22px 16px;
+}
+
+.routegate-brand {
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.routegate-brand-mark {
+  border-radius: 16px;
+}
+
+.routegate-nav .nav-link {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-height: 42px;
+}
+
+.nav-icon {
+  color: #9fb3cb;
+  display: inline-grid;
+  font-size: 15px;
+  height: 22px;
+  place-items: center;
+  width: 22px;
+}
+
+.nav-link-active .nav-icon,
+.nav-link:hover .nav-icon {
+  color: #dbeafe;
+}
+
+.routegate-nav-secondary {
+  margin-top: 4px;
+}
+
+.nav-link-muted {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.sidebar-spacer {
+  flex: 1;
+}
+
+.sidebar-license-card,
+.sidebar-control {
+  border: 1px solid rgba(38, 52, 73, 0.96);
+  border-radius: 14px;
+  background: rgba(17, 28, 46, 0.7);
+}
+
+.sidebar-license-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.sidebar-license-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.sidebar-license-header span,
+.sidebar-license-card p {
+  color: var(--rg-text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+
+.sidebar-license-header strong {
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.license-progress-track {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  height: 7px;
+  overflow: hidden;
+}
+
+.license-progress-track span {
+  background: linear-gradient(90deg, var(--rg-primary), var(--rg-accent-cyan));
+  display: block;
+  height: 100%;
+  width: 28%;
+}
+
+.sidebar-control {
+  color: #cbd5e1;
+  cursor: pointer;
+  font: inherit;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.admin-topbar {
+  align-items: center;
+  border-bottom: 1px solid rgba(38, 52, 73, 0.9);
+  background: rgba(7, 17, 31, 0.82);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 12px 28px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar-menu-button,
+.topbar-icon-button {
+  border: 1px solid rgba(38, 52, 73, 0.96);
+  border-radius: 12px;
+  background: rgba(17, 28, 46, 0.72);
+  color: #dbeafe;
+  cursor: pointer;
+  height: 38px;
+  width: 38px;
+}
+
+.topbar-search {
+  align-items: center;
+  border: 1px solid rgba(38, 52, 73, 0.96);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.44);
+  color: var(--rg-text-secondary);
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  max-width: 520px;
+  min-width: 240px;
+  padding: 0 12px;
+}
+
+.topbar-search input {
+  background: transparent;
+  border: 0;
+  color: var(--rg-text-primary);
+  flex: 1;
+  font: inherit;
+  height: 40px;
+  min-width: 0;
+  outline: none;
+}
+
+.topbar-search kbd {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  color: #9fb3cb;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.topbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.topbar-notification {
+  position: relative;
+}
+
+.topbar-notification::after {
+  background: var(--rg-danger);
+  border: 2px solid var(--rg-bg-deep);
+  border-radius: 999px;
+  content: "7";
+  color: #fff;
+  display: grid;
+  font-size: 10px;
+  height: 18px;
+  place-items: center;
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 18px;
+}
+
+.admin-profile-chip {
+  align-items: center;
+  border: 1px solid rgba(38, 52, 73, 0.96);
+  border-radius: 14px;
+  background: rgba(17, 28, 46, 0.72);
+  display: flex;
+  gap: 10px;
+  padding: 7px 12px;
+}
+
+.admin-profile-chip > span {
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.16);
+  color: #c4b5fd;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  height: 30px;
+  place-items: center;
+  width: 30px;
+}
+
+.admin-profile-chip strong,
+.admin-profile-chip small {
+  display: block;
+}
+
+.admin-profile-chip small {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+}
+
+.admin-main {
+  background:
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.08), transparent 26rem),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.15), transparent 34rem),
+    #07111f;
+  padding: 22px 28px 18px;
+}
+
+.admin-statusbar {
+  align-items: center;
+  border-top: 1px solid rgba(38, 52, 73, 0.9);
+  background: rgba(7, 17, 31, 0.86);
+  color: var(--rg-text-secondary);
+  display: flex;
+  gap: 18px;
+  min-height: 44px;
+  padding: 0 28px;
+}
+
+.admin-statusbar strong {
+  align-items: center;
+  color: #86efac;
+  display: inline-flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+@media (max-width: 980px) {
+  .routegate-admin-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .routegate-sidebar {
+    min-height: auto;
+  }
+
+  .admin-topbar,
+  .topbar-actions,
+  .admin-statusbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .topbar-search {
+    order: 3;
+    max-width: none;
+    width: 100%;
+  }
+}

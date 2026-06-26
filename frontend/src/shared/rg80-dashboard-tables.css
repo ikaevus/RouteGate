@@ -1,0 +1,262 @@
+.traffic-metrics-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.traffic-metrics-row span,
+.traffic-metrics-row strong {
+  display: block;
+  min-width: 0;
+}
+
+.traffic-metrics-row span {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.traffic-metrics-row strong {
+  color: var(--rg-text-primary);
+  font-size: 18px;
+  margin-top: 4px;
+}
+
+.quick-primary-action {
+  align-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--rg-primary), var(--rg-primary-hover));
+  color: #fff;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  justify-content: center;
+  line-height: 1.15;
+  min-height: 42px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-action-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.quick-action-list a {
+  align-items: center;
+  border-radius: 10px;
+  color: #cbd5e1;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 9px 4px;
+}
+
+.quick-action-list a:hover {
+  background: rgba(37, 99, 235, 0.1);
+  color: #fff;
+}
+
+.quick-action-list a span:first-child,
+.quick-action-list a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dashboard-table {
+  display: grid;
+  min-width: 0;
+}
+
+.dashboard-table-row {
+  align-items: center;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  display: grid;
+  gap: 12px;
+  min-height: 40px;
+  min-width: 0;
+}
+
+.dashboard-table-row:first-child {
+  border-top: 0;
+}
+
+.dashboard-table-row > * {
+  min-width: 0;
+}
+
+.dashboard-table-row strong {
+  color: var(--rg-text-primary);
+}
+
+.dashboard-table-row span {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.dashboard-table-row strong,
+.dashboard-table-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-table-head span {
+  color: #a8b6ca;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.servers-summary-table .dashboard-table-row {
+  grid-template-columns: 1.25fr 1.1fr 0.55fr 0.7fr 0.8fr 0.8fr;
+}
+
+.deployments-table .dashboard-table-row {
+  grid-template-columns: 1.35fr 1.25fr 0.9fr 0.75fr 0.75fr;
+}
+
+.server-online-dot,
+.server-offline-dot {
+  border-radius: 999px;
+  height: 9px;
+  justify-self: start;
+  width: 9px;
+}
+
+.server-online-dot { background: var(--rg-success); box-shadow: 0 0 14px rgba(34, 197, 94, 0.7); }
+.server-offline-dot { background: var(--rg-danger); box-shadow: 0 0 14px rgba(239, 68, 68, 0.7); }
+
+.widget-link {
+  color: #60a5fa;
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 14px;
+}
+
+.donut-chart {
+  border-radius: 999px;
+  display: grid;
+  height: 116px;
+  margin: 6px auto 14px;
+  place-items: center;
+  width: 116px;
+}
+
+.donut-chart span {
+  border-radius: 999px;
+  background: var(--rg-surface-main);
+  display: block;
+  height: 58px;
+  width: 58px;
+}
+
+.traffic-type-list {
+  display: grid;
+  gap: 6px;
+}
+
+.traffic-type-list span,
+.traffic-total span {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.traffic-total {
+  align-items: center;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.audit-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+}
+
+.audit-avatar {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  color: #dbeafe;
+  display: grid;
+  font-size: 11px;
+  height: 28px;
+  place-items: center;
+  width: 28px;
+}
+
+.audit-row div {
+  min-width: 0;
+}
+
+.audit-row strong,
+.audit-row p {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-row p,
+.audit-row small {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+}
+
+.dashboard-server-time {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  margin-top: 12px;
+  text-align: right;
+}
+
+@media (max-width: 1380px) {
+  .kpi-widget { grid-column: span 6; }
+  .health-widget,
+  .node-widget,
+  .traffic-widget,
+  .quick-actions-widget,
+  .servers-summary-widget,
+  .deployments-widget,
+  .traffic-types-widget,
+  .audit-widget { grid-column: span 6; }
+}
+
+@media (max-width: 980px) {
+  .kpi-widget,
+  .health-widget,
+  .node-widget,
+  .traffic-widget,
+  .quick-actions-widget,
+  .servers-summary-widget,
+  .deployments-widget,
+  .traffic-types-widget,
+  .audit-widget {
+    grid-column: 1 / -1;
+  }
+
+  .servers-summary-table .dashboard-table-row,
+  .deployments-table .dashboard-table-row {
+    grid-template-columns: 1fr;
+    padding: 10px 0;
+  }
+}
