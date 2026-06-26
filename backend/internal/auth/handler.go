@@ -59,14 +59,17 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	user, ok := UserFromContext(r.Context())
 	if !ok {
+		h.recordLogoutFailure(r, "", "unauthorized")
 		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
 		return
 	}
 	if err := h.repo.RevokeSession(r.Context(), user.SessionID); err != nil {
+		h.recordLogoutFailure(r, user.ID, "database_error")
 		h.logger.Error("logout failed", "error", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to log out."))
 		return
 	}
+	h.recordLogoutSuccess(r, user)
 	httpx.WriteJSON(w, http.StatusOK, StatusResponse{Status: "ok", Timestamp: time.Now().UTC()})
 }
 
@@ -80,7 +83,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) recordLoginSuccess(r *http.Request, login string, userID string, email string) {
-	h.audit.RecordSafe(r.Context(), audit.EventInput{
+	h.recordAudit(r, audit.EventInput{
 		ActorUserID:  userID,
 		ActorType:    audit.ActorTypeUser,
 		Action:       "auth.login.success",
@@ -96,7 +99,7 @@ func (h *Handler) recordLoginSuccess(r *http.Request, login string, userID strin
 }
 
 func (h *Handler) recordLoginFailure(r *http.Request, login string, reason string) {
-	h.audit.RecordSafe(r.Context(), audit.EventInput{
+	h.recordAudit(r, audit.EventInput{
 		ActorType:    audit.ActorTypeAnonymous,
 		Action:       "auth.login.failure",
 		ResourceType: "auth_session",
@@ -108,6 +111,44 @@ func (h *Handler) recordLoginFailure(r *http.Request, login string, reason strin
 			"user_agent": r.UserAgent(),
 		},
 	})
+}
+
+func (h *Handler) recordLogoutSuccess(r *http.Request, user AuthenticatedUser) {
+	h.recordAudit(r, audit.EventInput{
+		ActorUserID:  user.ID,
+		ActorType:    audit.ActorTypeUser,
+		Action:       "auth.logout.success",
+		ResourceType: "auth_session",
+		ResourceID:   user.SessionID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"email":      user.Email,
+			"ip_address": clientIP(r),
+			"user_agent": r.UserAgent(),
+		},
+	})
+}
+
+func (h *Handler) recordLogoutFailure(r *http.Request, userID string, reason string) {
+	h.recordAudit(r, audit.EventInput{
+		ActorUserID:  userID,
+		ActorType:    audit.ActorTypeUser,
+		Action:       "auth.logout.failure",
+		ResourceType: "auth_session",
+		Result:       audit.ResultFailure,
+		Metadata: map[string]any{
+			"reason":     reason,
+			"ip_address": clientIP(r),
+			"user_agent": r.UserAgent(),
+		},
+	})
+}
+
+func (h *Handler) recordAudit(r *http.Request, input audit.EventInput) {
+	if h.audit == nil {
+		return
+	}
+	h.audit.RecordSafe(r.Context(), input)
 }
 
 func clientIP(r *http.Request) string {
