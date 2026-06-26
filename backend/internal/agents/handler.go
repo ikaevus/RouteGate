@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ikaevus/routegate/backend/internal/audit"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
@@ -30,6 +31,7 @@ type Handler struct {
 	logger             *slog.Logger
 	service            *Service
 	repository         agentAPIRepository
+	audit              *audit.Recorder
 	generateAgentToken func() (string, error)
 	now                func() time.Time
 }
@@ -41,6 +43,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 		logger:             logger,
 		service:            NewService(repository),
 		repository:         repository,
+		audit:              audit.NewRecorder(logger, pool),
 		generateAgentToken: GenerateAgentToken,
 		now:                time.Now,
 	}
@@ -63,6 +66,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var request AgentRegistrationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		h.recordRegistrationFailure(r, "", "invalid_request")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
 			"invalid_request",
 			"Request body must be valid JSON.",
@@ -72,6 +76,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	request.RegistrationToken = strings.TrimSpace(request.RegistrationToken)
 	if request.RegistrationToken == "" {
+		h.recordRegistrationFailure(r, "", "registration_token_required")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
 			"registration_token_required",
 			"Registration token is required.",
@@ -84,6 +89,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		HashToken(request.RegistrationToken),
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
+		h.recordRegistrationFailure(r, request.RegistrationToken, "invalid_or_expired_or_used")
 		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error(
 			"invalid_registration_token",
 			"Registration token is invalid, expired, or already used.",
@@ -91,6 +97,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		h.recordRegistrationFailure(r, request.RegistrationToken, "database_error")
 		h.logger.Error("validate agent registration token failed", "error", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
 			"database_error",
@@ -126,6 +133,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		LastSeenAt:   &now,
 	})
 	if err != nil {
+		h.recordRegistrationFailure(r, request.RegistrationToken, "agent_create_failed")
 		h.logger.Error("create agent registration failed", "error", err, "server_id", registrationToken.ServerID)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
 			"database_error",
@@ -135,6 +143,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repository.ActivateServer(r.Context(), registrationToken.ServerID); err != nil {
+		h.recordRegistrationFailure(r, request.RegistrationToken, "server_activate_failed")
 		h.logger.Error("activate registered agent server failed", "error", err, "server_id", registrationToken.ServerID)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
 			"database_error",
@@ -143,9 +152,27 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	agentTokenPreview := MaskToken(agentToken)
+	h.recordAudit(r.Context(), audit.EventInput{
+		ActorType:    audit.ActorTypeAgent,
+		Action:       "agent.registered",
+		ResourceType: "agent",
+		ResourceID:   agent.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"server_id":                  agent.ServerID,
+			"registration_token_id":      registrationToken.ID,
+			"registration_token_preview": MaskToken(request.RegistrationToken),
+			"agent_token_preview":        agentTokenPreview,
+			"hostname":                   strings.TrimSpace(request.Hostname),
+			"agent_version":              strings.TrimSpace(request.AgentVersion),
+			"os":                         strings.TrimSpace(request.OS),
+			"arch":                       strings.TrimSpace(request.Arch),
+		},
+	})
 	h.logger.Info("agent registered", "agent_id", agent.ID, "server_id", agent.ServerID)
 	httpx.WriteJSON(w, http.StatusCreated, AgentRegistrationResponse{
-		AgentID: agent.ID, ServerID: agent.ServerID, AgentToken: agentToken,
+		AgentID: agent.ID, ServerID: agent.ServerID, AgentToken: agentToken, AgentTokenPreview: agentTokenPreview,
 	})
 }
 
@@ -253,12 +280,29 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, CompleteAgentTaskResponse{OK: true, TaskID: jobID, Status: request.Status})
 }
 
+func (h *Handler) recordRegistrationFailure(r *http.Request, registrationToken string, reason string) {
+	h.recordAudit(r.Context(), audit.EventInput{
+		ActorType:    audit.ActorTypeAnonymous,
+		Action:       "agent.registration.failed",
+		ResourceType: "agent",
+		Result:       audit.ResultFailure,
+		Metadata: map[string]any{
+			"reason":                     reason,
+			"registration_token_preview": MaskToken(registrationToken),
+		},
+	})
+}
+
+func (h *Handler) recordAudit(ctx context.Context, input audit.EventInput) {
+	h.audit.RecordSafe(ctx, input)
+}
+
 func bearerToken(header string) (string, bool) {
 	parts := strings.Fields(header)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
 		return "", false
 	}
-	return parts[1], true
+	return strings.TrimSpace(parts[1]), true
 }
 
 func validConfigTaskCompletionStatus(status string) bool {
