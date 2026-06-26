@@ -119,6 +119,34 @@ function PortalShell() {
   );
 }
 
+function AuthShell() {
+  return (
+    <div className="auth-app-shell">
+      <header className="auth-topbar">
+        <Link className="portal-brand" to="/">
+          <BrandShield />
+          <div>
+            <div className="brand-title">RouteGate</div>
+            <div className="brand-subtitle">{t('app.adminSubtitle')}</div>
+          </div>
+        </Link>
+
+        <nav className="portal-topnav">
+          <Link to="/">{t('navigation.adminUi')}</Link>
+          <Link to="/portal">{t('navigation.userPortal')}</Link>
+        </nav>
+      </header>
+
+      <main className="auth-main">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
 function AdminShell() {
   return (
     <div className="app-shell routegate-admin-shell routegate-reference-shell">
@@ -208,7 +236,6 @@ function AdminShell() {
             <Route path="/vpn-accounts/:accountId" element={<VpnAccountsPage />} />
             <Route path="/routing-profiles" element={<RoutingProfilesPage />} />
             <Route path="/routing-profiles/:profileId" element={<RoutingProfilesPage />} />
-            <Route path="/login" element={<LoginPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -229,6 +256,10 @@ export function App() {
 
   if (location.pathname.startsWith('/portal')) {
     return <PortalShell />;
+  }
+
+  if (location.pathname.startsWith('/login')) {
+    return <AuthShell />;
   }
 
   return <AdminShell />;
