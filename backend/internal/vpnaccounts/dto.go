@@ -29,12 +29,12 @@ type ListAccountsResponse struct {
 }
 
 type VLESSRealityCredentialsResponse struct {
-	VPNAccountID string                      `json:"vpnAccountId"`
-	ServerID     string                      `json:"serverId,omitempty"`
-	Endpoint     string                      `json:"endpoint,omitempty"`
-	Protocol     string                      `json:"protocol"`
-	VLESS       AdminVLESSCredentials       `json:"vless"`
-	Reality     AdminRealityCredentials     `json:"reality"`
+	VPNAccountID string                  `json:"vpnAccountId"`
+	ServerID     string                  `json:"serverId,omitempty"`
+	Endpoint     string                  `json:"endpoint,omitempty"`
+	Protocol     string                  `json:"protocol"`
+	VLESS       AdminVLESSCredentials   `json:"vless"`
+	Reality     AdminRealityCredentials `json:"reality"`
 }
 
 type AdminVLESSCredentials struct {
@@ -53,6 +53,7 @@ type AdminRealityCredentials struct {
 type SubscriptionTokenResponse struct {
 	VPNAccountID      string     `json:"vpnAccountId"`
 	SubscriptionToken string     `json:"subscriptionToken"`
+	TokenPreview      string     `json:"tokenPreview"`
 	SubscriptionURL   string     `json:"subscriptionUrl"`
 	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
 }
