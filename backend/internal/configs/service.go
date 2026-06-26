@@ -15,6 +15,8 @@ import (
 var ErrInvalidRenderedConfig = errors.New("rendered config is invalid")
 var ErrConfigVersionNotValidated = errors.New("config version is not validated")
 var ErrConfigApplyAgentMissing = errors.New("server has no registered agent")
+var ErrConfigApplyUnsafe = errors.New("config version is unsafe to apply")
+var ErrConfigHashMismatch = errors.New("config version hash mismatch")
 
 const (
 	singBoxVLESSInboundTag = "vless-in"
@@ -124,6 +126,9 @@ func (s *Service) Apply(ctx context.Context, serverID, versionID string, request
 	if version.Status != StatusValidated {
 		return ApplyConfigResponse{}, ErrConfigVersionNotValidated
 	}
+	if err := ensureConfigVersionSafeForApply(version); err != nil {
+		return ApplyConfigResponse{}, err
+	}
 
 	info, err := s.repository.GetServerConfigInfo(ctx, serverID)
 	if err != nil {
@@ -139,7 +144,8 @@ func (s *Service) Apply(ctx context.Context, serverID, versionID string, request
 		ConfigVersionID: version.ID,
 		Action:          ApplyJobActionApply,
 		RequestPayload: map[string]any{
-			"comment": request.Comment,
+			"comment":     strings.TrimSpace(request.Comment),
+			"config_hash": version.ConfigHash,
 		},
 	})
 	if err != nil {
@@ -409,6 +415,30 @@ func ValidateRenderedConfig(config RenderedConfig) ValidationResult {
 		result.Warnings = append(result.Warnings, "No registered agent is attached to this server yet; the config can be rendered but cannot be applied.")
 	}
 	return result
+}
+
+func ensureConfigVersionSafeForApply(version ConfigVersion) error {
+	if len(version.RenderedConfig) == 0 || !json.Valid(version.RenderedConfig) {
+		return ErrConfigApplyUnsafe
+	}
+
+	var rendered RenderedConfig
+	if err := json.Unmarshal(version.RenderedConfig, &rendered); err != nil {
+		return ErrConfigApplyUnsafe
+	}
+	validation := ValidateRenderedConfig(rendered)
+	if !validation.Valid {
+		return ErrConfigApplyUnsafe
+	}
+
+	hash, err := hashRenderedConfig(rendered)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(version.ConfigHash) == "" || !strings.EqualFold(hash, strings.TrimSpace(version.ConfigHash)) {
+		return ErrConfigHashMismatch
+	}
+	return nil
 }
 
 func hashRenderedConfig(config RenderedConfig) (string, error) {
