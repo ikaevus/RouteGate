@@ -1,5 +1,5 @@
 .routegate-admin-shell {
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
 }
 
 .admin-workspace {
@@ -12,18 +12,68 @@
 .routegate-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-height: 100vh;
-  padding: 22px 16px;
+  padding: 18px 14px 14px;
 }
 
 .routegate-brand {
+  gap: 12px;
   margin-bottom: 8px;
   padding: 0 2px;
 }
 
-.routegate-brand-mark {
-  border-radius: 16px;
+.brand-shield {
+  display: grid;
+  filter: drop-shadow(0 16px 28px rgba(37, 99, 235, 0.28));
+  height: 34px;
+  place-items: center;
+  width: 34px;
+}
+
+.brand-shield svg {
+  display: block;
+  height: 34px;
+  width: 34px;
+}
+
+.brand-shield-outer {
+  fill: rgba(37, 99, 235, 0.96);
+}
+
+.brand-shield-inner {
+  fill: rgba(7, 17, 31, 0.88);
+  stroke: rgba(191, 219, 254, 0.7);
+  stroke-width: 1.1;
+}
+
+.brand-shield-gate {
+  fill: none;
+  stroke: #f8fafc;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
+.routegate-brand .brand-title {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.routegate-brand .brand-subtitle {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.rg-icon {
+  display: block;
+  fill: none;
+  height: 18px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.85;
+  width: 18px;
 }
 
 .routegate-nav .nav-link {
@@ -31,12 +81,12 @@
   display: flex;
   gap: 12px;
   min-height: 42px;
+  padding: 9px 12px;
 }
 
 .nav-icon {
   color: #9fb3cb;
   display: inline-grid;
-  font-size: 15px;
   height: 22px;
   place-items: center;
   width: 22px;
@@ -48,12 +98,12 @@
 }
 
 .routegate-nav-secondary {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .nav-link-muted {
   cursor: default;
-  opacity: 0.82;
+  opacity: 0.74;
 }
 
 .sidebar-spacer {
@@ -69,8 +119,8 @@
 
 .sidebar-license-card {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 12px;
 }
 
 .sidebar-license-header {
@@ -82,7 +132,7 @@
 .sidebar-license-header span,
 .sidebar-license-card p {
   color: var(--rg-text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   margin: 0;
 }
 
@@ -90,7 +140,7 @@
   border-radius: 999px;
   background: rgba(34, 197, 94, 0.16);
   color: #86efac;
-  font-size: 12px;
+  font-size: 11px;
   padding: 4px 8px;
 }
 
@@ -109,22 +159,35 @@
 }
 
 .sidebar-control {
+  align-items: center;
   color: #cbd5e1;
   cursor: pointer;
+  display: flex;
+  gap: 10px;
   font: inherit;
-  padding: 11px 12px;
+  min-height: 38px;
+  padding: 9px 12px;
   text-align: left;
+}
+
+.sidebar-theme-control i {
+  background: #2563eb;
+  border-radius: 999px;
+  box-shadow: inset 16px 0 0 rgba(2, 6, 23, 0.35);
+  height: 20px;
+  margin-left: auto;
+  width: 38px;
 }
 
 .admin-topbar {
   align-items: center;
   border-bottom: 1px solid rgba(38, 52, 73, 0.9);
-  background: rgba(7, 17, 31, 0.82);
+  background: rgba(7, 17, 31, 0.88);
   display: flex;
   gap: 16px;
   justify-content: space-between;
-  min-height: 68px;
-  padding: 12px 28px;
+  min-height: 60px;
+  padding: 10px 16px 10px 12px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -132,12 +195,15 @@
 
 .topbar-menu-button,
 .topbar-icon-button {
+  align-items: center;
   border: 1px solid rgba(38, 52, 73, 0.96);
   border-radius: 12px;
   background: rgba(17, 28, 46, 0.72);
   color: #dbeafe;
   cursor: pointer;
+  display: inline-flex;
   height: 38px;
+  justify-content: center;
   width: 38px;
 }
 
@@ -145,12 +211,14 @@
   align-items: center;
   border: 1px solid rgba(38, 52, 73, 0.96);
   border-radius: 12px;
-  background: rgba(2, 6, 23, 0.44);
+  background: rgba(2, 6, 23, 0.5);
   color: var(--rg-text-secondary);
   display: flex;
   flex: 1;
   gap: 10px;
-  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 430px;
   min-width: 240px;
   padding: 0 12px;
 }
@@ -161,7 +229,7 @@
   color: var(--rg-text-primary);
   flex: 1;
   font: inherit;
-  height: 40px;
+  height: 38px;
   min-width: 0;
   outline: none;
 }
@@ -207,12 +275,13 @@
   background: rgba(17, 28, 46, 0.72);
   display: flex;
   gap: 10px;
+  min-width: 156px;
   padding: 7px 12px;
 }
 
 .admin-profile-chip > span {
   border-radius: 999px;
-  background: rgba(139, 92, 246, 0.16);
+  background: rgba(139, 92, 246, 0.2);
   color: #c4b5fd;
   display: grid;
   font-size: 12px;
@@ -237,17 +306,17 @@
     radial-gradient(circle at top left, rgba(6, 182, 212, 0.08), transparent 26rem),
     radial-gradient(circle at top right, rgba(37, 99, 235, 0.15), transparent 34rem),
     #07111f;
-  padding: 22px 28px 18px;
+  padding: 18px 16px 12px;
 }
 
 .admin-statusbar {
   align-items: center;
   border-top: 1px solid rgba(38, 52, 73, 0.9);
-  background: rgba(7, 17, 31, 0.86);
+  background: rgba(7, 17, 31, 0.9);
   color: var(--rg-text-secondary);
   display: flex;
   gap: 18px;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 28px;
 }
 
@@ -256,6 +325,9 @@
   color: #86efac;
   display: inline-flex;
   gap: 8px;
+}
+
+.admin-statusbar-time {
   margin-left: auto;
 }
 

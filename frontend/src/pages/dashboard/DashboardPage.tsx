@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
@@ -24,13 +25,12 @@ const deploymentRows = [
 ];
 
 const auditRows = [
-  { actor: 'admin', action: 'Created VPN account user@example.com', area: 'VPN Accounts', time: '2 min ago' },
-  { actor: 'admin', action: 'Deployed prod-routing-v4', area: 'Config Deploy', time: '2 min ago' },
+  { actor: 'admin', action: 'Created VPN account user@routegate.local', area: 'VPN Accounts', time: '2 min ago' },
+  { actor: 'admin', action: 'Deployed prod-routing-v4', area: 'Deployments', time: '2 min ago' },
   { actor: 'system', action: 'Agent rg-eu-02 connected', area: 'Agents', time: '8 min ago' },
-  { actor: 'admin', action: 'Updated EU-Core routing profile', area: 'Routing Profiles', time: '15 min ago' },
+  { actor: 'admin', action: 'Updated EU-Core routing profile', area: 'Routing', time: '15 min ago' },
 ];
 
-const trafficSeries = [42, 32, 50, 44, 70, 52, 88, 78, 65, 84, 58, 96, 74, 69, 93, 62, 102, 76, 112, 88];
 const trafficTypeSegments = [42, 29, 12, 9, 8];
 
 function formatDate(value?: string | null): string {
@@ -55,7 +55,7 @@ function KpiWidget({ title, value, meta, tone, icon }: { title: string; value: s
   );
 }
 
-function WidgetPanel({ title, subtitle, children, className = '', action }: { title: string; subtitle?: string; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
+function WidgetPanel({ title, subtitle, children, className = '', action }: { title: string; subtitle?: string; children: ReactNode; className?: string; action?: ReactNode }) {
   return (
     <section className={`dashboard-widget ${className}`}>
       <div className="dashboard-widget-header">
@@ -78,6 +78,7 @@ function InfrastructureHealthWidget({ serversCount, agentsCount, managerHealthy 
     ['Database', 'healthy', '2'],
     ['Configuration', 'healthy', '—'],
     ['Storage', 'warning', '78%'],
+    ['Backups', 'healthy', '2 h ago'],
   ];
 
   return (
@@ -103,6 +104,7 @@ function NodeDistributionWidget() {
     { label: '42', className: 'node-marker node-marker-asia' },
     { label: '15', className: 'node-marker node-marker-sa' },
     { label: '8', className: 'node-marker node-marker-af' },
+    { label: '0', className: 'node-marker node-marker-oc' },
   ];
 
   return (
@@ -116,6 +118,7 @@ function NodeDistributionWidget() {
         <div className="world-map-shape world-map-shape-2" />
         <div className="world-map-shape world-map-shape-3" />
         <div className="world-map-shape world-map-shape-4" />
+        <div className="world-map-shape world-map-shape-5" />
         {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
       </div>
       <div className="map-legend">
@@ -124,6 +127,7 @@ function NodeDistributionWidget() {
         <span><i /> Asia</span>
         <span><i /> South America</span>
         <span><i /> Africa</span>
+        <span><i /> Oceania</span>
       </div>
     </WidgetPanel>
   );
@@ -137,10 +141,36 @@ function TrafficOverviewWidget() {
       className="traffic-widget"
       action={<button className="widget-filter" type="button">By days</button>}
     >
-      <div className="traffic-chart" aria-label={t('dashboard.trafficOverview')}>
-        {trafficSeries.map((height, index) => (
-          <span style={{ height: `${height}px` }} key={index} />
-        ))}
+      <div className="traffic-area-chart" aria-label={t('dashboard.trafficOverview')}>
+        <svg viewBox="0 0 420 210" role="img">
+          <defs>
+            <linearGradient id="trafficFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="rgba(37, 99, 235, 0.58)" />
+              <stop offset="100%" stopColor="rgba(6, 182, 212, 0.04)" />
+            </linearGradient>
+          </defs>
+          <path className="traffic-grid-line" d="M44 28H398" />
+          <path className="traffic-grid-line" d="M44 72H398" />
+          <path className="traffic-grid-line" d="M44 116H398" />
+          <path className="traffic-grid-line" d="M44 160H398" />
+          <path className="traffic-grid-axis" d="M44 24v158H398" />
+          <text x="0" y="32">2.5 TB</text>
+          <text x="4" y="76">2.0 TB</text>
+          <text x="4" y="120">1.0 TB</text>
+          <text x="22" y="164">0 B</text>
+          <path className="traffic-fill" d="M44 124 C60 144 75 126 92 116 C112 104 118 48 138 58 C158 66 160 84 178 70 C200 50 204 124 225 105 C245 84 250 64 270 56 C288 48 292 150 314 100 C334 58 338 76 356 90 C374 104 380 50 398 72 L398 182 L44 182 Z" />
+          <path className="traffic-line traffic-line-primary" d="M44 124 C60 144 75 126 92 116 C112 104 118 48 138 58 C158 66 160 84 178 70 C200 50 204 124 225 105 C245 84 250 64 270 56 C288 48 292 150 314 100 C334 58 338 76 356 90 C374 104 380 50 398 72" />
+          <path className="traffic-line traffic-line-secondary" d="M44 142 C62 156 76 134 92 128 C110 120 122 82 138 84 C154 88 166 108 182 96 C202 80 206 136 226 120 C246 102 256 92 274 82 C294 76 300 152 318 116 C336 88 344 106 360 120 C378 132 382 86 398 98" />
+          <text x="44" y="204">22 Apr</text>
+          <text x="145" y="204">29 Apr</text>
+          <text x="246" y="204">13 May</text>
+          <text x="344" y="204">20 May</text>
+        </svg>
+      </div>
+      <div className="traffic-chart-legend">
+        <span><i /> {t('dashboard.inboundTraffic')}</span>
+        <span><i /> {t('dashboard.outboundTraffic')}</span>
+        <span><i /> {t('dashboard.total')}</span>
       </div>
       <div className="traffic-metrics-row">
         <div><span>{t('dashboard.inboundTraffic')}</span><strong>6.7 TB</strong></div>
@@ -163,9 +193,9 @@ function QuickActionsWidget() {
 
   return (
     <WidgetPanel title={t('dashboard.quickActions')} className="quick-actions-widget">
-      <Link className="quick-primary-action" to="/vpn-accounts">＋ {t('dashboard.createVpnAccount')}</Link>
+      <Link className="quick-primary-action" to="/vpn-accounts"><span>＋</span> {t('dashboard.createVpnAccount')}</Link>
       <div className="quick-action-list">
-        {actions.map((action) => <Link to={action.to} key={action.label}>{action.label}<span>›</span></Link>)}
+        {actions.map((action) => <Link to={action.to} key={action.label}><span>{action.label}</span><strong>›</strong></Link>)}
       </div>
     </WidgetPanel>
   );
@@ -217,15 +247,23 @@ function RecentDeploymentsWidget() {
 }
 
 function TrafficTypesWidget() {
-  const labels = ['HTTPS 42.1%', 'VPN 28.7%', 'DNS 12.3%', 'Streaming 8.6%', 'Other 8.3%'];
+  const labels = [
+    ['HTTPS', '42.1%'],
+    ['VPN', '28.7%'],
+    ['DNS', '12.3%'],
+    ['Streaming', '8.6%'],
+    ['Other', '8.3%'],
+  ];
 
   return (
     <WidgetPanel title={t('dashboard.trafficTypes')} subtitle="(month)" className="traffic-types-widget">
-      <div className="donut-chart" style={{ background: `conic-gradient(#0ea5e9 0 ${trafficTypeSegments[0]}%, #8b5cf6 ${trafficTypeSegments[0]}% 71%, #22c55e 71% 83%, #f59e0b 83% 92%, #ef4444 92% 100%)` }}>
-        <span />
-      </div>
-      <div className="traffic-type-list">
-        {labels.map((label) => <span key={label}>{label}</span>)}
+      <div className="traffic-types-content">
+        <div className="donut-chart" style={{ background: `conic-gradient(#0ea5e9 0 ${trafficTypeSegments[0]}%, #8b5cf6 ${trafficTypeSegments[0]}% 71%, #22c55e 71% 83%, #f59e0b 83% 92%, #ef4444 92% 100%)` }}>
+          <span />
+        </div>
+        <div className="traffic-type-list">
+          {labels.map(([label, value], index) => <span className={`traffic-type-item traffic-type-item-${index}`} key={label}><i />{label}<strong>{value}</strong></span>)}
+        </div>
       </div>
       <div className="traffic-total"><span>{t('dashboard.total')}</span><strong>12.4 TB</strong></div>
     </WidgetPanel>
@@ -240,6 +278,7 @@ function AuditEventsWidget() {
           <div className="audit-row" key={`${row.actor}-${row.action}`}>
             <span className="audit-avatar">{row.actor.slice(0, 1).toUpperCase()}</span>
             <div><strong>{row.actor}</strong><p>{row.action}</p></div>
+            <span className="audit-area-badge">{row.area}</span>
             <small>{row.time}</small>
           </div>
         ))}
@@ -292,7 +331,7 @@ export function DashboardPage() {
     : fallbackServers;
 
   return (
-    <section className="page dashboard-page dashboard-reference-page">
+    <section className="page dashboard-page dashboard-reference-page dashboard-fidelity-page">
       <div className="dashboard-reference-grid">
         <KpiWidget
           title={t('dashboard.activeServers')}
