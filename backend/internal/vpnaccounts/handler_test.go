@@ -236,6 +236,9 @@ func TestCreateSubscriptionTokenReturnsRawTokenOnce(t *testing.T) {
 	if body.SubscriptionToken != "fixed-token" {
 		t.Fatalf("expected raw token in creation response, got %q", body.SubscriptionToken)
 	}
+	if body.TokenPreview != "fixe...oken" {
+		t.Fatalf("expected masked token preview, got %q", body.TokenPreview)
+	}
 	if body.SubscriptionURL != "https://routegate.example/api/v1/subscriptions/fixed-token" {
 		t.Fatalf("unexpected subscription URL %q", body.SubscriptionURL)
 	}
@@ -375,7 +378,7 @@ func TestGetPublicSubscriptionIncludesRealityCredentials(t *testing.T) {
 	}
 }
 
-func TestGetPublicSubscriptionRejectsInactiveAccount(t *testing.T) {
+func TestGetPublicSubscriptionRejectsInactiveAccountAsNotFound(t *testing.T) {
 	repo := &fakeAccountRepository{
 		findToken: SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", Status: SubscriptionTokenStatusActive},
 		profile:   SubscriptionProfile{Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusSuspended}},
@@ -387,8 +390,8 @@ func TestGetPublicSubscriptionRejectsInactiveAccount(t *testing.T) {
 
 	handler.GetPublicSubscription(response, request)
 
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("expected status %d, got %d", http.StatusForbidden, response.Code)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, response.Code)
 	}
 	if repo.usedTokenID != "" {
 		t.Fatalf("expected inactive account token not marked used, got %q", repo.usedTokenID)
