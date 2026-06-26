@@ -72,7 +72,7 @@ func (f *fakeAgentAPIRepository) CompleteConfigTask(_ context.Context, input Com
 
 func TestRegisterRejectsMissingRegistrationToken(t *testing.T) {
 	handler := testAgentHandler(&fakeAgentAPIRepository{})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(`{"hostname":"fi-01"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader("{\"hostname\":\"fi-01\"}"))
 	response := httptest.NewRecorder()
 
 	handler.Register(response, request)
@@ -85,7 +85,7 @@ func TestRegisterRejectsMissingRegistrationToken(t *testing.T) {
 func TestRegisterRejectsInvalidExpiredOrUsedToken(t *testing.T) {
 	repository := &fakeAgentAPIRepository{registrationErrors: []error{pgx.ErrNoRows}}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(`{"registrationToken":"rg_reg_invalid"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader("{\"registrationToken\":\"rg_reg_invalid\"}"))
 	response := httptest.NewRecorder()
 
 	handler.Register(response, request)
@@ -106,14 +106,14 @@ func TestRegisterCannotConsumeRegistrationTokenTwice(t *testing.T) {
 	handler := testAgentHandler(repository)
 	handler.generateAgentToken = func() (string, error) { return "rg_agent_raw-secret", nil }
 
-	firstRequest := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(`{"registrationToken":"rg_reg_one-time"}`))
+	firstRequest := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader("{\"registrationToken\":\"rg_reg_one-time\"}"))
 	firstResponse := httptest.NewRecorder()
 	handler.Register(firstResponse, firstRequest)
 	if firstResponse.Code != http.StatusCreated {
 		t.Fatalf("first status = %d, want %d; body=%s", firstResponse.Code, http.StatusCreated, firstResponse.Body.String())
 	}
 
-	secondRequest := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(`{"registrationToken":"rg_reg_one-time"}`))
+	secondRequest := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader("{\"registrationToken\":\"rg_reg_one-time\"}"))
 	secondResponse := httptest.NewRecorder()
 	handler.Register(secondResponse, secondRequest)
 	if secondResponse.Code != http.StatusUnauthorized {
@@ -134,7 +134,8 @@ func TestRegisterReturnsOneTimeAgentTokenAndStoresOnlyHash(t *testing.T) {
 	handler := testAgentHandler(repository)
 	handler.now = func() time.Time { return fixedNow }
 	handler.generateAgentToken = func() (string, error) { return "rg_agent_raw-secret", nil }
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(`{"registrationToken":"rg_reg_one-time","hostname":" fi-01 ","agentVersion":"0.1.0","os":"linux","arch":"amd64","capabilities":{"singbox":true}}`))
+	requestBody := "{\"registrationToken\":\"rg_reg_one-time\",\"hostname\":\" fi-01 \",\"agentVersion\":\"0.1.0\",\"os\":\"linux\",\"arch\":\"amd64\",\"capabilities\":{\"singbox\":true}}"
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(requestBody))
 	response := httptest.NewRecorder()
 
 	handler.Register(response, request)
@@ -173,7 +174,7 @@ func TestRegisterReturnsOneTimeAgentTokenAndStoresOnlyHash(t *testing.T) {
 func TestHeartbeatRejectsInvalidAgentToken(t *testing.T) {
 	repository := &fakeAgentAPIRepository{heartbeatErr: pgx.ErrNoRows}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader(`{}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader("{}"))
 	request.Header.Set("Authorization", "Bearer rg_agent_invalid")
 	response := httptest.NewRecorder()
 
@@ -190,7 +191,7 @@ func TestHeartbeatRejectsInvalidAgentToken(t *testing.T) {
 func TestHeartbeatAcceptsValidBearerToken(t *testing.T) {
 	repository := &fakeAgentAPIRepository{heartbeatAgent: Agent{ID: "agent-id", ServerID: "server-id"}}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader(`{"agentVersion":"0.1.1","capabilities":{"nftables":true}}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader("{\"agentVersion\":\"0.1.1\",\"capabilities\":{\"nftables\":true}}"))
 	request.Header.Set("Authorization", "Bearer rg_agent_valid")
 	response := httptest.NewRecorder()
 
@@ -224,7 +225,7 @@ func TestNextTaskAcceptsValidBearerToken(t *testing.T) {
 func TestCompleteTaskAcceptsSucceededResult(t *testing.T) {
 	repository := &fakeAgentAPIRepository{}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/job-id/result", strings.NewReader(`{"status":"succeeded","resultPayload":{"healthcheck":"ok"}}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/job-id/result", strings.NewReader("{\"status\":\"succeeded\",\"resultPayload\":{\"healthcheck\":\"ok\"}}"))
 	request.SetPathValue("job_id", "job-id")
 	request.Header.Set("Authorization", "Bearer rg_agent_valid")
 	response := httptest.NewRecorder()
