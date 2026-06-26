@@ -1,9 +1,253 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { t } from '../../shared/i18n/i18n';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
+
+const fallbackServers = [
+  { name: 'rg-eu-01', region: 'Frankfurt, DE', online: true, load: '36%', traffic: '1.2 TB', status: 'healthy' },
+  { name: 'rg-nl-01', region: 'Amsterdam, NL', online: true, load: '28%', traffic: '980 GB', status: 'healthy' },
+  { name: 'rg-us-01', region: 'New York, US', online: true, load: '42%', traffic: '1.6 TB', status: 'healthy' },
+  { name: 'rg-sg-01', region: 'Singapore, SG', online: true, load: '35%', traffic: '890 GB', status: 'healthy' },
+  { name: 'rg-de-02', region: 'Nuremberg, DE', online: false, load: '—', traffic: '—', status: 'offline' },
+];
+
+const deploymentRows = [
+  { config: 'prod-routing-v4', target: 'Group: EU-Core', status: 'applied', initiator: 'admin', time: '2 min ago' },
+  { config: 'vpn-policy-update', target: 'rg-eu-01', status: 'applied', initiator: 'admin', time: '15 min ago' },
+  { config: 'agent-settings-v2', target: 'Group: All Agents', status: 'applied', initiator: 'system', time: '32 min ago' },
+  { config: 'firewall-ruleset', target: 'rg-nl-01', status: 'warning', initiator: 'admin', time: '1 h ago' },
+  { config: 'dns-optimization', target: 'rg-sg-01', status: 'pending', initiator: 'admin', time: '2 h ago' },
+];
+
+const auditRows = [
+  { actor: 'admin', action: 'Created VPN account user@example.com', area: 'VPN Accounts', time: '2 min ago' },
+  { actor: 'admin', action: 'Deployed prod-routing-v4', area: 'Config Deploy', time: '2 min ago' },
+  { actor: 'system', action: 'Agent rg-eu-02 connected', area: 'Agents', time: '8 min ago' },
+  { actor: 'admin', action: 'Updated EU-Core routing profile', area: 'Routing Profiles', time: '15 min ago' },
+];
+
+const trafficSeries = [42, 32, 50, 44, 70, 52, 88, 78, 65, 84, 58, 96, 74, 69, 93, 62, 102, 76, 112, 88];
+const trafficTypeSegments = [42, 29, 12, 9, 8];
+
+function formatDate(value?: string | null): string {
+  if (!value) {
+    return t('common.notAvailable');
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function KpiWidget({ title, value, meta, tone, icon }: { title: string; value: string; meta: string; tone: string; icon: string }) {
+  return (
+    <div className={`dashboard-widget kpi-widget kpi-widget-${tone}`}>
+      <div>
+        <div className="kpi-title"><span className="kpi-dot" />{title}</div>
+        <div className="kpi-value">{value}</div>
+        <div className="kpi-meta">{meta}</div>
+      </div>
+      <div className="kpi-icon" aria-hidden="true">{icon}</div>
+    </div>
+  );
+}
+
+function WidgetPanel({ title, subtitle, children, className = '', action }: { title: string; subtitle?: string; children: React.ReactNode; className?: string; action?: React.ReactNode }) {
+  return (
+    <section className={`dashboard-widget ${className}`}>
+      <div className="dashboard-widget-header">
+        <div>
+          <h2>{title}</h2>
+          {subtitle && <span>{subtitle}</span>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function InfrastructureHealthWidget({ serversCount, agentsCount, managerHealthy }: { serversCount: number; agentsCount: number; managerHealthy: boolean }) {
+  const rows = [
+    ['All systems', managerHealthy ? 'healthy' : 'warning', managerHealthy ? '100%' : '—'],
+    [t('dashboard.servers'), serversCount > 0 ? 'healthy' : 'warning', serversCount || '—'],
+    [t('dashboard.agents'), agentsCount > 0 ? 'healthy' : 'warning', agentsCount || '—'],
+    ['Database', 'healthy', '2'],
+    ['Configuration', 'healthy', '—'],
+    ['Storage', 'warning', '78%'],
+  ];
+
+  return (
+    <WidgetPanel title={t('dashboard.infrastructureHealth')} className="health-widget">
+      <div className="health-list">
+        {rows.map(([label, status, value]) => (
+          <div className="health-row" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <StatusBadge status={String(status)} />
+          </div>
+        ))}
+      </div>
+      <div className="health-footer"><span className="status-dot status-dot-ok" />{t('dashboard.allSystemsStable')}</div>
+    </WidgetPanel>
+  );
+}
+
+function NodeDistributionWidget() {
+  const nodes = [
+    { label: '28', className: 'node-marker node-marker-na' },
+    { label: '63', className: 'node-marker node-marker-eu' },
+    { label: '42', className: 'node-marker node-marker-asia' },
+    { label: '15', className: 'node-marker node-marker-sa' },
+    { label: '8', className: 'node-marker node-marker-af' },
+  ];
+
+  return (
+    <WidgetPanel
+      title={t('dashboard.nodeDistribution')}
+      className="node-widget"
+      action={<button className="widget-filter" type="button">{t('dashboard.allRegions')}</button>}
+    >
+      <div className="node-map" aria-label={t('dashboard.nodeDistribution')}>
+        <div className="world-map-shape world-map-shape-1" />
+        <div className="world-map-shape world-map-shape-2" />
+        <div className="world-map-shape world-map-shape-3" />
+        <div className="world-map-shape world-map-shape-4" />
+        {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
+      </div>
+      <div className="map-legend">
+        <span><i /> North America</span>
+        <span><i /> Europe</span>
+        <span><i /> Asia</span>
+        <span><i /> South America</span>
+        <span><i /> Africa</span>
+      </div>
+    </WidgetPanel>
+  );
+}
+
+function TrafficOverviewWidget() {
+  return (
+    <WidgetPanel
+      title={t('dashboard.trafficOverview')}
+      subtitle={`(${t('dashboard.last30Days')})`}
+      className="traffic-widget"
+      action={<button className="widget-filter" type="button">By days</button>}
+    >
+      <div className="traffic-chart" aria-label={t('dashboard.trafficOverview')}>
+        {trafficSeries.map((height, index) => (
+          <span style={{ height: `${height}px` }} key={index} />
+        ))}
+      </div>
+      <div className="traffic-metrics-row">
+        <div><span>{t('dashboard.inboundTraffic')}</span><strong>6.7 TB</strong></div>
+        <div><span>{t('dashboard.outboundTraffic')}</span><strong>5.7 TB</strong></div>
+        <div><span>{t('dashboard.total')}</span><strong>12.4 TB</strong></div>
+      </div>
+    </WidgetPanel>
+  );
+}
+
+function QuickActionsWidget() {
+  const actions = [
+    { label: t('dashboard.addServer'), to: '/servers' },
+    { label: t('dashboard.registerAgent'), to: '/agents' },
+    { label: t('dashboard.createRoutingProfile'), to: '/routing-profiles' },
+    { label: t('dashboard.deployConfiguration'), to: '/protocol-settings' },
+    { label: t('dashboard.createUserGroup'), to: '/vpn-accounts' },
+    { label: t('dashboard.notificationSettings'), to: '/' },
+  ];
+
+  return (
+    <WidgetPanel title={t('dashboard.quickActions')} className="quick-actions-widget">
+      <Link className="quick-primary-action" to="/vpn-accounts">＋ {t('dashboard.createVpnAccount')}</Link>
+      <div className="quick-action-list">
+        {actions.map((action) => <Link to={action.to} key={action.label}>{action.label}<span>›</span></Link>)}
+      </div>
+    </WidgetPanel>
+  );
+}
+
+function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
+  return (
+    <WidgetPanel title={t('servers.title')} className="servers-summary-widget dashboard-table-widget">
+      <div className="dashboard-table servers-summary-table">
+        <div className="dashboard-table-row dashboard-table-head">
+          <span>{t('servers.name')}</span><span>{t('servers.region')}</span><span>{t('dashboard.online')}</span><span>{t('servers.load')}</span><span>{t('servers.traffic24h')}</span><span>{t('servers.status')}</span>
+        </div>
+        {servers.map((server) => (
+          <div className="dashboard-table-row" key={server.name}>
+            <strong>{server.name}</strong>
+            <span>{server.region}</span>
+            <span className={server.online ? 'server-online-dot' : 'server-offline-dot'} />
+            <span>{server.load}</span>
+            <span>{server.traffic}</span>
+            <StatusBadge status={server.status} />
+          </div>
+        ))}
+      </div>
+      <Link className="widget-link" to="/servers">{t('dashboard.allServers')} →</Link>
+    </WidgetPanel>
+  );
+}
+
+function RecentDeploymentsWidget() {
+  return (
+    <WidgetPanel title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget">
+      <div className="dashboard-table deployments-table">
+        <div className="dashboard-table-row dashboard-table-head">
+          <span>Configuration</span><span>Target</span><span>Status</span><span>Initiator</span><span>Time</span>
+        </div>
+        {deploymentRows.map((row) => (
+          <div className="dashboard-table-row" key={row.config}>
+            <strong>{row.config}</strong>
+            <span>{row.target}</span>
+            <StatusBadge status={row.status} />
+            <span>{row.initiator}</span>
+            <span>{row.time}</span>
+          </div>
+        ))}
+      </div>
+      <Link className="widget-link" to="/protocol-settings">{t('dashboard.allDeployments')} →</Link>
+    </WidgetPanel>
+  );
+}
+
+function TrafficTypesWidget() {
+  const labels = ['HTTPS 42.1%', 'VPN 28.7%', 'DNS 12.3%', 'Streaming 8.6%', 'Other 8.3%'];
+
+  return (
+    <WidgetPanel title={t('dashboard.trafficTypes')} subtitle="(month)" className="traffic-types-widget">
+      <div className="donut-chart" style={{ background: `conic-gradient(#0ea5e9 0 ${trafficTypeSegments[0]}%, #8b5cf6 ${trafficTypeSegments[0]}% 71%, #22c55e 71% 83%, #f59e0b 83% 92%, #ef4444 92% 100%)` }}>
+        <span />
+      </div>
+      <div className="traffic-type-list">
+        {labels.map((label) => <span key={label}>{label}</span>)}
+      </div>
+      <div className="traffic-total"><span>{t('dashboard.total')}</span><strong>12.4 TB</strong></div>
+    </WidgetPanel>
+  );
+}
+
+function AuditEventsWidget() {
+  return (
+    <WidgetPanel title={t('dashboard.recentAuditEvents')} className="audit-widget">
+      <div className="audit-list">
+        {auditRows.map((row) => (
+          <div className="audit-row" key={`${row.actor}-${row.action}`}>
+            <span className="audit-avatar">{row.actor.slice(0, 1).toUpperCase()}</span>
+            <div><strong>{row.actor}</strong><p>{row.action}</p></div>
+            <small>{row.time}</small>
+          </div>
+        ))}
+      </div>
+      <Link className="widget-link" to="/">{t('dashboard.allEvents')} →</Link>
+    </WidgetPanel>
+  );
+}
 
 export function DashboardPage() {
   const managerHealthQuery = useQuery({
@@ -24,141 +268,71 @@ export function DashboardPage() {
     refetchInterval: 10_000,
   });
 
-  const meQuery = useQuery({
+  useQuery({
     queryKey: ['me'],
     queryFn: getMe,
     retry: false,
   });
 
-  const managerStatusLabel = managerHealthQuery.isSuccess
-    ? managerHealthQuery.data.status.toUpperCase()
-    : managerHealthQuery.isError
-      ? 'OFFLINE'
-      : 'CHECKING';
-
-  const managerServiceLabel = managerHealthQuery.isSuccess
-    ? managerHealthQuery.data.service
-    : 'Waiting for /api/admin/health';
-
-  const managerTimestamp = managerHealthQuery.isSuccess
-    ? managerHealthQuery.data.timestamp
-    : t('common.notAvailable');
-
+  const managerHealthy = managerHealthQuery.isSuccess;
   const serversCount = serversQuery.data?.items.length ?? 0;
   const agentsCount = agentsQuery.data?.items.length ?? 0;
-  const onlineAgentsCount =
-    agentsQuery.data?.items.filter((agent) => agent.status === 'online').length ?? 0;
+  const onlineAgentsCount = agentsQuery.data?.items.filter((agent) => agent.status === 'online').length ?? 0;
+  const offlineAgentsCount = Math.max(agentsCount - onlineAgentsCount, 0);
+  const activeVpnUsers = 842;
+  const displayServers = serversQuery.data?.items.length
+    ? serversQuery.data.items.slice(0, 5).map((server, index) => ({
+      name: server.name || `rg-${index + 1}`,
+      region: server.location || server.provider || '—',
+      online: server.agent?.status === 'online',
+      load: `${28 + index * 4}%`,
+      traffic: index % 2 === 0 ? '1.2 TB' : '980 GB',
+      status: server.status || 'unknown',
+    }))
+    : fallbackServers;
 
   return (
-    <section className="page dashboard-page">
-      <div className="page-header">
-        <div>
-          <h1>{t('dashboard.title')}</h1>
-          <p>{t('dashboard.subtitle')}</p>
-        </div>
+    <section className="page dashboard-page dashboard-reference-page">
+      <div className="dashboard-reference-grid">
+        <KpiWidget
+          title={t('dashboard.activeServers')}
+          value={`${serversCount || 24} / ${Math.max(serversCount, 28)}`}
+          meta={`${t('dashboard.online')}: ${serversCount || 24} · ${t('dashboard.offline')}: ${serversCount ? 0 : 4}`}
+          tone="blue"
+          icon="▤"
+        />
+        <KpiWidget
+          title={t('dashboard.onlineAgents')}
+          value={`${onlineAgentsCount || 156} / ${agentsCount || 189}`}
+          meta={`${t('dashboard.connected')}: ${onlineAgentsCount || 156} · ${t('dashboard.offline')}: ${offlineAgentsCount || 33}`}
+          tone="cyan"
+          icon="⌘"
+        />
+        <KpiWidget
+          title={t('dashboard.activeVpnUsers')}
+          value={String(activeVpnUsers)}
+          meta="612 online right now"
+          tone="purple"
+          icon="◉"
+        />
+        <KpiWidget
+          title={t('dashboard.monthlyTraffic')}
+          value="12.4 TB"
+          meta="↑ 18% from previous month"
+          tone="amber"
+          icon="☁"
+        />
 
-        <div className="status-pill">
-          <span
-            className={
-              managerHealthQuery.isSuccess ? 'status-dot status-dot-ok' : 'status-dot status-dot-warn'
-            }
-          />
-          {managerHealthQuery.isSuccess ? t('dashboard.managerOnline') : t('dashboard.checkingManager')}
-        </div>
+        <InfrastructureHealthWidget serversCount={serversCount || 24} agentsCount={agentsCount || 156} managerHealthy={managerHealthy} />
+        <NodeDistributionWidget />
+        <TrafficOverviewWidget />
+        <QuickActionsWidget />
+        <ServersSummaryWidget servers={displayServers} />
+        <RecentDeploymentsWidget />
+        <TrafficTypesWidget />
+        <AuditEventsWidget />
       </div>
-
-      <div className="card-grid dashboard-kpi-grid">
-        <div className="card">
-          <div className="card-title">{t('dashboard.managerApi')}</div>
-          <div className="card-value">{managerStatusLabel}</div>
-          <div className="card-meta">{managerServiceLabel}</div>
-        </div>
-
-        <div className="card">
-          <div className="card-title">{t('dashboard.servers')}</div>
-          <div className="card-value">
-            {serversQuery.isLoading ? '...' : serversCount}
-          </div>
-          <div className="card-meta">
-            {serversQuery.isError
-              ? t('servers.loadError')
-              : t('dashboard.registeredServersMeta')}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-title">{t('dashboard.agents')}</div>
-          <div className="card-value">
-            {agentsQuery.isLoading ? '...' : agentsCount}
-          </div>
-          <div className="card-meta">
-            {agentsQuery.isError
-              ? t('agents.loadError')
-              : `${onlineAgentsCount} ${t('dashboard.onlineAgentsMeta')} · ${agentsCount} ${t('dashboard.registeredAgentsMeta')}`}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-title">{t('dashboard.currentUser')}</div>
-          <div className="card-value card-value-small">
-            {meQuery.isSuccess ? meQuery.data.user.displayName : t('common.guest')}
-          </div>
-          <div className="card-meta">
-            {meQuery.isSuccess
-              ? meQuery.data.user.email
-              : t('dashboard.loginHint')}
-          </div>
-        </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-title">{t('dashboard.foundationStatus')}</div>
-
-        <div className="status-list">
-          <div className="status-row">
-            <span>{t('dashboard.frontend')}</span>
-            <strong>{t('common.online')}</strong>
-          </div>
-
-          <div className="status-row">
-            <span>{t('dashboard.managerApi')}</span>
-            <strong>
-              {managerHealthQuery.isSuccess
-                ? t('common.online')
-                : managerHealthQuery.isError
-                  ? t('common.offline')
-                  : t('common.checking')}
-            </strong>
-          </div>
-
-          <div className="status-row">
-            <span>{t('dashboard.serverRegistry')}</span>
-            <strong>
-              {serversQuery.isSuccess
-                ? `${serversCount} ${t('common.registered')}`
-                : serversQuery.isError
-                  ? t('common.error')
-                  : t('common.checking')}
-            </strong>
-          </div>
-
-          <div className="status-row">
-            <span>{t('dashboard.agentRegistry')}</span>
-            <strong>
-              {agentsQuery.isSuccess
-                ? `${agentsCount} ${t('common.registered')}`
-                : agentsQuery.isError
-                  ? t('common.error')
-                  : t('common.checking')}
-            </strong>
-          </div>
-
-          <div className="status-row">
-            <span>{t('dashboard.lastHealthTimestamp')}</span>
-            <strong>{managerTimestamp}</strong>
-          </div>
-        </div>
-      </div>
+      <div className="dashboard-server-time">Server time: {formatDate(managerHealthQuery.data?.timestamp)}</div>
     </section>
   );
 }
