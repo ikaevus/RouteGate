@@ -1,0 +1,113 @@
+.vpn-accounts-page,
+.routing-profiles-page,
+.server-details-page,
+.protocol-settings-page,
+.portal-page {
+  max-width: 1680px;
+}
+
+.vpn-accounts-page .page-header,
+.routing-profiles-page .page-header,
+.server-details-page .page-header,
+.protocol-settings-page .page-header,
+.portal-page .page-header {
+  align-items: center;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.88), rgba(11, 18, 32, 0.62));
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.2);
+  margin-bottom: 14px;
+  min-height: 86px;
+  padding: 15px 17px;
+}
+
+.vpn-accounts-page .page-header h1,
+.routing-profiles-page .page-header h1,
+.server-details-page .page-header h1,
+.protocol-settings-page .page-header h1,
+.portal-page .page-header h1 {
+  font-size: 28px;
+  letter-spacing: -0.055em;
+  margin-bottom: 5px;
+}
+
+.vpn-accounts-layout,
+.routing-profiles-layout,
+.server-details-layout,
+.details-layout,
+.protocol-settings-layout,
+.portal-layout {
+  gap: 12px;
+}
+
+.vpn-accounts-page .panel,
+.routing-profiles-page .panel,
+.server-details-page .panel,
+.protocol-settings-page .panel,
+.portal-page .panel,
+.portal-card,
+.auth-card {
+  border-radius: 15px;
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.94), rgba(11, 18, 32, 0.82));
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.2);
+  margin-top: 0;
+  padding: 15px;
+}
+
+.vpn-accounts-layout {
+  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(430px, 0.96fr) minmax(0, 1.44fr);
+}
+
+.vpn-accounts-layout > .feature-list-panel {
+  grid-column: 1;
+  grid-row: 1 / span 4;
+}
+
+.vpn-accounts-layout > .feature-detail-panel,
+.vpn-accounts-layout > .traffic-panel,
+.vpn-accounts-layout > .subscription-panel {
+  grid-column: 2;
+}
+
+.routing-profiles-layout,
+.portal-layout {
+  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(410px, 0.92fr) minmax(0, 1.38fr);
+}
+
+.routing-profiles-layout > .panel:first-child {
+  grid-column: 1;
+  grid-row: 1 / span 4;
+}
+
+.routing-profiles-layout > .panel:not(:first-child),
+.routing-profiles-layout > form:not(:first-child) {
+  grid-column: 2;
+}
+
+.details-layout,
+.server-details-layout {
+  align-items: start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.portal-card-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.portal-profile-panels {
+  display: grid;
+  gap: 12px;
+}
+
+.portal-profile-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
