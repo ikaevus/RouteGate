@@ -10,12 +10,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
 type Handler struct {
 	logger  *slog.Logger
 	service *Service
+	audit   *audit.Recorder
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
@@ -23,6 +26,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 	return &Handler{
 		logger:  logger,
 		service: NewService(repository),
+		audit:   audit.NewRecorder(logger, pool),
 	}
 }
 
@@ -88,31 +92,49 @@ func (h *Handler) Validate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Apply(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("server_id")
+	versionID := r.PathValue("version_id")
 	var request ApplyConfigRequest
 	if r.Body != nil {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+			h.recordApplyRejected(r, serverID, versionID, "invalid_request")
 			writeInvalidRequest(w, "Request body must be valid JSON.")
 			return
 		}
 	}
 
-	response, err := h.service.Apply(r.Context(), r.PathValue("server_id"), r.PathValue("version_id"), request)
+	response, err := h.service.Apply(r.Context(), serverID, versionID, request)
 	if errors.Is(err, pgx.ErrNoRows) {
+		h.recordApplyRejected(r, serverID, versionID, "config_version_not_found")
 		writeConfigVersionNotFound(w)
 		return
 	}
 	if errors.Is(err, ErrConfigVersionNotValidated) {
+		h.recordApplyRejected(r, serverID, versionID, "config_not_validated")
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_not_validated", "Config version must be validated before apply."))
 		return
 	}
 	if errors.Is(err, ErrConfigApplyAgentMissing) {
+		h.recordApplyRejected(r, serverID, versionID, "agent_missing")
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("agent_missing", "Server must have a registered agent before config apply."))
+		return
+	}
+	if errors.Is(err, ErrConfigApplyUnsafe) {
+		h.recordApplyRejected(r, serverID, versionID, "unsafe_config")
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("unsafe_config", "Config version is not safe to apply."))
+		return
+	}
+	if errors.Is(err, ErrConfigHashMismatch) {
+		h.recordApplyRejected(r, serverID, versionID, "config_hash_mismatch")
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_hash_mismatch", "Config version hash does not match rendered config."))
 		return
 	}
 	if err != nil {
 		h.databaseError(w, "create config apply job", err)
 		return
 	}
+
+	h.recordApplyRequested(r, response.Job)
 	httpx.WriteJSON(w, http.StatusAccepted, response)
 }
 
@@ -136,6 +158,46 @@ func (h *Handler) GetApplyJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, job)
+}
+
+func (h *Handler) recordApplyRequested(r *http.Request, job ConfigApplyJob) {
+	h.recordAudit(r, audit.EventInput{
+		Action:       "config.apply.requested",
+		ResourceType: "config_apply_job",
+		ResourceID:   job.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"server_id":         job.ServerID,
+			"agent_id":          job.AgentID,
+			"config_version_id": job.ConfigVersionID,
+			"job_id":            job.ID,
+			"job_status":        job.Status,
+		},
+	})
+}
+
+func (h *Handler) recordApplyRejected(r *http.Request, serverID string, versionID string, reason string) {
+	h.recordAudit(r, audit.EventInput{
+		Action:       "config.apply.rejected",
+		ResourceType: "config_version",
+		ResourceID:   versionID,
+		Result:       audit.ResultFailure,
+		Metadata: map[string]any{
+			"server_id":         serverID,
+			"config_version_id": versionID,
+			"reason":            reason,
+		},
+	})
+}
+
+func (h *Handler) recordAudit(r *http.Request, input audit.EventInput) {
+	if user, ok := auth.UserFromContext(r.Context()); ok {
+		input.ActorUserID = user.ID
+		input.ActorType = audit.ActorTypeUser
+	} else if input.ActorType == "" {
+		input.ActorType = audit.ActorTypeSystem
+	}
+	h.audit.RecordSafe(r.Context(), input)
 }
 
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
