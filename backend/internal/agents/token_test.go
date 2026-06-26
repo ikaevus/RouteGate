@@ -14,6 +14,34 @@ func TestHashToken(t *testing.T) {
 	}
 }
 
+func TestHashTokenTrimsWhitespace(t *testing.T) {
+	t.Parallel()
+
+	if HashToken(" rg_agent_token ") != HashToken("rg_agent_token") {
+		t.Fatal("expected token hashing to trim whitespace")
+	}
+}
+
+func TestMaskToken(t *testing.T) {
+	t.Parallel()
+
+	if got := MaskToken("rg_reg_abcdefghijklmnopqrstuvwxyz123456"); got != "rg_reg_abcd...3456" {
+		t.Fatalf("registration token mask = %q", got)
+	}
+	if got := MaskToken("rg_agent_abcdefghijklmnopqrstuvwxyz123456"); got != "rg_agent_abcd...3456" {
+		t.Fatalf("agent token mask = %q", got)
+	}
+	if got := MaskToken("legacy-token"); got != "lega...oken" {
+		t.Fatalf("legacy token mask = %q", got)
+	}
+	if got := MaskToken("short"); got != "..." {
+		t.Fatalf("short token mask = %q", got)
+	}
+	if got := MaskToken("   "); got != "" {
+		t.Fatalf("empty token mask = %q", got)
+	}
+}
+
 func TestGenerateRegistrationToken(t *testing.T) {
 	t.Parallel()
 
