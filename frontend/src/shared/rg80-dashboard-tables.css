@@ -139,8 +139,58 @@
 }
 
 .servers-summary-table .dashboard-table-row {
-  grid-template-columns: minmax(94px, 1.2fr) minmax(92px, 1fr) 0.5fr 0.6fr minmax(72px, 0.75fr) minmax(88px, 0.9fr);
+  grid-template-columns: minmax(94px, 1.2fr) minmax(112px, 1.1fr) 0.5fr 0.6fr minmax(72px, 0.75fr) minmax(88px, 0.9fr);
 }
+
+.server-region-cell {
+  align-items: center;
+  display: inline-flex !important;
+  gap: 7px;
+  min-width: 0;
+}
+
+.server-region-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-country-chip {
+  align-items: center;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #dbeafe !important;
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  font-size: 9px !important;
+  font-weight: 850;
+  height: 18px;
+  justify-content: center;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  min-width: 26px;
+  overflow: hidden;
+  padding: 0 5px;
+  position: relative;
+}
+
+.server-country-chip::before {
+  border-radius: 999px;
+  content: "";
+  height: 5px;
+  left: 4px;
+  position: absolute;
+  top: 3px;
+  width: 5px;
+}
+
+.server-country-de::before { background: #facc15; box-shadow: 0 5px 0 #ef4444; }
+.server-country-nl::before { background: #ef4444; box-shadow: 0 5px 0 #2563eb; }
+.server-country-us::before { background: #2563eb; box-shadow: 0 5px 0 #ef4444; }
+.server-country-sg::before { background: #ef4444; box-shadow: 0 5px 0 #ffffff; }
+.server-country-rg::before { background: #38bdf8; box-shadow: 0 5px 0 #2563eb; }
 
 .deployments-table .dashboard-table-row {
   grid-template-columns: minmax(128px, 1.25fr) minmax(96px, 1fr) minmax(104px, 0.88fr) 0.65fr 0.7fr;
