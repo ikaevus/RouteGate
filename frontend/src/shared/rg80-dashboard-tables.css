@@ -153,18 +153,23 @@
   margin-top: 12px;
 }
 
+.audit-widget {
+  grid-column: 11 / span 2;
+}
+
 .traffic-types-content {
   align-items: center;
   display: grid;
-  gap: 12px;
-  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  grid-template-columns: 1fr;
+  justify-items: center;
 }
 
 .donut-chart {
   border-radius: 999px;
   display: grid;
   height: 104px;
-  margin: 4px auto;
+  margin: 4px auto 2px;
   place-items: center;
   width: 104px;
 }
@@ -179,16 +184,20 @@
 
 .traffic-type-list {
   display: grid;
-  gap: 6px;
+  gap: 5px;
+  justify-self: stretch;
+  width: 100%;
 }
 
 .traffic-type-item {
   align-items: center;
   color: var(--rg-text-secondary);
   display: grid;
-  font-size: 11px;
+  font-size: 10px;
   gap: 6px;
   grid-template-columns: 8px minmax(0, 1fr) auto;
+  line-height: 1.2;
+  min-width: 0;
 }
 
 .traffic-type-item i {
@@ -200,6 +209,7 @@
 
 .traffic-type-item strong {
   color: #dbeafe;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -229,10 +239,13 @@
 }
 
 .audit-row {
-  align-items: center;
+  align-items: start;
   display: grid;
-  gap: 8px;
-  grid-template-columns: 26px minmax(0, 1fr) auto auto;
+  gap: 3px 8px;
+  grid-template-areas:
+    "avatar body time"
+    "avatar badge badge";
+  grid-template-columns: 26px minmax(0, 1fr) auto;
 }
 
 .audit-avatar {
@@ -241,12 +254,14 @@
   color: #dbeafe;
   display: grid;
   font-size: 10px;
+  grid-area: avatar;
   height: 26px;
   place-items: center;
   width: 26px;
 }
 
 .audit-row div {
+  grid-area: body;
   min-width: 0;
 }
 
@@ -265,11 +280,18 @@
   font-size: 10px;
 }
 
+.audit-row small {
+  grid-area: time;
+  justify-self: end;
+}
+
 .audit-area-badge {
   border-radius: 999px;
   background: rgba(37, 99, 235, 0.16);
   color: #bfdbfe !important;
   font-size: 9px !important;
+  grid-area: badge;
+  justify-self: start;
   padding: 3px 6px;
 }
 
