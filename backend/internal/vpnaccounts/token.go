@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"strings"
+
+	"github.com/ikaevus/routegate/backend/internal/secrets"
 )
 
 const subscriptionTokenPrefix = "rgsub_"
@@ -24,16 +26,5 @@ func HashSubscriptionToken(token string) string {
 }
 
 func MaskSubscriptionToken(token string) string {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return ""
-	}
-	if strings.HasPrefix(token, subscriptionTokenPrefix) && len(token) > len(subscriptionTokenPrefix)+8 {
-		body := strings.TrimPrefix(token, subscriptionTokenPrefix)
-		return subscriptionTokenPrefix + body[:4] + "..." + body[len(body)-4:]
-	}
-	if len(token) <= 8 {
-		return "..."
-	}
-	return token[:4] + "..." + token[len(token)-4:]
+	return secrets.Mask(token)
 }
