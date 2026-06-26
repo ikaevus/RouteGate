@@ -1,0 +1,65 @@
+.rg-locale-switcher {
+  align-items: center;
+  border: 1px solid rgba(38, 52, 73, 0.96);
+  border-radius: 12px;
+  background: rgba(17, 28, 46, 0.72);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  height: 38px;
+  padding: 3px;
+}
+
+.rg-locale-option {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #9fb3cb;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 34px;
+  padding: 0 8px;
+}
+
+.rg-locale-option:hover {
+  color: #ffffff;
+}
+
+.rg-locale-option:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.72);
+  outline-offset: 2px;
+}
+
+.rg-locale-option-active {
+  border-color: rgba(96, 165, 250, 0.36);
+  background: rgba(37, 99, 235, 0.2);
+  color: #dbeafe;
+}
+
+.portal-topbar-actions,
+.auth-topbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.portal-topbar-actions .portal-topnav,
+.auth-topbar-actions .portal-topnav {
+  flex: 0 1 auto;
+}
+
+@media (max-width: 640px) {
+  .portal-topbar-actions,
+  .auth-topbar-actions {
+    justify-content: flex-start;
+  }
+}
