@@ -124,6 +124,18 @@ Reset development database volume:
 
     make db-reset
 
+## MVP deployment and release readiness
+
+MVP deployment baseline:
+
+    docs/deployment/mvp-deployment-baseline.md
+
+Release readiness checklist:
+
+    docs/deployment/release-readiness-checklist.md
+
+These documents cover the current single-node MVP path: environment variables, Docker Compose startup, migration verification, health checks, backup guidance, rollback notes, and Manager / Agent compatibility reminders.
+
 ## Ports
 
 | Service | Port | Description |
