@@ -1,0 +1,289 @@
+.feature-screen-page,
+.routing-profiles-page,
+.server-details-page,
+.protocol-settings-page,
+.portal-page,
+.vpn-accounts-page {
+  max-width: 1640px;
+}
+
+.feature-page-header,
+.routing-profiles-page .page-header,
+.server-details-page .page-header,
+.protocol-settings-page .page-header,
+.vpn-accounts-page .page-header {
+  align-items: flex-start;
+  border: 1px solid rgba(38, 52, 73, 0.72);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.7), rgba(11, 18, 32, 0.42));
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.feature-page-header h1,
+.routing-profiles-page .page-header h1,
+.server-details-page .page-header h1,
+.protocol-settings-page .page-header h1,
+.vpn-accounts-page .page-header h1 {
+  letter-spacing: -0.04em;
+}
+
+.feature-screen-layout,
+.vpn-accounts-layout,
+.routing-profiles-layout,
+.protocol-settings-layout,
+.server-details-layout {
+  gap: 16px;
+}
+
+.feature-list-panel,
+.feature-detail-panel,
+.vpn-accounts-page .panel,
+.routing-profiles-page .panel,
+.server-details-page .panel,
+.protocol-settings-page .panel,
+.traffic-panel,
+.subscription-panel,
+.credentials-panel {
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.92), rgba(11, 18, 32, 0.78));
+  border-color: rgba(38, 52, 73, 0.96);
+  box-shadow: 0 18px 50px rgba(2, 6, 23, 0.22);
+}
+
+.feature-detail-panel .panel-header,
+.routing-profiles-page .panel-header,
+.server-details-page .panel-header,
+.traffic-panel .panel-header,
+.subscription-panel .panel-header,
+.credentials-panel .panel-header {
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.admin-table,
+.table,
+.detail-list,
+.credentials-detail-list {
+  min-width: 0;
+}
+
+.admin-table-row,
+.table-row,
+.detail-row {
+  min-width: 0;
+}
+
+.admin-table-row > *,
+.table-row > *,
+.detail-row > * {
+  min-width: 0;
+}
+
+.admin-table-row strong,
+.admin-table-row span,
+.admin-table-row code,
+.table-row strong,
+.table-row span,
+.detail-row strong,
+.detail-row span,
+.detail-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-table-row span,
+.admin-table-row strong,
+.table-row span,
+.table-row strong {
+  white-space: nowrap;
+}
+
+.admin-table-row code,
+.detail-row code,
+.code-block {
+  font-size: 12px;
+}
+
+.detail-row {
+  align-items: start;
+  border-top: 1px solid rgba(148, 163, 184, 0.11);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(0, 1.3fr);
+  padding: 11px 0;
+}
+
+.detail-row:first-child {
+  border-top: 0;
+}
+
+.detail-row > span {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.detail-row > strong {
+  color: var(--rg-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.copyable-value {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.copyable-value code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feature-subpanel,
+.qr-payload-panel,
+.client-config-preview,
+.traffic-limit-card,
+.traffic-metric-card {
+  border: 1px solid rgba(38, 52, 73, 0.82);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.26);
+}
+
+.qr-payload-panel,
+.client-config-preview {
+  margin-top: 14px;
+  padding: 16px;
+}
+
+.code-block {
+  border: 1px solid rgba(38, 52, 73, 0.9);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.66);
+  color: #dbeafe;
+  max-width: 100%;
+  overflow: auto;
+  padding: 14px;
+}
+
+.admin-table-head,
+.table-head {
+  color: #a8b6ca;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vpn-account-row-link,
+.table-row-link {
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.vpn-account-row-link:hover,
+.table-row-link:hover {
+  background: rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+
+.vpn-account-row-selected {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.empty-state-card,
+.empty-state {
+  border-radius: 16px;
+}
+
+.routing-profile-form-grid,
+.routing-rule-form-grid,
+.traffic-limit-form-grid,
+.subscription-meta-grid {
+  min-width: 0;
+}
+
+.field span,
+.traffic-checkbox-field span,
+.traffic-checkbox-field label {
+  color: #cbd5e1;
+}
+
+.field input,
+.field select,
+.field textarea {
+  min-width: 0;
+}
+
+.stage-summary {
+  min-width: 0;
+}
+
+.stage-pill {
+  border: 1px solid rgba(38, 52, 73, 0.9);
+  background: rgba(37, 99, 235, 0.11);
+}
+
+.traffic-summary-grid,
+.subscription-meta-grid {
+  gap: 12px;
+}
+
+.traffic-progress-track {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.traffic-progress-fill {
+  background: linear-gradient(90deg, var(--rg-primary), var(--rg-accent-cyan));
+}
+
+.portal-app-shell {
+  min-height: 100vh;
+}
+
+.portal-main {
+  padding: 24px 28px;
+}
+
+.portal-page .panel,
+.portal-card,
+.portal-profile-card,
+.portal-instruction-card {
+  border-color: rgba(38, 52, 73, 0.96);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.88), rgba(11, 18, 32, 0.74));
+}
+
+@media (max-width: 1100px) {
+  .detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .copyable-value {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .feature-page-header,
+  .routing-profiles-page .page-header,
+  .server-details-page .page-header,
+  .protocol-settings-page .page-header,
+  .vpn-accounts-page .page-header {
+    padding: 14px;
+  }
+
+  .admin-table-row,
+  .table-row {
+    white-space: normal;
+  }
+
+  .admin-table-row span,
+  .admin-table-row strong,
+  .table-row span,
+  .table-row strong {
+    white-space: normal;
+  }
+}
