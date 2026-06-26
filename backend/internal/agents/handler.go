@@ -177,12 +177,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
-	token, ok := bearerToken(r.Header.Get("Authorization"))
+	token, ok := agentBearerToken(r.Header.Get("Authorization"))
 	if !ok {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error(
-			"unauthorized",
-			"A valid agent bearer token is required.",
-		))
+		writeAgentUnauthorized(w)
 		return
 	}
 
@@ -199,10 +196,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		TokenHash: HashToken(token), AgentVersion: request.AgentVersion, Capabilities: request.Capabilities,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error(
-			"unauthorized",
-			"A valid agent bearer token is required.",
-		))
+		writeAgentUnauthorized(w)
 		return
 	}
 	if err != nil {
@@ -221,15 +215,15 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) NextTask(w http.ResponseWriter, r *http.Request) {
-	token, ok := bearerToken(r.Header.Get("Authorization"))
+	token, ok := agentBearerToken(r.Header.Get("Authorization"))
 	if !ok {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
+		writeAgentUnauthorized(w)
 		return
 	}
 
 	task, err := h.repository.ClaimNextConfigTask(r.Context(), HashToken(token))
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
+		writeAgentUnauthorized(w)
 		return
 	}
 	if err != nil {
@@ -237,24 +231,29 @@ func (h *Handler) NextTask(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to fetch next agent task."))
 		return
 	}
+	if task != nil {
+		h.recordTaskClaimed(r, *task)
+	}
 
 	httpx.WriteJSON(w, http.StatusOK, AgentNextTaskResponse{Task: task})
 }
 
 func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
-	token, ok := bearerToken(r.Header.Get("Authorization"))
+	token, ok := agentBearerToken(r.Header.Get("Authorization"))
 	if !ok {
-		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
+		writeAgentUnauthorized(w)
 		return
 	}
 
 	var request CompleteAgentTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		h.recordTaskCompletionRejected(r, r.PathValue("job_id"), "invalid_request")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Request body must be valid JSON."))
 		return
 	}
 	request.Status = strings.TrimSpace(request.Status)
 	if !validConfigTaskCompletionStatus(request.Status) {
+		h.recordTaskCompletionRejected(r, r.PathValue("job_id"), "invalid_status")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_status", "Task status must be one of: succeeded, failed."))
 		return
 	}
@@ -264,10 +263,11 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		TokenHash:     HashToken(token),
 		JobID:         jobID,
 		Status:        request.Status,
-		ErrorMessage:  request.ErrorMessage,
+		ErrorMessage:  strings.TrimSpace(request.ErrorMessage),
 		ResultPayload: request.ResultPayload,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
+		h.recordTaskCompletionRejected(r, jobID, "task_not_found")
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("task_not_found", "Task not found for this agent."))
 		return
 	}
@@ -277,6 +277,7 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordTaskCompleted(r, jobID, request.Status)
 	httpx.WriteJSON(w, http.StatusOK, CompleteAgentTaskResponse{OK: true, TaskID: jobID, Status: request.Status})
 }
 
@@ -293,7 +294,55 @@ func (h *Handler) recordRegistrationFailure(r *http.Request, registrationToken s
 	})
 }
 
+func (h *Handler) recordTaskClaimed(r *http.Request, task AgentConfigTask) {
+	h.recordAudit(r.Context(), audit.EventInput{
+		ActorType:    audit.ActorTypeAgent,
+		Action:       "agent.task.claimed",
+		ResourceType: "config_apply_job",
+		ResourceID:   task.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"server_id":         task.ServerID,
+			"agent_id":          task.AgentID,
+			"config_version_id": task.ConfigVersionID,
+			"action":            task.Action,
+			"status":            task.Status,
+		},
+	})
+}
+
+func (h *Handler) recordTaskCompleted(r *http.Request, jobID string, status string) {
+	h.recordAudit(r.Context(), audit.EventInput{
+		ActorType:    audit.ActorTypeAgent,
+		Action:       "agent.task.completed",
+		ResourceType: "config_apply_job",
+		ResourceID:   jobID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"job_id": jobID,
+			"status": status,
+		},
+	})
+}
+
+func (h *Handler) recordTaskCompletionRejected(r *http.Request, jobID string, reason string) {
+	h.recordAudit(r.Context(), audit.EventInput{
+		ActorType:    audit.ActorTypeAgent,
+		Action:       "agent.task.completion_rejected",
+		ResourceType: "config_apply_job",
+		ResourceID:   jobID,
+		Result:       audit.ResultFailure,
+		Metadata: map[string]any{
+			"job_id": jobID,
+			"reason": reason,
+		},
+	})
+}
+
 func (h *Handler) recordAudit(ctx context.Context, input audit.EventInput) {
+	if h.audit == nil {
+		return
+	}
 	h.audit.RecordSafe(ctx, input)
 }
 
@@ -303,6 +352,18 @@ func bearerToken(header string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(parts[1]), true
+}
+
+func agentBearerToken(header string) (string, bool) {
+	token, ok := bearerToken(header)
+	if !ok || !strings.HasPrefix(token, "rg_agent_") {
+		return "", false
+	}
+	return token, true
+}
+
+func writeAgentUnauthorized(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "A valid agent bearer token is required."))
 }
 
 func validConfigTaskCompletionStatus(status string) bool {

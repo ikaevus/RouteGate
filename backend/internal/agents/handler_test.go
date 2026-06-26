@@ -188,6 +188,23 @@ func TestHeartbeatRejectsInvalidAgentToken(t *testing.T) {
 	}
 }
 
+func TestHeartbeatRejectsNonAgentBearerWithoutRepositoryLookup(t *testing.T) {
+	repository := &fakeAgentAPIRepository{}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader("{}"))
+	request.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
+	response := httptest.NewRecorder()
+
+	handler.Heartbeat(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+	if repository.heartbeatInput.TokenHash != "" {
+		t.Fatalf("non-agent bearer token reached repository lookup: %+v", repository.heartbeatInput)
+	}
+}
+
 func TestHeartbeatAcceptsValidBearerToken(t *testing.T) {
 	repository := &fakeAgentAPIRepository{heartbeatAgent: Agent{ID: "agent-id", ServerID: "server-id"}}
 	handler := testAgentHandler(repository)
@@ -222,6 +239,23 @@ func TestNextTaskAcceptsValidBearerToken(t *testing.T) {
 	}
 }
 
+func TestNextTaskRejectsNonAgentBearerWithoutRepositoryLookup(t *testing.T) {
+	repository := &fakeAgentAPIRepository{}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/agent/tasks/next", nil)
+	request.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
+	response := httptest.NewRecorder()
+
+	handler.NextTask(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+	if repository.claimedTokenHash != "" {
+		t.Fatalf("non-agent bearer token reached task claim lookup: %q", repository.claimedTokenHash)
+	}
+}
+
 func TestCompleteTaskAcceptsSucceededResult(t *testing.T) {
 	repository := &fakeAgentAPIRepository{}
 	handler := testAgentHandler(repository)
@@ -240,6 +274,24 @@ func TestCompleteTaskAcceptsSucceededResult(t *testing.T) {
 	}
 	if repository.completeInput.Status != ConfigApplyJobStatusSucceeded {
 		t.Fatalf("status = %q, want succeeded", repository.completeInput.Status)
+	}
+}
+
+func TestCompleteTaskRejectsNonAgentBearerWithoutRepositoryLookup(t *testing.T) {
+	repository := &fakeAgentAPIRepository{}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks/job-id/result", strings.NewReader("{\"status\":\"succeeded\"}"))
+	request.SetPathValue("job_id", "job-id")
+	request.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
+	response := httptest.NewRecorder()
+
+	handler.CompleteTask(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+	if repository.completeInput.TokenHash != "" {
+		t.Fatalf("non-agent bearer token reached task completion lookup: %+v", repository.completeInput)
 	}
 }
 
