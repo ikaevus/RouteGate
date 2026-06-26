@@ -7,6 +7,7 @@ import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { t } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
+import { WorldMap } from '../../shared/ui/WorldMap';
 
 const fallbackServers = [
   { name: 'rg-eu-01', region: 'Frankfurt, DE', online: true, load: '36%', traffic: '1.2 TB', status: 'healthy' },
@@ -119,36 +120,7 @@ function NodeDistributionWidget() {
       action={<button className="widget-filter" type="button">{t('dashboard.allRegions')}</button>}
     >
       <div className="node-map" aria-label={t('dashboard.nodeDistribution')}>
-        <svg className="world-map-svg" viewBox="0 0 760 300" role="img" aria-hidden="true">
-          <defs>
-            <pattern id="worldMapTexture" width="8" height="8" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="0.55" />
-            </pattern>
-          </defs>
-          <g className="world-map-grid">
-            <path d="M44 150H716M380 28V272M156 46c-36 70-36 138 0 208M604 46c36 70 36 138 0 208" />
-          </g>
-          <g className="world-map-land">
-            <path d="M68 107 91 88 119 80 150 74 183 77 214 88 238 105 268 112 286 129 276 147 244 150 225 163 210 178 190 183 179 205 159 211 132 199 119 177 97 165 87 144 61 132Z" />
-            <path d="M214 52 248 42 292 48 320 60 297 74 254 72 222 64Z" />
-            <path d="M230 184 254 194 276 220 286 250 272 278 248 294 229 270 222 238 209 210Z" />
-            <path d="M338 100 365 83 398 78 430 84 464 101 454 118 422 120 394 132 362 130 337 116Z" />
-            <path d="M410 130 444 136 474 160 486 196 476 230 452 262 424 280 404 252 392 218 397 174Z" />
-            <path d="M462 91 498 70 552 66 610 77 654 96 694 127 686 158 650 172 612 167 574 181 540 194 503 182 474 158 448 124Z" />
-            <path d="M640 128 660 146 654 170 636 155Z" />
-            <path d="M584 228 622 224 668 238 706 260 678 281 630 276 592 256Z" />
-            <path d="M690 280 730 286 746 300 704 302Z" />
-            <path d="M688 178 712 188 720 203 700 209 682 197Z" />
-            <path d="M718 211 742 219 750 231 724 230Z" />
-          </g>
-          <g className="world-map-texture">
-            <path d="M68 107 91 88 119 80 150 74 183 77 214 88 238 105 268 112 286 129 276 147 244 150 225 163 210 178 190 183 179 205 159 211 132 199 119 177 97 165 87 144 61 132Z" />
-            <path d="M338 100 365 83 398 78 430 84 464 101 454 118 422 120 394 132 362 130 337 116Z" />
-            <path d="M410 130 444 136 474 160 486 196 476 230 452 262 424 280 404 252 392 218 397 174Z" />
-            <path d="M462 91 498 70 552 66 610 77 654 96 694 127 686 158 650 172 612 167 574 181 540 194 503 182 474 158 448 124Z" />
-            <path d="M584 228 622 224 668 238 706 260 678 281 630 276 592 256Z" />
-          </g>
-        </svg>
+        <WorldMap />
         {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
       </div>
       <div className="map-legend">
