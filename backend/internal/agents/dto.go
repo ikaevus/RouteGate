@@ -16,9 +16,10 @@ type AgentRegistrationRequest struct {
 }
 
 type AgentRegistrationResponse struct {
-	AgentID    string `json:"agentId"`
-	ServerID   string `json:"serverId"`
-	AgentToken string `json:"agentToken"`
+	AgentID           string `json:"agentId"`
+	ServerID          string `json:"serverId"`
+	AgentToken        string `json:"agentToken"`
+	AgentTokenPreview string `json:"agentTokenPreview"`
 }
 
 type AgentHeartbeatRequest struct {
