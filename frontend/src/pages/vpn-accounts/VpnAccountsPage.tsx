@@ -12,11 +12,14 @@ import {
   type VpnAccount,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
+import { t } from '../../shared/i18n/i18n';
+import { EmptyState } from '../../shared/ui/EmptyState';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
 
 function formatDate(value?: string | null): string {
   if (!value) {
-    return '-';
+    return t('common.notAvailable');
   }
 
   const date = new Date(value);
@@ -25,14 +28,7 @@ function formatDate(value?: string | null): string {
 }
 
 function formatValue(value?: string | null): string {
-  return value && value.trim() !== '' ? value : '-';
-}
-
-function StatusBadge({ status }: { status?: string | null }) {
-  const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
-  const statusClassName = normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-
-  return <span className={`badge badge-${statusClassName}`}>{normalizedStatus}</span>;
+  return value && value.trim() !== '' ? value : t('common.notAvailable');
 }
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
@@ -140,8 +136,8 @@ export function VpnAccountsPage() {
     createSubscriptionTokenMutation.isPending || rotateSubscriptionTokenMutation.isPending;
 
   return (
-    <section className="page vpn-accounts-page">
-      <div className="page-header">
+    <section className="page vpn-accounts-page feature-screen-page">
+      <div className="page-header feature-page-header">
         <div>
           <h1>VPN Accounts</h1>
           <p>View VLESS / Reality credentials, subscription URLs, client config previews, and traffic limits.</p>
@@ -153,8 +149,8 @@ export function VpnAccountsPage() {
         </div>
       </div>
 
-      <div className="vpn-accounts-layout">
-        <div className="panel admin-table-panel">
+      <div className="vpn-accounts-layout feature-screen-layout">
+        <div className="panel admin-table-panel feature-list-panel">
           <div className="panel-title">Accounts</div>
 
           {accountsQuery.isLoading && <p className="empty-state">Loading VPN accounts...</p>}
@@ -164,7 +160,10 @@ export function VpnAccountsPage() {
           )}
 
           {accountsQuery.isSuccess && accounts.length === 0 && (
-            <p className="empty-state">No VPN accounts created yet.</p>
+            <EmptyState
+              title="No VPN accounts yet"
+              description="Create a VPN account to issue credentials, subscription links, and client configuration to a user."
+            />
           )}
 
           {accounts.length > 0 && (
@@ -187,7 +186,7 @@ export function VpnAccountsPage() {
           )}
         </div>
 
-        <div className="panel credentials-panel">
+        <div className="panel credentials-panel feature-detail-panel">
           <div className="panel-header">
             <div>
               <div className="panel-title">VLESS / Reality credentials</div>
@@ -198,7 +197,10 @@ export function VpnAccountsPage() {
           </div>
 
           {!accountId && (
-            <p className="empty-state">Select a VPN account to view credentials.</p>
+            <EmptyState
+              title="Select a VPN account"
+              description="Choose an account from the list to view credentials, subscription details, and traffic policy."
+            />
           )}
 
           {accountId && accountsQuery.isSuccess && !selectedAccount && (
@@ -214,7 +216,7 @@ export function VpnAccountsPage() {
           )}
 
           {credentials && (
-            <div className="detail-list credentials-detail-list">
+            <div className="detail-list credentials-detail-list feature-detail-list">
               <DetailRow label="VPN account ID">{formatValue(credentials.vpnAccountId)}</DetailRow>
               <DetailRow label="Server ID">{formatValue(credentials.serverId)}</DetailRow>
               <DetailRow label="Protocol">{formatValue(credentials.protocol)}</DetailRow>
@@ -243,7 +245,7 @@ export function VpnAccountsPage() {
         {accountId && selectedAccount && <TrafficStatsPanel accountId={accountId} />}
 
         {accountId && selectedAccount && (
-          <div className="panel subscription-panel">
+          <div className="panel subscription-panel feature-detail-panel">
             <div className="panel-header">
               <div>
                 <div className="panel-title">Subscription and client config</div>
@@ -276,7 +278,10 @@ export function VpnAccountsPage() {
             )}
 
             {!subscriptionToken && (
-              <p className="empty-state">Generate a subscription to show URL, QR payload, and client config preview.</p>
+              <EmptyState
+                title="No subscription token generated"
+                description="Generate a subscription to show URL, QR payload, and client config preview."
+              />
             )}
 
             {subscriptionToken && (
@@ -285,7 +290,7 @@ export function VpnAccountsPage() {
                   Save this subscription URL now. The raw token is shown only once and is not stored by the frontend.
                 </div>
 
-                <div className="detail-list credentials-detail-list">
+                <div className="detail-list credentials-detail-list feature-detail-list">
                   <DetailRow label="Subscription token">
                     <code>{subscriptionToken.subscriptionToken}</code>
                   </DetailRow>
@@ -309,7 +314,7 @@ export function VpnAccountsPage() {
                   <div className="form-message form-message-error">Failed to load subscription QR payload.</div>
                 )}
                 {qr && (
-                  <div className="qr-payload-panel">
+                  <div className="qr-payload-panel feature-subpanel">
                     <ScannableQrCode
                       value={qr.qrText}
                       title="Subscription QR code"
@@ -330,7 +335,7 @@ export function VpnAccountsPage() {
                   </div>
                 )}
 
-                <div className="client-config-preview">
+                <div className="client-config-preview feature-subpanel">
                   <div className="panel-header client-config-header">
                     <div>
                       <div className="panel-title token-snippet-title">Client config preview</div>
