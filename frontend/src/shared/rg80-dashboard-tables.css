@@ -38,11 +38,13 @@
   min-width: 0;
   overflow: hidden;
   padding: 0 10px;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .quick-primary-action span {
+  flex: 0 0 auto;
   font-size: 18px;
   font-weight: 500;
 }
@@ -119,6 +121,16 @@
   white-space: nowrap;
 }
 
+.dashboard-table-row .badge {
+  justify-self: start;
+  letter-spacing: 0.01em;
+  max-width: 100%;
+  min-width: 78px;
+  padding-left: 7px;
+  padding-right: 7px;
+  text-align: center;
+}
+
 .dashboard-table-head span {
   color: #a8b6ca;
   font-size: 10px;
@@ -127,11 +139,11 @@
 }
 
 .servers-summary-table .dashboard-table-row {
-  grid-template-columns: 1.25fr 1.1fr 0.55fr 0.7fr 0.8fr 0.8fr;
+  grid-template-columns: minmax(94px, 1.2fr) minmax(92px, 1fr) 0.5fr 0.6fr minmax(72px, 0.75fr) minmax(88px, 0.9fr);
 }
 
 .deployments-table .dashboard-table-row {
-  grid-template-columns: 1.35fr 1.25fr 0.9fr 0.75fr 0.75fr;
+  grid-template-columns: minmax(128px, 1.25fr) minmax(96px, 1fr) minmax(104px, 0.88fr) 0.65fr 0.7fr;
 }
 
 .server-online-dot,
@@ -332,6 +344,11 @@
   .deployments-table .dashboard-table-row {
     grid-template-columns: 1fr;
     padding: 10px 0;
+  }
+
+  .dashboard-table-row .badge {
+    justify-self: start;
+    min-width: 0;
   }
 
   .traffic-types-content {
