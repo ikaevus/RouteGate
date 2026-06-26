@@ -3,6 +3,7 @@ import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
+import { t } from '../../shared/i18n/i18n';
 
 export function DashboardPage() {
   const managerHealthQuery = useQuery({
@@ -41,7 +42,7 @@ export function DashboardPage() {
 
   const managerTimestamp = managerHealthQuery.isSuccess
     ? managerHealthQuery.data.timestamp
-    : '—';
+    : t('common.notAvailable');
 
   const serversCount = serversQuery.data?.items.length ?? 0;
   const agentsCount = agentsQuery.data?.items.length ?? 0;
@@ -49,11 +50,11 @@ export function DashboardPage() {
     agentsQuery.data?.items.filter((agent) => agent.status === 'online').length ?? 0;
 
   return (
-    <section className="page">
+    <section className="page dashboard-page">
       <div className="page-header">
         <div>
-          <h1>Dashboard</h1>
-          <p>RouteGate Foundation control plane overview.</p>
+          <h1>{t('dashboard.title')}</h1>
+          <p>{t('dashboard.subtitle')}</p>
         </div>
 
         <div className="status-pill">
@@ -62,98 +63,98 @@ export function DashboardPage() {
               managerHealthQuery.isSuccess ? 'status-dot status-dot-ok' : 'status-dot status-dot-warn'
             }
           />
-          {managerHealthQuery.isSuccess ? 'Manager online' : 'Checking manager'}
+          {managerHealthQuery.isSuccess ? t('dashboard.managerOnline') : t('dashboard.checkingManager')}
         </div>
       </div>
 
-      <div className="card-grid">
+      <div className="card-grid dashboard-kpi-grid">
         <div className="card">
-          <div className="card-title">Manager API</div>
+          <div className="card-title">{t('dashboard.managerApi')}</div>
           <div className="card-value">{managerStatusLabel}</div>
           <div className="card-meta">{managerServiceLabel}</div>
         </div>
 
         <div className="card">
-          <div className="card-title">Servers</div>
+          <div className="card-title">{t('dashboard.servers')}</div>
           <div className="card-value">
             {serversQuery.isLoading ? '...' : serversCount}
           </div>
           <div className="card-meta">
             {serversQuery.isError
-              ? 'Failed to load servers.'
-              : 'Registered server records from Manager API.'}
+              ? t('servers.loadError')
+              : t('dashboard.registeredServersMeta')}
           </div>
         </div>
 
         <div className="card">
-          <div className="card-title">Agents</div>
+          <div className="card-title">{t('dashboard.agents')}</div>
           <div className="card-value">
             {agentsQuery.isLoading ? '...' : agentsCount}
           </div>
           <div className="card-meta">
             {agentsQuery.isError
-              ? 'Failed to load agents.'
-              : `${onlineAgentsCount} online agent(s).`}
+              ? t('agents.loadError')
+              : `${onlineAgentsCount} ${t('dashboard.onlineAgentsMeta')} · ${agentsCount} ${t('dashboard.registeredAgentsMeta')}`}
           </div>
         </div>
 
         <div className="card">
-          <div className="card-title">Current user</div>
+          <div className="card-title">{t('dashboard.currentUser')}</div>
           <div className="card-value card-value-small">
-            {meQuery.isSuccess ? meQuery.data.user.displayName : 'Guest'}
+            {meQuery.isSuccess ? meQuery.data.user.displayName : t('common.guest')}
           </div>
           <div className="card-meta">
             {meQuery.isSuccess
               ? meQuery.data.user.email
-              : 'Open Login and sign in with dev credentials.'}
+              : t('dashboard.loginHint')}
           </div>
         </div>
       </div>
 
       <div className="panel">
-        <div className="panel-title">Foundation status</div>
+        <div className="panel-title">{t('dashboard.foundationStatus')}</div>
 
         <div className="status-list">
           <div className="status-row">
-            <span>Frontend</span>
-            <strong>online</strong>
+            <span>{t('dashboard.frontend')}</span>
+            <strong>{t('common.online')}</strong>
           </div>
 
           <div className="status-row">
-            <span>Manager API</span>
+            <span>{t('dashboard.managerApi')}</span>
             <strong>
               {managerHealthQuery.isSuccess
-                ? 'online'
+                ? t('common.online')
                 : managerHealthQuery.isError
-                  ? 'offline'
-                  : 'checking'}
+                  ? t('common.offline')
+                  : t('common.checking')}
             </strong>
           </div>
 
           <div className="status-row">
-            <span>Server registry</span>
+            <span>{t('dashboard.serverRegistry')}</span>
             <strong>
               {serversQuery.isSuccess
-                ? `${serversCount} registered`
+                ? `${serversCount} ${t('common.registered')}`
                 : serversQuery.isError
-                  ? 'error'
-                  : 'checking'}
+                  ? t('common.error')
+                  : t('common.checking')}
             </strong>
           </div>
 
           <div className="status-row">
-            <span>Agent registry</span>
+            <span>{t('dashboard.agentRegistry')}</span>
             <strong>
               {agentsQuery.isSuccess
-                ? `${agentsCount} registered`
+                ? `${agentsCount} ${t('common.registered')}`
                 : agentsQuery.isError
-                  ? 'error'
-                  : 'checking'}
+                  ? t('common.error')
+                  : t('common.checking')}
             </strong>
           </div>
 
           <div className="status-row">
-            <span>Last health timestamp</span>
+            <span>{t('dashboard.lastHealthTimestamp')}</span>
             <strong>{managerTimestamp}</strong>
           </div>
         </div>

@@ -1,23 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getServers, type Server } from '../../entities/server/api/serverApi';
+import { t } from '../../shared/i18n/i18n';
+import { EmptyState } from '../../shared/ui/EmptyState';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
 
 function formatDate(value?: string | null): string {
   if (!value) {
-    return '—';
+    return t('common.notAvailable');
   }
 
   return new Date(value).toLocaleString();
 }
 
 function formatValue(value?: string | null): string {
-  return value && value.trim() !== '' ? value : '—';
-}
-
-function StatusBadge({ status }: { status?: string | null }) {
-  const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
-
-  return <span className={`badge badge-${normalizedStatus}`}>{normalizedStatus}</span>;
+  return value && value.trim() !== '' ? value : t('common.notAvailable');
 }
 
 function ServerRow({ server }: { server: Server }) {
@@ -37,7 +34,7 @@ function ServerRow({ server }: { server: Server }) {
         {server.agent ? (
           <StatusBadge status={server.agent.status} />
         ) : (
-          <span className="muted-text">—</span>
+          <span className="muted-text">{t('common.notAvailable')}</span>
         )}
       </div>
       <div>{formatValue(server.agent?.agentVersion)}</div>
@@ -59,41 +56,41 @@ export function ServersPage() {
     <section className="page servers-page">
       <div className="page-header">
         <div>
-          <h1>Servers</h1>
-          <p>Monitor registered servers and their agent health.</p>
+          <h1>{t('servers.title')}</h1>
+          <p>{t('servers.subtitle')}</p>
         </div>
 
         <div className="status-pill">
           <span className="status-dot status-dot-ok" />
-          {servers.length} registered
+          {servers.length} {t('servers.registered')}
         </div>
       </div>
 
       <div className="panel table-panel servers-table-panel">
-        <div className="panel-title">Registered servers</div>
+        <div className="panel-title">{t('servers.panelTitle')}</div>
 
-        {serversQuery.isLoading && <p className="muted-text">Loading servers...</p>}
+        {serversQuery.isLoading && <p className="empty-state">{t('servers.loading')}</p>}
 
         {serversQuery.isError && (
-          <p className="muted-text">Failed to load servers from Manager API.</p>
+          <div className="form-message form-message-error">{t('servers.loadError')}</div>
         )}
 
         {serversQuery.isSuccess && servers.length === 0 && (
-          <p className="muted-text">No servers registered yet.</p>
+          <EmptyState title={t('servers.emptyTitle')} description={t('servers.emptyDescription')} />
         )}
 
         {servers.length > 0 && (
           <div className="table servers-table">
             <div className="table-row table-head servers-table-row">
-              <div>Name</div>
-              <div>Provider</div>
-              <div>Location</div>
-              <div>Public IP</div>
-              <div>Status</div>
-              <div>Agent</div>
-              <div>Version</div>
-              <div>Last seen</div>
-              <div>Created</div>
+              <div>{t('servers.name')}</div>
+              <div>{t('servers.provider')}</div>
+              <div>{t('servers.location')}</div>
+              <div>{t('servers.publicIp')}</div>
+              <div>{t('servers.status')}</div>
+              <div>{t('servers.agent')}</div>
+              <div>{t('servers.version')}</div>
+              <div>{t('servers.lastSeen')}</div>
+              <div>{t('servers.created')}</div>
             </div>
 
             {servers.map((server) => (

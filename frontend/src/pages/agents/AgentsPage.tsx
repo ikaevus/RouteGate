@@ -6,10 +6,13 @@ import {
   sendAgentHeartbeat,
   type Agent,
 } from '../../entities/agent/api/agentApi';
+import { t } from '../../shared/i18n/i18n';
+import { EmptyState } from '../../shared/ui/EmptyState';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
 
 function formatDate(value: string): string {
   if (!value) {
-    return '—';
+    return t('common.notAvailable');
   }
 
   return new Date(value).toLocaleString();
@@ -68,40 +71,40 @@ export function AgentsPage() {
   const agents = agentsQuery.data?.items ?? [];
 
   return (
-    <section className="page">
+    <section className="page agents-page">
       <div className="page-header">
         <div>
-          <h1>Agents</h1>
-          <p>Development agent registry and heartbeat shell.</p>
+          <h1>{t('agents.title')}</h1>
+          <p>{t('agents.subtitle')}</p>
         </div>
 
         <div className="status-pill">
           <span className="status-dot status-dot-ok" />
-          {agents.length} registered
+          {agents.length} {t('agents.registered')}
         </div>
       </div>
 
       <div className="split-layout">
         <form className="auth-card" onSubmit={handleSubmit}>
-          <div className="panel-title">Register agent</div>
+          <div className="panel-title">{t('agents.registerAgent')}</div>
 
           <label className="field">
-            <span>Server ID</span>
+            <span>{t('agents.serverId')}</span>
             <input value={serverId} onChange={(event) => setServerId(event.target.value)} />
           </label>
 
           <label className="field">
-            <span>Name</span>
+            <span>{t('agents.name')}</span>
             <input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
 
           <label className="field">
-            <span>Version</span>
+            <span>{t('agents.version')}</span>
             <input value={version} onChange={(event) => setVersion(event.target.value)} />
           </label>
 
           <label className="field">
-            <span>Hostname</span>
+            <span>{t('agents.hostname')}</span>
             <input value={hostname} onChange={(event) => setHostname(event.target.value)} />
           </label>
 
@@ -110,49 +113,49 @@ export function AgentsPage() {
             type="submit"
             disabled={registerAgentMutation.isPending || name.trim() === ''}
           >
-            {registerAgentMutation.isPending ? 'Registering...' : 'Register agent'}
+            {registerAgentMutation.isPending ? t('agents.registering') : t('agents.registerAgent')}
           </button>
 
           {registerAgentMutation.isError && (
-            <div className="form-message form-message-error">Failed to register agent.</div>
+            <div className="form-message form-message-error">{t('agents.registerError')}</div>
           )}
         </form>
 
         <div className="panel table-panel">
-          <div className="panel-title">Registered agents</div>
+          <div className="panel-title">{t('agents.panelTitle')}</div>
 
-          {agentsQuery.isLoading && <p className="muted-text">Loading agents...</p>}
+          {agentsQuery.isLoading && <p className="empty-state">{t('agents.loading')}</p>}
 
           {agentsQuery.isError && (
-            <p className="muted-text">Failed to load agents from Manager API.</p>
+            <div className="form-message form-message-error">{t('agents.loadError')}</div>
           )}
 
           {agentsQuery.isSuccess && agents.length === 0 && (
-            <p className="muted-text">No agents registered yet.</p>
+            <EmptyState title={t('agents.emptyTitle')} description={t('agents.emptyDescription')} />
           )}
 
           {agents.length > 0 && (
             <div className="table agents-table">
               <div className="table-row table-head agents-table-row">
-                <div>Name</div>
-                <div>Server ID</div>
-                <div>Version</div>
-                <div>Last seen</div>
-                <div>Status</div>
-                <div>Action</div>
+                <div>{t('agents.name')}</div>
+                <div>{t('agents.serverId')}</div>
+                <div>{t('agents.version')}</div>
+                <div>{t('agents.lastSeen')}</div>
+                <div>{t('agents.status')}</div>
+                <div>{t('agents.action')}</div>
               </div>
 
               {agents.map((agent) => (
                 <div className="table-row agents-table-row" key={agent.id}>
                   <div>
                     <strong>{agent.name}</strong>
-                    <span>{agent.hostname || '—'}</span>
+                    <span>{agent.hostname || t('common.notAvailable')}</span>
                   </div>
-                  <div>{agent.serverId || '—'}</div>
-                  <div>{agent.version || '—'}</div>
+                  <div>{agent.serverId || t('common.notAvailable')}</div>
+                  <div>{agent.version || t('common.notAvailable')}</div>
                   <div>{formatDate(agent.lastSeen)}</div>
                   <div>
-                    <span className={`badge badge-${agent.status}`}>{agent.status}</span>
+                    <StatusBadge status={agent.status} />
                   </div>
                   <div>
                     <button
@@ -161,7 +164,7 @@ export function AgentsPage() {
                       disabled={heartbeatMutation.isPending}
                       onClick={() => handleHeartbeat(agent)}
                     >
-                      Heartbeat
+                      {t('agents.heartbeat')}
                     </button>
                   </div>
                 </div>
