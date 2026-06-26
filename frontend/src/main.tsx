@@ -8,6 +8,9 @@ import './shared/rg45.css';
 import './shared/rg61.css';
 import './shared/rg82.css';
 import './shared/rg80.css';
+import './shared/rg80-shell.css';
+import './shared/rg80-dashboard.css';
+import './shared/rg80-dashboard-tables.css';
 
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');
