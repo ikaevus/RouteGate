@@ -176,6 +176,9 @@ func TestRegisterReturnsOneTimeAgentTokenAndStoresOnlyHash(t *testing.T) {
 	if payload["agentToken"] != "rg_agent_raw-secret" || !strings.HasPrefix(payload["agentToken"].(string), "rg_agent_") {
 		t.Fatalf("agent token = %v, want generated rg_agent_ token", payload["agentToken"])
 	}
+	if payload["agentTokenPreview"] != "rg_agent_raw-...cret" {
+		t.Fatalf("agent token preview = %v", payload["agentTokenPreview"])
+	}
 	if _, exposed := payload["token_hash"]; exposed {
 		t.Fatalf("response exposed token_hash: %v", payload)
 	}
@@ -261,7 +264,7 @@ func TestNextTaskAcceptsValidBearerToken(t *testing.T) {
 	handler.NextTask(response, request)
 
 	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK)
 	}
 	if repository.claimedTokenHash != HashToken("rg_agent_valid") {
 		t.Fatalf("claimed token hash = %q, want hashed bearer token", repository.claimedTokenHash)
