@@ -36,6 +36,9 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	routingProfilesHandler := routingprofiles.NewHandler(logger, pool)
 	portalHandler := portal.NewHandler(logger, pool)
 	authn := auth.Middleware(authRepo)
+	adminAuth := func(handler stdhttp.HandlerFunc) stdhttp.Handler {
+		return authn(auth.RequireAdminSession(stdhttp.HandlerFunc(handler)))
+	}
 	portalAuth := func(handler stdhttp.HandlerFunc) stdhttp.Handler {
 		return authn(auth.RequirePermission("portal:access")(stdhttp.HandlerFunc(handler)))
 	}
@@ -44,8 +47,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.HandleFunc("GET /api/agent/health", healthHandler.Get)
 
 	mux.HandleFunc("POST /api/admin/auth/login", authHandler.Login)
-	mux.Handle("POST /api/admin/auth/logout", authn(stdhttp.HandlerFunc(authHandler.Logout)))
-	mux.Handle("GET /api/admin/me", authn(stdhttp.HandlerFunc(authHandler.Me)))
+	mux.Handle("POST /api/admin/auth/logout", adminAuth(authHandler.Logout))
+	mux.Handle("GET /api/admin/me", adminAuth(authHandler.Me))
 	mux.Handle("GET /api/v1/auth/me", authn(stdhttp.HandlerFunc(authHandler.Me)))
 	mux.Handle("POST /api/v1/auth/login", stdhttp.HandlerFunc(authHandler.Login))
 	mux.Handle("POST /api/v1/auth/logout", authn(stdhttp.HandlerFunc(authHandler.Logout)))
@@ -60,9 +63,9 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/portal/instructions", portalAuth(portalHandler.ListInstructions))
 	mux.Handle("GET /api/portal/instructions/{platform}", portalAuth(portalHandler.GetInstruction))
 
-	mux.HandleFunc("GET /api/admin/servers", serversHandler.LegacyList)
-	mux.HandleFunc("GET /api/admin/servers/{id}", serversHandler.LegacyGet)
-	mux.HandleFunc("POST /api/admin/servers", serversHandler.LegacyCreate)
+	mux.Handle("GET /api/admin/servers", adminAuth(serversHandler.LegacyList))
+	mux.Handle("GET /api/admin/servers/{id}", adminAuth(serversHandler.LegacyGet))
+	mux.Handle("POST /api/admin/servers", adminAuth(serversHandler.LegacyCreate))
 	mux.Handle("GET /api/v1/servers", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(serversHandler.List))))
 	mux.Handle("POST /api/v1/servers", authn(auth.RequirePermission("servers:create")(stdhttp.HandlerFunc(serversHandler.Create))))
 	mux.Handle("GET /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(serversHandler.Get))))
@@ -92,7 +95,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateRule))))
 	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteRule))))
 
-	mux.HandleFunc("GET /api/admin/agents", agentsHandler.List)
+	mux.Handle("GET /api/admin/agents", adminAuth(agentsHandler.List))
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
 
 	mux.Handle("GET /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.List))))

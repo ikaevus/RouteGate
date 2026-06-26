@@ -38,11 +38,9 @@ func RequirePermission(permission string) func(http.Handler) http.Handler {
 				httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
 				return
 			}
-			for _, p := range user.Permissions {
-				if p == permission {
-					next.ServeHTTP(w, r)
-					return
-				}
+			if HasPermission(user.UserProfile, permission) {
+				next.ServeHTTP(w, r)
+				return
 			}
 			httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("forbidden", "Required permission is missing."))
 		})
