@@ -48,6 +48,7 @@
   font: inherit;
   font-size: 11px;
   padding: 5px 8px;
+  white-space: nowrap;
 }
 
 .kpi-widget {
@@ -124,7 +125,7 @@
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(78px, auto);
   min-height: 31px;
 }
 
@@ -135,10 +136,22 @@
 .health-row span {
   color: #cbd5e1;
   font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .health-row strong {
   font-size: 12px;
+}
+
+.health-row .badge {
+  justify-content: center;
+  letter-spacing: 0.01em;
+  min-width: 78px;
+  padding-left: 7px;
+  padding-right: 7px;
 }
 
 .health-footer {
@@ -162,20 +175,36 @@
   position: relative;
 }
 
-.world-map-shape {
-  background: rgba(148, 163, 184, 0.19);
-  border-radius: 48% 52% 42% 58%;
-  filter: blur(0.15px);
+.world-map-svg {
+  color: rgba(148, 163, 184, 0.22);
+  display: block;
+  height: 100%;
+  inset: 0;
+  opacity: 0.95;
   position: absolute;
+  width: 100%;
 }
 
-.world-map-shape-1 { height: 66px; left: 34px; top: 58px; transform: rotate(-14deg); width: 126px; }
-.world-map-shape-2 { height: 86px; left: 162px; top: 38px; transform: rotate(12deg); width: 158px; }
-.world-map-shape-3 { height: 78px; right: 46px; top: 70px; transform: rotate(-8deg); width: 132px; }
-.world-map-shape-4 { height: 56px; left: 224px; top: 126px; transform: rotate(18deg); width: 84px; }
-.world-map-shape-5 { height: 42px; right: 34px; bottom: 28px; transform: rotate(10deg); width: 70px; }
+.world-map-land {
+  fill: currentColor;
+  filter: drop-shadow(0 12px 22px rgba(15, 23, 42, 0.24));
+  stroke: rgba(191, 219, 254, 0.08);
+  stroke-width: 1.2;
+}
+
+.world-map-land-eu,
+.world-map-land-asia {
+  color: rgba(148, 163, 184, 0.26);
+}
+
+.world-map-land-af,
+.world-map-land-sa,
+.world-map-land-oc {
+  color: rgba(148, 163, 184, 0.2);
+}
 
 .node-marker {
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   color: #fff;
   display: grid;
@@ -185,14 +214,15 @@
   place-items: center;
   position: absolute;
   width: 42px;
+  z-index: 2;
 }
 
-.node-marker-na { background: #2563eb; box-shadow: 0 0 32px rgba(37, 99, 235, 0.75); left: 82px; top: 92px; }
-.node-marker-eu { background: #22c55e; box-shadow: 0 0 32px rgba(34, 197, 94, 0.75); left: 252px; top: 68px; }
-.node-marker-asia { background: #3b82f6; box-shadow: 0 0 32px rgba(59, 130, 246, 0.75); right: 76px; top: 98px; }
-.node-marker-sa { background: #8b5cf6; box-shadow: 0 0 32px rgba(139, 92, 246, 0.75); left: 128px; bottom: 34px; }
-.node-marker-af { background: #f59e0b; box-shadow: 0 0 32px rgba(245, 158, 11, 0.7); left: 288px; bottom: 54px; }
-.node-marker-oc { background: #64748b; box-shadow: 0 0 24px rgba(100, 116, 139, 0.64); right: 42px; bottom: 32px; }
+.node-marker-na { background: #2563eb; box-shadow: 0 0 32px rgba(37, 99, 235, 0.75); left: 23%; top: 43%; }
+.node-marker-eu { background: #22c55e; box-shadow: 0 0 32px rgba(34, 197, 94, 0.75); left: 60%; top: 29%; }
+.node-marker-asia { background: #3b82f6; box-shadow: 0 0 32px rgba(59, 130, 246, 0.75); right: 19%; top: 41%; }
+.node-marker-sa { background: #8b5cf6; box-shadow: 0 0 32px rgba(139, 92, 246, 0.75); left: 33%; bottom: 21%; }
+.node-marker-af { background: #f59e0b; box-shadow: 0 0 32px rgba(245, 158, 11, 0.7); left: 68%; bottom: 31%; }
+.node-marker-oc { background: #64748b; box-shadow: 0 0 24px rgba(100, 116, 139, 0.64); right: 10%; bottom: 17%; }
 
 .map-legend {
   display: flex;
@@ -273,6 +303,7 @@
   align-items: center;
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   margin-top: 10px;
   padding-bottom: 10px;
