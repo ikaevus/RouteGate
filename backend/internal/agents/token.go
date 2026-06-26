@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"strings"
+
+	"github.com/ikaevus/routegate/backend/internal/secrets"
 )
 
 const tokenRandomBytes = 32
@@ -38,18 +40,5 @@ func HashToken(token string) string {
 }
 
 func MaskToken(token string) string {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return ""
-	}
-	if len(token) <= 8 {
-		return "..."
-	}
-	for _, prefix := range []string{"rg_reg_", "rg_agent_"} {
-		if strings.HasPrefix(token, prefix) && len(token) > len(prefix)+8 {
-			body := strings.TrimPrefix(token, prefix)
-			return prefix + body[:4] + "..." + body[len(body)-4:]
-		}
-	}
-	return token[:4] + "..." + token[len(token)-4:]
+	return secrets.Mask(token)
 }
