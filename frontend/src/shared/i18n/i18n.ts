@@ -11,12 +11,20 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
 const DEFAULT_LOCALE: Locale = 'en';
 
 export function getCurrentLocale(): Locale {
+  if (typeof window === 'undefined') {
+    return DEFAULT_LOCALE;
+  }
+
   const storedLocale = window.localStorage.getItem('routegate.locale');
 
   return storedLocale === 'ru' ? 'ru' : DEFAULT_LOCALE;
 }
 
 export function setCurrentLocale(locale: Locale): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
   window.localStorage.setItem('routegate.locale', locale);
 }
 
@@ -37,6 +45,7 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 export function translateStatus(status?: string | null): string {
   const normalizedStatus = status && status.trim() !== '' ? status.toLowerCase() : 'unknown';
   const key = `status.${normalizedStatus}` as TranslationKey;
+  const translated = t(key);
 
-  return t(key) === key ? normalizedStatus : t(key);
+  return translated === key ? normalizedStatus : translated;
 }
