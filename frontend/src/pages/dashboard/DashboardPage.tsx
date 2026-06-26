@@ -114,11 +114,14 @@ function NodeDistributionWidget() {
       action={<button className="widget-filter" type="button">{t('dashboard.allRegions')}</button>}
     >
       <div className="node-map" aria-label={t('dashboard.nodeDistribution')}>
-        <div className="world-map-shape world-map-shape-1" />
-        <div className="world-map-shape world-map-shape-2" />
-        <div className="world-map-shape world-map-shape-3" />
-        <div className="world-map-shape world-map-shape-4" />
-        <div className="world-map-shape world-map-shape-5" />
+        <svg className="world-map-svg" viewBox="0 0 520 230" role="img" aria-hidden="true">
+          <path className="world-map-land world-map-land-na" d="M64 72c20-24 62-33 96-23 22 7 32 24 22 42-7 13-22 17-34 25-17 12-23 30-43 33-21 3-47-8-57-25-10-18 1-36 16-52Z" />
+          <path className="world-map-land world-map-land-sa" d="M150 133c23 11 39 28 39 53 0 25-16 45-32 52-15-13-20-34-18-54 2-20-7-35 11-51Z" />
+          <path className="world-map-land world-map-land-eu" d="M238 62c30-22 78-26 116-11 23 9 39 25 40 45-28 10-59 5-84 15-28 11-61 2-77-17-10-12-8-22 5-32Z" />
+          <path className="world-map-land world-map-land-af" d="M300 112c28-4 57 15 61 44 4 31-17 57-42 62-24-14-41-39-36-67 3-18 7-31 17-39Z" />
+          <path className="world-map-land world-map-land-asia" d="M370 82c39-18 87-8 108 19 18 24 11 52-11 66-25 16-52-1-80 9-20 7-44-6-49-29-6-27 9-53 32-65Z" />
+          <path className="world-map-land world-map-land-oc" d="M430 171c24-7 53 1 64 18-9 18-37 23-61 15-17-6-20-24-3-33Z" />
+        </svg>
         {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
       </div>
       <div className="map-legend">
