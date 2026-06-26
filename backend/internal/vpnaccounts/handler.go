@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
@@ -35,6 +37,7 @@ type accountRepository interface {
 type Handler struct {
 	logger                    *slog.Logger
 	accounts                  accountRepository
+	audit                     *audit.Recorder
 	generateSubscriptionToken func() (string, error)
 }
 
@@ -42,6 +45,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 	return &Handler{
 		logger:                    logger,
 		accounts:                  NewRepository(pool),
+		audit:                     audit.NewRecorder(logger, pool),
 		generateSubscriptionToken: GenerateSubscriptionToken,
 	}
 }
@@ -89,6 +93,18 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "vpn_account.created",
+		ResourceType: "vpn_account",
+		ResourceID:   account.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"display_name": account.DisplayName,
+			"email":        account.Email,
+			"server_id":    account.ServerID,
+			"status":       account.Status,
+		},
+	})
 	h.logger.Info("vpn account created", "id", account.ID, "display_name", account.DisplayName)
 	httpx.WriteJSON(w, http.StatusCreated, account)
 }
@@ -172,7 +188,8 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	err := h.accounts.DeleteAccount(r.Context(), r.PathValue("id"))
+	accountID := r.PathValue("id")
+	err := h.accounts.DeleteAccount(r.Context(), accountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeAccountNotFound(w)
 		return
@@ -182,15 +199,21 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "vpn_account.deleted",
+		ResourceType: "vpn_account",
+		ResourceID:   accountID,
+		Result:       audit.ResultSuccess,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) CreateSubscriptionToken(w http.ResponseWriter, r *http.Request) {
-	h.createOrRotateSubscriptionToken(w, r)
+	h.createOrRotateSubscriptionToken(w, r, "subscription_token.created")
 }
 
 func (h *Handler) RotateSubscriptionToken(w http.ResponseWriter, r *http.Request) {
-	h.createOrRotateSubscriptionToken(w, r)
+	h.createOrRotateSubscriptionToken(w, r, "subscription_token.rotated")
 }
 
 func (h *Handler) RevokeSubscriptionToken(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +234,12 @@ func (h *Handler) RevokeSubscriptionToken(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "subscription_token.revoked",
+		ResourceType: "vpn_account",
+		ResourceID:   accountID,
+		Result:       audit.ResultSuccess,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -253,13 +282,13 @@ func (h *Handler) GetSubscriptionQRCode(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) {
 	rawToken := strings.TrimSpace(r.PathValue("token"))
 	if rawToken == "" {
-		writeInvalidRequest(w, "Subscription token is required.")
+		writePublicSubscriptionNotFound(w)
 		return
 	}
 
 	token, err := h.accounts.FindActiveSubscriptionTokenByHash(r.Context(), HashSubscriptionToken(rawToken))
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_not_found", "Subscription token not found."))
+		writePublicSubscriptionNotFound(w)
 		return
 	}
 	if err != nil {
@@ -269,13 +298,13 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 
 	now := time.Now()
 	if subscriptionTokenExpired(token, now) {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_not_found", "Subscription token not found."))
+		writePublicSubscriptionNotFound(w)
 		return
 	}
 
 	profile, err := h.accounts.GetSubscriptionProfileByAccountID(r.Context(), token.VPNAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_account_not_found", "VPN account for subscription token not found."))
+		writePublicSubscriptionNotFound(w)
 		return
 	}
 	if err != nil {
@@ -283,11 +312,11 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if profile.Account.Status != StatusActive {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("subscription_inactive", "VPN account is not active."))
+		writePublicSubscriptionNotFound(w)
 		return
 	}
 	if profile.Account.ExpiresAt != nil && !profile.Account.ExpiresAt.After(now) {
-		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("subscription_expired", "VPN account is expired."))
+		writePublicSubscriptionNotFound(w)
 		return
 	}
 
@@ -313,7 +342,7 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (h *Handler) createOrRotateSubscriptionToken(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) createOrRotateSubscriptionToken(w http.ResponseWriter, r *http.Request, action string) {
 	accountID := r.PathValue("id")
 	var request CreateSubscriptionTokenRequest
 	if err := decodeOptionalJSON(r.Body, &request); err != nil {
@@ -349,9 +378,22 @@ func (h *Handler) createOrRotateSubscriptionToken(w http.ResponseWriter, r *http
 		return
 	}
 
+	tokenPreview := MaskSubscriptionToken(rawToken)
+	h.recordAudit(r, audit.EventInput{
+		Action:       action,
+		ResourceType: "vpn_account",
+		ResourceID:   accountID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"token_id":      created.ID,
+			"token_preview": tokenPreview,
+			"expires_at":    created.ExpiresAt,
+		},
+	})
 	httpx.WriteJSON(w, http.StatusCreated, SubscriptionTokenResponse{
 		VPNAccountID:      accountID,
 		SubscriptionToken: rawToken,
+		TokenPreview:      tokenPreview,
 		SubscriptionURL:   h.subscriptionURL(r, rawToken),
 		ExpiresAt:         created.ExpiresAt,
 	})
@@ -368,6 +410,15 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request, status strin
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       vpnAccountStatusAuditAction(status),
+		ResourceType: "vpn_account",
+		ResourceID:   account.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"status": status,
+		},
+	})
 	httpx.WriteJSON(w, http.StatusOK, account)
 }
 
@@ -506,12 +557,39 @@ func trimStringPointer(value *string) {
 	}
 }
 
+func (h *Handler) recordAudit(r *http.Request, input audit.EventInput) {
+	if user, ok := auth.UserFromContext(r.Context()); ok {
+		input.ActorUserID = user.ID
+		input.ActorType = audit.ActorTypeUser
+	} else if input.ActorType == "" {
+		input.ActorType = audit.ActorTypeSystem
+	}
+	h.audit.RecordSafe(r.Context(), input)
+}
+
+func vpnAccountStatusAuditAction(status string) string {
+	switch status {
+	case StatusSuspended:
+		return "vpn_account.suspended"
+	case StatusActive:
+		return "vpn_account.activated"
+	case StatusRevoked:
+		return "vpn_account.revoked"
+	default:
+		return "vpn_account.status_updated"
+	}
+}
+
 func writeInvalidRequest(w http.ResponseWriter, message string) {
 	httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", message))
 }
 
 func writeAccountNotFound(w http.ResponseWriter) {
 	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("vpn_account_not_found", "VPN account not found."))
+}
+
+func writePublicSubscriptionNotFound(w http.ResponseWriter) {
+	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("subscription_not_found", "Subscription token not found."))
 }
 
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
