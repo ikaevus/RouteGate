@@ -119,17 +119,34 @@ function NodeDistributionWidget() {
       action={<button className="widget-filter" type="button">{t('dashboard.allRegions')}</button>}
     >
       <div className="node-map" aria-label={t('dashboard.nodeDistribution')}>
-        <svg className="world-map-svg" viewBox="0 0 720 320" role="img" aria-hidden="true">
-          <path className="world-map-line" d="M38 160H682M360 24v272M134 38c-36 76-36 168 0 244M586 38c36 76 36 168 0 244" />
-          <path className="world-map-land world-map-land-na" d="M74 111c16-35 54-53 101-54 45-1 82 14 111 42 19 19 18 39-5 50-19 10-45 7-61 24-15 16-13 43-33 55-24 14-60 0-73-25-10-19-1-39-19-55-15-13-33-14-21-37Z" />
-          <path className="world-map-land world-map-land-gr" d="M221 42c31-16 72-12 92 8-11 20-49 26-83 15-19-6-21-15-9-23Z" />
-          <path className="world-map-land world-map-land-sa" d="M243 188c30 15 51 44 50 77-1 34-24 62-48 72-18-20-25-47-22-78 2-29-12-50 20-71Z" />
-          <path className="world-map-land world-map-land-eu" d="M356 89c25-22 63-27 97-14 21 8 27 28 8 40-18 11-42 4-59 16-16 11-42 8-55-6-12-13-6-27 9-36Z" />
-          <path className="world-map-land world-map-land-af" d="M412 137c42-5 77 24 82 68 5 42-24 76-57 85-32-21-53-57-45-96 5-25 9-44 20-57Z" />
-          <path className="world-map-land world-map-land-asia" d="M469 87c48-36 121-33 169 5 35 28 45 70 17 96-33 31-87 8-121 29-30 18-74-3-84-42-9-36 0-70 19-88Z" />
-          <path className="world-map-land world-map-land-jp" d="M628 144c12 12 14 30 5 45-14-9-18-30-5-45Z" />
-          <path className="world-map-land world-map-land-oc" d="M579 238c36-14 83-2 103 25-17 26-66 31-101 16-26-12-29-31-2-41Z" />
-          <path className="world-map-land world-map-land-nz" d="M673 294c16-4 30 0 39 10-13 11-31 11-39-10Z" />
+        <svg className="world-map-svg" viewBox="0 0 760 330" role="img" aria-hidden="true">
+          <defs>
+            <pattern id="worldMapTexture" width="10" height="10" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="0.7" />
+            </pattern>
+          </defs>
+          <g className="world-map-grid">
+            <path d="M48 165H712M380 32V298M150 48c-38 78-38 156 0 234M610 48c38 78 38 156 0 234" />
+          </g>
+          <g className="world-map-land">
+            <path d="M70 102 96 78 132 68 178 64 220 76 252 100 286 112 276 138 242 146 226 166 206 172 190 202 164 216 134 202 118 174 90 160 78 134 56 124Z" />
+            <path d="M226 40 268 32 314 44 296 62 246 64 216 54Z" />
+            <path d="M230 188 266 204 286 242 276 282 246 316 224 286 218 246 202 214Z" />
+            <path d="M352 88 386 70 430 72 466 90 456 112 418 114 394 132 358 124 336 104Z" />
+            <path d="M408 132 448 138 482 170 490 214 470 258 438 288 406 258 392 214 398 168Z" />
+            <path d="M462 86 506 62 570 64 632 84 682 124 674 166 626 178 584 166 548 190 504 184 468 154 448 118Z" />
+            <path d="M640 132 660 150 652 178 632 158Z" />
+            <path d="M592 232 640 230 704 258 680 286 626 280 578 254Z" />
+            <path d="M688 294 728 300 744 314 706 318Z" />
+            <path d="M690 184 710 192 720 208 700 212 684 202Z" />
+          </g>
+          <g className="world-map-texture">
+            <path d="M70 102 96 78 132 68 178 64 220 76 252 100 286 112 276 138 242 146 226 166 206 172 190 202 164 216 134 202 118 174 90 160 78 134 56 124Z" />
+            <path d="M352 88 386 70 430 72 466 90 456 112 418 114 394 132 358 124 336 104Z" />
+            <path d="M408 132 448 138 482 170 490 214 470 258 438 288 406 258 392 214 398 168Z" />
+            <path d="M462 86 506 62 570 64 632 84 682 124 674 166 626 178 584 166 548 190 504 184 468 154 448 118Z" />
+            <path d="M592 232 640 230 704 258 680 286 626 280 578 254Z" />
+          </g>
         </svg>
         {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
       </div>
@@ -227,7 +244,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
             <div className="dashboard-table-row" key={server.name}>
               <strong>{server.name}</strong>
               <span className="server-region-cell">
-                <span className={`server-country-chip server-country-${countryCode.toLowerCase()}`} aria-label={`Country: ${countryCode}`}>{countryCode}</span>
+                <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={`Country: ${countryCode}`} />
                 <span className="server-region-name">{server.region}</span>
               </span>
               <span className={server.online ? 'server-online-dot' : 'server-offline-dot'} />
