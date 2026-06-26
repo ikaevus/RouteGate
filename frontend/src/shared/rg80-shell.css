@@ -20,12 +20,19 @@
 .routegate-brand {
   gap: 12px;
   margin-bottom: 8px;
+  min-width: 0;
   padding: 0 2px;
+}
+
+.routegate-brand > div,
+.portal-brand > div {
+  min-width: 0;
 }
 
 .brand-shield {
   display: grid;
   filter: drop-shadow(0 16px 28px rgba(37, 99, 235, 0.28));
+  flex: 0 0 auto;
   height: 34px;
   place-items: center;
   width: 34px;
@@ -62,6 +69,7 @@
 
 .routegate-brand .brand-subtitle {
   font-size: 12px;
+  line-height: 1.25;
   margin-top: 2px;
 }
 
@@ -79,14 +87,23 @@
 .routegate-nav .nav-link {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   min-height: 42px;
+  min-width: 0;
   padding: 9px 12px;
+}
+
+.routegate-nav .nav-link > span:last-child {
+  line-height: 1.18;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .nav-icon {
   color: #9fb3cb;
   display: inline-grid;
+  flex: 0 0 22px;
   height: 22px;
   place-items: center;
   width: 22px;
