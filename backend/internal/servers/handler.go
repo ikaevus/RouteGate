@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/agents"
+	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
@@ -35,6 +37,7 @@ type Handler struct {
 	service                   *Service
 	servers                   serverRepository
 	registrationTokens        registrationTokenRepository
+	audit                     *audit.Recorder
 	generateRegistrationToken func() (string, error)
 	generateRealityKeypair    func() (RealityKeypair, error)
 	now                       func() time.Time
@@ -47,6 +50,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 		service:                   NewService(repository),
 		servers:                   repository,
 		registrationTokens:        agents.NewRepository(pool),
+		audit:                     audit.NewRecorder(logger, pool),
 		generateRegistrationToken: agents.GenerateRegistrationToken,
 		generateRealityKeypair:    GenerateRealityKeypair,
 		now:                       time.Now,
@@ -150,6 +154,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "server.created",
+		ResourceType: "server",
+		ResourceID:   server.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"server_name": server.Name,
+			"provider":    server.Provider,
+			"location":    server.Location,
+		},
+	})
 	h.logger.Info("server created", "id", server.ID, "name", server.Name)
 	httpx.WriteJSON(w, http.StatusCreated, server)
 }
@@ -218,11 +233,22 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "server.updated",
+		ResourceType: "server",
+		ResourceID:   server.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"server_name":    server.Name,
+			"changed_fields": changedServerFields(request),
+		},
+	})
 	httpx.WriteJSON(w, http.StatusOK, server)
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	err := h.servers.DeleteServer(r.Context(), r.PathValue("server_id"))
+	serverID := r.PathValue("server_id")
+	err := h.servers.DeleteServer(r.Context(), serverID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeServerNotFound(w)
 		return
@@ -232,6 +258,12 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "server.deleted",
+		ResourceType: "server",
+		ResourceID:   serverID,
+		Result:       audit.ResultSuccess,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -266,11 +298,57 @@ func (h *Handler) CreateRegistrationToken(w http.ResponseWriter, r *http.Request
 		expiresAt = created.ExpiresAt.UTC()
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "agent.registration_token.created",
+		ResourceType: "server",
+		ResourceID:   serverID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"token_preview": audit.MaskSecret(rawToken),
+			"expires_at":    expiresAt,
+		},
+	})
 	httpx.WriteJSON(w, http.StatusCreated, RegistrationTokenResponse{
 		ServerID:          serverID,
 		RegistrationToken: rawToken,
 		ExpiresAt:         expiresAt,
 	})
+}
+
+func (h *Handler) recordAudit(r *http.Request, input audit.EventInput) {
+	if user, ok := auth.UserFromContext(r.Context()); ok {
+		input.ActorUserID = user.ID
+		input.ActorType = audit.ActorTypeUser
+	} else if input.ActorType == "" {
+		input.ActorType = audit.ActorTypeSystem
+	}
+	h.audit.RecordSafe(r.Context(), input)
+}
+
+func changedServerFields(request UpdateServerRequest) []string {
+	fields := make([]string, 0, 7)
+	if request.Name != nil {
+		fields = append(fields, "name")
+	}
+	if request.Description != nil {
+		fields = append(fields, "description")
+	}
+	if request.Location != nil {
+		fields = append(fields, "location")
+	}
+	if request.Provider != nil {
+		fields = append(fields, "provider")
+	}
+	if request.PublicIP != nil {
+		fields = append(fields, "public_ip")
+	}
+	if request.PrivateIP != nil {
+		fields = append(fields, "private_ip")
+	}
+	if request.Status != nil {
+		fields = append(fields, "status")
+	}
+	return fields
 }
 
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
