@@ -2,16 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { getServers, type Server } from '../../entities/server/api/serverApi';
 import { ServerProtocolSettingsPanel } from '../servers/ServerProtocolSettingsPanel';
+import { t } from '../../shared/i18n/i18n';
+import { EmptyState } from '../../shared/ui/EmptyState';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
 
 function formatValue(value?: string | null): string {
-  return value && value.trim() !== '' ? value : '-';
-}
-
-function StatusBadge({ status }: { status?: string | null }) {
-  const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
-  const statusClassName = normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-
-  return <span className={`badge badge-${statusClassName}`}>{normalizedStatus}</span>;
+  return value && value.trim() !== '' ? value : t('common.notAvailable');
 }
 
 function ServerSettingsRow({ server, selected }: { server: Server; selected: boolean }) {
@@ -47,38 +43,41 @@ export function ProtocolSettingsPage() {
     <section className="page protocol-settings-page">
       <div className="page-header">
         <div>
-          <h1>Protocol Settings</h1>
-          <p>Manage server VLESS / Reality settings used by account credentials.</p>
+          <h1>{t('protocolSettings.title')}</h1>
+          <p>{t('protocolSettings.subtitle')}</p>
         </div>
 
         <div className="status-pill">
           <span className="status-dot status-dot-ok" />
-          {servers.length} servers
+          {servers.length} {t('protocolSettings.servers')}
         </div>
       </div>
 
       <div className="protocol-settings-layout">
         <div className="panel admin-table-panel">
-          <div className="panel-title">Servers</div>
+          <div className="panel-title">{t('protocolSettings.panelTitle')}</div>
 
-          {serversQuery.isLoading && <p className="empty-state">Loading servers...</p>}
+          {serversQuery.isLoading && <p className="empty-state">{t('protocolSettings.loading')}</p>}
 
           {serversQuery.isError && (
-            <div className="form-message form-message-error">Failed to load servers.</div>
+            <div className="form-message form-message-error">{t('protocolSettings.loadError')}</div>
           )}
 
           {serversQuery.isSuccess && servers.length === 0 && (
-            <p className="empty-state">No servers registered yet.</p>
+            <EmptyState
+              title={t('protocolSettings.emptyTitle')}
+              description={t('protocolSettings.emptyDescription')}
+            />
           )}
 
           {servers.length > 0 && (
             <div className="admin-table protocol-server-table">
               <div className="admin-table-row admin-table-head protocol-server-table-row">
-                <span>Server</span>
-                <span>Provider</span>
-                <span>Location</span>
-                <span>Public IP</span>
-                <span>Status</span>
+                <span>{t('servers.name')}</span>
+                <span>{t('servers.provider')}</span>
+                <span>{t('servers.location')}</span>
+                <span>{t('servers.publicIp')}</span>
+                <span>{t('servers.status')}</span>
               </div>
               {servers.map((server) => (
                 <ServerSettingsRow
@@ -94,13 +93,16 @@ export function ProtocolSettingsPage() {
         {serverId ? (
           <>
             {serversQuery.isSuccess && !selectedServer && (
-              <div className="form-message form-message-error">Selected server is not in the current list.</div>
+              <div className="form-message form-message-error">{t('protocolSettings.serverNotFound')}</div>
             )}
             <ServerProtocolSettingsPanel serverId={serverId} />
           </>
         ) : (
           <div className="panel">
-            <p className="empty-state">Select a server to view and edit protocol settings.</p>
+            <EmptyState
+              title={t('protocolSettings.selectTitle')}
+              description={t('protocolSettings.selectDescription')}
+            />
           </div>
         )}
       </div>
