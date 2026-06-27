@@ -10,6 +10,8 @@ import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPa
 import { LoginPage } from '../pages/login/LoginPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 import { t } from '../shared/i18n/i18n';
+import { useLocale } from '../shared/i18n/useLocale';
+import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
 
 type IconName =
   | 'overview'
@@ -72,23 +74,6 @@ function BrandShield() {
   );
 }
 
-const adminNavigationItems = [
-  { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
-  { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
-  { to: '/agents', label: t('navigation.agents'), icon: 'agents' as const },
-  { to: '/vpn-accounts', label: t('navigation.vpnAccounts'), icon: 'accounts' as const },
-  { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
-  { to: '/routing-profiles', label: t('navigation.routingProfiles'), icon: 'routing' as const },
-  { to: '/portal', label: t('navigation.userPortal'), icon: 'portal' as const },
-  { to: '/login', label: t('navigation.login'), icon: 'login' as const },
-];
-
-const secondaryNavigationItems = [
-  { label: t('navigation.security'), icon: 'security' as const },
-  { label: t('navigation.licensing'), icon: 'licensing' as const },
-  { label: t('navigation.appliance'), icon: 'appliance' as const },
-];
-
 function PortalShell() {
   return (
     <div className="portal-app-shell">
@@ -101,11 +86,14 @@ function PortalShell() {
           </div>
         </Link>
 
-        <nav className="portal-topnav">
-          <Link to="/portal">{t('navigation.userPortal')}</Link>
-          <Link to="/">{t('navigation.adminUi')}</Link>
-          <Link to="/login">{t('navigation.login')}</Link>
-        </nav>
+        <div className="portal-topbar-actions">
+          <nav className="portal-topnav">
+            <Link to="/portal">{t('navigation.userPortal')}</Link>
+            <Link to="/">{t('navigation.adminUi')}</Link>
+            <Link to="/login">{t('navigation.login')}</Link>
+          </nav>
+          <LocaleSwitcher />
+        </div>
       </header>
 
       <main className="portal-main">
@@ -131,10 +119,13 @@ function AuthShell() {
           </div>
         </Link>
 
-        <nav className="portal-topnav">
-          <Link to="/">{t('navigation.adminUi')}</Link>
-          <Link to="/portal">{t('navigation.userPortal')}</Link>
-        </nav>
+        <div className="auth-topbar-actions">
+          <nav className="portal-topnav">
+            <Link to="/">{t('navigation.adminUi')}</Link>
+            <Link to="/portal">{t('navigation.userPortal')}</Link>
+          </nav>
+          <LocaleSwitcher />
+        </div>
       </header>
 
       <main className="auth-main">
@@ -148,6 +139,22 @@ function AuthShell() {
 }
 
 function AdminShell() {
+  const adminNavigationItems = [
+    { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
+    { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
+    { to: '/agents', label: t('navigation.agents'), icon: 'agents' as const },
+    { to: '/vpn-accounts', label: t('navigation.vpnAccounts'), icon: 'accounts' as const },
+    { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
+    { to: '/routing-profiles', label: t('navigation.routingProfiles'), icon: 'routing' as const },
+    { to: '/portal', label: t('navigation.userPortal'), icon: 'portal' as const },
+    { to: '/login', label: t('navigation.login'), icon: 'login' as const },
+  ];
+  const secondaryNavigationItems = [
+    { label: t('navigation.security'), icon: 'security' as const },
+    { label: t('navigation.licensing'), icon: 'licensing' as const },
+    { label: t('navigation.appliance'), icon: 'appliance' as const },
+  ];
+
   return (
     <div className="app-shell routegate-admin-shell routegate-reference-shell">
       <aside className="sidebar routegate-sidebar">
@@ -211,6 +218,7 @@ function AdminShell() {
             <kbd>{t('topbar.shortcut')}</kbd>
           </label>
           <div className="topbar-actions">
+            <LocaleSwitcher />
             <button className="topbar-icon-button topbar-notification" type="button" aria-label={t('topbar.notifications')}><Icon name="bell" /></button>
             <button className="topbar-icon-button" type="button" aria-label={t('topbar.help')}><Icon name="help" /></button>
             <button className="topbar-icon-button" type="button" aria-label={t('topbar.settings')}><Icon name="settings" /></button>
@@ -253,6 +261,7 @@ function AdminShell() {
 
 export function App() {
   const location = useLocation();
+  useLocale();
 
   if (location.pathname.startsWith('/portal')) {
     return <PortalShell />;

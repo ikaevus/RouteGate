@@ -38,11 +38,13 @@
   min-width: 0;
   overflow: hidden;
   padding: 0 10px;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .quick-primary-action span {
+  flex: 0 0 auto;
   font-size: 18px;
   font-weight: 500;
 }
@@ -119,6 +121,16 @@
   white-space: nowrap;
 }
 
+.dashboard-table-row .badge {
+  justify-self: start;
+  letter-spacing: 0.01em;
+  max-width: 100%;
+  min-width: 78px;
+  padding-left: 7px;
+  padding-right: 7px;
+  text-align: center;
+}
+
 .dashboard-table-head span {
   color: #a8b6ca;
   font-size: 10px;
@@ -127,11 +139,78 @@
 }
 
 .servers-summary-table .dashboard-table-row {
-  grid-template-columns: 1.25fr 1.1fr 0.55fr 0.7fr 0.8fr 0.8fr;
+  grid-template-columns: minmax(94px, 1.2fr) minmax(112px, 1.1fr) 0.5fr 0.6fr minmax(72px, 0.75fr) minmax(88px, 0.9fr);
+}
+
+.server-region-cell {
+  align-items: center;
+  display: inline-flex !important;
+  gap: 7px;
+  min-width: 0;
+}
+
+.server-region-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-country-flag {
+  border: 1px solid rgba(203, 213, 225, 0.24);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.5), 0 3px 8px rgba(2, 6, 23, 0.28);
+  display: inline-block !important;
+  flex: 0 0 auto;
+  height: 11px;
+  overflow: hidden;
+  width: 16px;
+}
+
+.server-country-de {
+  background: linear-gradient(to bottom, #111827 0 33%, #dc2626 33% 66%, #facc15 66% 100%);
+}
+
+.server-country-nl {
+  background: linear-gradient(to bottom, #dc2626 0 33%, #ffffff 33% 66%, #2563eb 66% 100%);
+}
+
+.server-country-us {
+  background:
+    linear-gradient(to bottom, #b91c1c 0 14%, #ffffff 14% 28%, #b91c1c 28% 42%, #ffffff 42% 56%, #b91c1c 56% 70%, #ffffff 70% 84%, #b91c1c 84% 100%);
+  position: relative;
+}
+
+.server-country-us::before {
+  background: #1d4ed8;
+  content: "";
+  display: block;
+  height: 6px;
+  width: 7px;
+}
+
+.server-country-sg {
+  background: linear-gradient(to bottom, #dc2626 0 50%, #ffffff 50% 100%);
+  position: relative;
+}
+
+.server-country-sg::before {
+  background: #ffffff;
+  border-radius: 999px;
+  content: "";
+  height: 4px;
+  left: 3px;
+  position: absolute;
+  top: 2px;
+  width: 4px;
+}
+
+.server-country-rg {
+  background: linear-gradient(135deg, #2563eb 0 50%, #06b6d4 50% 100%);
 }
 
 .deployments-table .dashboard-table-row {
-  grid-template-columns: 1.35fr 1.25fr 0.9fr 0.75fr 0.75fr;
+  grid-template-columns: minmax(128px, 1.25fr) minmax(96px, 1fr) minmax(104px, 0.88fr) 0.65fr 0.7fr;
 }
 
 .server-online-dot,
@@ -332,6 +411,11 @@
   .deployments-table .dashboard-table-row {
     grid-template-columns: 1fr;
     padding: 10px 0;
+  }
+
+  .dashboard-table-row .badge {
+    justify-self: start;
+    min-width: 0;
   }
 
   .traffic-types-content {

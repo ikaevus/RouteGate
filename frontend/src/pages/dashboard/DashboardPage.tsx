@@ -7,6 +7,7 @@ import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { t } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
+import { WorldMap } from '../../shared/ui/WorldMap';
 
 const fallbackServers = [
   { name: 'rg-eu-01', region: 'Frankfurt, DE', online: true, load: '36%', traffic: '1.2 TB', status: 'healthy' },
@@ -40,6 +41,11 @@ function formatDate(value?: string | null): string {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function getRegionCountryCode(region: string): string {
+  const code = region.match(/,\s*([A-Z]{2})$/)?.[1];
+  return code ?? 'RG';
 }
 
 function KpiWidget({ title, value, meta, tone, icon }: { title: string; value: string; meta: string; tone: string; icon: string }) {
@@ -114,11 +120,7 @@ function NodeDistributionWidget() {
       action={<button className="widget-filter" type="button">{t('dashboard.allRegions')}</button>}
     >
       <div className="node-map" aria-label={t('dashboard.nodeDistribution')}>
-        <div className="world-map-shape world-map-shape-1" />
-        <div className="world-map-shape world-map-shape-2" />
-        <div className="world-map-shape world-map-shape-3" />
-        <div className="world-map-shape world-map-shape-4" />
-        <div className="world-map-shape world-map-shape-5" />
+        <WorldMap />
         {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
       </div>
       <div className="map-legend">
@@ -208,16 +210,23 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
         <div className="dashboard-table-row dashboard-table-head">
           <span>{t('servers.name')}</span><span>{t('servers.region')}</span><span>{t('dashboard.online')}</span><span>{t('servers.load')}</span><span>{t('servers.traffic24h')}</span><span>{t('servers.status')}</span>
         </div>
-        {servers.map((server) => (
-          <div className="dashboard-table-row" key={server.name}>
-            <strong>{server.name}</strong>
-            <span>{server.region}</span>
-            <span className={server.online ? 'server-online-dot' : 'server-offline-dot'} />
-            <span>{server.load}</span>
-            <span>{server.traffic}</span>
-            <StatusBadge status={server.status} />
-          </div>
-        ))}
+        {servers.map((server) => {
+          const countryCode = getRegionCountryCode(server.region);
+
+          return (
+            <div className="dashboard-table-row" key={server.name}>
+              <strong>{server.name}</strong>
+              <span className="server-region-cell">
+                <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={`Country: ${countryCode}`} />
+                <span className="server-region-name">{server.region}</span>
+              </span>
+              <span className={server.online ? 'server-online-dot' : 'server-offline-dot'} />
+              <span>{server.load}</span>
+              <span>{server.traffic}</span>
+              <StatusBadge status={server.status} />
+            </div>
+          );
+        })}
       </div>
       <Link className="widget-link" to="/servers">{t('dashboard.allServers')} →</Link>
     </WidgetPanel>

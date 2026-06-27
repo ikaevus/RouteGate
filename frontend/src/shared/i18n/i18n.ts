@@ -2,6 +2,7 @@ import { en, type TranslationKey } from './locales/en';
 import { ru } from './locales/ru';
 
 export type Locale = 'en' | 'ru';
+type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
   en,
@@ -9,15 +10,25 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
 };
 
 const DEFAULT_LOCALE: Locale = 'en';
+const LOCALE_STORAGE_KEY = 'routegate.locale';
+const localeListeners = new Set<LocaleListener>();
+
+function normalizeLocale(locale: string | null): Locale {
+  return locale === 'ru' ? 'ru' : DEFAULT_LOCALE;
+}
+
+function notifyLocaleListeners(): void {
+  localeListeners.forEach((listener) => listener());
+}
 
 export function getCurrentLocale(): Locale {
   if (typeof window === 'undefined') {
     return DEFAULT_LOCALE;
   }
 
-  const storedLocale = window.localStorage.getItem('routegate.locale');
+  const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
 
-  return storedLocale === 'ru' ? 'ru' : DEFAULT_LOCALE;
+  return normalizeLocale(storedLocale);
 }
 
 export function setCurrentLocale(locale: Locale): void {
@@ -25,7 +36,34 @@ export function setCurrentLocale(locale: Locale): void {
     return;
   }
 
-  window.localStorage.setItem('routegate.locale', locale);
+  const previousLocale = getCurrentLocale();
+  window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+
+  if (locale !== previousLocale) {
+    notifyLocaleListeners();
+  }
+}
+
+export function subscribeLocale(listener: LocaleListener): () => void {
+  localeListeners.add(listener);
+
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === LOCALE_STORAGE_KEY) {
+      listener();
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', handleStorage);
+  }
+
+  return () => {
+    localeListeners.delete(listener);
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', handleStorage);
+    }
+  };
 }
 
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {

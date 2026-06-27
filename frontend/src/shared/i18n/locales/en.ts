@@ -28,6 +28,11 @@ export const en = {
   'topbar.settings': 'Settings',
   'topbar.adminRole': 'Super administrator',
 
+  'locale.english': 'English',
+  'locale.russian': 'Russian',
+  'locale.switchToEnglish': 'Switch to English',
+  'locale.switchToRussian': 'Switch to Russian',
+
   'dashboard.title': 'Overview',
   'dashboard.subtitle': 'Control-plane health, infrastructure status, and key RouteGate signals.',
   'dashboard.managerOnline': 'Manager online',

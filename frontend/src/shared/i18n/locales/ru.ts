@@ -30,6 +30,11 @@ export const ru: Record<TranslationKey, string> = {
   'topbar.settings': 'Настройки',
   'topbar.adminRole': 'Суперадминистратор',
 
+  'locale.english': 'Английский',
+  'locale.russian': 'Русский',
+  'locale.switchToEnglish': 'Переключить на английский',
+  'locale.switchToRussian': 'Переключить на русский',
+
   'dashboard.title': 'Обзор',
   'dashboard.subtitle': 'Состояние control plane, инфраструктуры и ключевые сигналы RouteGate.',
   'dashboard.managerOnline': 'Manager в сети',
