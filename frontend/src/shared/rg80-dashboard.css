@@ -176,7 +176,7 @@
 }
 
 .node-map::after {
-  background: radial-gradient(circle at center, transparent 44%, rgba(2, 6, 23, 0.28) 100%);
+  background: radial-gradient(circle at center, transparent 48%, rgba(2, 6, 23, 0.26) 100%);
   content: '';
   inset: 0;
   pointer-events: none;
@@ -187,13 +187,14 @@
 .world-map-asset {
   display: block;
   filter: drop-shadow(0 16px 24px rgba(2, 6, 23, 0.22));
-  height: calc(100% - 22px);
-  inset: 7px 10px 15px;
-  object-fit: contain;
+  height: 100%;
+  inset: 0;
+  object-fit: cover;
+  object-position: center 49%;
   opacity: 0.9;
   position: absolute;
   user-select: none;
-  width: calc(100% - 20px);
+  width: 100%;
   z-index: 1;
 }
 
@@ -222,7 +223,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .map-legend span {
