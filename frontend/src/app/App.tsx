@@ -13,6 +13,8 @@ import { t } from '../shared/i18n/i18n';
 import { useLocale } from '../shared/i18n/useLocale';
 import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
 
+const routeGateSymbolUrl = new URL('../shared/assets/routegate-symbol.svg', import.meta.url).href;
+
 type IconName =
   | 'overview'
   | 'servers'
@@ -62,15 +64,11 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
-function BrandShield() {
+function BrandMark() {
   return (
-    <div className="brand-shield" aria-hidden="true">
-      <svg viewBox="0 0 32 32">
-        <path className="brand-shield-outer" d="M16 2.8 5.5 6.9v7.8c0 6.9 4.2 12.4 10.5 14.5 6.3-2.1 10.5-7.6 10.5-14.5V6.9L16 2.8Z" />
-        <path className="brand-shield-inner" d="M16 7.2 10 9.5v5.2c0 4.1 2.3 7.2 6 8.8 3.7-1.6 6-4.7 6-8.8V9.5L16 7.2Z" />
-        <path className="brand-shield-gate" d="M13 20v-6.2c0-1.6 1.2-2.8 3-2.8s3 1.2 3 2.8V20" />
-      </svg>
-    </div>
+    <span className="brand-mark" aria-hidden="true">
+      <img src={routeGateSymbolUrl} alt="" />
+    </span>
   );
 }
 
@@ -79,7 +77,7 @@ function PortalShell() {
     <div className="portal-app-shell">
       <header className="portal-topbar">
         <Link className="portal-brand" to="/portal">
-          <BrandShield />
+          <BrandMark />
           <div>
             <div className="brand-title">RouteGate</div>
             <div className="brand-subtitle">{t('app.portalSubtitle')}</div>
@@ -112,7 +110,7 @@ function AuthShell() {
     <div className="auth-app-shell">
       <header className="auth-topbar">
         <Link className="portal-brand" to="/">
-          <BrandShield />
+          <BrandMark />
           <div>
             <div className="brand-title">RouteGate</div>
             <div className="brand-subtitle">{t('app.adminSubtitle')}</div>
@@ -159,7 +157,7 @@ function AdminShell() {
     <div className="app-shell routegate-admin-shell routegate-reference-shell">
       <aside className="sidebar routegate-sidebar">
         <div className="brand routegate-brand">
-          <BrandShield />
+          <BrandMark />
           <div>
             <div className="brand-title">RouteGate</div>
             <div className="brand-subtitle">{t('app.adminSubtitle')}</div>

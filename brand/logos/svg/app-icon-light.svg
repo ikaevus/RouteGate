@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="RouteGate app icon">
+  <rect width="512" height="512" rx="96" fill="#F8FAFC"/>
+  <path d="M144 160 Q144 104 200 104 H312 Q368 104 368 160" fill="none" stroke="#07111F" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M144 352 Q144 408 200 408 H312 Q368 408 368 352" fill="none" stroke="#07111F" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M84 256 H194" fill="none" stroke="#2563EB" stroke-width="32" stroke-linecap="round"/>
+  <path d="M318 256 H428" fill="none" stroke="#2563EB" stroke-width="32" stroke-linecap="round"/>
+</svg>
