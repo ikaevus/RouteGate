@@ -2,6 +2,7 @@ package vpnaccounts
 
 import (
 	"errors"
+	"net/netip"
 	"strings"
 )
 
@@ -288,7 +289,16 @@ func subscriptionServerEndpoint(server *SubscriptionServer) string {
 		return ""
 	}
 	if endpoint := strings.TrimSpace(server.PublicIP); endpoint != "" {
-		return endpoint
+		return normalizeServerEndpoint(endpoint)
 	}
-	return strings.TrimSpace(server.Hostname)
+	return normalizeServerEndpoint(server.Hostname)
+}
+
+func normalizeServerEndpoint(endpoint string) string {
+	endpoint = strings.TrimSpace(endpoint)
+	prefix, err := netip.ParsePrefix(endpoint)
+	if err == nil && prefix.Bits() == prefix.Addr().BitLen() {
+		return prefix.Addr().String()
+	}
+	return endpoint
 }

@@ -15,6 +15,7 @@ import {
   type RoutingProfileRule,
   type RoutingRuleAction,
 } from '../../entities/routingProfile/api/routingProfileApi';
+import { t, translateStatus } from '../../shared/i18n/i18n';
 
 type RuleForm = CreateRoutingProfileRuleRequest;
 
@@ -32,13 +33,13 @@ const emptyRule: RuleForm = {
 };
 
 function formatDate(value?: string | null): string {
-  if (!value) return '-';
+  if (!value) return t('common.notAvailable');
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function formatValue(value?: string | null): string {
-  return value && value.trim() !== '' ? value : '-';
+  return value && value.trim() !== '' ? value : t('common.notAvailable');
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -47,7 +48,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 function StatusBadge({ value }: { value: string }) {
   const className = value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-  return <span className={`badge badge-${className}`}>{value}</span>;
+  return <span className={`badge badge-${className}`}>{translateStatus(value)}</span>;
 }
 
 function splitList(value: string): string[] {
@@ -224,35 +225,35 @@ export function RoutingProfilesPage() {
     <section className='page routing-profiles-page'>
       <div className='page-header'>
         <div>
-          <h1>Routing Profiles</h1>
-          <p>Manage split-tunnel profiles and direct, VPN, or block routing rules.</p>
+          <h1>{t('routingProfiles.title')}</h1>
+          <p>{t('routingProfiles.subtitle')}</p>
         </div>
-        <div className='status-pill'><span className='status-dot status-dot-ok' />{profiles.length} profiles</div>
+        <div className='status-pill'><span className='status-dot status-dot-ok' />{t('routingProfiles.profileCount', { count: profiles.length })}</div>
       </div>
 
       <div className='routing-profiles-layout'>
         <form className='panel' onSubmit={handleCreateProfile}>
           <div className='panel-header'>
             <div>
-              <div className='panel-title'>Profiles</div>
-              <p className='panel-subtitle'>Select a profile to edit metadata and routing rules.</p>
+              <div className='panel-title'>{t('routingProfiles.profilesPanelTitle')}</div>
+              <p className='panel-subtitle'>{t('routingProfiles.profilesPanelSubtitle')}</p>
             </div>
-            <button className='small-button' type='submit' disabled={createProfileMutation.isPending}>Create profile</button>
+            <button className='small-button' type='submit' disabled={createProfileMutation.isPending}>{t('routingProfiles.createProfile')}</button>
           </div>
 
           {createProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(createProfileMutation.error, 'Failed to create routing profile.')}</div>}
-          {profilesQuery.isLoading && <p className='empty-state'>Loading routing profiles...</p>}
-          {profilesQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profilesQuery.error, 'Failed to load routing profiles.')}</div>}
+          {profilesQuery.isLoading && <p className='empty-state'>{t('routingProfiles.loading')}</p>}
+          {profilesQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profilesQuery.error, t('routingProfiles.loadError'))}</div>}
           {profiles.length > 0 && (
             <div className='admin-table routing-profiles-table'>
-              <div className='admin-table-row admin-table-head routing-profiles-table-row'><span>Profile</span><span>Type</span><span>Updated</span></div>
+              <div className='admin-table-row admin-table-head routing-profiles-table-row'><span>{t('routingProfiles.profile')}</span><span>{t('routingProfiles.type')}</span><span>{t('routingProfiles.updated')}</span></div>
               {profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} selected={profile.id === profileId} />)}
             </div>
           )}
         </form>
 
-        {!profileId && <div className='panel'><p className='empty-state'>Select a routing profile to manage rules.</p></div>}
-        {profileQuery.isLoading && <p className='empty-state'>Loading selected routing profile...</p>}
+        {!profileId && <div className='panel'><p className='empty-state'>{t('routingProfiles.selectProfile')}</p></div>}
+        {profileQuery.isLoading && <p className='empty-state'>{t('common.loading')}</p>}
         {profileQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profileQuery.error, 'Failed to load selected routing profile.')}</div>}
 
         {selectedProfile && (

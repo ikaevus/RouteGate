@@ -1,7 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { type FormEvent, useEffect, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { getServers } from '../../entities/server/api/serverApi';
 import {
+  createVpnAccount,
   createVpnAccountSubscriptionToken,
   getPublicSubscription,
   getVpnAccountCredentials,
@@ -29,6 +31,10 @@ function formatDate(value?: string | null): string {
 
 function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : t('common.notAvailable');
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
 }
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
@@ -60,17 +66,35 @@ function VpnAccountRow({ account, selected }: { account: VpnAccount; selected: b
 
 export function VpnAccountsPage() {
   const { accountId } = useParams<{ accountId: string }>();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(searchParams.get('create') === '1');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [serverId, setServerId] = useState('');
 
   useEffect(() => {
     setSubscriptionToken(null);
     setCopiedTarget(null);
   }, [accountId]);
 
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setIsCreateOpen(true);
+    }
+  }, [searchParams]);
+
   const accountsQuery = useQuery({
     queryKey: ['vpn-accounts'],
     queryFn: getVpnAccounts,
+  });
+
+  const serversQuery = useQuery({
+    queryKey: ['servers'],
+    queryFn: getServers,
   });
 
   const credentialsQuery = useQuery({
@@ -113,6 +137,26 @@ export function VpnAccountsPage() {
     },
   });
 
+  const createAccountMutation = useMutation({
+    mutationFn: () => createVpnAccount({
+      displayName: displayName.trim(),
+      email: email.trim() || undefined,
+      serverId: serverId || undefined,
+    }),
+    onSuccess: async (account) => {
+      setDisplayName('');
+      setEmail('');
+      setServerId('');
+      setIsCreateOpen(false);
+      setSearchParams((current) => {
+        current.delete('create');
+        return current;
+      }, { replace: true });
+      await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
+      navigate(`/vpn-accounts/${account.id}`);
+    },
+  });
+
   const copyToClipboard = async (target: string, value: string) => {
     if (!navigator.clipboard) {
       return;
@@ -134,46 +178,137 @@ export function VpnAccountsPage() {
     : '';
   const isSubscriptionBusy =
     createSubscriptionTokenMutation.isPending || rotateSubscriptionTokenMutation.isPending;
+  const canCreateAccount = displayName.trim() !== '';
+
+  function openCreateForm() {
+    setIsCreateOpen(true);
+    setSearchParams((current) => {
+      current.set('create', '1');
+      return current;
+    }, { replace: true });
+  }
+
+  function closeCreateForm() {
+    setIsCreateOpen(false);
+    setSearchParams((current) => {
+      current.delete('create');
+      return current;
+    }, { replace: true });
+  }
+
+  function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canCreateAccount) {
+      return;
+    }
+    createAccountMutation.mutate();
+  }
 
   return (
     <section className="page vpn-accounts-page feature-screen-page">
       <div className="page-header feature-page-header">
         <div>
-          <h1>VPN Accounts</h1>
-          <p>View VLESS / Reality credentials, subscription URLs, client config previews, and traffic limits.</p>
+          <h1>{t('vpnAccounts.title')}</h1>
+          <p>{t('vpnAccounts.subtitle')}</p>
         </div>
 
-        <div className="status-pill">
-          <span className="status-dot status-dot-ok" />
-          {accounts.length} accounts
+        <div className="page-header-actions">
+          <button className="primary-button" type="button" onClick={openCreateForm}>
+            {t('vpnAccounts.createAction')}
+          </button>
+          <div className="status-pill">
+            <span className="status-dot status-dot-ok" />
+            {t('vpnAccounts.accountCount', { count: accounts.length })}
+          </div>
         </div>
       </div>
 
       <div className="vpn-accounts-layout feature-screen-layout">
         <div className="panel admin-table-panel feature-list-panel">
-          <div className="panel-title">Accounts</div>
+          <div className="panel-header">
+            <div>
+              <div className="panel-title">{t('vpnAccounts.accountsPanelTitle')}</div>
+              <p className="panel-subtitle">{t('vpnAccounts.accountsPanelSubtitle')}</p>
+            </div>
+            <button className="small-button" type="button" onClick={openCreateForm}>
+              {t('vpnAccounts.createAction')}
+            </button>
+          </div>
 
-          {accountsQuery.isLoading && <p className="empty-state">Loading VPN accounts...</p>}
+          {isCreateOpen && (
+            <form className="vpn-account-create-form" onSubmit={handleCreateAccount}>
+              <div className="vpn-account-create-grid">
+                <label className="field">
+                  <span>{t('vpnAccounts.displayName')}</span>
+                  <input
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder={t('vpnAccounts.displayNamePlaceholder')}
+                  />
+                </label>
+                <label className="field">
+                  <span>{t('vpnAccounts.email')}</span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder={t('vpnAccounts.emailPlaceholder')}
+                  />
+                </label>
+                <label className="field">
+                  <span>{t('vpnAccounts.serverAssignment')}</span>
+                  <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
+                    <option value="">{t('vpnAccounts.noServerAssignment')}</option>
+                    {(serversQuery.data?.items ?? []).map((server) => (
+                      <option value={server.id} key={server.id}>
+                        {server.name || server.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {createAccountMutation.isError && (
+                <div className="form-message form-message-error">
+                  {getErrorMessage(createAccountMutation.error, t('vpnAccounts.createError'))}
+                </div>
+              )}
+              <div className="form-actions">
+                <button className="primary-button" type="submit" disabled={!canCreateAccount || createAccountMutation.isPending}>
+                  {createAccountMutation.isPending ? t('vpnAccounts.creating') : t('vpnAccounts.createAction')}
+                </button>
+                <button className="small-button" type="button" onClick={closeCreateForm}>
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {accountsQuery.isLoading && <p className="empty-state">{t('common.loading')}</p>}
 
           {accountsQuery.isError && (
             <div className="form-message form-message-error">Failed to load VPN accounts.</div>
           )}
 
           {accountsQuery.isSuccess && accounts.length === 0 && (
-            <EmptyState
-              title="No VPN accounts yet"
-              description="Create a VPN account to issue credentials, subscription links, and client configuration to a user."
-            />
+            <div className="empty-state-with-action">
+              <EmptyState
+                title={t('vpnAccounts.emptyTitle')}
+                description={t('vpnAccounts.emptyDescription')}
+              />
+              <button className="primary-button" type="button" onClick={openCreateForm}>
+                {t('vpnAccounts.createAction')}
+              </button>
+            </div>
           )}
 
           {accounts.length > 0 && (
             <div className="admin-table vpn-accounts-table">
               <div className="admin-table-row admin-table-head vpn-accounts-table-row">
-                <span>Account</span>
-                <span>Status</span>
-                <span>Server</span>
-                <span>VLESS UUID</span>
-                <span>Expires</span>
+                <span>{t('vpnAccounts.account')}</span>
+                <span>{t('vpnAccounts.status')}</span>
+                <span>{t('vpnAccounts.server')}</span>
+                <span>{t('vpnAccounts.vlessUuid')}</span>
+                <span>{t('vpnAccounts.expires')}</span>
               </div>
               {accounts.map((account) => (
                 <VpnAccountRow
