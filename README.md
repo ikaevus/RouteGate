@@ -134,7 +134,11 @@ Release readiness checklist:
 
     docs/deployment/release-readiness-checklist.md
 
-These documents cover the current single-node MVP path: environment variables, Docker Compose startup, migration verification, health checks, backup guidance, rollback notes, and Manager / Agent compatibility reminders.
+MVP v0.1 acceptance pass:
+
+    docs/release/mvp-v0.1-acceptance-pass.md
+
+These documents cover the current single-node MVP path: environment variables, Docker Compose startup, migration verification, health checks, backup guidance, rollback notes, Manager / Agent compatibility reminders, and the full MVP v0.1 acceptance pass.
 
 ## Ports
 
