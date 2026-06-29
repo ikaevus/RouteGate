@@ -338,3 +338,11 @@
   height: 7px;
   width: 7px;
 }
+
+.world-map-svg {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.9;
+  width: 100%;
+}
