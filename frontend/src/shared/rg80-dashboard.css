@@ -186,38 +186,6 @@
   width: 100%;
 }
 
-.world-map-grid path {
-  fill: none;
-  opacity: 0.25;
-  stroke: rgba(96, 165, 250, 0.12);
-  stroke-width: 1;
-}
-
-.world-map-land path {
-  fill: rgba(148, 163, 184, 0.34);
-  stroke: rgba(203, 213, 225, 0.17);
-  stroke-linejoin: round;
-  stroke-width: 1;
-}
-
-.world-map-borders path {
-  fill: none;
-  opacity: 0.3;
-  stroke: rgba(226, 232, 240, 0.2);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 0.9;
-}
-
-.world-map-texture path {
-  fill: url(#worldMapTexture);
-  opacity: 0.2;
-}
-
-#worldMapTexture circle {
-  fill: rgba(226, 232, 240, 0.42);
-}
-
 .node-marker {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
