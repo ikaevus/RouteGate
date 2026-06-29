@@ -22,6 +22,24 @@
   gap: 12px;
 }
 
+.brand-mark {
+  border-radius: 10px;
+  display: grid;
+  filter: drop-shadow(0 16px 28px rgba(37, 99, 235, 0.28));
+  flex: 0 0 auto;
+  height: 34px;
+  overflow: hidden;
+  place-items: center;
+  width: 34px;
+}
+
+.brand-mark img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
 .portal-topnav {
   align-items: center;
   display: flex;
