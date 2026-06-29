@@ -195,7 +195,7 @@ function QuickActionsWidget() {
 
   return (
     <WidgetPanel title={t('dashboard.quickActions')} className="quick-actions-widget">
-      <Link className="quick-primary-action" to="/vpn-accounts"><span>＋</span> {t('dashboard.createVpnAccount')}</Link>
+      <Link className="quick-primary-action" to="/vpn-accounts?create=1"><span>＋</span> {t('dashboard.createVpnAccount')}</Link>
       <div className="quick-action-list">
         {actions.map((action) => <Link to={action.to} key={action.label}><span>{action.label}</span><strong>›</strong></Link>)}
       </div>

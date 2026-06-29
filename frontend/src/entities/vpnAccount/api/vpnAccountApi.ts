@@ -17,6 +17,12 @@ export interface ListVpnAccountsResponse {
   items: VpnAccount[];
 }
 
+export interface CreateVpnAccountRequest {
+  displayName: string;
+  email?: string;
+  serverId?: string;
+}
+
 export interface VpnAccountCredentialsResponse {
   vpnAccountId: string;
   serverId?: string;
@@ -131,6 +137,10 @@ export interface PublicSubscriptionResponse {
 
 export function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
   return apiGet<ListVpnAccountsResponse>('/api/v1/vpn-accounts');
+}
+
+export function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {
+  return apiPost<CreateVpnAccountRequest, VpnAccount>('/api/v1/vpn-accounts', request);
 }
 
 export function getVpnAccountCredentials(

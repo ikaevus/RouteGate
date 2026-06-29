@@ -185,11 +185,11 @@
 }
 
 .vpn-accounts-table-row {
-  grid-template-columns: 1.25fr 0.8fr 0.92fr 1.15fr 0.8fr;
+  grid-template-columns: minmax(0, 1.35fr) minmax(78px, 0.58fr) minmax(0, 0.86fr) minmax(0, 1.2fr) minmax(0, 0.78fr);
 }
 
 .routing-profiles-table-row {
-  grid-template-columns: minmax(0, 1fr) 0.65fr 0.95fr;
+  grid-template-columns: minmax(0, 1fr) minmax(82px, 0.52fr) minmax(0, 0.9fr);
 }
 
 .routing-rules-table-row {
@@ -268,6 +268,43 @@
   justify-content: flex-end;
 }
 
+.page-header-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.vpn-account-create-form {
+  border: 1px solid rgba(38, 52, 73, 0.78);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.24);
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.vpn-account-create-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.form-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.empty-state-with-action {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
 .small-button,
 .primary-button {
   min-height: 34px;
@@ -318,6 +355,32 @@
   border-radius: 999px;
   gap: 6px;
   padding: 4px 7px;
+}
+
+.vpn-accounts-table-row > div,
+.routing-profiles-table-row > div,
+.routing-rules-table-row > div {
+  display: grid;
+  min-width: 0;
+}
+
+.vpn-accounts-table-row > .badge,
+.routing-profiles-table-row > .badge,
+.routing-rules-table-row > .badge {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vpn-accounts-table-row code,
+.routing-rules-table-row code {
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-state,

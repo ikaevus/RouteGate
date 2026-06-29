@@ -177,6 +177,29 @@ func TestRenderSingBoxClientConfigUsesHostnameWhenPublicIPMissing(t *testing.T) 
 	}
 }
 
+func TestRenderSingBoxClientConfigNormalizesFullLengthCIDREndpoint(t *testing.T) {
+	config, err := RenderSingBoxClientConfig(SubscriptionProfile{
+		Account: Account{ID: "account-1", DisplayName: "Alice", Status: StatusActive, VLESSUUID: testVLESSUUID},
+		Server: &SubscriptionServer{
+			ID:               "server-1",
+			Name:             "Finland",
+			PublicIP:         "203.0.113.10/32",
+			RealityPublicKey: "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0",
+		},
+	})
+	if err != nil {
+		t.Fatalf("render sing-box config: %v", err)
+	}
+
+	vless := config.Outbounds[0]
+	if vless.Server != "203.0.113.10" {
+		t.Fatalf("expected normalized server endpoint, got %q", vless.Server)
+	}
+	if vless.TLS == nil || vless.TLS.ServerName != "203.0.113.10" {
+		t.Fatalf("expected normalized TLS server_name fallback, got %+v", vless.TLS)
+	}
+}
+
 func TestRenderSingBoxClientConfigRequiresServerEndpoint(t *testing.T) {
 	_, err := RenderSingBoxClientConfig(SubscriptionProfile{
 		Account: Account{ID: "8b89d024-9558-43b0-8c3f-8149a5854225", DisplayName: "Alice", Status: StatusActive, VLESSUUID: testVLESSUUID},
