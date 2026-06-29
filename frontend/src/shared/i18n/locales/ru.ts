@@ -12,7 +12,7 @@ export const ru: Record<TranslationKey, string> = {
   'navigation.agents': 'Агенты',
   'navigation.protocolSettings': 'Настройки протоколов',
   'navigation.vpnAccounts': 'VPN-аккаунты',
-  'navigation.routingProfiles': 'Маршрутизационные профили',
+  'navigation.routingProfiles': 'Профили маршрутов',
   'navigation.trafficStats': 'Статистика трафика',
   'navigation.configDeploy': 'Развертывание конфигов',
   'navigation.userPortal': 'Портал пользователей',
