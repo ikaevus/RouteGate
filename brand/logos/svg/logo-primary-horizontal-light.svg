@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="220" viewBox="0 0 920 220" role="img" aria-label="RouteGate logo">
+  <rect width="920" height="220" rx="28" fill="#F8FAFC"/>
+  <g transform="translate(36,46) scale(1.05)">
+  <path d="M44 36 Q44 20 60 20 H100 Q116 20 116 36" fill="none" stroke="#F8FAFC" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M44 92 Q44 108 60 108 H100 Q116 108 116 92" fill="none" stroke="#F8FAFC" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M24 64 H58" fill="none" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+  <path d="M102 64 H136" fill="none" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+</g>
+  <text x="220" y="120" fill="#07111F" font-family="Inter, Arial, sans-serif" font-size="78" font-weight="700" letter-spacing="-2">RouteGate</text>
+  <text x="222" y="166" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="500">Control Your Routes.</text>
+</svg>

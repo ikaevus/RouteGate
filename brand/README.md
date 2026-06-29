@@ -1,23 +1,23 @@
-# RouteGate Brand Pack v1.0
+# RouteGate Brand Kit v1.1
 
-This folder is the source of truth for RouteGate brand identity and visual direction.
+This directory is the official single source of truth for the RouteGate brand identity.
 
-## Core decisions
+## Official logo
+The official RouteGate mark is **Controlled Passage with breaks**:
+- white top and bottom rounded gateway forms;
+- blue horizontal route segments;
+- visible breaks in the center line.
 
-- Brand: RouteGate
-- Slogan: Control Your Routes.
-- Product description: Modern Self-Hosted VPN Management Platform.
-- Manifesto: Your Infrastructure. Your Rules.
-- Symbol: Controlled Passage.
-- Primary font: Inter.
-- Primary colors: #07111F, #0B1220, #2563EB, #F8FAFC, #94A3B8.
+Do not use the previous continuous-line logo.
 
-## Recommended repository location
+## Main slogan
+**Control Your Routes.**
 
-Place this folder in:
+## Product description
+**Modern Self-Hosted VPN Management Platform**
 
-```text
-/brand
-```
+## Brand manifesto
+**Your Infrastructure. Your Rules.**
 
-Codex and future contributors should treat this folder as the source of truth for visual and product identity.
+## Usage
+Use `/brand` for Admin UI, User Portal, docs, website, GitHub assets, screenshots and marketing materials.
