@@ -124,6 +124,15 @@ curl -i http://127.0.0.1:5173/api/admin/health
 - [ ] Verify apply job status UI.
 - [ ] Verify rollback/safety documentation is still accurate.
 
+Dev/Codespace Agent apply readiness path:
+
+- [ ] Use `deploy/examples/routegate-agent-dev-apply.yaml`.
+- [ ] Verify Agent uses `/tmp/routegate-agent/...` paths.
+- [ ] Verify `sing-box` is available or `sing_box_path` points to a local binary.
+- [ ] Verify `service_control_enabled: false` skips systemd restart/healthcheck only in dev.
+- [ ] Verify apply report shows stage / validate / apply succeeded.
+- [ ] Verify restart / healthcheck are reported as skipped when service control is disabled.
+
 ### 7. Routing Profiles / Split Tunnel
 
 - [ ] Create routing profile.

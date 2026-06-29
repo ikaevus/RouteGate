@@ -1,0 +1,18 @@
+manager_url: "http://localhost:8080"
+registration_token: "replace-with-server-registration-token"
+heartbeat_interval_seconds: 5
+
+# Dev/Codespace apply paths avoid production-owned system directories.
+config_staging_dir: "/tmp/routegate-agent/configs"
+active_config_path: "/tmp/routegate-agent/sing-box/config.json"
+config_backup_dir: "/tmp/routegate-agent/backups"
+
+# Keep real sing-box validation in the dev acceptance path.
+# Install sing-box or set this to an absolute local binary path.
+sing_box_path: "sing-box"
+
+# Codespaces/dev shells usually do not run systemd. This keeps the apply job
+# successful after stage + validate + promote, while documenting that runtime
+# service restart/healthcheck is a production boundary.
+service_control_enabled: false
+sing_box_service_name: "sing-box"

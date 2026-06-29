@@ -206,6 +206,29 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
+	if !r.cfg.ServiceControlEnabled {
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "succeeded",
+			"apply":           "succeeded",
+			"restart":         "skipped_service_control_disabled",
+			"healthcheck":     "skipped_service_control_disabled",
+			"rollback":        "skipped",
+			"stagedPath":      stageResult.StagedPath,
+			"activePath":      applyResult.ActivePath,
+			"backupPath":      applyResult.BackupPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         validationResult.Command,
+			"output":          validationResult.Output,
+		}
+		if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
+			return err
+		}
+		r.logger.Info("config task staged, validated and applied; service control skipped", "job_id", task.ID, "config_version_id", stageResult.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath)
+		return nil
+	}
+
 	service := tasks.NewServiceController(r.cfg.SingBoxServiceName)
 	restartResult, err := service.Restart(ctx)
 	if err != nil {

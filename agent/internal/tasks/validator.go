@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -53,6 +54,9 @@ func (v Validator) Check(ctx context.Context, configPath string) (ValidationResu
 			return result, fmt.Errorf("sing-box check timed out: %w", checkCtx.Err())
 		}
 		if result.Output == "" {
+			if errors.Is(err, exec.ErrNotFound) {
+				return result, fmt.Errorf("sing-box binary %q was not found; install sing-box or set sing_box_path in the agent config: %w", v.binary, err)
+			}
 			return result, fmt.Errorf("sing-box check failed: %w", err)
 		}
 		return result, fmt.Errorf("sing-box check failed: %s", result.Output)
