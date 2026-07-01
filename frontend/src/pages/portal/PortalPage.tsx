@@ -14,11 +14,12 @@ import {
   type InstructionPlatform,
   type PortalProfile,
 } from '../../entities/portal/api/portalApi';
+import { t, translateStatus } from '../../shared/i18n/i18n';
 import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
 
 function formatDate(value?: string | null): string {
   if (!value) {
-    return '-';
+    return t('common.notAvailable');
   }
 
   const date = new Date(value);
@@ -38,7 +39,7 @@ function StatusBadge({ status }: { status?: string | null }) {
   const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
   const statusClassName = normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-  return <span className={`badge badge-${statusClassName}`}>{normalizedStatus}</span>;
+  return <span className={`badge badge-${statusClassName}`}>{translateStatus(normalizedStatus)}</span>;
 }
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
@@ -192,25 +193,25 @@ export function PortalPage() {
     <section className="page portal-page">
       <div className="page-header">
         <div>
-          <h1>User Portal</h1>
-          <p>Self-service VPN profile overview and setup surface.</p>
+          <h1>{t('portal.title')}</h1>
+          <p>{t('portal.subtitle')}</p>
         </div>
 
         <div className="status-pill">
           <span className={hasPortalLoadError ? 'status-dot status-dot-warn' : 'status-dot status-dot-ok'} />
-          {hasPortalLoadError ? 'Portal access check failed' : 'Portal session'}
+          {hasPortalLoadError ? t('portal.accessCheckFailed') : t('portal.session')}
         </div>
       </div>
 
       {hasPortalLoadError && (
         <div className="form-message form-message-error portal-message">
-          Unable to load the portal. Sign in with an account that has portal access.
+          {t('portal.loadError')}
         </div>
       )}
 
       <div className="portal-card-grid">
         <div className="card portal-card">
-          <div className="card-title">Current user</div>
+          <div className="card-title">{t('portal.currentUser')}</div>
           <div className="card-value card-value-small">
             {meQuery.isLoading ? '...' : formatValue(portalUser?.displayName || portalUser?.username)}
           </div>
@@ -218,23 +219,23 @@ export function PortalPage() {
         </div>
 
         <div className="card portal-card">
-          <div className="card-title">Access status</div>
+          <div className="card-title">{t('portal.accessStatus')}</div>
           <div className="card-value card-value-small">
             {dashboardQuery.isLoading ? '...' : <StatusBadge status={dashboard?.accessStatus} />}
           </div>
-          <div className="card-meta">Overall portal access state.</div>
+          <div className="card-meta">{t('portal.accessStatusMeta')}</div>
         </div>
 
         <div className="card portal-card">
-          <div className="card-title">VPN profiles</div>
+          <div className="card-title">{t('portal.vpnProfiles')}</div>
           <div className="card-value">{profilesQuery.isLoading ? '...' : dashboard?.profilesTotal ?? profiles.length}</div>
-          <div className="card-meta">{dashboard?.profilesActive ?? 0} active profile(s).</div>
+          <div className="card-meta">{t('portal.activeProfiles', { count: dashboard?.profilesActive ?? 0 })}</div>
         </div>
 
         <div className="card portal-card">
-          <div className="card-title">Nearest expiration</div>
+          <div className="card-title">{t('portal.nearestExpiration')}</div>
           <div className="card-value card-value-small">{formatDate(dashboard?.nearestExpiration)}</div>
-          <div className="card-meta">Traffic usage is reserved for a later milestone.</div>
+          <div className="card-meta">{t('portal.trafficLater')}</div>
         </div>
       </div>
 
@@ -250,26 +251,26 @@ export function PortalPage() {
 
       <div className="portal-layout">
         <div className="panel admin-table-panel">
-          <div className="panel-title">VPN profiles</div>
+          <div className="panel-title">{t('portal.vpnProfiles')}</div>
 
-          {profilesQuery.isLoading && <p className="empty-state">Loading VPN profiles...</p>}
+          {profilesQuery.isLoading && <p className="empty-state">{t('portal.loadingProfiles')}</p>}
 
           {profilesQuery.isError && (
-            <div className="form-message form-message-error">Failed to load VPN profiles.</div>
+            <div className="form-message form-message-error">{t('portal.profilesLoadError')}</div>
           )}
 
           {profilesQuery.isSuccess && profiles.length === 0 && (
-            <p className="empty-state">No VPN profiles are available for this user yet.</p>
+            <p className="empty-state">{t('portal.noProfiles')}</p>
           )}
 
           {profiles.length > 0 && (
             <div className="admin-table portal-profiles-table">
               <div className="admin-table-row admin-table-head portal-profiles-table-row">
-                <span>Profile</span>
-                <span>Access</span>
-                <span>Protocol</span>
-                <span>Expires</span>
-                <span>Updated</span>
+                <span>{t('portal.profile')}</span>
+                <span>{t('portal.access')}</span>
+                <span>{t('portal.protocol')}</span>
+                <span>{t('portal.expires')}</span>
+                <span>{t('portal.updated')}</span>
               </div>
               {profiles.map((profile) => (
                 <PortalProfileRow
@@ -286,34 +287,34 @@ export function PortalPage() {
           <div className="panel credentials-panel">
             <div className="panel-header">
               <div>
-                <div className="panel-title">Profile details</div>
-                <p className="panel-subtitle">User-facing VPN profile metadata.</p>
+                <div className="panel-title">{t('portal.profileDetails')}</div>
+                <p className="panel-subtitle">{t('portal.profileDetailsSubtitle')}</p>
               </div>
             </div>
 
-            {!profileId && <p className="empty-state">Select a VPN profile to view details.</p>}
+            {!profileId && <p className="empty-state">{t('portal.selectProfile')}</p>}
 
             {profileId && profileQuery.isLoading && (
-              <p className="empty-state">Loading profile details...</p>
+              <p className="empty-state">{t('portal.loadingProfileDetails')}</p>
             )}
 
             {profileId && profileQuery.isError && (
-              <div className="form-message form-message-error">Failed to load this VPN profile.</div>
+              <div className="form-message form-message-error">{t('portal.profileLoadError')}</div>
             )}
 
             {selectedProfile && (
               <div className="detail-list credentials-detail-list">
-                <DetailRow label="Profile ID">
+                <DetailRow label={t('portal.profileId')}>
                   <code>{formatValue(selectedProfile.id)}</code>
                 </DetailRow>
-                <DetailRow label="Display name">{formatValue(selectedProfile.displayName)}</DetailRow>
-                <DetailRow label="Status"><StatusBadge status={selectedProfile.status} /></DetailRow>
-                <DetailRow label="Access"><StatusBadge status={selectedProfile.accessStatus} /></DetailRow>
-                <DetailRow label="Protocol">{formatValue(selectedProfile.protocol)}</DetailRow>
-                <DetailRow label="Location">{formatValue(selectedProfile.location)}</DetailRow>
-                <DetailRow label="Max devices">{formatValue(selectedProfile.maxDevices)}</DetailRow>
-                <DetailRow label="Expires at">{formatDate(selectedProfile.expiresAt)}</DetailRow>
-                <DetailRow label="Updated at">{formatDate(selectedProfile.updatedAt)}</DetailRow>
+                <DetailRow label={t('portal.displayName')}>{formatValue(selectedProfile.displayName)}</DetailRow>
+                <DetailRow label={t('portal.status')}><StatusBadge status={selectedProfile.status} /></DetailRow>
+                <DetailRow label={t('portal.access')}><StatusBadge status={selectedProfile.accessStatus} /></DetailRow>
+                <DetailRow label={t('portal.protocol')}>{formatValue(selectedProfile.protocol)}</DetailRow>
+                <DetailRow label={t('portal.location')}>{formatValue(selectedProfile.location)}</DetailRow>
+                <DetailRow label={t('portal.maxDevices')}>{formatValue(selectedProfile.maxDevices)}</DetailRow>
+                <DetailRow label={t('portal.expiresAt')}>{formatDate(selectedProfile.expiresAt)}</DetailRow>
+                <DetailRow label={t('portal.updatedAt')}>{formatDate(selectedProfile.updatedAt)}</DetailRow>
               </div>
             )}
           </div>
@@ -323,10 +324,8 @@ export function PortalPage() {
               <div className="panel subscription-panel">
                 <div className="panel-header">
                   <div>
-                    <div className="panel-title">Subscription self-service</div>
-                    <p className="panel-subtitle">
-                      Generate a fresh subscription URL and QR code for this VPN profile.
-                    </p>
+                    <div className="panel-title">{t('portal.subscriptionTitle')}</div>
+                    <p className="panel-subtitle">{t('portal.subscriptionSubtitle')}</p>
                   </div>
                   <button
                     className="small-button"
@@ -334,43 +333,43 @@ export function PortalPage() {
                     disabled={!canGenerateSubscription || subscriptionAccessMutation.isPending}
                     onClick={() => subscriptionAccessMutation.mutate()}
                   >
-                    {subscriptionAccessMutation.isPending ? 'Generating...' : 'Generate / refresh'}
+                    {subscriptionAccessMutation.isPending ? t('portal.generating') : t('portal.generateRefresh')}
                   </button>
                 </div>
 
-                {subscriptionQuery.isLoading && <p className="empty-state">Loading subscription metadata...</p>}
+                {subscriptionQuery.isLoading && <p className="empty-state">{t('portal.loadingSubscription')}</p>}
 
                 {subscriptionQuery.isError && (
-                  <div className="form-message form-message-error">Failed to load subscription metadata.</div>
+                  <div className="form-message form-message-error">{t('portal.subscriptionLoadError')}</div>
                 )}
 
                 {subscriptionAccessMutation.isError && (
                   <div className="form-message form-message-error">
-                    Failed to generate subscription access. Check that this VPN profile is active.
+                    {t('portal.subscriptionGenerateError')}
                   </div>
                 )}
 
                 {subscriptionAccessMutation.isSuccess && (
                   <div className="form-message">
-                    Subscription access was generated. Copy the URL or scan the QR code now.
+                    {t('portal.subscriptionGenerated')}
                   </div>
                 )}
 
                 {subscription && (
                   <div className="subscription-result">
                     <div className="detail-list credentials-detail-list">
-                      <DetailRow label="Profile ID">
+                      <DetailRow label={t('portal.profileId')}>
                         <code>{formatValue(subscription.profileId)}</code>
                       </DetailRow>
-                      <DetailRow label="Available">{subscription.available ? 'yes' : 'no'}</DetailRow>
-                      <DetailRow label="Access"><StatusBadge status={subscription.accessStatus} /></DetailRow>
-                      <DetailRow label="Format">{formatValue(subscription.format)}</DetailRow>
-                      <DetailRow label="Expires at">{formatDate(subscription.expiresAt)}</DetailRow>
-                      <DetailRow label="Token rotation required">
-                        {subscription.requiresTokenRotation ? 'yes' : 'no'}
+                      <DetailRow label={t('portal.available')}>{subscription.available ? t('portal.yes') : t('portal.no')}</DetailRow>
+                      <DetailRow label={t('portal.access')}><StatusBadge status={subscription.accessStatus} /></DetailRow>
+                      <DetailRow label={t('portal.format')}>{formatValue(subscription.format)}</DetailRow>
+                      <DetailRow label={t('portal.expiresAt')}>{formatDate(subscription.expiresAt)}</DetailRow>
+                      <DetailRow label={t('portal.tokenRotationRequired')}>
+                        {subscription.requiresTokenRotation ? t('portal.yes') : t('portal.no')}
                       </DetailRow>
                       {subscription.subscriptionUrl && (
-                        <DetailRow label="Subscription URL">
+                        <DetailRow label={t('portal.subscriptionUrl')}>
                           <span className="copyable-value">
                             <code>{subscription.subscriptionUrl}</code>
                             <button
@@ -378,7 +377,7 @@ export function PortalPage() {
                               type="button"
                               onClick={() => void copyToClipboard('portal-subscription-url', subscription.subscriptionUrl)}
                             >
-                              {copiedTarget === 'portal-subscription-url' ? 'Copied' : 'Copy'}
+                              {copiedTarget === 'portal-subscription-url' ? t('portal.copied') : t('portal.copy')}
                             </button>
                           </span>
                         </DetailRow>
@@ -395,15 +394,15 @@ export function PortalPage() {
               <div className="panel subscription-panel">
                 <div className="panel-header">
                   <div>
-                    <div className="panel-title">QR metadata</div>
-                    <p className="panel-subtitle">Rendered only when the backend returns QR text.</p>
+                    <div className="panel-title">{t('portal.qrMetadata')}</div>
+                    <p className="panel-subtitle">{t('portal.qrMetadataSubtitle')}</p>
                   </div>
                 </div>
 
-                {qrQuery.isLoading && <p className="empty-state">Loading QR metadata...</p>}
+                {qrQuery.isLoading && <p className="empty-state">{t('portal.loadingQrMetadata')}</p>}
 
                 {qrQuery.isError && (
-                  <div className="form-message form-message-error">Failed to load QR metadata.</div>
+                  <div className="form-message form-message-error">{t('portal.qrLoadError')}</div>
                 )}
 
                 {qr && (
@@ -411,20 +410,20 @@ export function PortalPage() {
                     {qr.available && qr.qrText ? (
                       <ScannableQrCode
                         value={qr.qrText}
-                        title="Subscription QR code"
-                        subtitle={`Format: ${formatValue(qr.format)}`}
+                        title={t('portal.subscriptionQrCode')}
+                        subtitle={t('portal.formatValue', { format: formatValue(qr.format) })}
                       />
                     ) : (
-                      <p className="empty-state">{qr.message ?? 'QR payload is not available yet.'}</p>
+                      <p className="empty-state">{qr.message ?? t('portal.qrUnavailable')}</p>
                     )}
 
                     <div className="detail-list credentials-detail-list">
-                      <DetailRow label="Profile ID">
+                      <DetailRow label={t('portal.profileId')}>
                         <code>{formatValue(qr.profileId)}</code>
                       </DetailRow>
-                      <DetailRow label="Available">{qr.available ? 'yes' : 'no'}</DetailRow>
-                      <DetailRow label="Access"><StatusBadge status={qr.accessStatus} /></DetailRow>
-                      <DetailRow label="Format">{formatValue(qr.format)}</DetailRow>
+                      <DetailRow label={t('portal.available')}>{qr.available ? t('portal.yes') : t('portal.no')}</DetailRow>
+                      <DetailRow label={t('portal.access')}><StatusBadge status={qr.accessStatus} /></DetailRow>
+                      <DetailRow label={t('portal.format')}>{formatValue(qr.format)}</DetailRow>
                     </div>
 
                     {qr.available && qr.qrText && (
@@ -435,7 +434,7 @@ export function PortalPage() {
                           type="button"
                           onClick={() => void copyToClipboard('portal-qr-text', qr.qrText)}
                         >
-                          {copiedTarget === 'portal-qr-text' ? 'Copied' : 'Copy QR text'}
+                          {copiedTarget === 'portal-qr-text' ? t('portal.copied') : t('portal.copyQrText')}
                         </button>
                       </>
                     )}
@@ -450,15 +449,15 @@ export function PortalPage() {
       <div className="panel portal-instructions-panel">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Setup instructions</div>
-            <p className="panel-subtitle">Device setup guidance from the portal backend.</p>
+            <div className="panel-title">{t('portal.setupInstructions')}</div>
+            <p className="panel-subtitle">{t('portal.setupInstructionsSubtitle')}</p>
           </div>
         </div>
 
-        {instructionsQuery.isLoading && <p className="empty-state">Loading setup instructions...</p>}
+        {instructionsQuery.isLoading && <p className="empty-state">{t('portal.loadingSetupInstructions')}</p>}
 
         {instructionsQuery.isError && (
-          <div className="form-message form-message-error">Failed to load setup instructions.</div>
+          <div className="form-message form-message-error">{t('portal.setupInstructionsLoadError')}</div>
         )}
 
         {instructionPlatforms.length > 0 && (
@@ -475,10 +474,10 @@ export function PortalPage() {
             </div>
 
             <div className="portal-instruction-detail">
-              {instructionQuery.isLoading && <p className="empty-state">Loading selected instruction...</p>}
+              {instructionQuery.isLoading && <p className="empty-state">{t('portal.loadingSelectedInstruction')}</p>}
 
               {instructionQuery.isError && (
-                <div className="form-message form-message-error">Failed to load selected instruction.</div>
+                <div className="form-message form-message-error">{t('portal.selectedInstructionLoadError')}</div>
               )}
 
               {instructionQuery.data?.instruction && (
@@ -487,11 +486,11 @@ export function PortalPage() {
                     <div className="panel-title token-snippet-title">
                       {instructionQuery.data.instruction.displayName}
                     </div>
-                    <p className="panel-subtitle">Platform: {instructionQuery.data.instruction.platform}</p>
+                    <p className="panel-subtitle">{t('portal.platform', { platform: instructionQuery.data.instruction.platform })}</p>
                   </div>
 
                   <div>
-                    <div className="portal-section-title">Steps</div>
+                    <div className="portal-section-title">{t('portal.steps')}</div>
                     <ol className="portal-step-list">
                       {instructionQuery.data.instruction.steps.map((step, index) => (
                         <li key={`${step}-${index}`}>{step}</li>
@@ -501,7 +500,7 @@ export function PortalPage() {
 
                   {instructionQuery.data.instruction.notes.length > 0 && (
                     <div>
-                      <div className="portal-section-title">Notes</div>
+                      <div className="portal-section-title">{t('portal.notes')}</div>
                       <ul className="portal-note-list">
                         {instructionQuery.data.instruction.notes.map((note, index) => (
                           <li key={`${note}-${index}`}>{note}</li>
