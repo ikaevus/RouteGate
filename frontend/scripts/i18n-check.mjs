@@ -5,7 +5,8 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
-const sourceRoot = join(repoRoot, 'src');
+const frontendRoot = fileURLToPath(new URL('../', import.meta.url));
+const sourceRoot = join(frontendRoot, 'src');
 const allowedAttributes = ['placeholder', 'title', 'aria-label', 'alt', 'label'];
 const ignoreMarker = 'i18n-check-ignore';
 
