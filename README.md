@@ -101,6 +101,7 @@ Direct Manager health:
     make backend-test
     make agent-test
     make frontend-install
+    make frontend-i18n-check
     make frontend-build
     make check
     make db-reset
@@ -111,6 +112,10 @@ Common workflow:
 
     make check
     make dev
+
+Frontend localization QA:
+
+    docs/development/frontend-i18n-check.md
 
 Traffic usage dev scenario:
 
@@ -198,81 +203,3 @@ Typical module layout:
 
     handler.go      HTTP request/response layer
     service.go      validation and business flow
-    repository.go   PostgreSQL access
-    model.go        domain model
-    dto.go          API DTOs
-
-Implemented modules using this pattern:
-
-    backend/internal/servers
-    backend/internal/agents
-
-Shared backend packages:
-
-    backend/internal/config
-    backend/internal/db
-    backend/internal/http
-    backend/internal/httpx
-    backend/internal/health
-    backend/internal/auth
-
-## Database and migrations
-
-PostgreSQL is used as the main database.
-
-Migrations live in:
-
-    backend/migrations
-
-The Manager applies migrations at startup in the development stack.
-
-Current migration files:
-
-    000001_init.up.sql
-    000001_init.down.sql
-    000002_agent_identity.up.sql
-    000002_agent_identity.down.sql
-
-## Current Foundation milestones
-
-Completed:
-
-    MVP-0: dev stack
-    MVP-1: auth shell
-    MVP-2: server registry shell
-    MVP-3: agent registry shell
-    MVP-4: dashboard overview
-    MVP-5: PostgreSQL persistence
-    MVP-6: repository layer cleanup
-    MVP-7: service layer
-    MVP-8: shared HTTP response helpers
-    MVP-9: middleware stack
-    MVP-10: API conventions + OpenAPI seed
-    MVP-11: developer Makefile commands
-    MVP-12: README refresh
-
-## Next likely workstreams
-
-Recommended next workstreams:
-
-    Auth / Users / Roles
-    Server Registry / Agents
-    Config Render / Validate / Apply / Rollback
-    Agent runtime implementation
-    Audit Log
-    Routing Profiles / Split Tunnel
-    VPN Accounts / Subscriptions / QR
-
-## Notes
-
-The current implementation is still Foundation-level.
-
-Important limitations:
-
-- Auth is development-only.
-- Agent token handling is development-only.
-- Server and agent APIs are minimal.
-- No production RBAC yet.
-- No audit log writes yet.
-- No config rendering or apply workflow yet.
-- No real sing-box integration yet.
