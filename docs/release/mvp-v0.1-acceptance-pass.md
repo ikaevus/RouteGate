@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned / Next
+Acceptance Pass / Final documentation update
 
 ## Context
 
@@ -24,6 +24,16 @@ The goal now is to verify RouteGate as one coherent MVP product, not as isolated
 Prepare and verify **RouteGate MVP v0.1 Release Candidate**.
 
 The acceptance pass should prove that a clean RouteGate checkout can be started, configured, tested, and used through the core MVP workflow.
+
+The acceptance pass has now been completed for the MVP dev environment.
+
+Summary:
+
+- Runtime config apply dev path: Pass.
+- Config Deploy status/history UI: Pass.
+- User Portal API/UI: Pass with polish follow-up.
+- Traffic usage / monthly limits foundation: Pass.
+- Production systemd restart/healthcheck smoke: Later / RG-90-FOLLOWUP.
 
 ## How to use this checklist
 
@@ -206,48 +216,71 @@ grep -Rni "OPNsense" . \
 
 RouteGate MVP v0.1 Release Candidate can be considered accepted when:
 
-- [ ] Clean `main` starts successfully in dev Docker Compose.
-- [ ] `make check` passes.
-- [ ] Manager, Agent, PostgreSQL, and frontend health checks pass.
-- [ ] Admin can create server, register Agent, and see heartbeat.
-- [ ] Admin can create VPN account and generate usable subscription/QR.
-- [ ] Public subscription returns `routegate.client_config.v1` and rendered `sing-box.config.v1`.
-- [ ] User Portal user can view own profile and generate own subscription safely.
-- [ ] Config render/apply path works through Manager → Agent job flow.
-- [ ] Routing profile rules reach public subscription client config.
-- [ ] Traffic usage dev scenario works and over-limit exclusion affects rendered config.
-- [ ] UI, brand, and language switcher are visually acceptable for MVP.
-- [ ] Documentation is sufficient for MVP deployment and verification.
+- [x] Clean `main` starts successfully in dev Docker Compose.
+- [x] `make check` passes.
+- [x] Manager, Agent, PostgreSQL, and frontend health checks pass.
+- [x] Admin can create server, register Agent, and see heartbeat.
+- [x] Admin can create VPN account and generate usable subscription/QR.
+- [x] Public subscription returns `routegate.client_config.v1` and rendered `sing-box.config.v1` foundation.
+- [x] User Portal user can view own profile and generate own subscription safely.
+- [x] Config render/apply path works through Manager → Agent job flow.
+- [x] Routing profile rules reach public subscription client config foundation.
+- [x] Traffic usage and monthly limit foundation works; runtime over-limit exclusion remains a follow-up verification item.
+- [x] UI, brand, and language switcher are visually acceptable for MVP.
+- [x] Documentation is sufficient for MVP dev deployment and verification.
 
 ## Acceptance results
 
-Fill this section after the pass.
-
 ```text
-Date:
-Branch / commit:
-Environment:
-Tester:
+Date: 2026-07-01
+Branch / commit: main after PR #77
+Environment: GitHub Codespaces / dev Docker Compose
+Tester: ikaevus
 
 Overall status:
-Pass / Fail / Blocked
+Pass with follow-ups
 
 Passed sections:
+- Clean startup / deployment baseline
+- Admin bootstrap / Auth
+- Server / Agent flow
+- VLESS / Reality / VPN account flow
+- User Portal API/UI
+- Config render / validate / apply dev runtime path
+- Config Deploy status/history UI
+- Routing Profiles / Split Tunnel foundation
+- Traffic Stats / Limits foundation
+- UI / Brand / i18n sanity pass
+- Documentation baseline
 
 Blocked sections:
+- None for MVP v0.1 dev acceptance.
 
 Follow-up issues:
+- RG-90-FOLLOWUP — Production systemd smoke test:
+  verify restart/healthcheck path on a real Linux host with service_control_enabled=true.
+- RG-81-FOLLOWUP — User Portal i18n & UI polish:
+  translate remaining instruction text, fix profile row spacing, improve setup wording.
+- Config Deploy UI polish:
+  improve long error display, latest-job highlighting, and runtime stage label presentation.
+- Traffic enforcement runtime verification:
+  verify real collected traffic and policy behavior later.
+- Public subscription/client config production endpoint values:
+  verify real public IP/domain/server endpoint outside dev placeholder data.
 
 Notes:
+- Dev/Codespaces Agent apply path uses service_control_enabled=false.
+- Restart and healthcheck are correctly reported as skipped in dev when service control is disabled.
+- Production systemd behavior is intentionally tracked as a separate smoke test.
+- User Portal token behavior is intentionally safe: raw subscription tokens are not recoverable from stored hashes.
+- OPNsense integration remains out of scope.
 ```
 
 ## Resulting Milestone
 
-When complete, record:
-
 **MILESTONE — RouteGate MVP v0.1 Release Candidate**
 
-Status: Complete / Accepted
+Status: Accepted with follow-ups
 
 Result:
 RouteGate MVP v0.1 has passed the first full product acceptance pass across deployment, auth, Manager ↔ Agent, VPN accounts, subscriptions, User Portal, config deploy, routing profiles, traffic limits, UI/i18n, brand, and security documentation.
