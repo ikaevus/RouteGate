@@ -40,6 +40,8 @@ const allowedTerms = new Set([
   'vless',
   'vmess',
   'vpn',
+  'ws',
+  'xtls-rprx-vision',
   'xray',
 ]);
 
@@ -157,10 +159,35 @@ function isLikelyTechnicalOnly(value) {
   return words.length > 0 && words.every((word) => allowedSingleTokens.has(word.toLowerCase()));
 }
 
+function isCodeLikeSnippet(value) {
+  const text = normalizeText(value);
+
+  if (text === '') {
+    return true;
+  }
+
+  const codePatterns = [
+    /\b(?:const|let|return|function|type|interface|new|for|if|else)\b/,
+    /=>/,
+    /\b[A-Za-z_$][\w$]*\s*\(/,
+    /\b[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*/,
+    /\.\s*(?:length|map|filter|forEach|trim|mutate)\b/,
+    /\b(?:number|string|boolean|unknown|Record)\s*(?:\[\]|<)/,
+    /(?:&&|\|\||===|!==|>=|<=)/,
+    /[()[\]{};]/,
+  ];
+
+  if (codePatterns.some((pattern) => pattern.test(text))) {
+    return true;
+  }
+
+  return /^[\s'",:.\w$-]+:$/.test(text);
+}
+
 function reportIssue(issues, filePath, line, kind, value) {
   const text = normalizeText(value);
 
-  if (text === '' || isLikelyTechnicalOnly(text)) {
+  if (text === '' || isLikelyTechnicalOnly(text) || isCodeLikeSnippet(text)) {
     return;
   }
 

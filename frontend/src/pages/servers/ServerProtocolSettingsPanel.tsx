@@ -6,6 +6,7 @@ import {
   updateProtocolSettings,
   type UpdateProtocolSettingsRequest,
 } from '../../entities/server/api/serverApi';
+import { t } from '../../shared/i18n/i18n';
 
 interface ProtocolSettingsFormState {
   vlessPort: string;
@@ -110,16 +111,16 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
     !updateSettingsMutation.isPending &&
     !realityKeypairMutation.isPending;
   const keypairActionLabel = form.realityPublicKey.trim() === '' ? 'Generate Reality keypair' : 'Rotate Reality keypair';
+  const translatedKeypairActionLabel = form.realityPublicKey.trim() === ''
+    ? t('protocolSettings.generateRealityKeypair')
+    : t('protocolSettings.rotateRealityKeypair');
 
   return (
     <form className="panel protocol-settings-panel" onSubmit={handleSubmit}>
       <div className="panel-header">
         <div>
-          <div className="panel-title">VLESS / Reality protocol settings</div>
-          <p className="panel-subtitle">
-            Server-side public settings used when rendering account credentials and client configs.
-            Reality private keys are stored server-side and are never displayed here.
-          </p>
+          <div className="panel-title">{t('protocolSettings.protocolSettingsTitle')}</div>
+          <p className="panel-subtitle">{t('protocolSettings.protocolSettingsSubtitle')}</p>
         </div>
         <div className="table-actions">
           <button
@@ -128,43 +129,43 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             disabled={realityKeypairMutation.isPending || updateSettingsMutation.isPending || !settingsQuery.data}
             onClick={() => realityKeypairMutation.mutate()}
           >
-            {realityKeypairMutation.isPending ? 'Generating...' : keypairActionLabel}
+            {realityKeypairMutation.isPending ? t('protocolSettings.generating') : translatedKeypairActionLabel}
           </button>
           <button className="small-button" type="submit" disabled={!canSave}>
-            {updateSettingsMutation.isPending ? 'Saving...' : 'Save settings'}
+            {updateSettingsMutation.isPending ? t('protocolSettings.saving') : t('protocolSettings.saveSettings')}
           </button>
         </div>
       </div>
 
-      {settingsQuery.isLoading && <p className="empty-state">Loading protocol settings...</p>}
+      {settingsQuery.isLoading && <p className="empty-state">{t('protocolSettings.loading')}</p>}
 
       {settingsQuery.isError && (
-        <div className="form-message form-message-error">Failed to load protocol settings.</div>
+        <div className="form-message form-message-error">{t('protocolSettings.protocolLoadError')}</div>
       )}
 
       {updateSettingsMutation.isError && (
         <div className="form-message form-message-error">
-          Failed to save protocol settings. Check port, network, and flow values.
+          {t('protocolSettings.protocolSaveError')}
         </div>
       )}
 
       {realityKeypairMutation.isError && (
-        <div className="form-message form-message-error">Failed to generate Reality keypair.</div>
+        <div className="form-message form-message-error">{t('protocolSettings.keypairError')}</div>
       )}
 
       {updateSettingsMutation.isSuccess && (
-        <div className="form-message">Protocol settings saved.</div>
+        <div className="form-message">{t('protocolSettings.saved')}</div>
       )}
 
       {realityKeypairMutation.isSuccess && (
-        <div className="form-message">Reality keypair generated. Only the public key is shown.</div>
+        <div className="form-message">{t('protocolSettings.keypairGenerated')}</div>
       )}
 
       {settingsQuery.data && (
         <>
           <div className="protocol-settings-grid">
             <label className="field">
-              <span>VLESS port</span>
+              <span>{t('protocolSettings.vlessPort')}</span>
               <input
                 inputMode="numeric"
                 min="1"
@@ -176,23 +177,23 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             </label>
 
             <label className="field">
-              <span>VLESS flow</span>
+              <span>{t('protocolSettings.vlessFlow')}</span>
               <select
                 value={form.vlessFlow}
                 onChange={(event) => updateField('vlessFlow', event.target.value)}
               >
-                <option value="">Default</option>
+                <option value="">{t('protocolSettings.default')}</option>
                 <option value="xtls-rprx-vision">xtls-rprx-vision</option>
               </select>
             </label>
 
             <label className="field">
-              <span>VLESS network</span>
+              <span>{t('protocolSettings.vlessNetwork')}</span>
               <select
                 value={form.vlessNetwork}
                 onChange={(event) => updateField('vlessNetwork', event.target.value)}
               >
-                <option value="">Default</option>
+                <option value="">{t('protocolSettings.default')}</option>
                 <option value="tcp">tcp</option>
                 <option value="ws">ws</option>
                 <option value="grpc">grpc</option>
@@ -201,7 +202,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             </label>
 
             <label className="field">
-              <span>Reality public key</span>
+              <span>{t('protocolSettings.realityPublicKey')}</span>
               <input
                 value={form.realityPublicKey}
                 onChange={(event) => updateField('realityPublicKey', event.target.value)}
@@ -209,7 +210,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             </label>
 
             <label className="field">
-              <span>Reality short ID</span>
+              <span>{t('protocolSettings.realityShortId')}</span>
               <input
                 value={form.realityShortId}
                 onChange={(event) => updateField('realityShortId', event.target.value)}
@@ -217,7 +218,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             </label>
 
             <label className="field">
-              <span>Reality server name</span>
+              <span>{t('protocolSettings.realityServerName')}</span>
               <input
                 value={form.realityServerName}
                 onChange={(event) => updateField('realityServerName', event.target.value)}
@@ -226,10 +227,10 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           </div>
 
           <div className="protocol-settings-meta">
-            <span>Protocol: {settingsQuery.data.protocol}</span>
-            <span>Reality: {settingsQuery.data.reality.enabled ? 'enabled' : 'disabled'}</span>
-            <span>Private key: server-side only</span>
-            <span>Updated: {formatDate(settingsQuery.data.updatedAt)}</span>
+            <span>{t('protocolSettings.protocolValue', { value: settingsQuery.data.protocol })}</span>
+            <span>{t('protocolSettings.realityValue', { value: settingsQuery.data.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled') })}</span>
+            <span>{t('protocolSettings.privateKeyServerSide')}</span>
+            <span>{t('protocolSettings.updatedValue', { value: formatDate(settingsQuery.data.updatedAt) })}</span>
           </div>
         </>
       )}

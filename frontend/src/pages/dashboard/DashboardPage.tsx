@@ -176,10 +176,10 @@ function TrafficOverviewWidget() {
           <path className="traffic-fill" d="M44 124 C60 144 75 126 92 116 C112 104 118 48 138 58 C158 66 160 84 178 70 C200 50 204 124 225 105 C245 84 250 64 270 56 C288 48 292 150 314 100 C334 58 338 76 356 90 C374 104 380 50 398 72 L398 182 L44 182 Z" />
           <path className="traffic-line traffic-line-primary" d="M44 124 C60 144 75 126 92 116 C112 104 118 48 138 58 C158 66 160 84 178 70 C200 50 204 124 225 105 C245 84 250 64 270 56 C288 48 292 150 314 100 C334 58 338 76 356 90 C374 104 380 50 398 72" />
           <path className="traffic-line traffic-line-secondary" d="M44 142 C62 156 76 134 92 128 C110 120 122 82 138 84 C154 88 166 108 182 96 C202 80 206 136 226 120 C246 102 256 92 274 82 C294 76 300 152 318 116 C336 88 344 106 360 120 C378 132 382 86 398 98" />
-          <text x="44" y="204">22 Apr</text>
-          <text x="145" y="204">29 Apr</text>
-          <text x="246" y="204">13 May</text>
-          <text x="344" y="204">20 May</text>
+          <text x="44" y="204">{t('dashboard.chartDateApr22')}</text>
+          <text x="145" y="204">{t('dashboard.chartDateApr29')}</text>
+          <text x="246" y="204">{t('dashboard.chartDateMay13')}</text>
+          <text x="344" y="204">{t('dashboard.chartDateMay20')}</text>
         </svg>
       </div>
       <div className="traffic-chart-legend">

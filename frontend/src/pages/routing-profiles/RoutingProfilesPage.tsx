@@ -102,7 +102,7 @@ function RuleSummary({ rule }: { rule: RoutingProfileRule }) {
     ['geoip', rule.geoIps?.length ?? 0],
   ].filter(([, count]) => Number(count) > 0);
 
-  if (counts.length === 0) return <span className='muted-text'>No matchers</span>;
+  if (counts.length === 0) return <span className='muted-text'>{t('routingProfiles.noMatchers')}</span>;
 
   return (
     <div className='stage-summary'>
@@ -241,7 +241,7 @@ export function RoutingProfilesPage() {
             <button className='small-button' type='submit' disabled={createProfileMutation.isPending}>{t('routingProfiles.createProfile')}</button>
           </div>
 
-          {createProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(createProfileMutation.error, 'Failed to create routing profile.')}</div>}
+          {createProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(createProfileMutation.error, t('routingProfiles.createError'))}</div>}
           {profilesQuery.isLoading && <p className='empty-state'>{t('routingProfiles.loading')}</p>}
           {profilesQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profilesQuery.error, t('routingProfiles.loadError'))}</div>}
           {profiles.length > 0 && (
@@ -254,73 +254,73 @@ export function RoutingProfilesPage() {
 
         {!profileId && <div className='panel'><p className='empty-state'>{t('routingProfiles.selectProfile')}</p></div>}
         {profileQuery.isLoading && <p className='empty-state'>{t('common.loading')}</p>}
-        {profileQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profileQuery.error, 'Failed to load selected routing profile.')}</div>}
+        {profileQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profileQuery.error, t('routingProfiles.selectedLoadError'))}</div>}
 
         {selectedProfile && (
           <>
             <form className='panel routing-profile-details-panel' onSubmit={(event) => { event.preventDefault(); updateProfileMutation.mutate(); }}>
               <div className='panel-header'>
                 <div>
-                  <div className='panel-title'>Profile details</div>
-                  <p className='panel-subtitle'>Default profiles are used when a server has no explicit assignment.</p>
+                  <div className='panel-title'>{t('routingProfiles.detailsTitle')}</div>
+                  <p className='panel-subtitle'>{t('routingProfiles.detailsSubtitle')}</p>
                 </div>
                 <div className='table-actions'>
-                  <button className='small-button' type='button' disabled={selectedProfile.isDefault || deleteProfileMutation.isPending} onClick={() => deleteProfileMutation.mutate()}>Delete</button>
-                  <button className='small-button' type='submit' disabled={profileName.trim() === '' || updateProfileMutation.isPending}>Save profile</button>
+                  <button className='small-button' type='button' disabled={selectedProfile.isDefault || deleteProfileMutation.isPending} onClick={() => deleteProfileMutation.mutate()}>{t('routingProfiles.deleteProfile')}</button>
+                  <button className='small-button' type='submit' disabled={profileName.trim() === '' || updateProfileMutation.isPending}>{t('routingProfiles.saveProfile')}</button>
                 </div>
               </div>
-              {updateProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(updateProfileMutation.error, 'Failed to update routing profile.')}</div>}
-              {deleteProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteProfileMutation.error, 'Failed to delete routing profile.')}</div>}
+              {updateProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(updateProfileMutation.error, t('routingProfiles.updateError'))}</div>}
+              {deleteProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteProfileMutation.error, t('routingProfiles.deleteError'))}</div>}
               <div className='routing-profile-form-grid'>
-                <label className='field'><span>Name</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
-                <label className='field'><span>Description</span><input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} /></label>
-                <div className='traffic-checkbox-field routing-profile-default-field'><label><input checked={makeDefault} type='checkbox' onChange={(event) => setMakeDefault(event.target.checked)} />Default profile</label><p>Updated: {formatDate(selectedProfile.updatedAt)}</p></div>
+                <label className='field'><span>{t('routingProfiles.name')}</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
+                <label className='field'><span>{t('routingProfiles.description')}</span><input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} /></label>
+                <div className='traffic-checkbox-field routing-profile-default-field'><label><input checked={makeDefault} type='checkbox' onChange={(event) => setMakeDefault(event.target.checked)} />{t('routingProfiles.defaultProfile')}</label><p>{t('routingProfiles.updatedValue', { value: formatDate(selectedProfile.updatedAt) })}</p></div>
               </div>
             </form>
 
             <form className='panel routing-rule-form' onSubmit={handleRuleSubmit}>
               <div className='panel-header'>
                 <div>
-                  <div className='panel-title'>{editingRuleId ? 'Edit routing rule' : 'Add routing rule'}</div>
-                  <p className='panel-subtitle'>One value per line or comma-separated. At least one matcher is required.</p>
+                  <div className='panel-title'>{editingRuleId ? t('routingProfiles.editRule') : t('routingProfiles.addRule')}</div>
+                  <p className='panel-subtitle'>{t('routingProfiles.ruleHelp')}</p>
                 </div>
                 <div className='table-actions'>
-                  {editingRuleId && <button className='small-button' type='button' onClick={resetRuleForm}>Cancel edit</button>}
-                  <button className='small-button' type='submit' disabled={!canSaveRule || saveRuleMutation.isPending}>Save rule</button>
+                  {editingRuleId && <button className='small-button' type='button' onClick={resetRuleForm}>{t('routingProfiles.cancelEdit')}</button>}
+                  <button className='small-button' type='submit' disabled={!canSaveRule || saveRuleMutation.isPending}>{t('routingProfiles.saveRule')}</button>
                 </div>
               </div>
-              {saveRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(saveRuleMutation.error, 'Failed to save routing rule.')}</div>}
-              {!hasMatcherText(ruleText) && <div className='form-message form-message-warning'>Add at least one domain, CIDR, GeoSite, or GeoIP matcher before saving.</div>}
+              {saveRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(saveRuleMutation.error, t('routingProfiles.saveRuleError'))}</div>}
+              {!hasMatcherText(ruleText) && <div className='form-message form-message-warning'>{t('routingProfiles.matcherWarning')}</div>}
               <div className='routing-rule-form-grid'>
-                <label className='field'><span>Name</span><input value={ruleForm.name} onChange={(event) => setRuleForm((current) => ({ ...current, name: event.target.value }))} /></label>
-                <label className='field'><span>Priority</span><input min='0' type='number' value={ruleForm.priority} onChange={(event) => setRuleForm((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
-                <label className='field'><span>Action</span><select value={ruleForm.action} onChange={(event) => setRuleForm((current) => ({ ...current, action: event.target.value as RoutingRuleAction }))}><option value='direct'>direct</option><option value='vpn'>vpn</option><option value='block'>block</option></select></label>
-                <div className='traffic-checkbox-field'><label><input checked={ruleForm.enabled} type='checkbox' onChange={(event) => setRuleForm((current) => ({ ...current, enabled: event.target.checked }))} />Enabled</label><p>Priority controls rule order.</p></div>
+                <label className='field'><span>{t('routingProfiles.name')}</span><input value={ruleForm.name} onChange={(event) => setRuleForm((current) => ({ ...current, name: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.priority')}</span><input min='0' type='number' value={ruleForm.priority} onChange={(event) => setRuleForm((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
+                <label className='field'><span>{t('routingProfiles.action')}</span><select value={ruleForm.action} onChange={(event) => setRuleForm((current) => ({ ...current, action: event.target.value as RoutingRuleAction }))}><option value='direct'>{t('routingProfiles.actionDirect')}</option><option value='vpn'>vpn</option><option value='block'>{t('routingProfiles.actionBlock')}</option></select></label>
+                <div className='traffic-checkbox-field'><label><input checked={ruleForm.enabled} type='checkbox' onChange={(event) => setRuleForm((current) => ({ ...current, enabled: event.target.checked }))} />{t('routingProfiles.enabled')}</label><p>{t('routingProfiles.priorityHelp')}</p></div>
               </div>
               <div className='routing-rule-matchers-grid'>
-                <label className='field'><span>Exact domains</span><textarea rows={4} value={ruleText.domains} onChange={(event) => setRuleText((current) => ({ ...current, domains: event.target.value }))} /></label>
-                <label className='field'><span>Domain suffixes</span><textarea rows={4} value={ruleText.suffixes} onChange={(event) => setRuleText((current) => ({ ...current, suffixes: event.target.value }))} /></label>
-                <label className='field'><span>Domain keywords</span><textarea rows={4} value={ruleText.keywords} onChange={(event) => setRuleText((current) => ({ ...current, keywords: event.target.value }))} /></label>
-                <label className='field'><span>IP CIDRs</span><textarea rows={4} value={ruleText.cidrs} onChange={(event) => setRuleText((current) => ({ ...current, cidrs: event.target.value }))} /></label>
-                <label className='field'><span>GeoSite tags</span><textarea rows={4} value={ruleText.geosite} onChange={(event) => setRuleText((current) => ({ ...current, geosite: event.target.value }))} /></label>
-                <label className='field'><span>GeoIP tags</span><textarea rows={4} value={ruleText.geoip} onChange={(event) => setRuleText((current) => ({ ...current, geoip: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.exactDomains')}</span><textarea rows={4} value={ruleText.domains} onChange={(event) => setRuleText((current) => ({ ...current, domains: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.domainSuffixes')}</span><textarea rows={4} value={ruleText.suffixes} onChange={(event) => setRuleText((current) => ({ ...current, suffixes: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.domainKeywords')}</span><textarea rows={4} value={ruleText.keywords} onChange={(event) => setRuleText((current) => ({ ...current, keywords: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.ipCidrs')}</span><textarea rows={4} value={ruleText.cidrs} onChange={(event) => setRuleText((current) => ({ ...current, cidrs: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.geoSiteTags')}</span><textarea rows={4} value={ruleText.geosite} onChange={(event) => setRuleText((current) => ({ ...current, geosite: event.target.value }))} /></label>
+                <label className='field'><span>{t('routingProfiles.geoIpTags')}</span><textarea rows={4} value={ruleText.geoip} onChange={(event) => setRuleText((current) => ({ ...current, geoip: event.target.value }))} /></label>
               </div>
             </form>
 
             <div className='panel admin-table-panel routing-rules-panel'>
-              <div className='panel-header'><div><div className='panel-title'>Rules</div><p className='panel-subtitle'>Rules are applied by priority, then creation time.</p></div><div className='status-pill'>{rules.length} rules</div></div>
-              {deleteRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteRuleMutation.error, 'Failed to delete routing rule.')}</div>}
-              {rules.length === 0 ? <p className='empty-state'>No routing rules in this profile yet.</p> : (
+              <div className='panel-header'><div><div className='panel-title'>{t('routingProfiles.rules')}</div><p className='panel-subtitle'>{t('routingProfiles.rulesSubtitle')}</p></div><div className='status-pill'>{t('routingProfiles.ruleCount', { count: rules.length })}</div></div>
+              {deleteRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteRuleMutation.error, t('routingProfiles.deleteRuleError'))}</div>}
+              {rules.length === 0 ? <p className='empty-state'>{t('routingProfiles.noRules')}</p> : (
                 <div className='admin-table routing-rules-table'>
-                  <div className='admin-table-row admin-table-head routing-rules-table-row'><span>Rule</span><span>Priority</span><span>Action</span><span>Status</span><span>Matchers</span><span>Actions</span></div>
+                  <div className='admin-table-row admin-table-head routing-rules-table-row'><span>{t('routingProfiles.rule')}</span><span>{t('routingProfiles.priority')}</span><span>{t('routingProfiles.action')}</span><span>{t('vpnAccounts.status')}</span><span>{t('routingProfiles.matchers')}</span><span>{t('routingProfiles.actions')}</span></div>
                   {rules.map((rule) => (
                     <div className='admin-table-row routing-rules-table-row' key={rule.id}>
-                      <div><strong>{formatValue(rule.name)}</strong><span>Updated {formatDate(rule.updatedAt)}</span></div>
+                      <div><strong>{formatValue(rule.name)}</strong><span>{t('routingProfiles.updatedValue', { value: formatDate(rule.updatedAt) })}</span></div>
                       <span>{rule.priority}</span>
                       <StatusBadge value={rule.action} />
                       <StatusBadge value={rule.enabled ? 'enabled' : 'disabled'} />
                       <RuleSummary rule={rule} />
-                      <div className='table-actions'><button className='small-button' type='button' onClick={() => editRule(rule)}>Edit</button><button className='small-button' type='button' disabled={deleteRuleMutation.isPending} onClick={() => deleteRuleMutation.mutate(rule.id)}>Delete</button></div>
+                      <div className='table-actions'><button className='small-button' type='button' onClick={() => editRule(rule)}>{t('routingProfiles.edit')}</button><button className='small-button' type='button' disabled={deleteRuleMutation.isPending} onClick={() => deleteRuleMutation.mutate(rule.id)}>{t('routingProfiles.deleteProfile')}</button></div>
                     </div>
                   ))}
                 </div>

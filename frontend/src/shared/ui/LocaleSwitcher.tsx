@@ -10,7 +10,7 @@ export function LocaleSwitcher() {
   const { locale, setLocale } = useLocale();
 
   return (
-    <div className="rg-locale-switcher" role="group" aria-label="Language">
+    <div className="rg-locale-switcher" role="group" aria-label={t('locale.language')}>
       {localeOptions.map((option) => (
         <button
           aria-label={t(option.ariaLabelKey)}
