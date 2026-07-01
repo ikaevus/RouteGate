@@ -1,3 +1,5 @@
+import { t } from '../i18n/i18n';
+
 type EncodedQrCode = {
   modules: boolean[][];
   size: number;
@@ -354,14 +356,15 @@ function createSvgPath(modules: boolean[][]): string {
     .join('');
 }
 
-export function ScannableQrCode({ value: rawValue, title = 'QR code', subtitle }: ScannableQrCodeProps) {
+export function ScannableQrCode({ value: rawValue, title, subtitle }: ScannableQrCodeProps) {
   const value = rawValue?.trim() ?? '';
+  const displayTitle = title ?? t('qr.code');
 
   if (value === '') {
     return (
       <div className="qr-code-card qr-code-card-empty">
-        <div className="panel-title token-snippet-title">{title}</div>
-        <p className="empty-state">QR payload is not available.</p>
+        <div className="panel-title token-snippet-title">{displayTitle}</div>
+        <p className="empty-state">{t('qr.payloadUnavailable')}</p>
       </div>
     );
   }
@@ -374,12 +377,12 @@ export function ScannableQrCode({ value: rawValue, title = 'QR code', subtitle }
     return (
       <div className="qr-code-card">
         <div>
-          <div className="panel-title token-snippet-title">{title}</div>
+          <div className="panel-title token-snippet-title">{displayTitle}</div>
           {subtitle && <p className="panel-subtitle">{subtitle}</p>}
         </div>
         <div className="qr-code-frame">
           <svg
-            aria-label={title}
+            aria-label={displayTitle}
             className="qr-code-svg"
             role="img"
             viewBox={`0 0 ${viewBoxSize} ${viewBoxSize}`}
@@ -394,9 +397,9 @@ export function ScannableQrCode({ value: rawValue, title = 'QR code', subtitle }
   } catch (error) {
     return (
       <div className="qr-code-card qr-code-card-empty">
-        <div className="panel-title token-snippet-title">{title}</div>
+        <div className="panel-title token-snippet-title">{displayTitle}</div>
         <div className="form-message form-message-error">
-          {error instanceof Error ? error.message : 'Failed to render QR code.'}
+          {error instanceof Error ? error.message : t('qr.renderError')}
         </div>
       </div>
     );

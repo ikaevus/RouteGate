@@ -2,27 +2,28 @@ SHELL := /bin/bash
 
 COMPOSE_FILE := deploy/docker-compose.dev.yml
 
-.PHONY: help dev up down restart rebuild logs ps backend-test agent-test frontend-install frontend-build check clean db-reset dev-traffic-usage
+.PHONY: help dev up down restart rebuild logs ps backend-test agent-test frontend-install frontend-i18n-check frontend-build check clean db-reset dev-traffic-usage
 
 help:
 	@echo "RouteGate developer commands"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make dev              Start full dev stack"
-	@echo "  make up               Start full dev stack"
-	@echo "  make down             Stop dev stack"
-	@echo "  make restart          Restart dev stack"
-	@echo "  make rebuild          Rebuild and start dev stack"
-	@echo "  make logs             Follow dev stack logs"
-	@echo "  make ps               Show dev stack containers"
-	@echo "  make backend-test     Run Go backend tests"
-	@echo "  make agent-test       Run Go agent tests"
-	@echo "  make frontend-install Install frontend dependencies"
-	@echo "  make frontend-build   Build frontend"
-	@echo "  make check            Run backend tests, agent tests and frontend build"
-	@echo "  make db-reset         Stop stack and remove dev database volume"
-	@echo "  make dev-traffic-usage Write file-based dev traffic counters"
-	@echo "  make clean            Remove generated local build files"
+	@echo "  make dev                  Start full dev stack"
+	@echo "  make up                   Start full dev stack"
+	@echo "  make down                 Stop dev stack"
+	@echo "  make restart              Restart dev stack"
+	@echo "  make rebuild              Rebuild and start dev stack"
+	@echo "  make logs                 Follow dev stack logs"
+	@echo "  make ps                   Show dev stack containers"
+	@echo "  make backend-test         Run Go backend tests"
+	@echo "  make agent-test           Run Go agent tests"
+	@echo "  make frontend-install     Install frontend dependencies"
+	@echo "  make frontend-i18n-check  Run frontend localization QA check"
+	@echo "  make frontend-build       Build frontend"
+	@echo "  make check                Run backend tests, agent tests, frontend i18n check and frontend build"
+	@echo "  make db-reset             Stop stack and remove dev database volume"
+	@echo "  make dev-traffic-usage    Write file-based dev traffic counters"
+	@echo "  make clean                Remove generated local build files"
 
 dev: up
 
@@ -54,10 +55,13 @@ agent-test:
 frontend-install:
 	cd frontend && npm install
 
+frontend-i18n-check:
+	cd frontend && npm run i18n:check
+
 frontend-build:
 	cd frontend && npm run build
 
-check: backend-test agent-test frontend-build
+check: backend-test agent-test frontend-i18n-check frontend-build
 
 db-reset:
 	docker compose -f $(COMPOSE_FILE) down -v

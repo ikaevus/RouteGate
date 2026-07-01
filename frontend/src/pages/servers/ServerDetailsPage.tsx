@@ -18,10 +18,11 @@ import {
   type RegistrationTokenResponse,
 } from '../../entities/server/api/serverApi';
 import { getRoutingProfiles } from '../../entities/routingProfile/api/routingProfileApi';
+import { t, translateStatus } from '../../shared/i18n/i18n';
 
 function formatDate(value?: string | null): string {
   if (!value) {
-    return '—';
+    return t('common.notAvailable');
   }
 
   const date = new Date(value);
@@ -45,7 +46,7 @@ function StatusBadge({ status }: { status?: string | null }) {
   const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
   const statusClassName = normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-  return <span className={`badge badge-${statusClassName}`}>{normalizedStatus}</span>;
+  return <span className={`badge badge-${statusClassName}`}>{translateStatus(normalizedStatus)}</span>;
 }
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
@@ -186,9 +187,9 @@ export function ServerDetailsPage() {
   if (!serverId) {
     return (
       <section className="page">
-        <h1>Server not found</h1>
-        <p className="muted-text">No server ID was provided.</p>
-        <Link className="text-link" to="/servers">Back to servers</Link>
+        <h1>{t('serverDetails.notFoundTitle')}</h1>
+        <p className="muted-text">{t('serverDetails.noServerId')}</p>
+        <Link className="text-link" to="/servers">{t('serverDetails.backToServers')}</Link>
       </section>
     );
   }
@@ -199,7 +200,7 @@ export function ServerDetailsPage() {
   if (serverQuery.isLoading) {
     return (
       <section className="page">
-        <p className="muted-text">Loading server details...</p>
+        <p className="muted-text">{t('serverDetails.loading')}</p>
       </section>
     );
   }
@@ -207,13 +208,13 @@ export function ServerDetailsPage() {
   if (serverQuery.isError) {
     return (
       <section className="page">
-        <h1>{isNotFound ? 'Server not found' : 'Server details unavailable'}</h1>
+        <h1>{isNotFound ? t('serverDetails.notFoundTitle') : t('serverDetails.unavailableTitle')}</h1>
         <p className="muted-text">
           {isNotFound
-            ? 'The requested server could not be found.'
-            : 'Failed to load server details from Manager API.'}
+            ? t('serverDetails.requestedNotFound')
+            : t('serverDetails.loadError')}
         </p>
-        <Link className="text-link" to="/servers">Back to servers</Link>
+        <Link className="text-link" to="/servers">{t('serverDetails.backToServers')}</Link>
       </section>
     );
   }
@@ -223,9 +224,9 @@ export function ServerDetailsPage() {
   if (!server) {
     return (
       <section className="page">
-        <h1>Server details unavailable</h1>
-        <p className="muted-text">Failed to load server details from Manager API.</p>
-        <Link className="text-link" to="/servers">Back to servers</Link>
+        <h1>{t('serverDetails.unavailableTitle')}</h1>
+        <p className="muted-text">{t('serverDetails.loadError')}</p>
+        <Link className="text-link" to="/servers">{t('serverDetails.backToServers')}</Link>
       </section>
     );
   }
@@ -243,7 +244,7 @@ export function ServerDetailsPage() {
 
   return (
     <section className="page server-details-page">
-      <Link className="text-link" to="/servers">← Back to servers</Link>
+      <Link className="text-link" to="/servers">{t('serverDetails.backToServersArrow')}</Link>
 
       <div className="page-header server-details-header">
         <div>
@@ -256,37 +257,37 @@ export function ServerDetailsPage() {
 
       <div className="details-layout">
         <div className="panel">
-          <div className="panel-title">Server details</div>
+          <div className="panel-title">{t('serverDetails.detailsTitle')}</div>
           <div className="detail-list">
-            <DetailRow label="Name">{formatValue(server.name)}</DetailRow>
-            <DetailRow label="Description">{formatValue(server.description)}</DetailRow>
-            <DetailRow label="Provider">{formatValue(server.provider)}</DetailRow>
-            <DetailRow label="Location">{formatValue(server.location)}</DetailRow>
-            <DetailRow label="Public IP">{formatValue(server.publicIp)}</DetailRow>
-            <DetailRow label="Private IP">{formatValue(server.privateIp)}</DetailRow>
-            <DetailRow label="Server status"><StatusBadge status={server.status} /></DetailRow>
-            <DetailRow label="Created at">{formatDate(server.createdAt)}</DetailRow>
-            <DetailRow label="Updated at">{formatDate(server.updatedAt)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelName')}>{formatValue(server.name)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelDescription')}>{formatValue(server.description)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelProvider')}>{formatValue(server.provider)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelLocation')}>{formatValue(server.location)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelPublicIp')}>{formatValue(server.publicIp)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelPrivateIp')}>{formatValue(server.privateIp)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelServerStatus')}><StatusBadge status={server.status} /></DetailRow>
+            <DetailRow label={t('serverDetails.labelCreatedAt')}>{formatDate(server.createdAt)}</DetailRow>
+            <DetailRow label={t('serverDetails.labelUpdatedAt')}>{formatDate(server.updatedAt)}</DetailRow>
           </div>
         </div>
 
         <div className="panel">
-          <div className="panel-title">Agent</div>
+          <div className="panel-title">{t('servers.agent')}</div>
           {agent ? (
             <div className="detail-list">
-              <DetailRow label="Agent ID">{formatValue(agent.id)}</DetailRow>
-              <DetailRow label="Hostname">{formatValue(agent.hostname)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelAgentId')}>{formatValue(agent.id)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelHostname')}>{formatValue(agent.hostname)}</DetailRow>
               <DetailRow label="OS">{formatValue(agent.os)}</DetailRow>
-              <DetailRow label="Arch">{formatValue(agent.arch)}</DetailRow>
-              <DetailRow label="Agent version">{formatValue(agent.agentVersion)}</DetailRow>
-              <DetailRow label="Agent status"><StatusBadge status={agent.status} /></DetailRow>
-              <DetailRow label="Capabilities">
+              <DetailRow label={t('serverDetails.labelArch')}>{formatValue(agent.arch)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelAgentVersion')}>{formatValue(agent.agentVersion)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelAgentStatus')}><StatusBadge status={agent.status} /></DetailRow>
+              <DetailRow label={t('serverDetails.labelCapabilities')}>
                 <pre className="inline-code">{formatCapabilities(agent.capabilities)}</pre>
               </DetailRow>
-              <DetailRow label="Last seen at">{formatDate(agent.lastSeenAt)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelLastSeenAt')}>{formatDate(agent.lastSeenAt)}</DetailRow>
             </div>
           ) : (
-            <p className="empty-state">No agent registered yet.</p>
+            <p className="empty-state">{t('serverDetails.noAgent')}</p>
           )}
         </div>
       </div>
@@ -294,27 +295,27 @@ export function ServerDetailsPage() {
       <div className="panel routing-profile-assignment-panel">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Routing profile</div>
-            <p className="panel-subtitle">Assign the split-tunnel profile used when rendering this server config.</p>
+            <div className="panel-title">{t('serverDetails.routingProfileTitle')}</div>
+            <p className="panel-subtitle">{t('serverDetails.routingProfileSubtitle')}</p>
           </div>
           {assignedRoutingProfile ? <StatusBadge status={assignedRoutingProfile.isDefault ? 'default' : 'custom'} /> : <StatusBadge status="unassigned" />}
         </div>
 
         {serverRoutingProfileQuery.isError && (
-          <div className="form-message form-message-error">Failed to load server routing profile assignment.</div>
+          <div className="form-message form-message-error">{t('serverDetails.routingAssignmentLoadError')}</div>
         )}
         {routingProfilesQuery.isError && (
-          <div className="form-message form-message-error">Failed to load routing profiles.</div>
+          <div className="form-message form-message-error">{t('serverDetails.routingProfilesLoadError')}</div>
         )}
         {(assignRoutingProfileMutation.isError || clearRoutingProfileMutation.isError) && (
-          <div className="form-message form-message-error">Failed to update routing profile assignment.</div>
+          <div className="form-message form-message-error">{t('serverDetails.routingAssignmentUpdateError')}</div>
         )}
 
         <div className="routing-profile-assignment-current">
-          <DetailRow label="Current profile">{assignedRoutingProfile ? formatValue(assignedRoutingProfile.name) : 'No explicit assignment'}</DetailRow>
-          <DetailRow label="Description">{formatValue(assignedRoutingProfile?.description)}</DetailRow>
-          <DetailRow label="Assigned at">{formatDate(serverRoutingProfileQuery.data?.createdAt)}</DetailRow>
-          <DetailRow label="Updated at">{formatDate(serverRoutingProfileQuery.data?.updatedAt)}</DetailRow>
+          <DetailRow label={t('serverDetails.currentProfile')}>{assignedRoutingProfile ? formatValue(assignedRoutingProfile.name) : t('serverDetails.noExplicitAssignment')}</DetailRow>
+          <DetailRow label={t('serverDetails.labelDescription')}>{formatValue(assignedRoutingProfile?.description)}</DetailRow>
+          <DetailRow label={t('serverDetails.assignedAt')}>{formatDate(serverRoutingProfileQuery.data?.createdAt)}</DetailRow>
+          <DetailRow label={t('serverDetails.labelUpdatedAt')}>{formatDate(serverRoutingProfileQuery.data?.updatedAt)}</DetailRow>
         </div>
 
         <form
@@ -325,12 +326,12 @@ export function ServerDetailsPage() {
           }}
         >
           <label className="field">
-            <span>Routing profile</span>
+            <span>{t('serverDetails.routingProfileTitle')}</span>
             <select
               value={selectedRoutingProfileId}
               onChange={(event) => setSelectedRoutingProfileId(event.target.value)}
             >
-              <option value="">Select routing profile...</option>
+              <option value="">{t('serverDetails.selectRoutingProfile')}</option>
               {routingProfiles.map((profile) => (
                 <option value={profile.id} key={profile.id}>
                   {profile.name}{profile.isDefault ? ' (default)' : ''}
@@ -345,7 +346,7 @@ export function ServerDetailsPage() {
               type="submit"
               disabled={!canSaveRoutingProfile || assignRoutingProfileMutation.isPending}
             >
-              {assignRoutingProfileMutation.isPending ? 'Saving...' : 'Save assignment'}
+              {assignRoutingProfileMutation.isPending ? t('serverDetails.saving') : t('serverDetails.saveAssignment')}
             </button>
             <button
               className="small-button"
@@ -353,16 +354,16 @@ export function ServerDetailsPage() {
               disabled={clearRoutingProfileMutation.isPending || !assignedRoutingProfile}
               onClick={() => clearRoutingProfileMutation.mutate()}
             >
-              {clearRoutingProfileMutation.isPending ? 'Clearing...' : 'Clear assignment'}
+              {clearRoutingProfileMutation.isPending ? t('serverDetails.clearing') : t('serverDetails.clearAssignment')}
             </button>
           </div>
         </form>
       </div>
 
       <div className="panel token-panel">
-        <div className="panel-title">Agent registration token</div>
+        <div className="panel-title">{t('serverDetails.registrationTokenTitle')}</div>
         <p className="muted-text">
-          Generate a one-time token for this server. The raw token is shown only once.
+          {t('serverDetails.registrationTokenSubtitle')}
         </p>
         <button
           className="primary-button"
@@ -370,23 +371,23 @@ export function ServerDetailsPage() {
           disabled={registrationTokenMutation.isPending || !serverId}
           onClick={() => registrationTokenMutation.mutate()}
         >
-          {registrationTokenMutation.isPending ? 'Generating...' : 'Generate registration token'}
+          {registrationTokenMutation.isPending ? t('serverDetails.generating') : t('serverDetails.generateRegistrationToken')}
         </button>
 
         {registrationTokenMutation.isError && (
-          <div className="form-message form-message-error">Failed to generate registration token.</div>
+          <div className="form-message form-message-error">{t('serverDetails.registrationTokenError')}</div>
         )}
 
         {registrationToken && (
           <div className="token-result">
             <div className="form-message form-message-warning">
-              Save this token now. It is shown only once and is not stored by the frontend.
+              {t('serverDetails.registrationTokenWarning')}
             </div>
-            <DetailRow label="Registration token">
+            <DetailRow label={t('serverDetails.registrationToken')}>
               <code>{registrationToken.registrationToken}</code>
             </DetailRow>
-            <DetailRow label="Expires at">{formatDate(registrationToken.expiresAt)}</DetailRow>
-            <div className="panel-title token-snippet-title">Example agent config</div>
+            <DetailRow label={t('vpnAccounts.expiresAt')}>{formatDate(registrationToken.expiresAt)}</DetailRow>
+            <div className="panel-title token-snippet-title">{t('serverDetails.exampleAgentConfig')}</div>
             <pre className="code-block">{configSnippet}</pre>
           </div>
         )}
@@ -395,8 +396,8 @@ export function ServerDetailsPage() {
       <div className="panel admin-table-panel">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Config versions</div>
-            <p className="panel-subtitle">Rendered configs for this server and their deploy state.</p>
+            <div className="panel-title">{t('serverDetails.configVersions')}</div>
+            <p className="panel-subtitle">{t('serverDetails.configVersionsSubtitle')}</p>
           </div>
           <button
             className="small-button"
@@ -404,37 +405,37 @@ export function ServerDetailsPage() {
             disabled={renderConfigMutation.isPending}
             onClick={() => renderConfigMutation.mutate()}
           >
-            {renderConfigMutation.isPending ? 'Rendering...' : 'Render config'}
+            {renderConfigMutation.isPending ? t('serverDetails.rendering') : t('serverDetails.renderConfig')}
           </button>
         </div>
 
         {configVersionsQuery.isError && (
-          <div className="form-message form-message-error">Failed to load config versions.</div>
+          <div className="form-message form-message-error">{t('serverDetails.configVersionsLoadError')}</div>
         )}
 
         {renderConfigMutation.isError && (
-          <div className="form-message form-message-error">Failed to render config.</div>
+          <div className="form-message form-message-error">{t('serverDetails.renderConfigError')}</div>
         )}
 
         {(validateConfigMutation.isError || applyConfigMutation.isError) && (
           <div className="form-message form-message-error">
-            Config action failed. Check server agent state and permissions.
+            {t('serverDetails.configActionError')}
           </div>
         )}
 
         {configVersionsQuery.isLoading ? (
-          <p className="empty-state">Loading config versions...</p>
+          <p className="empty-state">{t('serverDetails.loadingConfigVersions')}</p>
         ) : configVersions.length === 0 ? (
-          <p className="empty-state">No config versions rendered yet.</p>
+          <p className="empty-state">{t('serverDetails.noConfigVersions')}</p>
         ) : (
           <div className="admin-table config-versions-table">
             <div className="admin-table-row admin-table-head config-versions-table-row">
-              <span>Version</span>
-              <span>Status</span>
-              <span>Hash</span>
-              <span>Created</span>
-              <span>Applied</span>
-              <span>Actions</span>
+              <span>{t('serverDetails.version')}</span>
+              <span>{t('vpnAccounts.status')}</span>
+              <span>{t('serverDetails.hash')}</span>
+              <span>{t('serverDetails.created')}</span>
+              <span>{t('serverDetails.applied')}</span>
+              <span>{t('routingProfiles.actions')}</span>
             </div>
             {configVersions.map((version: ConfigVersion) => {
               const isValidating =
@@ -456,7 +457,7 @@ export function ServerDetailsPage() {
                       disabled={isValidating}
                       onClick={() => validateConfigMutation.mutate(version.id)}
                     >
-                      {isValidating ? 'Validating...' : 'Validate'}
+                      {isValidating ? t('serverDetails.validating') : t('serverDetails.validate')}
                     </button>
                     <button
                       className="small-button"
@@ -464,7 +465,7 @@ export function ServerDetailsPage() {
                       disabled={version.status !== 'validated' || isApplying}
                       onClick={() => applyConfigMutation.mutate(version.id)}
                     >
-                      {isApplying ? 'Applying...' : 'Apply'}
+                      {isApplying ? t('serverDetails.applying') : t('serverDetails.apply')}
                     </button>
                   </div>
                 </div>
@@ -477,28 +478,28 @@ export function ServerDetailsPage() {
       <div className="panel admin-table-panel">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Apply jobs</div>
-            <p className="panel-subtitle">Agent-side config deployment progress and results.</p>
+            <div className="panel-title">{t('serverDetails.applyJobs')}</div>
+            <p className="panel-subtitle">{t('serverDetails.applyJobsSubtitle')}</p>
           </div>
         </div>
 
         {applyJobsQuery.isError && (
-          <div className="form-message form-message-error">Failed to load apply jobs.</div>
+          <div className="form-message form-message-error">{t('serverDetails.applyJobsLoadError')}</div>
         )}
 
         {applyJobsQuery.isLoading ? (
-          <p className="empty-state">Loading apply jobs...</p>
+          <p className="empty-state">{t('serverDetails.loadingApplyJobs')}</p>
         ) : applyJobs.length === 0 ? (
-          <p className="empty-state">No apply jobs have been queued yet.</p>
+          <p className="empty-state">{t('serverDetails.noApplyJobs')}</p>
         ) : (
           <div className="admin-table apply-jobs-table">
             <div className="admin-table-row admin-table-head apply-jobs-table-row">
-              <span>Status</span>
-              <span>Action</span>
-              <span>Version</span>
-              <span>Stages</span>
-              <span>Error</span>
-              <span>Timestamps</span>
+              <span>{t('vpnAccounts.status')}</span>
+              <span>{t('routingProfiles.action')}</span>
+              <span>{t('serverDetails.version')}</span>
+              <span>{t('serverDetails.stages')}</span>
+              <span>{t('serverDetails.error')}</span>
+              <span>{t('serverDetails.timestamps')}</span>
             </div>
             {applyJobs.map((job: ConfigApplyJob) => {
               const version = versionsById.get(job.configVersionId);
@@ -508,15 +509,15 @@ export function ServerDetailsPage() {
                   <StatusBadge status={job.status} />
                   <strong>{job.action}</strong>
                   <div className="timestamp-stack">
-                    <strong>{version ? `v${version.version}` : 'Version unknown'}</strong>
+                    <strong>{version ? `v${version.version}` : t('serverDetails.versionUnknown')}</strong>
                     <span>{shortHash(job.configVersionId)}</span>
                   </div>
                   <StageSummary resultPayload={job.resultPayload} />
                   <span>{formatValue(job.errorMessage)}</span>
                   <div className="timestamp-stack">
-                    <span>Created {formatDate(job.createdAt)}</span>
-                    <span>Updated {formatDate(job.updatedAt)}</span>
-                    <span>Completed {formatDate(job.completedAt)}</span>
+                    <span>{t('serverDetails.createdValue', { value: formatDate(job.createdAt) })}</span>
+                    <span>{t('serverDetails.updatedValue', { value: formatDate(job.updatedAt) })}</span>
+                    <span>{t('serverDetails.completedValue', { value: formatDate(job.completedAt) })}</span>
                   </div>
                 </div>
               );

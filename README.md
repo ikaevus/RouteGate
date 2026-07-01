@@ -101,6 +101,7 @@ Direct Manager health:
     make backend-test
     make agent-test
     make frontend-install
+    make frontend-i18n-check
     make frontend-build
     make check
     make db-reset
@@ -111,6 +112,10 @@ Common workflow:
 
     make check
     make dev
+
+Frontend localization QA:
+
+    docs/development/frontend-i18n-check.md
 
 Traffic usage dev scenario:
 
