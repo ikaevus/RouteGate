@@ -5,13 +5,14 @@ import {
   updateVpnAccountTrafficLimit,
   type UpdateTrafficLimitRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { t, translateStatus } from '../../shared/i18n/i18n';
 
 const BYTES_PER_GIB = 1024 ** 3;
 const BPS_PER_MBIT = 1_000_000;
 
 function formatBytes(value?: number | null): string {
   if (value === undefined || value === null || !Number.isFinite(value)) {
-    return '-';
+    return t('common.notAvailable');
   }
 
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -29,7 +30,7 @@ function formatBytes(value?: number | null): string {
 
 function formatDateTime(value?: string | null): string {
   if (!value) {
-    return '-';
+    return t('common.notAvailable');
   }
 
   const date = new Date(value);
@@ -46,7 +47,7 @@ function formatNumberInput(value: number): string {
 
 function formatPercent(value?: number | null): string {
   if (value === undefined || value === null || !Number.isFinite(value)) {
-    return '-';
+    return t('common.notAvailable');
   }
 
   return `${value.toFixed(value >= 10 ? 0 : 1)}%`;
@@ -54,10 +55,10 @@ function formatPercent(value?: number | null): string {
 
 function formatStatus(value?: string | null): string {
   if (!value) {
-    return 'not enforced';
+    return t('traffic.notEnforced');
   }
 
-  return value.replace(/_/g, ' ');
+  return translateStatus(value.replace(/_/g, ' '));
 }
 
 function parseOptionalNumber(
@@ -74,7 +75,10 @@ function parseOptionalNumber(
   const isBelowMinimum = options.allowZero ? parsed < 0 : parsed <= 0;
   if (!Number.isFinite(parsed) || isBelowMinimum) {
     throw new Error(
-      `${label} must be a ${options.allowZero ? 'non-negative' : 'positive'} number or empty.`,
+      t('traffic.validationNumber', {
+        label,
+        kind: options.allowZero ? t('traffic.nonNegative') : t('traffic.positive'),
+      }),
     );
   }
 
@@ -155,30 +159,30 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
 
   const progressPercent = Math.min(100, Math.max(0, usedPercent ?? 0));
   const limitBadge = !hasMonthlyLimit
-    ? { className: 'badge badge-pending', label: 'No limit' }
+    ? { className: 'badge badge-pending', label: t('traffic.noLimit') }
     : limit?.enforced
-      ? { className: 'badge badge-failed', label: 'Over limit' }
+      ? { className: 'badge badge-failed', label: t('traffic.overLimit') }
       : limit?.limitReached
-        ? { className: 'badge badge-failed', label: 'Limit reached' }
+        ? { className: 'badge badge-failed', label: t('traffic.limitReached') }
         : limit?.hardLimitEnabled
-          ? { className: 'badge badge-in-progress', label: 'Hard limit' }
-          : { className: 'badge badge-active', label: 'Soft limit' };
+          ? { className: 'badge badge-in-progress', label: t('traffic.hardLimit') }
+          : { className: 'badge badge-active', label: t('traffic.softLimit') };
   const enforcementBadge = limit?.enforced
-    ? { className: 'badge badge-failed', label: 'Enforced' }
+    ? { className: 'badge badge-failed', label: t('traffic.enforced') }
     : limit?.enforcementStatus === 'within_limit'
-      ? { className: 'badge badge-active', label: 'Within limit' }
-      : { className: 'badge badge-pending', label: 'Not enforced' };
+      ? { className: 'badge badge-active', label: t('traffic.withinLimit') }
+      : { className: 'badge badge-pending', label: t('traffic.notEnforced') };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     try {
-      const monthlyLimit = parseOptionalNumber(monthlyLimitGiB, 'Monthly limit', { allowZero: true });
-      const speedLimit = parseOptionalNumber(speedLimitMbps, 'Speed limit');
+      const monthlyLimit = parseOptionalNumber(monthlyLimitGiB, t('traffic.monthlyLimitField'), { allowZero: true });
+      const speedLimit = parseOptionalNumber(speedLimitMbps, t('traffic.speedLimitField'));
       const parsedResetDay = Number.parseInt(resetDay, 10);
 
       if (!Number.isInteger(parsedResetDay) || parsedResetDay < 1 || parsedResetDay > 28) {
-        throw new Error('Reset day must be between 1 and 28.');
+        throw new Error(t('traffic.resetDayValidation'));
       }
 
       updateLimitMutation.mutate({
@@ -188,7 +192,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
         resetDay: parsedResetDay,
       });
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Traffic limit form is invalid.');
+      setFormError(error instanceof Error ? error.message : t('traffic.invalidForm'));
     }
   };
 
@@ -196,34 +200,32 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
     <div className="panel traffic-panel">
       <div className="panel-header">
         <div>
-          <div className="panel-title">Traffic usage and limits</div>
-          <p className="panel-subtitle">
-            Current billing-period usage summary, per-account traffic policy, and persisted enforcement state.
-          </p>
+          <div className="panel-title">{t('traffic.title')}</div>
+          <p className="panel-subtitle">{t('traffic.subtitle')}</p>
         </div>
       </div>
 
-      {trafficQuery.isLoading && <p className="empty-state">Loading traffic usage...</p>}
+      {trafficQuery.isLoading && <p className="empty-state">{t('traffic.loading')}</p>}
 
       {trafficQuery.isError && (
-        <div className="form-message form-message-error">Failed to load traffic usage.</div>
+        <div className="form-message form-message-error">{t('traffic.loadError')}</div>
       )}
 
       {traffic && (
         <div className="traffic-panel-content">
           <div className="traffic-summary-grid">
             <TrafficMetricCard
-              label="Uploaded"
+              label={t('traffic.uploaded')}
               value={formatBytes(traffic.usage.txBytes)}
-              meta="TX traffic"
+              meta={t('traffic.txTraffic')}
             />
             <TrafficMetricCard
-              label="Downloaded"
+              label={t('traffic.downloaded')}
               value={formatBytes(traffic.usage.rxBytes)}
-              meta="RX traffic"
+              meta={t('traffic.rxTraffic')}
             />
             <TrafficMetricCard
-              label="Total"
+              label={t('traffic.total')}
               value={formatBytes(traffic.usage.totalBytes)}
               meta={`${formatDateTime(traffic.period.from)} → ${formatDateTime(traffic.period.to)}`}
             />
@@ -232,82 +234,78 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
           <div className="traffic-limit-card">
             <div className="traffic-limit-header">
               <div>
-                <div className="traffic-limit-title">Monthly limit</div>
+                <div className="traffic-limit-title">{t('traffic.monthlyLimit')}</div>
                 <p className="panel-subtitle">
                   {hasMonthlyLimit
-                    ? `${formatBytes(traffic.usage.totalBytes)} used of ${formatBytes(monthlyLimitBytes)}`
-                    : 'No monthly traffic limit is configured for this account.'}
+                    ? t('traffic.usedOfLimit', { used: formatBytes(traffic.usage.totalBytes), limit: formatBytes(monthlyLimitBytes) })
+                    : t('traffic.noMonthlyLimitConfigured')}
                 </p>
               </div>
               <span className={limitBadge.className}>{limitBadge.label}</span>
             </div>
 
-            <div className="traffic-progress-track" aria-label="Traffic limit usage progress">
+            <div className="traffic-progress-track" aria-label={t('traffic.limitProgress')}>
               <div className="traffic-progress-fill" style={{ width: `${progressPercent}%` }} />
             </div>
 
             <div className="traffic-limit-meta">
-              <span>Used: {formatPercent(usedPercent)}</span>
-              <span>Remaining: {formatBytes(limit?.remainingBytes)}</span>
-              <span>Reset day: {limit?.resetDay ?? 1}</span>
-              <span>Speed limit: {limit?.speedLimitBps ? `${formatNumberInput(limit.speedLimitBps / BPS_PER_MBIT)} Mbps` : 'not set'}</span>
-              <span>Updated: {formatDateTime(limit?.updatedAt)}</span>
+              <span>{t('traffic.used', { value: formatPercent(usedPercent) })}</span>
+              <span>{t('traffic.remaining', { value: formatBytes(limit?.remainingBytes) })}</span>
+              <span>{t('traffic.resetDayValue', { value: limit?.resetDay ?? 1 })}</span>
+              <span>{t('traffic.speedLimitValue', { value: limit?.speedLimitBps ? `${formatNumberInput(limit.speedLimitBps / BPS_PER_MBIT)} Mbps` : t('traffic.notSet') })}</span>
+              <span>{t('traffic.updated', { value: formatDateTime(limit?.updatedAt) })}</span>
             </div>
           </div>
 
           <div className="traffic-limit-card">
             <div className="traffic-limit-header">
               <div>
-                <div className="traffic-limit-title">Enforcement state</div>
-                <p className="panel-subtitle">
-                  RouteGate now persists over-limit state; runtime config exclusion will be connected in a later apply step.
-                </p>
+                <div className="traffic-limit-title">{t('traffic.enforcementState')}</div>
+                <p className="panel-subtitle">{t('traffic.enforcementSubtitle')}</p>
               </div>
               <span className={enforcementBadge.className}>{enforcementBadge.label}</span>
             </div>
 
             <div className="traffic-limit-meta">
-              <span>Status: {formatStatus(limit?.enforcementStatus)}</span>
-              <span>Exceeded at: {formatDateTime(limit?.limitExceededAt)}</span>
-              <span>Evaluated: {formatDateTime(limit?.enforcementUpdatedAt)}</span>
+              <span>{t('traffic.statusValue', { value: formatStatus(limit?.enforcementStatus) })}</span>
+              <span>{t('traffic.exceededAt', { value: formatDateTime(limit?.limitExceededAt) })}</span>
+              <span>{t('traffic.evaluated', { value: formatDateTime(limit?.enforcementUpdatedAt) })}</span>
             </div>
           </div>
 
           <form className="traffic-limit-form" onSubmit={handleSubmit}>
             <div>
-              <div className="panel-title token-snippet-title">Limit settings</div>
-              <p className="panel-subtitle">
-                Empty monthly limit means unlimited traffic. Hard limit marks this account for persisted over-limit enforcement state.
-              </p>
+              <div className="panel-title token-snippet-title">{t('traffic.limitSettings')}</div>
+              <p className="panel-subtitle">{t('traffic.limitSettingsSubtitle')}</p>
             </div>
 
             <div className="traffic-limit-form-grid">
               <label className="field">
-                <span>Monthly limit, GiB</span>
+                <span>{t('traffic.monthlyLimitGib')}</span>
                 <input
                   min="0"
                   step="0.01"
                   type="number"
                   value={monthlyLimitGiB}
-                  placeholder="Unlimited"
+                  placeholder={t('traffic.unlimited')}
                   onChange={(event) => setMonthlyLimitGiB(event.target.value)}
                 />
               </label>
 
               <label className="field">
-                <span>Speed limit, Mbps</span>
+                <span>{t('traffic.speedLimitMbps')}</span>
                 <input
                   min="0"
                   step="0.01"
                   type="number"
                   value={speedLimitMbps}
-                  placeholder="Not set"
+                  placeholder={t('traffic.notSet')}
                   onChange={(event) => setSpeedLimitMbps(event.target.value)}
                 />
               </label>
 
               <label className="field">
-                <span>Reset day</span>
+                <span>{t('traffic.resetDay')}</span>
                 <input
                   min="1"
                   max="28"
@@ -325,18 +323,18 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                     checked={hardLimitEnabled}
                     onChange={(event) => setHardLimitEnabled(event.target.checked)}
                   />
-                  <span>Hard limit</span>
+                  <span>{t('traffic.hardLimit')}</span>
                 </label>
-                <p>Persist over-limit state when reported usage reaches the configured limit.</p>
+                <p>{t('traffic.persistHardLimit')}</p>
               </div>
             </div>
 
             {formError && <div className="form-message form-message-error">{formError}</div>}
             {updateLimitMutation.isError && (
-              <div className="form-message form-message-error">Failed to save traffic limit.</div>
+              <div className="form-message form-message-error">{t('traffic.saveError')}</div>
             )}
             {updateLimitMutation.isSuccess && !updateLimitMutation.isPending && (
-              <div className="form-message">Traffic limit saved.</div>
+              <div className="form-message">{t('traffic.saveSuccess')}</div>
             )}
 
             <div className="traffic-form-actions">
@@ -345,7 +343,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                 type="submit"
                 disabled={updateLimitMutation.isPending}
               >
-                {updateLimitMutation.isPending ? 'Saving...' : 'Save traffic limit'}
+                {updateLimitMutation.isPending ? t('traffic.saving') : t('traffic.save')}
               </button>
             </div>
           </form>

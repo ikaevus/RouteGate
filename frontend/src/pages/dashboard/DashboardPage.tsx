@@ -6,6 +6,7 @@ import { getAgents } from '../../entities/agent/api/agentApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { t } from '../../shared/i18n/i18n';
+import type { TranslationKey } from '../../shared/i18n/locales/en';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { WorldMap } from '../../shared/ui/WorldMap';
 
@@ -17,19 +18,31 @@ const fallbackServers = [
   { name: 'rg-de-02', region: 'Nuremberg, DE', online: false, load: '—', traffic: '—', status: 'offline' },
 ];
 
-const deploymentRows = [
-  { config: 'prod-routing-v4', target: 'Group: EU-Core', status: 'applied', initiator: 'admin', time: '2 min ago' },
-  { config: 'vpn-policy-update', target: 'rg-eu-01', status: 'applied', initiator: 'admin', time: '15 min ago' },
-  { config: 'agent-settings-v2', target: 'Group: All Agents', status: 'applied', initiator: 'system', time: '32 min ago' },
-  { config: 'firewall-ruleset', target: 'rg-nl-01', status: 'warning', initiator: 'admin', time: '1 h ago' },
-  { config: 'dns-optimization', target: 'rg-sg-01', status: 'pending', initiator: 'admin', time: '2 h ago' },
+const deploymentRows: Array<{
+  config: string;
+  target?: string;
+  targetKey?: TranslationKey;
+  status: string;
+  initiator: string;
+  timeKey: TranslationKey;
+}> = [
+  { config: 'prod-routing-v4', targetKey: 'dashboard.groupEuCore', status: 'applied', initiator: 'admin', timeKey: 'dashboard.twoMinAgo' },
+  { config: 'vpn-policy-update', target: 'rg-eu-01', status: 'applied', initiator: 'admin', timeKey: 'dashboard.fifteenMinAgo' },
+  { config: 'agent-settings-v2', targetKey: 'dashboard.groupAllAgents', status: 'applied', initiator: 'system', timeKey: 'dashboard.thirtyTwoMinAgo' },
+  { config: 'firewall-ruleset', target: 'rg-nl-01', status: 'warning', initiator: 'admin', timeKey: 'dashboard.oneHourAgo' },
+  { config: 'dns-optimization', target: 'rg-sg-01', status: 'pending', initiator: 'admin', timeKey: 'dashboard.twoHoursAgo' },
 ];
 
-const auditRows = [
-  { actor: 'admin', action: 'Created VPN account user@routegate.local', area: 'VPN Accounts', time: '2 min ago' },
-  { actor: 'admin', action: 'Deployed prod-routing-v4', area: 'Deployments', time: '2 min ago' },
-  { actor: 'system', action: 'Agent rg-eu-02 connected', area: 'Agents', time: '8 min ago' },
-  { actor: 'admin', action: 'Updated EU-Core routing profile', area: 'Routing', time: '15 min ago' },
+const auditRows: Array<{
+  actor: string;
+  actionKey: TranslationKey;
+  areaKey: TranslationKey;
+  timeKey: TranslationKey;
+}> = [
+  { actor: 'admin', actionKey: 'dashboard.auditCreatedVpnAccount', areaKey: 'navigation.vpnAccounts', timeKey: 'dashboard.twoMinAgo' },
+  { actor: 'admin', actionKey: 'dashboard.auditDeployedRouting', areaKey: 'dashboard.deploymentsArea', timeKey: 'dashboard.twoMinAgo' },
+  { actor: 'system', actionKey: 'dashboard.auditAgentConnected', areaKey: 'navigation.agents', timeKey: 'dashboard.eightMinAgo' },
+  { actor: 'admin', actionKey: 'dashboard.auditUpdatedRoutingProfile', areaKey: 'dashboard.routingArea', timeKey: 'dashboard.fifteenMinAgo' },
 ];
 
 const trafficTypeSegments = [42, 29, 12, 9, 8];
@@ -78,13 +91,13 @@ function WidgetPanel({ title, subtitle, children, className = '', action }: { ti
 
 function InfrastructureHealthWidget({ serversCount, agentsCount, managerHealthy }: { serversCount: number; agentsCount: number; managerHealthy: boolean }) {
   const rows = [
-    ['All systems', managerHealthy ? 'healthy' : 'warning', managerHealthy ? '100%' : '—'],
+    [t('dashboard.allSystems'), managerHealthy ? 'healthy' : 'warning', managerHealthy ? '100%' : '—'],
     [t('dashboard.servers'), serversCount > 0 ? 'healthy' : 'warning', serversCount || '—'],
     [t('dashboard.agents'), agentsCount > 0 ? 'healthy' : 'warning', agentsCount || '—'],
-    ['Database', 'healthy', '2'],
-    ['Configuration', 'healthy', '—'],
-    ['Storage', 'warning', '78%'],
-    ['Backups', 'healthy', '2 h ago'],
+    [t('dashboard.database'), 'healthy', '2'],
+    [t('dashboard.configuration'), 'healthy', '—'],
+    [t('dashboard.storage'), 'warning', '78%'],
+    [t('dashboard.backups'), 'healthy', t('dashboard.backupsFreshness')],
   ];
 
   return (
@@ -124,12 +137,12 @@ function NodeDistributionWidget() {
         {nodes.map((node) => <span className={node.className} key={node.className}>{node.label}</span>)}
       </div>
       <div className="map-legend">
-        <span><i /> North America</span>
-        <span><i /> Europe</span>
-        <span><i /> Asia</span>
-        <span><i /> South America</span>
-        <span><i /> Africa</span>
-        <span><i /> Oceania</span>
+        <span><i /> {t('dashboard.northAmerica')}</span>
+        <span><i /> {t('dashboard.europe')}</span>
+        <span><i /> {t('dashboard.asia')}</span>
+        <span><i /> {t('dashboard.southAmerica')}</span>
+        <span><i /> {t('dashboard.africa')}</span>
+        <span><i /> {t('dashboard.oceania')}</span>
       </div>
     </WidgetPanel>
   );
@@ -141,7 +154,7 @@ function TrafficOverviewWidget() {
       title={t('dashboard.trafficOverview')}
       subtitle={`(${t('dashboard.last30Days')})`}
       className="traffic-widget"
-      action={<button className="widget-filter" type="button">By days</button>}
+      action={<button className="widget-filter" type="button">{t('dashboard.byDays')}</button>}
     >
       <div className="traffic-area-chart" aria-label={t('dashboard.trafficOverview')}>
         <svg viewBox="0 0 420 210" role="img">
@@ -217,7 +230,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
             <div className="dashboard-table-row" key={server.name}>
               <strong>{server.name}</strong>
               <span className="server-region-cell">
-                <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={`Country: ${countryCode}`} />
+                <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={t('dashboard.countryCode', { code: countryCode })} />
                 <span className="server-region-name">{server.region}</span>
               </span>
               <span className={server.online ? 'server-online-dot' : 'server-offline-dot'} />
@@ -238,15 +251,15 @@ function RecentDeploymentsWidget() {
     <WidgetPanel title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget">
       <div className="dashboard-table deployments-table">
         <div className="dashboard-table-row dashboard-table-head">
-          <span>Configuration</span><span>Target</span><span>Status</span><span>Initiator</span><span>Time</span>
+          <span>{t('dashboard.configurationColumn')}</span><span>{t('dashboard.target')}</span><span>{t('servers.status')}</span><span>{t('dashboard.initiator')}</span><span>{t('dashboard.time')}</span>
         </div>
         {deploymentRows.map((row) => (
           <div className="dashboard-table-row" key={row.config}>
             <strong>{row.config}</strong>
-            <span>{row.target}</span>
+            <span>{row.targetKey ? t(row.targetKey) : row.target}</span>
             <StatusBadge status={row.status} />
             <span>{row.initiator}</span>
-            <span>{row.time}</span>
+            <span>{t(row.timeKey)}</span>
           </div>
         ))}
       </div>
@@ -260,12 +273,12 @@ function TrafficTypesWidget() {
     ['HTTPS', '42.1%'],
     ['VPN', '28.7%'],
     ['DNS', '12.3%'],
-    ['Streaming', '8.6%'],
-    ['Other', '8.3%'],
+    [t('dashboard.streamingTraffic'), '8.6%'],
+    [t('dashboard.otherTraffic'), '8.3%'],
   ];
 
   return (
-    <WidgetPanel title={t('dashboard.trafficTypes')} subtitle="(month)" className="traffic-types-widget">
+    <WidgetPanel title={t('dashboard.trafficTypes')} subtitle={`(${t('dashboard.month')})`} className="traffic-types-widget">
       <div className="traffic-types-content">
         <div className="donut-chart" style={{ background: `conic-gradient(#0ea5e9 0 ${trafficTypeSegments[0]}%, #8b5cf6 ${trafficTypeSegments[0]}% 71%, #22c55e 71% 83%, #f59e0b 83% 92%, #ef4444 92% 100%)` }}>
           <span />
@@ -284,11 +297,11 @@ function AuditEventsWidget() {
     <WidgetPanel title={t('dashboard.recentAuditEvents')} className="audit-widget">
       <div className="audit-list">
         {auditRows.map((row) => (
-          <div className="audit-row" key={`${row.actor}-${row.action}`}>
+          <div className="audit-row" key={`${row.actor}-${row.actionKey}`}>
             <span className="audit-avatar">{row.actor.slice(0, 1).toUpperCase()}</span>
-            <div><strong>{row.actor}</strong><p>{row.action}</p></div>
-            <span className="audit-area-badge">{row.area}</span>
-            <small>{row.time}</small>
+            <div><strong>{row.actor}</strong><p>{t(row.actionKey)}</p></div>
+            <span className="audit-area-badge">{t(row.areaKey)}</span>
+            <small>{t(row.timeKey)}</small>
           </div>
         ))}
       </div>
@@ -359,14 +372,14 @@ export function DashboardPage() {
         <KpiWidget
           title={t('dashboard.activeVpnUsers')}
           value={String(activeVpnUsers)}
-          meta="612 online right now"
+          meta={t('dashboard.activeVpnUsersOnlineMeta')}
           tone="purple"
           icon="◉"
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
           value="12.4 TB"
-          meta="↑ 18% from previous month"
+          meta={`↑ ${t('dashboard.monthlyTrafficMeta')}`}
           tone="amber"
           icon="☁"
         />
@@ -380,7 +393,7 @@ export function DashboardPage() {
         <TrafficTypesWidget />
         <AuditEventsWidget />
       </div>
-      <div className="dashboard-server-time">Server time: {formatDate(managerHealthQuery.data?.timestamp)}</div>
+      <div className="dashboard-server-time">{t('dashboard.serverTime', { time: formatDate(managerHealthQuery.data?.timestamp) })}</div>
     </section>
   );
 }

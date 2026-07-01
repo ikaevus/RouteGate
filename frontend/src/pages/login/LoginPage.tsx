@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { login } from '../../entities/auth/api/authApi';
+import { t } from '../../shared/i18n/i18n';
 
 export function LoginPage() {
   const [email, setEmail] = useState('admin@routegate.local');
@@ -13,11 +14,11 @@ export function LoginPage() {
     onSuccess: (response) => {
       localStorage.setItem('routegate.auth.token', response.token);
       setMessageTone('success');
-      setMessage(`Logged in as ${response.user.displayName}`);
+      setMessage(t('login.success', { name: response.user.displayName }));
     },
     onError: () => {
       setMessageTone('error');
-      setMessage('Login failed. Check Manager availability and try again.');
+      setMessage(t('login.failure'));
     },
   });
 
@@ -30,34 +31,33 @@ export function LoginPage() {
   return (
     <section className="auth-page">
       <div className="auth-hero-panel">
-        <span className="auth-eyebrow">Admin access</span>
-        <h1>Sign in to RouteGate</h1>
+        <span className="auth-eyebrow">{t('login.adminAccess')}</span>
+        <h1>{t('login.title')}</h1>
         <p>
-          Access the RouteGate Manager console to manage VPN accounts, servers, agents,
-          routing profiles, and configuration deployment.
+          {t('login.description')}
         </p>
 
         <div className="auth-signal-grid" aria-hidden="true">
-          <div><strong>Manager</strong><span>Control plane</span></div>
-          <div><strong>Agents</strong><span>Node fleet</span></div>
-          <div><strong>VPN</strong><span>Accounts & routes</span></div>
+          <div><strong>{t('login.manager')}</strong><span>{t('login.controlPlane')}</span></div>
+          <div><strong>{t('login.agents')}</strong><span>{t('login.nodeFleet')}</span></div>
+          <div><strong>{t('login.vpn')}</strong><span>{t('login.accountsAndRoutes')}</span></div>
         </div>
       </div>
 
       <form className="auth-card auth-login-card" onSubmit={handleSubmit}>
         <div className="auth-card-header">
-          <span className="auth-eyebrow">Manager login</span>
-          <h2>Admin Console</h2>
-          <p>Open the Manager session for the current environment.</p>
+          <span className="auth-eyebrow">{t('login.managerLogin')}</span>
+          <h2>{t('login.adminConsole')}</h2>
+          <p>{t('login.sessionDescription')}</p>
         </div>
 
         <label className="field">
-          <span>Email</span>
+          <span>{t('login.email')}</span>
           <input value={email} onChange={(event) => setEmail(event.target.value)} />
         </label>
 
         <label className="field">
-          <span>Password</span>
+          <span>{t('login.password')}</span>
           <input
             type="password"
             value={password}
@@ -66,7 +66,7 @@ export function LoginPage() {
         </label>
 
         <button className="primary-button" type="submit" disabled={loginMutation.isPending}>
-          {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
+          {loginMutation.isPending ? t('login.signingIn') : t('login.signIn')}
         </button>
 
         {message && <div className={`form-message auth-message auth-message-${messageTone}`}>{message}</div>}

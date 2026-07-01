@@ -178,7 +178,7 @@ function AdminShell() {
           ))}
         </nav>
 
-        <nav className="nav routegate-nav routegate-nav-secondary" aria-label="Secondary navigation">
+        <nav className="nav routegate-nav routegate-nav-secondary" aria-label={t('navigation.secondary')}>
           {secondaryNavigationItems.map((item) => (
             <span className="nav-link nav-link-muted" key={item.label}>
               <span className="nav-icon" aria-hidden="true"><Icon name={item.icon} /></span>
@@ -195,13 +195,13 @@ function AdminShell() {
             <strong>{t('dashboard.licenseActive')}</strong>
           </div>
           <p>{t('dashboard.licenseExpires')}</p>
-          <p>Nodes: 24 / 100</p>
+          <p>{t('dashboard.nodesUsage')}</p>
           <div className="license-progress-track"><span /></div>
         </div>
 
         <button className="sidebar-control sidebar-theme-control" type="button">
           <Icon name="moon" />
-          <span>Dark theme</span>
+          <span>{t('dashboard.darkTheme')}</span>
           <i />
         </button>
         <button className="sidebar-control" type="button"><Icon name="collapse" /> {t('navigation.collapse')}</button>
@@ -209,7 +209,7 @@ function AdminShell() {
 
       <div className="admin-workspace">
         <header className="admin-topbar">
-          <button className="topbar-menu-button" type="button" aria-label="Toggle sidebar"><Icon name="menu" /></button>
+          <button className="topbar-menu-button" type="button" aria-label={t('topbar.toggleSidebar')}><Icon name="menu" /></button>
           <label className="topbar-search">
             <Icon name="search" />
             <input placeholder={t('topbar.searchPlaceholder')} />
@@ -250,7 +250,7 @@ function AdminShell() {
           <span>{t('app.footerProduct')}</span>
           <span>{t('app.version')}</span>
           <strong><span className="status-dot status-dot-ok" /> {t('dashboard.systemsOperational')}</strong>
-          <span className="admin-statusbar-time">Server time: 20.05.2026 14:32:11 (UTC+3)</span>
+          <span className="admin-statusbar-time">{t('dashboard.serverTime', { time: '20.05.2026 14:32:11 (UTC+3)' })}</span>
         </footer>
       </div>
     </div>

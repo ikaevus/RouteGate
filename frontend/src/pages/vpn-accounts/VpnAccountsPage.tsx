@@ -286,7 +286,7 @@ export function VpnAccountsPage() {
           {accountsQuery.isLoading && <p className="empty-state">{t('common.loading')}</p>}
 
           {accountsQuery.isError && (
-            <div className="form-message form-message-error">Failed to load VPN accounts.</div>
+            <div className="form-message form-message-error">{t('vpnAccounts.loadError')}</div>
           )}
 
           {accountsQuery.isSuccess && accounts.length === 0 && (
@@ -324,53 +324,51 @@ export function VpnAccountsPage() {
         <div className="panel credentials-panel feature-detail-panel">
           <div className="panel-header">
             <div>
-              <div className="panel-title">VLESS / Reality credentials</div>
-              <p className="panel-subtitle">
-                Client-facing values for the selected account. Private Reality keys are not shown.
-              </p>
+              <div className="panel-title">{t('vpnAccounts.credentialsTitle')}</div>
+              <p className="panel-subtitle">{t('vpnAccounts.credentialsSubtitle')}</p>
             </div>
           </div>
 
           {!accountId && (
             <EmptyState
-              title="Select a VPN account"
-              description="Choose an account from the list to view credentials, subscription details, and traffic policy."
+              title={t('vpnAccounts.selectTitle')}
+              description={t('vpnAccounts.selectDescription')}
             />
           )}
 
           {accountId && accountsQuery.isSuccess && !selectedAccount && (
-            <div className="form-message form-message-error">Selected VPN account is not in the current list.</div>
+            <div className="form-message form-message-error">{t('vpnAccounts.selectedMissing')}</div>
           )}
 
           {credentialsQuery.isLoading && (
-            <p className="empty-state">Loading credentials...</p>
+            <p className="empty-state">{t('vpnAccounts.loadingCredentials')}</p>
           )}
 
           {credentialsQuery.isError && (
-            <div className="form-message form-message-error">Failed to load account credentials.</div>
+            <div className="form-message form-message-error">{t('vpnAccounts.credentialsLoadError')}</div>
           )}
 
           {credentials && (
             <div className="detail-list credentials-detail-list feature-detail-list">
-              <DetailRow label="VPN account ID">{formatValue(credentials.vpnAccountId)}</DetailRow>
-              <DetailRow label="Server ID">{formatValue(credentials.serverId)}</DetailRow>
-              <DetailRow label="Protocol">{formatValue(credentials.protocol)}</DetailRow>
-              <DetailRow label="Endpoint">{formatValue(credentials.endpoint)}</DetailRow>
-              <DetailRow label="VLESS UUID">
+              <DetailRow label={t('vpnAccounts.accountId')}>{formatValue(credentials.vpnAccountId)}</DetailRow>
+              <DetailRow label={t('vpnAccounts.serverId')}>{formatValue(credentials.serverId)}</DetailRow>
+              <DetailRow label={t('vpnAccounts.protocol')}>{formatValue(credentials.protocol)}</DetailRow>
+              <DetailRow label={t('vpnAccounts.endpoint')}>{formatValue(credentials.endpoint)}</DetailRow>
+              <DetailRow label={t('vpnAccounts.vlessUuid')}>
                 <code>{formatValue(credentials.vless.uuid)}</code>
               </DetailRow>
-              <DetailRow label="Flow">{formatValue(credentials.vless.flow)}</DetailRow>
-              <DetailRow label="Network">{formatValue(credentials.vless.network)}</DetailRow>
-              <DetailRow label="Reality enabled">
-                {credentials.reality.enabled ? 'enabled' : 'disabled'}
+              <DetailRow label={t('vpnAccounts.flow')}>{formatValue(credentials.vless.flow)}</DetailRow>
+              <DetailRow label={t('vpnAccounts.network')}>{formatValue(credentials.vless.network)}</DetailRow>
+              <DetailRow label={t('vpnAccounts.realityEnabled')}>
+                {credentials.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}
               </DetailRow>
-              <DetailRow label="Reality public key">
+              <DetailRow label={t('vpnAccounts.realityPublicKey')}>
                 <code>{formatValue(credentials.reality.publicKey)}</code>
               </DetailRow>
-              <DetailRow label="Reality short ID">
+              <DetailRow label={t('vpnAccounts.realityShortId')}>
                 <code>{formatValue(credentials.reality.shortId)}</code>
               </DetailRow>
-              <DetailRow label="Reality server name">
+              <DetailRow label={t('vpnAccounts.realityServerName')}>
                 {formatValue(credentials.reality.serverName)}
               </DetailRow>
             </div>
@@ -383,10 +381,8 @@ export function VpnAccountsPage() {
           <div className="panel subscription-panel feature-detail-panel">
             <div className="panel-header">
               <div>
-                <div className="panel-title">Subscription and client config</div>
-                <p className="panel-subtitle">
-                  Generate a one-time visible subscription token and preview the rendered client payload.
-                </p>
+                <div className="panel-title">{t('vpnAccounts.subscriptionTitle')}</div>
+                <p className="panel-subtitle">{t('vpnAccounts.subscriptionSubtitle')}</p>
               </div>
               <div className="table-actions">
                 <button
@@ -395,7 +391,7 @@ export function VpnAccountsPage() {
                   disabled={isSubscriptionBusy}
                   onClick={() => createSubscriptionTokenMutation.mutate()}
                 >
-                  {createSubscriptionTokenMutation.isPending ? 'Generating...' : 'Generate subscription'}
+                  {createSubscriptionTokenMutation.isPending ? t('vpnAccounts.generating') : t('vpnAccounts.generateSubscription')}
                 </button>
                 <button
                   className="small-button"
@@ -403,33 +399,33 @@ export function VpnAccountsPage() {
                   disabled={isSubscriptionBusy}
                   onClick={() => rotateSubscriptionTokenMutation.mutate()}
                 >
-                  {rotateSubscriptionTokenMutation.isPending ? 'Rotating...' : 'Rotate token'}
+                  {rotateSubscriptionTokenMutation.isPending ? t('vpnAccounts.rotating') : t('vpnAccounts.rotateToken')}
                 </button>
               </div>
             </div>
 
             {(createSubscriptionTokenMutation.isError || rotateSubscriptionTokenMutation.isError) && (
-              <div className="form-message form-message-error">Failed to create subscription token.</div>
+              <div className="form-message form-message-error">{t('vpnAccounts.subscriptionCreateError')}</div>
             )}
 
             {!subscriptionToken && (
-              <EmptyState
-                title="No subscription token generated"
-                description="Generate a subscription to show URL, QR payload, and client config preview."
+            <EmptyState
+                title={t('vpnAccounts.noSubscriptionTitle')}
+                description={t('vpnAccounts.noSubscriptionDescription')}
               />
             )}
 
             {subscriptionToken && (
               <div className="subscription-result">
                 <div className="form-message form-message-warning">
-                  Save this subscription URL now. The raw token is shown only once and is not stored by the frontend.
+                  {t('vpnAccounts.subscriptionWarning')}
                 </div>
 
                 <div className="detail-list credentials-detail-list feature-detail-list">
-                  <DetailRow label="Subscription token">
+                  <DetailRow label={t('vpnAccounts.subscriptionToken')}>
                     <code>{subscriptionToken.subscriptionToken}</code>
                   </DetailRow>
-                  <DetailRow label="Subscription URL">
+                  <DetailRow label={t('vpnAccounts.subscriptionUrl')}>
                     <span className="copyable-value">
                       <code>{subscriptionToken.subscriptionUrl}</code>
                       <button
@@ -437,27 +433,27 @@ export function VpnAccountsPage() {
                         type="button"
                         onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}
                       >
-                        {copiedTarget === 'subscription-url' ? 'Copied' : 'Copy'}
+                        {copiedTarget === 'subscription-url' ? t('vpnAccounts.copied') : t('vpnAccounts.copy')}
                       </button>
                     </span>
                   </DetailRow>
-                  <DetailRow label="Expires at">{formatDate(subscriptionToken.expiresAt)}</DetailRow>
+                  <DetailRow label={t('vpnAccounts.expiresAt')}>{formatDate(subscriptionToken.expiresAt)}</DetailRow>
                 </div>
 
-                {qrQuery.isLoading && <p className="empty-state">Loading QR payload...</p>}
+                {qrQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingQrPayload')}</p>}
                 {qrQuery.isError && (
-                  <div className="form-message form-message-error">Failed to load subscription QR payload.</div>
+                  <div className="form-message form-message-error">{t('vpnAccounts.qrPayloadLoadError')}</div>
                 )}
                 {qr && (
                   <div className="qr-payload-panel feature-subpanel">
                     <ScannableQrCode
                       value={qr.qrText}
-                      title="Subscription QR code"
-                      subtitle={`Format: ${formatValue(qr.format)}`}
+                      title={t('vpnAccounts.subscriptionQrCode')}
+                      subtitle={t('vpnAccounts.format', { format: formatValue(qr.format) })}
                     />
                     <div>
-                      <div className="panel-title token-snippet-title">Subscription QR payload</div>
-                      <p className="panel-subtitle">Copyable source text used for QR rendering.</p>
+                      <div className="panel-title token-snippet-title">{t('vpnAccounts.subscriptionQrPayload')}</div>
+                      <p className="panel-subtitle">{t('vpnAccounts.qrPayloadSubtitle')}</p>
                     </div>
                     <pre className="code-block">{qr.qrText}</pre>
                     <button
@@ -465,7 +461,7 @@ export function VpnAccountsPage() {
                       type="button"
                       onClick={() => void copyToClipboard('qr-text', qr.qrText)}
                     >
-                      {copiedTarget === 'qr-text' ? 'Copied' : 'Copy QR text'}
+                      {copiedTarget === 'qr-text' ? t('vpnAccounts.copied') : t('vpnAccounts.copyQrText')}
                     </button>
                   </div>
                 )}
@@ -473,10 +469,8 @@ export function VpnAccountsPage() {
                 <div className="client-config-preview feature-subpanel">
                   <div className="panel-header client-config-header">
                     <div>
-                      <div className="panel-title token-snippet-title">Client config preview</div>
-                      <p className="panel-subtitle">
-                        Public subscription response and rendered sing-box config for this account.
-                      </p>
+                      <div className="panel-title token-snippet-title">{t('vpnAccounts.clientConfigPreview')}</div>
+                      <p className="panel-subtitle">{t('vpnAccounts.clientConfigSubtitle')}</p>
                     </div>
                     {renderedConfig && (
                       <button
@@ -484,26 +478,26 @@ export function VpnAccountsPage() {
                         type="button"
                         onClick={() => void copyToClipboard('client-config', renderedConfigText)}
                       >
-                        {copiedTarget === 'client-config' ? 'Copied' : 'Copy config'}
+                        {copiedTarget === 'client-config' ? t('vpnAccounts.copied') : t('vpnAccounts.copyConfig')}
                       </button>
                     )}
                   </div>
 
                   {publicSubscriptionQuery.isLoading && (
-                    <p className="empty-state">Loading client config preview...</p>
+                    <p className="empty-state">{t('vpnAccounts.loadingClientConfig')}</p>
                   )}
 
                   {publicSubscriptionQuery.isError && (
-                    <div className="form-message form-message-error">Failed to load public subscription preview.</div>
+                    <div className="form-message form-message-error">{t('vpnAccounts.publicSubscriptionLoadError')}</div>
                   )}
 
                   {publicSubscription && (
                     <div className="subscription-meta-grid">
-                      <DetailRow label="Subscription format">{formatValue(publicSubscription.format)}</DetailRow>
-                      <DetailRow label="Config status"><StatusBadge status={publicSubscription.config.status} /></DetailRow>
-                      <DetailRow label="Config format">{formatValue(renderedConfig?.format ?? publicSubscription.config.format)}</DetailRow>
-                      <DetailRow label="Generated at">{formatDate(publicSubscription.generatedAt)}</DetailRow>
-                      <DetailRow label="Server endpoint">{formatValue(publicSubscription.server?.endpoint)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.subscriptionFormat')}>{formatValue(publicSubscription.format)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.configStatus')}><StatusBadge status={publicSubscription.config.status} /></DetailRow>
+                      <DetailRow label={t('vpnAccounts.configFormat')}>{formatValue(renderedConfig?.format ?? publicSubscription.config.format)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.generatedAt')}>{formatDate(publicSubscription.generatedAt)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.serverEndpoint')}>{formatValue(publicSubscription.server?.endpoint)}</DetailRow>
                     </div>
                   )}
 
@@ -514,7 +508,7 @@ export function VpnAccountsPage() {
                   {renderedConfig ? (
                     <pre className="code-block client-config-code">{renderedConfigText}</pre>
                   ) : publicSubscription && (
-                    <p className="empty-state">No rendered client config is available for this subscription yet.</p>
+                    <p className="empty-state">{t('vpnAccounts.noRenderedConfig')}</p>
                   )}
                 </div>
               </div>
