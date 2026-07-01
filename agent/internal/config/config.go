@@ -204,13 +204,10 @@ func (c Config) Save(path string) error {
 	if trafficUsageFilePath == "" {
 		trafficUsageFilePath = DefaultTrafficUsageFilePath
 	}
-	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
+	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\nservice_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName, serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
 	if c.RegistrationToken != "" {
-		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
+		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\nservice_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName, serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
 	}
-	needle := fmt.Sprintf("sing_box_service_name: %q\\ntraffic_collection_enabled:", serviceName)
-	replacement := fmt.Sprintf("sing_box_service_name: %q\\nservice_control_enabled: %t\\ntraffic_collection_enabled:", serviceName, serviceControlEnabled)
-	data = strings.Replace(data, needle, replacement, 1)
 
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		return fmt.Errorf("write config: %w", err)

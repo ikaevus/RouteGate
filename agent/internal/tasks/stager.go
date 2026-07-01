@@ -43,12 +43,18 @@ func (s Stager) Stage(task ConfigTask) (StageResult, error) {
 	if !json.Valid(task.RenderedConfig) {
 		return StageResult{}, fmt.Errorf("rendered config must be valid JSON")
 	}
+
+	configBytes, err := extractSingBoxConfig(task.RenderedConfig)
+	if err != nil {
+		return StageResult{}, err
+	}
+
 	if err := os.MkdirAll(s.dir, 0o750); err != nil {
 		return StageResult{}, fmt.Errorf("create config staging dir: %w", err)
 	}
 
 	var pretty bytes.Buffer
-	if err := json.Indent(&pretty, task.RenderedConfig, "", "  "); err != nil {
+	if err := json.Indent(&pretty, configBytes, "", "  "); err != nil {
 		return StageResult{}, fmt.Errorf("format rendered config: %w", err)
 	}
 	pretty.WriteByte('\n')
@@ -64,4 +70,21 @@ func (s Stager) Stage(task ConfigTask) (StageResult, error) {
 	}
 
 	return StageResult{StagedPath: path, ConfigHash: task.ConfigHash, ConfigVersionID: task.ConfigVersionID}, nil
+}
+
+func extractSingBoxConfig(renderedConfig json.RawMessage) (json.RawMessage, error) {
+	var envelope struct {
+		SchemaVersion string          `json:"schemaVersion"`
+		SingBox       json.RawMessage `json:"singBox"`
+	}
+	if err := json.Unmarshal(renderedConfig, &envelope); err != nil {
+		return nil, fmt.Errorf("decode rendered config envelope: %w", err)
+	}
+	if envelope.SchemaVersion == "routegate.config.v1" {
+		if len(envelope.SingBox) == 0 || !json.Valid(envelope.SingBox) {
+			return nil, fmt.Errorf("routegate config envelope must include valid singBox payload")
+		}
+		return envelope.SingBox, nil
+	}
+	return renderedConfig, nil
 }
