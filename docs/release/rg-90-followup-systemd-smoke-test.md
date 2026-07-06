@@ -150,10 +150,11 @@ If practical, verify these cases as part of the smoke-test pass/fail review:
 - missing systemd service produces a clear restart/healthcheck error
 - failed restart triggers rollback behavior or documents the current limitation
 
-## Current blockers
+## Current status and prerequisites
 
-- RG-90-FOLLOWUP-BLOCKER-001: No code blocker identified for the standard systemd apply path. The implementation already supports the required stage, validate, apply, restart, and healthcheck flow.
-- RG-90-FOLLOWUP-BLOCKER-002: A host without real `systemd`, a working `systemctl`, or a valid sing-box service unit cannot exercise the restart/healthcheck path. This is an environment prerequisite rather than a RouteGate code defect.
+- No RouteGate code blocker has been identified for the standard systemd apply path during source review.
+- A real Linux/systemd host with a working sing-box service is still required to execute this smoke test.
+- If execution reveals defects, record them as RG-90-FOLLOWUP-BLOCKER-001, RG-90-FOLLOWUP-BLOCKER-002, etc.
 
 ## Evidence checklist
 
