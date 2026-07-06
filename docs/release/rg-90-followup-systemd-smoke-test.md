@@ -65,7 +65,7 @@ Example setup commands:
 sudo install -d -m 0755 /etc/sing-box /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups
 sudo install -m 0755 /path/to/sing-box /usr/local/bin/sing-box
 sudo systemctl daemon-reload
-sudo systemctl enable --now sing-box
+sudo systemctl enable sing-box
 sudo systemctl status sing-box --no-pager
 ```
 
@@ -110,8 +110,10 @@ Example Agent startup:
 ```bash
 sudo mkdir -p /etc/routegate
 sudo install -m 0600 /path/to/agent.yaml /etc/routegate/agent.yaml
-sudo /usr/local/bin/routegate-agent -config /etc/routegate/agent.yaml -once
+sudo /usr/local/bin/routegate-agent -config /etc/routegate/agent.yaml
 ```
+
+`-once` is suitable only for diagnostics or manual polling. The Agent must keep running so it can later pick up the Config Deploy apply job and perform the restart/healthcheck flow.
 
 ## Config render / apply steps
 
@@ -154,7 +156,7 @@ If practical, verify these cases as part of the smoke-test pass/fail review:
 
 - No RouteGate code blocker has been identified for the standard systemd apply path during source review.
 - A real Linux/systemd host with a working sing-box service is still required to execute this smoke test.
-- If execution reveals defects, record them as RG-90-FOLLOWUP-BLOCKER-001, RG-90-FOLLOWUP-BLOCKER-002, etc.
+- If execution reveals defects, record them as RG-90-FOLLOWUP-BLOCKER-001, RG-90-FOLLOWUP-BLOCKER-002, etc., and keep the current prerequisites and naming convention in mind.
 
 ## Evidence checklist
 
