@@ -108,6 +108,25 @@
   grid-template-columns: 1.4fr 0.7fr 0.7fr 1fr 1fr;
 }
 
+.portal-profile-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.portal-profile-name,
+.portal-profile-meta {
+  display: block;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.portal-profile-meta {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .portal-profile-row-link {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
@@ -120,6 +139,8 @@
 
 .portal-qr-panel {
   border-top: 0;
+  display: grid;
+  gap: 16px;
   padding-top: 0;
 }
 

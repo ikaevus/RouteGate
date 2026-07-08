@@ -57,9 +57,9 @@ function PortalProfileRow({ profile, selected }: { profile: PortalProfile; selec
       className={`admin-table-row portal-profiles-table-row portal-profile-row-link${selected ? ' portal-profile-row-selected' : ''}`}
       to={`/portal/profiles/${profile.id}`}
     >
-      <div>
-        <strong>{formatValue(profile.displayName)}</strong>
-        <span>{formatValue(profile.location)}</span>
+      <div className="portal-profile-cell">
+        <strong className="portal-profile-name">{formatValue(profile.displayName)}</strong>
+        <span className="portal-profile-meta">{formatValue(profile.location)}</span>
       </div>
       <StatusBadge status={profile.accessStatus} />
       <span>{formatValue(profile.protocol)}</span>

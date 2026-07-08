@@ -52,9 +52,9 @@ function VpnAccountRow({ account, selected }: { account: VpnAccount; selected: b
       className={`admin-table-row vpn-accounts-table-row vpn-account-row-link${selected ? ' vpn-account-row-selected' : ''}`}
       to={`/vpn-accounts/${account.id}`}
     >
-      <div>
-        <strong>{formatValue(account.displayName)}</strong>
-        <span>{formatValue(account.email)}</span>
+      <div className="portal-profile-cell">
+        <strong className="portal-profile-name">{formatValue(account.displayName)}</strong>
+        <span className="portal-profile-meta">{formatValue(account.email)}</span>
       </div>
       <StatusBadge status={account.status} />
       <span>{formatValue(account.serverId)}</span>

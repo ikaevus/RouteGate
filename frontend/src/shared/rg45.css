@@ -116,12 +116,12 @@
 .qr-code-card {
   align-items: start;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 14px;
+  border-radius: 16px;
   background: rgba(2, 6, 23, 0.38);
   display: grid;
-  gap: 14px;
+  gap: 16px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 14px;
+  padding: 18px;
 }
 
 .qr-code-card-empty {
@@ -130,18 +130,19 @@
 
 .qr-code-frame {
   border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 12px;
+  border-radius: 16px;
   background: #ffffff;
-  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.26);
-  padding: 10px;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
+  padding: 14px;
 }
 
 .qr-code-svg {
   display: block;
-  height: 196px;
+  height: auto;
   image-rendering: pixelated;
   max-width: 100%;
-  width: 196px;
+  width: min(260px, 100%);
+  aspect-ratio: 1;
 }
 
 .client-config-header {
@@ -156,6 +157,16 @@
 
 .subscription-meta-grid .detail-row {
   grid-template-columns: 150px minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .qr-code-card {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-code-frame {
+    justify-self: start;
+  }
 }
 
 .client-config-code {

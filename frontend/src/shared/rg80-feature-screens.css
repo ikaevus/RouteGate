@@ -99,6 +99,26 @@
   white-space: nowrap;
 }
 
+.portal-page .detail-row > strong,
+.portal-page .detail-row > span,
+.portal-page .detail-row > code,
+.vpn-accounts-page .detail-row > strong,
+.vpn-accounts-page .detail-row > span,
+.vpn-accounts-page .detail-row > code,
+.portal-page .copyable-value code,
+.vpn-accounts-page .copyable-value code {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.portal-page .detail-row,
+.vpn-accounts-page .detail-row {
+  align-items: start;
+}
+
 .admin-table-row code,
 .detail-row code,
 .code-block {
@@ -127,6 +147,7 @@
   color: var(--rg-text-primary);
   font-size: 13px;
   font-weight: 650;
+  line-height: 1.45;
 }
 
 .copyable-value {
@@ -141,7 +162,9 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .feature-subpanel,
