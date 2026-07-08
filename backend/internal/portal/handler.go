@@ -92,10 +92,11 @@ func (h *Handler) GetSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := "Generate or refresh the subscription link to reveal a new user-facing URL. RouteGate stores only the token hash, so existing raw tokens cannot be shown again."
+	locale := requestLocale(r)
+	message := localizedSubscriptionWarning(locale)
 	requiresTokenRotation := profile.AccessStatus == AccessStatusActive
 	if profile.AccessStatus != AccessStatusActive {
-		message = "Subscription self-service is unavailable because this VPN profile is not active."
+		message = localizedSubscriptionInactive(locale)
 	}
 
 	response := PortalSubscription{
@@ -139,6 +140,7 @@ func (h *Handler) GenerateSubscriptionAccess(w http.ResponseWriter, r *http.Requ
 	}
 
 	subscriptionURL := portalSubscriptionURL(r, rawToken)
+	locale := requestLocale(r)
 	response := SubscriptionAccessResponse{
 		Subscription: PortalSubscription{
 			ProfileID:             profile.ID,
@@ -148,7 +150,7 @@ func (h *Handler) GenerateSubscriptionAccess(w http.ResponseWriter, r *http.Requ
 			Format:                PortalSubscriptionFormat,
 			ExpiresAt:             created.ExpiresAt,
 			RequiresTokenRotation: false,
-			Message:               "Subscription link was generated. Copy it now; RouteGate does not store raw subscription tokens.",
+			Message:               localizedSubscriptionGenerated(locale),
 		},
 		QR: PortalQRCode{
 			ProfileID:    profile.ID,
@@ -168,9 +170,10 @@ func (h *Handler) GetQRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := "Generate or refresh the subscription link to render a new QR code. Existing raw tokens cannot be recovered from token hashes."
+	locale := requestLocale(r)
+	message := localizedQRCodeWarning(locale)
 	if profile.AccessStatus != AccessStatusActive {
-		message = "QR rendering is unavailable because this VPN profile is not active."
+		message = localizedQRCodeInactive(locale)
 	}
 
 	response := PortalQRCode{
@@ -189,7 +192,8 @@ func (h *Handler) ListInstructions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, InstructionsResponse{Items: instructionPlatforms})
+	locale := requestLocale(r)
+	httpx.WriteJSON(w, http.StatusOK, InstructionsResponse{Items: localizedInstructionPlatforms(locale)})
 }
 
 func (h *Handler) GetInstruction(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +202,8 @@ func (h *Handler) GetInstruction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	platform := strings.ToLower(strings.TrimSpace(r.PathValue("platform")))
-	instruction, ok := instructionsByPlatform[platform]
+	locale := requestLocale(r)
+	instruction, ok := localizedInstruction(locale, platform)
 	if !ok {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("instruction_not_found", "Device setup instructions not found."))
 		return

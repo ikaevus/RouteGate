@@ -91,6 +91,85 @@ func withTestUser(request *http.Request, email string) *http.Request {
 	return request.WithContext(auth.ContextWithUser(request.Context(), user))
 }
 
+func TestListInstructionsReturnsRussianLocalizedPlatformDescriptions(t *testing.T) {
+	handler := newTestHandler(&fakePortalRepository{})
+	request := httptest.NewRequest(http.MethodGet, "/api/portal/instructions", nil)
+	request.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+	request = withTestUser(request, "alice@example.com")
+	response := httptest.NewRecorder()
+
+	handler.ListInstructions(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+
+	var body InstructionsResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if len(body.Items) == 0 {
+		t.Fatal("expected instructions payload")
+	}
+	if body.Items[0].Description != "Импортируйте ссылку подписки или QR-код на iPhone и iPad." {
+		t.Fatalf("expected Russian platform description, got %q", body.Items[0].Description)
+	}
+}
+
+func TestGetInstructionReturnsRussianLocalizedContent(t *testing.T) {
+	handler := newTestHandler(&fakePortalRepository{})
+	request := httptest.NewRequest(http.MethodGet, "/api/portal/instructions/ios", nil)
+	request.SetPathValue("platform", "ios")
+	request.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+	request = withTestUser(request, "alice@example.com")
+	response := httptest.NewRecorder()
+
+	handler.GetInstruction(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+
+	var body InstructionResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if body.Instruction.Steps[0] != "Установите совместимый клиент VLESS или sing-box." {
+		t.Fatalf("expected Russian step 1, got %q", body.Instruction.Steps[0])
+	}
+	if body.Instruction.Notes[0] != "RouteGate не требует использования одного конкретного коммерческого клиента." {
+		t.Fatalf("expected Russian note 1, got %q", body.Instruction.Notes[0])
+	}
+}
+
+func TestGetSubscriptionReturnsRussianWarningForActiveProfile(t *testing.T) {
+	repo := &fakePortalRepository{profile: PortalProfile{ID: "account-1", AccessStatus: AccessStatusActive}}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodGet, "/api/portal/profiles/account-1/subscription", nil)
+	request.SetPathValue("id", "account-1")
+	request.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+	request = withTestUser(request, "alice@example.com")
+	response := httptest.NewRecorder()
+
+	handler.GetSubscription(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+
+	var body SubscriptionResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	want := "Создайте или обновите ссылку подписки, чтобы получить новый пользовательский URL. RouteGate хранит только хеш токена, поэтому существующие исходные токены нельзя показать повторно."
+	if body.Subscription.Message != want {
+		t.Fatalf("expected Russian warning, got %q", body.Subscription.Message)
+	}
+}
+
 func TestGenerateSubscriptionAccessReturnsURLAndQRForOwnedActiveProfile(t *testing.T) {
 	expiresAt := time.Now().Add(24 * time.Hour).UTC()
 	repo := &fakePortalRepository{

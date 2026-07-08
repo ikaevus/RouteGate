@@ -13,7 +13,7 @@ import {
   type SubscriptionTokenResponse,
   type VpnAccount,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
-import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
+import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
@@ -52,9 +52,9 @@ function VpnAccountRow({ account, selected }: { account: VpnAccount; selected: b
       className={`admin-table-row vpn-accounts-table-row vpn-account-row-link${selected ? ' vpn-account-row-selected' : ''}`}
       to={`/vpn-accounts/${account.id}`}
     >
-      <div>
-        <strong>{formatValue(account.displayName)}</strong>
-        <span>{formatValue(account.email)}</span>
+      <div className="portal-profile-cell">
+        <strong className="portal-profile-name">{formatValue(account.displayName)}</strong>
+        <span className="portal-profile-meta">{formatValue(account.email)}</span>
       </div>
       <StatusBadge status={account.status} />
       <span>{formatValue(account.serverId)}</span>
@@ -75,6 +75,7 @@ export function VpnAccountsPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [serverId, setServerId] = useState('');
+  const [isQrOpen, setIsQrOpen] = useState(false);
 
   useEffect(() => {
     setSubscriptionToken(null);
@@ -205,7 +206,7 @@ export function VpnAccountsPage() {
   }
 
   return (
-    <section className="page vpn-accounts-page feature-screen-page">
+    <section className="page vpn-accounts-page feature-screen-page" style={{ overflowX: 'hidden' }}>
       <div className="page-header feature-page-header">
         <div>
           <h1>{t('vpnAccounts.title')}</h1>
@@ -416,18 +417,18 @@ export function VpnAccountsPage() {
             )}
 
             {subscriptionToken && (
-              <div className="subscription-result">
+              <div className="subscription-result subscription-self-service-card" style={{ minWidth: 0 }}>
                 <div className="form-message form-message-warning">
                   {t('vpnAccounts.subscriptionWarning')}
                 </div>
 
-                <div className="detail-list credentials-detail-list feature-detail-list">
-                  <DetailRow label={t('vpnAccounts.subscriptionToken')}>
-                    <code>{subscriptionToken.subscriptionToken}</code>
-                  </DetailRow>
-                  <DetailRow label={t('vpnAccounts.subscriptionUrl')}>
-                    <span className="copyable-value">
-                      <code>{subscriptionToken.subscriptionUrl}</code>
+                <div className="subscription-url-stack">
+                  <div className="subscription-url-header">
+                    <div className="subscription-url-meta">
+                      <div className="subscription-url-label">{t('vpnAccounts.subscriptionUrl')}</div>
+                      <p className="subscription-url-helper">{t('vpnAccounts.subscriptionUrlHelper')}</p>
+                    </div>
+                    <div className="table-actions">
                       <button
                         className="small-button"
                         type="button"
@@ -435,35 +436,33 @@ export function VpnAccountsPage() {
                       >
                         {copiedTarget === 'subscription-url' ? t('vpnAccounts.copied') : t('vpnAccounts.copy')}
                       </button>
-                    </span>
-                  </DetailRow>
-                  <DetailRow label={t('vpnAccounts.expiresAt')}>{formatDate(subscriptionToken.expiresAt)}</DetailRow>
+                      <button
+                        className="small-button"
+                        type="button"
+                        onClick={() => setIsQrOpen(true)}
+                        disabled={!qr?.qrText}
+                      >
+                        {t('vpnAccounts.showQr')}
+                      </button>
+                    </div>
+                  </div>
+                  <code className="subscription-url-value">{subscriptionToken.subscriptionUrl}</code>
+                </div>
+
+                <div className="subscription-secondary-meta">
+                  <div className="subscription-meta-chip">
+                    <span>{t('vpnAccounts.expiresAt')}</span>
+                    <strong>{formatDate(subscriptionToken.expiresAt)}</strong>
+                  </div>
+                  <div className="subscription-meta-chip">
+                    <span>{t('vpnAccounts.subscriptionToken')}</span>
+                    <strong>{formatValue(subscriptionToken.subscriptionToken)}</strong>
+                  </div>
                 </div>
 
                 {qrQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingQrPayload')}</p>}
                 {qrQuery.isError && (
                   <div className="form-message form-message-error">{t('vpnAccounts.qrPayloadLoadError')}</div>
-                )}
-                {qr && (
-                  <div className="qr-payload-panel feature-subpanel">
-                    <ScannableQrCode
-                      value={qr.qrText}
-                      title={t('vpnAccounts.subscriptionQrCode')}
-                      subtitle={t('vpnAccounts.format', { format: formatValue(qr.format) })}
-                    />
-                    <div>
-                      <div className="panel-title token-snippet-title">{t('vpnAccounts.subscriptionQrPayload')}</div>
-                      <p className="panel-subtitle">{t('vpnAccounts.qrPayloadSubtitle')}</p>
-                    </div>
-                    <pre className="code-block">{qr.qrText}</pre>
-                    <button
-                      className="small-button"
-                      type="button"
-                      onClick={() => void copyToClipboard('qr-text', qr.qrText)}
-                    >
-                      {copiedTarget === 'qr-text' ? t('vpnAccounts.copied') : t('vpnAccounts.copyQrText')}
-                    </button>
-                  </div>
                 )}
 
                 <div className="client-config-preview feature-subpanel">
@@ -506,13 +505,31 @@ export function VpnAccountsPage() {
                   )}
 
                   {renderedConfig ? (
-                    <pre className="code-block client-config-code">{renderedConfigText}</pre>
+                    <pre className="code-block client-config-code" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' }}>{renderedConfigText}</pre>
                   ) : publicSubscription && (
                     <p className="empty-state">{t('vpnAccounts.noRenderedConfig')}</p>
                   )}
                 </div>
               </div>
             )}
+
+            <SubscriptionQrDialog
+              isOpen={isQrOpen}
+              title={t('vpnAccounts.subscriptionQrCode')}
+              onClose={() => setIsQrOpen(false)}
+              qrText={qr?.qrText}
+              qrTitle={t('vpnAccounts.subscriptionQrCode')}
+              qrSubtitle={t('vpnAccounts.format', { format: formatValue(qr?.format) })}
+              url={subscriptionToken?.subscriptionUrl}
+              urlLabel={t('vpnAccounts.subscriptionUrl')}
+              onCopyQrText={() => void copyToClipboard('qr-text', qr?.qrText ?? '')}
+              copyQrLabel={t('vpnAccounts.copyQrText')}
+              copyCopiedLabel={t('vpnAccounts.copied')}
+              copied={copiedTarget === 'qr-text'}
+              closeLabel={t('common.close')}
+              loadingLabel={t('vpnAccounts.qrPayloadLoadError')}
+              unavailableLabel={t('vpnAccounts.qrPayloadLoadError')}
+            />
           </div>
         )}
       </div>

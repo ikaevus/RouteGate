@@ -15,7 +15,7 @@ import {
   type PortalProfile,
 } from '../../entities/portal/api/portalApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
-import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
+import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -39,7 +39,11 @@ function StatusBadge({ status }: { status?: string | null }) {
   const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
   const statusClassName = normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-  return <span className={`badge badge-${statusClassName}`}>{translateStatus(normalizedStatus)}</span>;
+  return (
+    <span className={`badge badge-${statusClassName}`} style={{ whiteSpace: 'nowrap' }}>
+      {translateStatus(normalizedStatus)}
+    </span>
+  );
 }
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
@@ -57,9 +61,9 @@ function PortalProfileRow({ profile, selected }: { profile: PortalProfile; selec
       className={`admin-table-row portal-profiles-table-row portal-profile-row-link${selected ? ' portal-profile-row-selected' : ''}`}
       to={`/portal/profiles/${profile.id}`}
     >
-      <div>
-        <strong>{formatValue(profile.displayName)}</strong>
-        <span>{formatValue(profile.location)}</span>
+      <div className="portal-profile-cell">
+        <strong className="portal-profile-name">{formatValue(profile.displayName)}</strong>
+        <span className="portal-profile-meta">{formatValue(profile.location)}</span>
       </div>
       <StatusBadge status={profile.accessStatus} />
       <span>{formatValue(profile.protocol)}</span>
@@ -95,6 +99,7 @@ export function PortalPage() {
   const queryClient = useQueryClient();
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
+  const [isQrOpen, setIsQrOpen] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ['portal-me'],
@@ -190,7 +195,7 @@ export function PortalPage() {
   const hasPortalLoadError = meQuery.isError || dashboardQuery.isError || profilesQuery.isError;
 
   return (
-    <section className="page portal-page">
+    <section className="page portal-page" style={{ overflowX: 'hidden' }}>
       <div className="page-header">
         <div>
           <h1>{t('portal.title')}</h1>
@@ -320,7 +325,10 @@ export function PortalPage() {
           </div>
 
           {selectedProfile && (
-            <div className="portal-profile-grid">
+            <div
+              className="portal-profile-grid"
+              style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 420px)', gap: 16, alignItems: 'start', minWidth: 0 }}
+            >
               <div className="panel subscription-panel">
                 <div className="panel-header">
                   <div>
@@ -356,32 +364,64 @@ export function PortalPage() {
                 )}
 
                 {subscription && (
-                  <div className="subscription-result">
-                    <div className="detail-list credentials-detail-list">
-                      <DetailRow label={t('portal.profileId')}>
-                        <code>{formatValue(subscription.profileId)}</code>
-                      </DetailRow>
-                      <DetailRow label={t('portal.available')}>{subscription.available ? t('portal.yes') : t('portal.no')}</DetailRow>
-                      <DetailRow label={t('portal.access')}><StatusBadge status={subscription.accessStatus} /></DetailRow>
-                      <DetailRow label={t('portal.format')}>{formatValue(subscription.format)}</DetailRow>
-                      <DetailRow label={t('portal.expiresAt')}>{formatDate(subscription.expiresAt)}</DetailRow>
-                      <DetailRow label={t('portal.tokenRotationRequired')}>
-                        {subscription.requiresTokenRotation ? t('portal.yes') : t('portal.no')}
-                      </DetailRow>
-                      {subscription.subscriptionUrl && (
-                        <DetailRow label={t('portal.subscriptionUrl')}>
-                          <span className="copyable-value">
-                            <code>{subscription.subscriptionUrl}</code>
-                            <button
-                              className="small-button"
-                              type="button"
-                              onClick={() => void copyToClipboard('portal-subscription-url', subscription.subscriptionUrl)}
-                            >
-                              {copiedTarget === 'portal-subscription-url' ? t('portal.copied') : t('portal.copy')}
-                            </button>
-                          </span>
-                        </DetailRow>
-                      )}
+                  <div className="subscription-result subscription-self-service-card">
+                    <div className="subscription-status-row">
+                      <div className="subscription-status-summary">
+                        <div className="subscription-status-pill">
+                          <span>{t('portal.available')}</span>
+                          <strong>{subscription.available ? t('portal.yes') : t('portal.no')}</strong>
+                        </div>
+                        <div className="subscription-status-pill">
+                          <span>{t('portal.access')}</span>
+                          <strong><StatusBadge status={subscription.accessStatus} /></strong>
+                        </div>
+                      </div>
+                      <div className="subscription-compact-meta">
+                        <span>{t('portal.format')}</span>
+                        <strong>{formatValue(subscription.format)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="subscription-url-stack">
+                      <div className="subscription-url-header">
+                        <div className="subscription-url-meta">
+                          <div className="subscription-url-label">{t('portal.subscriptionUrl')}</div>
+                          <p className="subscription-url-helper">{t('portal.subscriptionUrlHelper')}</p>
+                        </div>
+                        <div className="table-actions">
+                          <button
+                            className="small-button"
+                            type="button"
+                            onClick={() => void copyToClipboard('portal-subscription-url', subscription.subscriptionUrl)}
+                          >
+                            {copiedTarget === 'portal-subscription-url' ? t('portal.copied') : t('portal.copy')}
+                          </button>
+                          <button
+                            className="small-button"
+                            type="button"
+                            onClick={() => setIsQrOpen(true)}
+                            disabled={!qr?.available || !qr.qrText}
+                          >
+                            {t('portal.showQr')}
+                          </button>
+                        </div>
+                      </div>
+                      <code className="subscription-url-value">{subscription.subscriptionUrl}</code>
+                    </div>
+
+                    <div className="subscription-secondary-meta">
+                      <div className="subscription-meta-chip">
+                        <span>{t('portal.expiresAt')}</span>
+                        <strong>{formatDate(subscription.expiresAt)}</strong>
+                      </div>
+                      <div className="subscription-meta-chip">
+                        <span>{t('portal.profileId')}</span>
+                        <strong>{formatValue(subscription.profileId)}</strong>
+                      </div>
+                      <div className="subscription-meta-chip">
+                        <span>{t('portal.tokenRotationRequired')}</span>
+                        <strong>{subscription.requiresTokenRotation ? t('portal.yes') : t('portal.no')}</strong>
+                      </div>
                     </div>
 
                     {subscription.message && (
@@ -391,56 +431,23 @@ export function PortalPage() {
                 )}
               </div>
 
-              <div className="panel subscription-panel">
-                <div className="panel-header">
-                  <div>
-                    <div className="panel-title">{t('portal.qrMetadata')}</div>
-                    <p className="panel-subtitle">{t('portal.qrMetadataSubtitle')}</p>
-                  </div>
-                </div>
-
-                {qrQuery.isLoading && <p className="empty-state">{t('portal.loadingQrMetadata')}</p>}
-
-                {qrQuery.isError && (
-                  <div className="form-message form-message-error">{t('portal.qrLoadError')}</div>
-                )}
-
-                {qr && (
-                  <div className="qr-payload-panel portal-qr-panel">
-                    {qr.available && qr.qrText ? (
-                      <ScannableQrCode
-                        value={qr.qrText}
-                        title={t('portal.subscriptionQrCode')}
-                        subtitle={t('portal.formatValue', { format: formatValue(qr.format) })}
-                      />
-                    ) : (
-                      <p className="empty-state">{qr.message ?? t('portal.qrUnavailable')}</p>
-                    )}
-
-                    <div className="detail-list credentials-detail-list">
-                      <DetailRow label={t('portal.profileId')}>
-                        <code>{formatValue(qr.profileId)}</code>
-                      </DetailRow>
-                      <DetailRow label={t('portal.available')}>{qr.available ? t('portal.yes') : t('portal.no')}</DetailRow>
-                      <DetailRow label={t('portal.access')}><StatusBadge status={qr.accessStatus} /></DetailRow>
-                      <DetailRow label={t('portal.format')}>{formatValue(qr.format)}</DetailRow>
-                    </div>
-
-                    {qr.available && qr.qrText && (
-                      <>
-                        <pre className="code-block">{qr.qrText}</pre>
-                        <button
-                          className="small-button"
-                          type="button"
-                          onClick={() => void copyToClipboard('portal-qr-text', qr.qrText)}
-                        >
-                          {copiedTarget === 'portal-qr-text' ? t('portal.copied') : t('portal.copyQrText')}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+              <SubscriptionQrDialog
+                isOpen={isQrOpen}
+                title={t('portal.subscriptionQrCode')}
+                onClose={() => setIsQrOpen(false)}
+                qrText={qr?.qrText}
+                qrTitle={t('portal.subscriptionQrCode')}
+                qrSubtitle={t('portal.formatValue', { format: formatValue(qr?.format) })}
+                url={subscription?.subscriptionUrl}
+                urlLabel={t('portal.subscriptionUrl')}
+                onCopyQrText={() => void copyToClipboard('portal-qr-text', qr?.qrText ?? '')}
+                copyQrLabel={t('portal.copyQrText')}
+                copyCopiedLabel={t('portal.copied')}
+                copied={copiedTarget === 'portal-qr-text'}
+                closeLabel={t('common.close')}
+                loadingLabel={t('portal.qrUnavailable')}
+                unavailableLabel={t('portal.qrUnavailable')}
+              />
             </div>
           )}
         </div>
