@@ -16,7 +16,7 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
   const statusClassName = toStatusClassName(normalizedStatus);
 
   return (
-    <span className={`badge badge-${statusClassName}`}>
+    <span className={`badge badge-${statusClassName}`} style={{ whiteSpace: 'nowrap' }}>
       {label ?? translateStatus(normalizedStatus)}
     </span>
   );

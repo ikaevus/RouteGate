@@ -107,6 +107,9 @@
 .vpn-accounts-page .detail-row > code,
 .portal-page .copyable-value code,
 .vpn-accounts-page .copyable-value code {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
   overflow: visible;
   text-overflow: unset;
   white-space: normal;
@@ -114,9 +117,21 @@
   overflow-wrap: anywhere;
 }
 
+.portal-page .detail-row > code,
+.vpn-accounts-page .detail-row > code,
+.portal-page .copyable-value code,
+.vpn-accounts-page .copyable-value code {
+  white-space: pre-wrap;
+}
+
 .portal-page .detail-row,
 .vpn-accounts-page .detail-row {
   align-items: start;
+}
+
+.portal-page .detail-row,
+.vpn-accounts-page .detail-row {
+  grid-template-columns: minmax(160px, 0.55fr) minmax(0, 1.45fr);
 }
 
 .admin-table-row code,
@@ -159,9 +174,11 @@
 }
 
 .copyable-value code {
+  display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: unset;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -181,6 +198,341 @@
 .client-config-preview {
   margin-top: 14px;
   padding: 16px;
+}
+
+.portal-page .qr-payload-panel {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.portal-page .qr-payload-panel > .code-block,
+.portal-page .qr-payload-panel > .small-button {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1100px) {
+  .portal-page .qr-payload-panel {
+    grid-template-columns: minmax(280px, 1fr) minmax(260px, 1fr);
+  }
+}
+
+.subscription-self-service-card {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.subscription-status-row {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.subscription-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.subscription-status-pill,
+.subscription-meta-chip {
+  align-items: start;
+  background: rgba(2, 6, 23, 0.42);
+  border: 1px solid rgba(38, 52, 73, 0.85);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.subscription-status-pill span,
+.subscription-meta-chip span,
+.subscription-compact-meta span,
+.subscription-url-label,
+.subscription-url-label + .panel-subtitle {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.subscription-status-pill strong,
+.subscription-meta-chip strong,
+.subscription-compact-meta strong {
+  color: var(--rg-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.subscription-url-stack {
+  border: 1px solid rgba(38, 52, 73, 0.85);
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.32);
+  display: grid;
+  gap: 12px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 16px;
+}
+
+.subscription-url-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.subscription-url-value {
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.72);
+  border: 1px solid rgba(38, 52, 73, 0.92);
+  color: #dbeafe;
+  display: block;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.subscription-url-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.subscription-url-helper {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.subscription-secondary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.subscription-compact-meta {
+  align-items: start;
+  background: rgba(2, 6, 23, 0.42);
+  border: 1px solid rgba(38, 52, 73, 0.85);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.subscription-qr-modal-backdrop {
+  align-items: center;
+  background: rgba(2, 6, 23, 0.74);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 16px;
+  position: fixed;
+  z-index: 2000;
+}
+
+.subscription-qr-modal {
+  background: linear-gradient(180deg, rgba(17, 28, 46, 0.98), rgba(11, 18, 32, 0.94));
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  border-radius: 24px;
+  box-shadow: 0 32px 80px rgba(2, 6, 23, 0.45);
+  display: grid;
+  gap: 16px;
+  margin: auto;
+  max-height: min(88vh, 760px);
+  max-width: min(560px, calc(100vw - 32px));
+  overflow: auto;
+  padding: 20px;
+  width: 100%;
+}
+
+.subscription-qr-modal-header,
+.subscription-qr-modal-footer {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.subscription-qr-modal-header {
+  cursor: default;
+}
+
+.subscription-qr-modal-drag-handle {
+  cursor: grab;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.subscription-qr-modal-drag-handle:active {
+  cursor: grabbing;
+}
+
+.subscription-qr-modal-header h3 {
+  color: var(--rg-text-primary);
+  font-size: 18px;
+  margin: 0;
+}
+
+.subscription-qr-modal-header p {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.subscription-qr-modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.subscription-qr-empty-state {
+  align-items: center;
+  border: 1px dashed rgba(38, 52, 73, 0.95);
+  border-radius: 18px;
+  display: flex;
+  justify-content: center;
+  min-height: 240px;
+  padding: 20px;
+}
+
+.subscription-qr-modal .qr-code-card {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.subscription-qr-modal .qr-code-frame {
+  justify-self: center;
+  padding: 18px;
+}
+
+.subscription-qr-modal .qr-code-svg {
+  width: min(320px, 100%);
+}
+
+.subscription-qr-url-preview {
+  border: 1px solid rgba(38, 52, 73, 0.75);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.32);
+  display: grid;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.subscription-url-label {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.subscription-url-code {
+  color: #dbeafe;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.vpn-accounts-table-row {
+  grid-template-columns: minmax(0, 1.8fr) auto minmax(90px, 0.7fr) minmax(110px, 0.8fr) minmax(116px, 0.7fr);
+  padding: 12px 0;
+}
+
+.portal-page,
+.vpn-accounts-page {
+  overflow-x: hidden;
+}
+
+.vpn-accounts-table-row .portal-profile-cell {
+  min-width: 0;
+}
+
+.vpn-accounts-table-row .portal-profile-name,
+.vpn-accounts-table-row .portal-profile-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vpn-accounts-table-row code {
+  border: 0;
+  background: transparent;
+  color: var(--rg-text-secondary);
+  justify-self: start;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.vpn-accounts-table-row > .badge {
+  justify-self: start;
+}
+
+.vpn-accounts-table-row .badge {
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .subscription-status-row {
+    flex-direction: column;
+  }
+
+  .subscription-url-header {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .subscription-qr-modal-backdrop {
+    padding: 16px;
+  }
+
+  .subscription-qr-modal {
+    padding: 16px;
+  }
+
+  .subscription-qr-modal-header,
+  .subscription-qr-modal-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .vpn-accounts-table-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .vpn-accounts-table-row > * {
+    justify-self: start;
+  }
 }
 
 .code-block {

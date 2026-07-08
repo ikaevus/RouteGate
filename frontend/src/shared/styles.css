@@ -346,6 +346,7 @@ a {
   margin-top: 0 !important;
   padding: 5px 9px;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .badge-online {
@@ -623,6 +624,17 @@ a {
   color: #94a3b8;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.admin-table-row .portal-profile-cell {
+  min-width: 0;
+}
+
+.admin-table-row .portal-profile-name,
+.admin-table-row .portal-profile-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-table-row code {

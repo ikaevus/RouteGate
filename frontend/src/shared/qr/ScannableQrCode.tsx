@@ -17,6 +17,7 @@ type ScannableQrCodeProps = {
   value?: string | null;
   title?: string;
   subtitle?: string;
+  showHeader?: boolean;
 };
 
 const LOW_ERROR_CORRECTION_FORMAT_BITS = 1;
@@ -356,7 +357,7 @@ function createSvgPath(modules: boolean[][]): string {
     .join('');
 }
 
-export function ScannableQrCode({ value: rawValue, title, subtitle }: ScannableQrCodeProps) {
+export function ScannableQrCode({ value: rawValue, title, subtitle, showHeader = true }: ScannableQrCodeProps) {
   const value = rawValue?.trim() ?? '';
   const displayTitle = title ?? t('qr.code');
 
@@ -376,10 +377,12 @@ export function ScannableQrCode({ value: rawValue, title, subtitle }: ScannableQ
 
     return (
       <div className="qr-code-card">
-        <div>
-          <div className="panel-title token-snippet-title">{displayTitle}</div>
-          {subtitle && <p className="panel-subtitle">{subtitle}</p>}
-        </div>
+        {showHeader && (
+          <div>
+            <div className="panel-title token-snippet-title">{displayTitle}</div>
+            {subtitle && <p className="panel-subtitle">{subtitle}</p>}
+          </div>
+        )}
         <div className="qr-code-frame">
           <svg
             aria-label={displayTitle}
