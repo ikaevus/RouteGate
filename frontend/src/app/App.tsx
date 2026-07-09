@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
-import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ServersPage } from '../pages/servers/ServersPage';
 import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
@@ -9,6 +10,8 @@ import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPage';
 import { LoginPage } from '../pages/login/LoginPage';
 import { PortalPage } from '../pages/portal/PortalPage';
+import { getMe, logout, type AuthUser } from '../entities/auth/api/authApi';
+import { clearAuthToken, getAuthToken } from '../shared/api/client';
 import { t } from '../shared/i18n/i18n';
 import { useLocale } from '../shared/i18n/useLocale';
 import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
@@ -105,7 +108,12 @@ function PortalShell() {
   );
 }
 
-function AuthShell() {
+interface AuthShellProps {
+  children?: ReactNode;
+  onLogin?: () => void;
+}
+
+function AuthShell({ children, onLogin }: AuthShellProps) {
   return (
     <div className="auth-app-shell">
       <header className="auth-topbar">
@@ -127,16 +135,115 @@ function AuthShell() {
       </header>
 
       <main className="auth-main">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+        {children ?? (
+          <Routes>
+            <Route path="/login" element={<LoginPage onLogin={onLogin} />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        )}
       </main>
     </div>
   );
 }
 
-function AdminShell() {
+interface AdminShellProps {
+  isLoggingOut: boolean;
+  onLogout: () => void;
+  user?: AuthUser;
+}
+
+function getUserDisplayName(user?: AuthUser): string {
+  return user?.displayName?.trim() || user?.email?.trim() || t('common.unknown');
+}
+
+function getUserInitials(user?: AuthUser): string {
+  const displayName = getUserDisplayName(user);
+  const nameParts = displayName.split(/\s+/).filter(Boolean);
+
+  if (nameParts.length >= 2) {
+    return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+  }
+
+  const emailName = user?.email?.split('@')[0]?.trim();
+  const source = emailName || displayName;
+
+  return source.slice(0, 2).toUpperCase();
+}
+
+function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const displayName = getUserDisplayName(user);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleLogout = () => {
+    setIsOpen(false);
+    onLogout();
+  };
+
+  return (
+    <div className="admin-profile-menu" ref={menuRef}>
+      <button
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-label={t('topbar.profileMenu')}
+        className="admin-profile-chip"
+        onClick={() => setIsOpen((current) => !current)}
+        type="button"
+      >
+        <span>{getUserInitials(user)}</span>
+        <div>
+          <strong>{displayName}</strong>
+          <small>{t('topbar.adminRole')}</small>
+        </div>
+        <i aria-hidden="true" />
+      </button>
+
+      {isOpen && (
+        <div className="admin-profile-dropdown" role="menu">
+          <button
+            className="admin-profile-menu-item"
+            disabled={isLoggingOut}
+            onClick={handleLogout}
+            role="menuitem"
+            type="button"
+          >
+            {isLoggingOut ? t('auth.loggingOut') : t('auth.logout')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
   const adminNavigationItems = [
     { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
     { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
@@ -145,7 +252,6 @@ function AdminShell() {
     { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
     { to: '/routing-profiles', label: t('navigation.routingProfiles'), icon: 'routing' as const },
     { to: '/portal', label: t('navigation.userPortal'), icon: 'portal' as const },
-    { to: '/login', label: t('navigation.login'), icon: 'login' as const },
   ];
   const secondaryNavigationItems = [
     { label: t('navigation.security'), icon: 'security' as const },
@@ -220,13 +326,7 @@ function AdminShell() {
             <button className="topbar-icon-button topbar-notification" type="button" aria-label={t('topbar.notifications')}><Icon name="bell" /></button>
             <button className="topbar-icon-button" type="button" aria-label={t('topbar.help')}><Icon name="help" /></button>
             <button className="topbar-icon-button" type="button" aria-label={t('topbar.settings')}><Icon name="settings" /></button>
-            <div className="admin-profile-chip">
-              <span>AD</span>
-              <div>
-                <strong>admin</strong>
-                <small>{t('topbar.adminRole')}</small>
-              </div>
-            </div>
+            <ProfileMenu isLoggingOut={isLoggingOut} onLogout={onLogout} user={user} />
           </div>
         </header>
 
@@ -259,15 +359,82 @@ function AdminShell() {
 
 export function App() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [authToken, setAuthTokenState] = useState<string | null>(() => getAuthToken());
   useLocale();
+
+  const isPortalRoute = location.pathname.startsWith('/portal');
+  const isLoginRoute = location.pathname.startsWith('/login');
+
+  const sessionQuery = useQuery({
+    queryKey: ['admin-session', authToken],
+    queryFn: getMe,
+    enabled: Boolean(authToken) && !isPortalRoute,
+    retry: false,
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSettled: () => {
+      clearAuthToken();
+      setAuthTokenState(null);
+      queryClient.removeQueries({ queryKey: ['admin-session'] });
+      queryClient.removeQueries({ queryKey: ['me'] });
+      navigate('/login', { replace: true });
+    },
+  });
+
+  useEffect(() => {
+    if (!sessionQuery.isError) {
+      return;
+    }
+
+    clearAuthToken();
+    setAuthTokenState(null);
+    queryClient.removeQueries({ queryKey: ['admin-session'] });
+    queryClient.removeQueries({ queryKey: ['me'] });
+  }, [queryClient, sessionQuery.isError]);
+
+  const handleLogin = () => {
+    setAuthTokenState(getAuthToken());
+  };
 
   if (location.pathname.startsWith('/portal')) {
     return <PortalShell />;
   }
 
-  if (location.pathname.startsWith('/login')) {
-    return <AuthShell />;
+  if (isLoginRoute) {
+    if (authToken && sessionQuery.isSuccess) {
+      return <Navigate to="/" replace />;
+    }
+
+    if (authToken && sessionQuery.isPending) {
+      return (
+        <AuthShell>
+          <p className="empty-state">{t('auth.checkingSession')}</p>
+        </AuthShell>
+      );
+    }
+
+    return <AuthShell onLogin={handleLogin} />;
   }
 
-  return <AdminShell />;
+  if (!authToken) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (sessionQuery.isPending) {
+    return (
+      <AuthShell>
+        <p className="empty-state">{t('auth.checkingSession')}</p>
+      </AuthShell>
+    );
+  }
+
+  if (sessionQuery.isError) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <AdminShell isLoggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} user={sessionQuery.data?.user} />;
 }

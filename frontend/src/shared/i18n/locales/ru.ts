@@ -31,6 +31,11 @@ export const ru: Record<TranslationKey, string> = {
   'topbar.settings': 'Настройки',
   'topbar.adminRole': 'Суперадминистратор',
   'topbar.toggleSidebar': 'Переключить боковую панель',
+  'topbar.profileMenu': 'Меню пользователя',
+
+  'auth.checkingSession': 'Проверка сессии...',
+  'auth.logout': 'Выйти',
+  'auth.loggingOut': 'Выход...',
 
   'locale.english': 'Английский',
   'locale.russian': 'Русский',

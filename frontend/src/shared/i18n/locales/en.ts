@@ -29,6 +29,11 @@ export const en = {
   'topbar.settings': 'Settings',
   'topbar.adminRole': 'Super administrator',
   'topbar.toggleSidebar': 'Toggle sidebar',
+  'topbar.profileMenu': 'User menu',
+
+  'auth.checkingSession': 'Checking session...',
+  'auth.logout': 'Logout',
+  'auth.loggingOut': 'Logging out...',
 
   'locale.english': 'English',
   'locale.russian': 'Russian',
