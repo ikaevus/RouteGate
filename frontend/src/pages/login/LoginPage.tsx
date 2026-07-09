@@ -1,9 +1,16 @@
 import { FormEvent, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { login } from '../../entities/auth/api/authApi';
+import { setAuthToken } from '../../shared/api/client';
 import { t } from '../../shared/i18n/i18n';
 
-export function LoginPage() {
+interface LoginPageProps {
+  onLogin?: () => void;
+}
+
+export function LoginPage({ onLogin }: LoginPageProps) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('admin@routegate.local');
   const [password, setPassword] = useState('admin');
   const [message, setMessage] = useState<string | null>(null);
@@ -12,9 +19,9 @@ export function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: (response) => {
-      localStorage.setItem('routegate.auth.token', response.token);
-      setMessageTone('success');
-      setMessage(t('login.success', { name: response.user.displayName }));
+      setAuthToken(response.token);
+      onLogin?.();
+      navigate('/', { replace: true });
     },
     onError: () => {
       setMessageTone('error');
