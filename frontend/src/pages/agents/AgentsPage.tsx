@@ -18,6 +18,21 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString();
 }
 
+function formatProtocolVersion(value?: number): string {
+  return typeof value === 'number' ? String(value) : t('agents.legacyProtocol');
+}
+
+function compatibilityStatus(agent: Agent): string {
+  return agent.compatibility?.status ?? 'unknown';
+}
+
+function compatibilityMessage(agent: Agent): string {
+  const status = compatibilityStatus(agent);
+  const key = `agents.compatibilityMessage.${status}` as Parameters<typeof t>[0];
+  const translated = t(key);
+  return translated === key ? t('common.unknown') : translated;
+}
+
 export function AgentsPage() {
   const queryClient = useQueryClient();
 
@@ -139,7 +154,9 @@ export function AgentsPage() {
               <div className="table-row table-head agents-table-row">
                 <div>{t('agents.name')}</div>
                 <div>{t('agents.serverId')}</div>
-                <div>{t('agents.version')}</div>
+                <div>{t('agents.agentVersion')}</div>
+                <div>{t('agents.protocol')}</div>
+                <div>{t('agents.compatibility')}</div>
                 <div>{t('agents.lastSeen')}</div>
                 <div>{t('agents.status')}</div>
                 <div>{t('agents.action')}</div>
@@ -152,7 +169,15 @@ export function AgentsPage() {
                     <span>{agent.hostname || t('common.notAvailable')}</span>
                   </div>
                   <div>{agent.serverId || t('common.notAvailable')}</div>
-                  <div>{agent.version || t('common.notAvailable')}</div>
+                  <div>{agent.agentVersion || agent.version || t('common.notAvailable')}</div>
+                  <div>{formatProtocolVersion(agent.protocolVersion)}</div>
+                  <div>
+                    <StatusBadge
+                      status={compatibilityStatus(agent)}
+                      label={t(`status.${compatibilityStatus(agent)}` as Parameters<typeof t>[0])}
+                    />
+                    <span>{compatibilityMessage(agent)}</span>
+                  </div>
                   <div>{formatDate(agent.lastSeen)}</div>
                   <div>
                     <StatusBadge status={agent.status} />

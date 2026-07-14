@@ -8,8 +8,70 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ikaevus/routegate/agent/internal/config"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
+
+func TestRegisterSendsVersionAndProtocol(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/agent/register" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		var request struct {
+			AgentVersion    string `json:"agentVersion"`
+			ProtocolVersion int    `json:"protocolVersion"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.AgentVersion != "dev" || request.ProtocolVersion != 1 {
+			t.Fatalf("unexpected version payload: %+v", request)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"agentId":"agent-1","serverId":"server-1","agentToken":"rg_agent_secret"}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	_, err := client.Register(context.Background(), config.Config{RegistrationToken: "rg_reg_secret"}, systeminfo.Info{
+		AgentVersion:    "dev",
+		ProtocolVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+}
+
+func TestHeartbeatSendsVersionAndProtocol(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/agent/heartbeat" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		var request struct {
+			AgentVersion    string `json:"agentVersion"`
+			ProtocolVersion int    `json:"protocolVersion"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.AgentVersion != "dev" || request.ProtocolVersion != 1 {
+			t.Fatalf("unexpected version payload: %+v", request)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"agentId":"agent-1","serverId":"server-1","serverStatus":"active"}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	_, err := client.Heartbeat(context.Background(), "rg_agent_secret", systeminfo.Info{
+		AgentVersion:    "dev",
+		ProtocolVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+}
 
 func TestReportTrafficUsageSendsEvents(t *testing.T) {
 	observedAt := time.Date(2026, time.June, 25, 10, 0, 0, 0, time.UTC)

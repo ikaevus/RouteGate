@@ -10,6 +10,7 @@ type AgentRegistrationRequest struct {
 	RegistrationToken string       `json:"registrationToken"`
 	Hostname          string       `json:"hostname"`
 	AgentVersion      string       `json:"agentVersion"`
+	ProtocolVersion   *int         `json:"protocolVersion,omitempty"`
 	OS                string       `json:"os"`
 	Arch              string       `json:"arch"`
 	Capabilities      Capabilities `json:"capabilities"`
@@ -23,8 +24,9 @@ type AgentRegistrationResponse struct {
 }
 
 type AgentHeartbeatRequest struct {
-	AgentVersion *string      `json:"agentVersion,omitempty"`
-	Capabilities Capabilities `json:"capabilities,omitempty"`
+	AgentVersion    *string      `json:"agentVersion,omitempty"`
+	ProtocolVersion *int         `json:"protocolVersion,omitempty"`
+	Capabilities    Capabilities `json:"capabilities,omitempty"`
 }
 
 type AgentHeartbeatResponse struct {

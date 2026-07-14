@@ -52,6 +52,7 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			arch,
 			agent_version,
 			version,
+			protocol_version,
 			status,
 			token_hash,
 			capabilities,
@@ -68,8 +69,9 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			$6,
 			$7,
 			$8,
-			COALESCE($9, now()),
-			$10
+			$9,
+			COALESCE($10, now()),
+			$11
 		)
 		ON CONFLICT (server_id)
 		DO UPDATE SET
@@ -78,6 +80,7 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			arch = EXCLUDED.arch,
 			agent_version = EXCLUDED.agent_version,
 			version = EXCLUDED.version,
+			protocol_version = EXCLUDED.protocol_version,
 			status = EXCLUDED.status,
 			token_hash = EXCLUDED.token_hash,
 			capabilities = EXCLUDED.capabilities,
@@ -91,6 +94,7 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			COALESCE(os, ''),
 			COALESCE(arch, ''),
 			agent_version,
+			protocol_version,
 			status,
 			token_hash,
 			capabilities,
@@ -105,6 +109,7 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 		input.OS,
 		input.Arch,
 		input.AgentVersion,
+		input.ProtocolVersion,
 		status,
 		input.TokenHash,
 		capabilities,
@@ -133,15 +138,16 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 				status = 'online',
 				agent_version = COALESCE(NULLIF($2, ''), agent_version),
 				version = COALESCE(NULLIF($2, ''), version),
-				capabilities = COALESCE($3, capabilities),
+				protocol_version = COALESCE($3, protocol_version),
+				capabilities = COALESCE($4, capabilities),
 				updated_at = now()
 			WHERE token_hash = $1
 			RETURNING
 				id::text, server_id::text, COALESCE(hostname, ''),
-				COALESCE(os, ''), COALESCE(arch, ''), agent_version,
+				COALESCE(os, ''), COALESCE(arch, ''), agent_version, protocol_version,
 				status, token_hash, capabilities, registered_at,
 				last_seen_at, created_at, updated_at, name;
-		`, input.TokenHash, optionalString(input.AgentVersion), optionalCapabilities(input.Capabilities))
+		`, input.TokenHash, optionalString(input.AgentVersion), input.ProtocolVersion, optionalCapabilities(input.Capabilities))
 	} else {
 		row = tx.QueryRow(ctx, `
 			UPDATE agents
@@ -150,15 +156,16 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 				status = 'online',
 				agent_version = COALESCE(NULLIF($2, ''), agent_version),
 				version = COALESCE(NULLIF($2, ''), version),
-				capabilities = COALESCE($3, capabilities),
+				protocol_version = COALESCE($3, protocol_version),
+				capabilities = COALESCE($4, capabilities),
 				updated_at = now()
 			WHERE id = $1::uuid
 			RETURNING
 				id::text, server_id::text, COALESCE(hostname, ''),
-				COALESCE(os, ''), COALESCE(arch, ''), agent_version,
+				COALESCE(os, ''), COALESCE(arch, ''), agent_version, protocol_version,
 				status, token_hash, capabilities, registered_at,
 				last_seen_at, created_at, updated_at, name;
-		`, input.AgentID, optionalString(input.AgentVersion), optionalCapabilities(input.Capabilities))
+		`, input.AgentID, optionalString(input.AgentVersion), input.ProtocolVersion, optionalCapabilities(input.Capabilities))
 	}
 
 	agent, err := scanAgent(row)
@@ -374,6 +381,7 @@ const agentSelect = `
 		COALESCE(os, ''),
 		COALESCE(arch, ''),
 		agent_version,
+		protocol_version,
 		status,
 		token_hash,
 		capabilities,
@@ -391,6 +399,7 @@ type scanner interface {
 func scanAgent(row scanner) (Agent, error) {
 	var agent Agent
 	var capabilities []byte
+	var protocolVersion sql.NullInt32
 	err := row.Scan(
 		&agent.ID,
 		&agent.ServerID,
@@ -398,6 +407,7 @@ func scanAgent(row scanner) (Agent, error) {
 		&agent.OS,
 		&agent.Arch,
 		&agent.AgentVersion,
+		&protocolVersion,
 		&agent.Status,
 		&agent.TokenHash,
 		&capabilities,
@@ -410,6 +420,10 @@ func scanAgent(row scanner) (Agent, error) {
 	if err != nil {
 		return Agent{}, err
 	}
+	if protocolVersion.Valid {
+		value := int(protocolVersion.Int32)
+		agent.ProtocolVersion = &value
+	}
 	agent.Capabilities = Capabilities{}
 	if len(capabilities) > 0 {
 		if err := json.Unmarshal(capabilities, &agent.Capabilities); err != nil {
@@ -417,6 +431,7 @@ func scanAgent(row scanner) (Agent, error) {
 		}
 	}
 	agent.Version = agent.AgentVersion
+	agent.Compatibility = EvaluateCompatibility(agent.AgentVersion, agent.ProtocolVersion)
 	if agent.LastSeenAt != nil {
 		agent.LastSeen = *agent.LastSeenAt
 	}

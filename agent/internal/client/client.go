@@ -32,6 +32,7 @@ type registerRequest struct {
 	RegistrationToken string         `json:"registrationToken"`
 	Hostname          string         `json:"hostname"`
 	AgentVersion      string         `json:"agentVersion"`
+	ProtocolVersion   int            `json:"protocolVersion"`
 	OS                string         `json:"os"`
 	Arch              string         `json:"arch"`
 	Capabilities      map[string]any `json:"capabilities"`
@@ -44,8 +45,9 @@ type RegisterResponse struct {
 }
 
 type heartbeatRequest struct {
-	AgentVersion string         `json:"agentVersion"`
-	Capabilities map[string]any `json:"capabilities"`
+	AgentVersion    string         `json:"agentVersion"`
+	ProtocolVersion int            `json:"protocolVersion"`
+	Capabilities    map[string]any `json:"capabilities"`
 }
 
 type HeartbeatResponse struct {
@@ -77,7 +79,7 @@ type ReportTrafficUsageResponse struct {
 }
 
 func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminfo.Info) (RegisterResponse, error) {
-	req := registerRequest{RegistrationToken: cfg.RegistrationToken, Hostname: info.Hostname, AgentVersion: info.AgentVersion, OS: info.OS, Arch: info.Arch, Capabilities: info.Capabilities}
+	req := registerRequest{RegistrationToken: cfg.RegistrationToken, Hostname: info.Hostname, AgentVersion: info.AgentVersion, ProtocolVersion: info.ProtocolVersion, OS: info.OS, Arch: info.Arch, Capabilities: info.Capabilities}
 	var res RegisterResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/register", "", req, &res); err != nil {
 		return RegisterResponse{}, err
@@ -89,7 +91,7 @@ func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminf
 }
 
 func (c *Client) Heartbeat(ctx context.Context, agentToken string, info systeminfo.Info) (HeartbeatResponse, error) {
-	req := heartbeatRequest{AgentVersion: info.AgentVersion, Capabilities: info.Capabilities}
+	req := heartbeatRequest{AgentVersion: info.AgentVersion, ProtocolVersion: info.ProtocolVersion, Capabilities: info.Capabilities}
 	var res HeartbeatResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/heartbeat", agentToken, req, &res); err != nil {
 		return HeartbeatResponse{}, err

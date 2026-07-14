@@ -134,7 +134,7 @@ func TestRegisterReturnsOneTimeAgentTokenAndStoresOnlyHash(t *testing.T) {
 	handler := testAgentHandler(repository)
 	handler.now = func() time.Time { return fixedNow }
 	handler.generateAgentToken = func() (string, error) { return "rg_agent_raw-secret", nil }
-	requestBody := "{\"registrationToken\":\"rg_reg_one-time\",\"hostname\":\" fi-01 \",\"agentVersion\":\"0.1.0\",\"os\":\"linux\",\"arch\":\"amd64\",\"capabilities\":{\"singbox\":true}}"
+	requestBody := "{\"registrationToken\":\"rg_reg_one-time\",\"hostname\":\" fi-01 \",\"agentVersion\":\"0.1.0\",\"protocolVersion\":1,\"os\":\"linux\",\"arch\":\"amd64\",\"capabilities\":{\"singbox\":true}}"
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", strings.NewReader(requestBody))
 	response := httptest.NewRecorder()
 
@@ -151,6 +151,9 @@ func TestRegisterReturnsOneTimeAgentTokenAndStoresOnlyHash(t *testing.T) {
 	}
 	if repository.createInput.Status != StatusOnline || repository.createInput.LastSeenAt == nil || !repository.createInput.LastSeenAt.Equal(fixedNow) {
 		t.Fatalf("registration status/last seen = %q/%v, want online/%v", repository.createInput.Status, repository.createInput.LastSeenAt, fixedNow)
+	}
+	if repository.createInput.ProtocolVersion == nil || *repository.createInput.ProtocolVersion != 1 {
+		t.Fatalf("protocol version = %v, want 1", repository.createInput.ProtocolVersion)
 	}
 	if repository.activatedServerID != "server-id" {
 		t.Fatalf("registration did not activate server %q", repository.activatedServerID)
@@ -208,7 +211,7 @@ func TestHeartbeatRejectsNonAgentBearerWithoutRepositoryLookup(t *testing.T) {
 func TestHeartbeatAcceptsValidBearerToken(t *testing.T) {
 	repository := &fakeAgentAPIRepository{heartbeatAgent: Agent{ID: "agent-id", ServerID: "server-id"}}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader("{\"agentVersion\":\"0.1.1\",\"capabilities\":{\"nftables\":true}}"))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent/heartbeat", strings.NewReader("{\"agentVersion\":\"0.1.1\",\"protocolVersion\":1,\"capabilities\":{\"nftables\":true}}"))
 	request.Header.Set("Authorization", "Bearer rg_agent_valid")
 	response := httptest.NewRecorder()
 
@@ -219,6 +222,9 @@ func TestHeartbeatAcceptsValidBearerToken(t *testing.T) {
 	}
 	if repository.heartbeatInput.TokenHash != HashToken("rg_agent_valid") {
 		t.Fatalf("heartbeat token hash = %q, want hashed bearer token", repository.heartbeatInput.TokenHash)
+	}
+	if repository.heartbeatInput.ProtocolVersion == nil || *repository.heartbeatInput.ProtocolVersion != 1 {
+		t.Fatalf("heartbeat protocol version = %v, want 1", repository.heartbeatInput.ProtocolVersion)
 	}
 }
 

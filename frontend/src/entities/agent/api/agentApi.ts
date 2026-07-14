@@ -4,7 +4,13 @@ export interface Agent {
   id: string;
   serverId: string;
   name: string;
+  agentVersion: string;
   version: string;
+  protocolVersion?: number;
+  compatibility?: {
+    status: string;
+    message?: string;
+  };
   hostname: string;
   status: string;
   lastSeen: string;

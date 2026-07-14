@@ -418,7 +418,7 @@ a {
 }
 
 .agents-table-row {
-  grid-template-columns: 1.5fr 1fr 0.8fr 1.4fr 100px 110px;
+  grid-template-columns: 1.4fr 1fr 0.8fr 0.8fr 1.3fr 1.2fr 100px 110px;
 }
 
 .small-button {

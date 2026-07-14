@@ -22,19 +22,21 @@ const (
 type Capabilities map[string]any
 
 type Agent struct {
-	ID           string       `json:"id"`
-	ServerID     string       `json:"serverId"`
-	Hostname     string       `json:"hostname,omitempty"`
-	OS           string       `json:"os,omitempty"`
-	Arch         string       `json:"arch,omitempty"`
-	AgentVersion string       `json:"agentVersion"`
-	Status       string       `json:"status"`
-	TokenHash    string       `json:"-"`
-	Capabilities Capabilities `json:"capabilities"`
-	RegisteredAt time.Time    `json:"registeredAt"`
-	LastSeenAt   *time.Time   `json:"lastSeenAt,omitempty"`
-	CreatedAt    time.Time    `json:"createdAt"`
-	UpdatedAt    time.Time    `json:"updatedAt"`
+	ID              string        `json:"id"`
+	ServerID        string        `json:"serverId"`
+	Hostname        string        `json:"hostname,omitempty"`
+	OS              string        `json:"os,omitempty"`
+	Arch            string        `json:"arch,omitempty"`
+	AgentVersion    string        `json:"agentVersion"`
+	ProtocolVersion *int          `json:"protocolVersion,omitempty"`
+	Compatibility   Compatibility `json:"compatibility"`
+	Status          string        `json:"status"`
+	TokenHash       string        `json:"-"`
+	Capabilities    Capabilities  `json:"capabilities"`
+	RegisteredAt    time.Time     `json:"registeredAt"`
+	LastSeenAt      *time.Time    `json:"lastSeenAt,omitempty"`
+	CreatedAt       time.Time     `json:"createdAt"`
+	UpdatedAt       time.Time     `json:"updatedAt"`
 
 	// These fields retain compatibility with the existing API response shape.
 	Name     string    `json:"name,omitempty"`
@@ -64,23 +66,25 @@ type CompleteConfigTaskInput struct {
 }
 
 type CreateOrReplaceAgentInput struct {
-	ServerID     string
-	Hostname     string
-	OS           string
-	Arch         string
-	AgentVersion string
-	TokenHash    string
-	Capabilities Capabilities
-	Status       string
-	RegisteredAt *time.Time
-	LastSeenAt   *time.Time
+	ServerID        string
+	Hostname        string
+	OS              string
+	Arch            string
+	AgentVersion    string
+	ProtocolVersion *int
+	TokenHash       string
+	Capabilities    Capabilities
+	Status          string
+	RegisteredAt    *time.Time
+	LastSeenAt      *time.Time
 }
 
 type UpdateAgentHeartbeatInput struct {
-	AgentID      string
-	TokenHash    string
-	AgentVersion *string
-	Capabilities Capabilities
+	AgentID         string
+	TokenHash       string
+	AgentVersion    *string
+	ProtocolVersion *int
+	Capabilities    Capabilities
 }
 
 type ServerRegistrationToken struct {
