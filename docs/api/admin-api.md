@@ -162,7 +162,41 @@ Permission-protected v1 equivalents are available for authenticated Manager API 
 GET  /api/v1/servers # servers:read
 POST /api/v1/servers # servers:create
 GET  /api/v1/agents  # agents:read
+GET  /api/v1/system/version # agents:read
 ```
+
+`GET /api/v1/system/version` returns Manager, Web UI, database schema, Agent protocol compatibility, and manual-update metadata. It does not perform update network calls.
+
+Example response:
+
+```json
+{
+  "manager": {
+    "version": "dev",
+    "gitCommit": "unknown",
+    "buildDate": "unknown"
+  },
+  "webUi": {
+    "version": "dev"
+  },
+  "database": {
+    "expectedSchemaVersion": 102,
+    "appliedSchemaVersion": "000102_agent_protocol_version"
+  },
+  "agentCompatibility": {
+    "protocolVersion": 1,
+    "minimumProtocolVersion": 1,
+    "recommendedAgentVersion": "dev"
+  },
+  "update": {
+    "status": "manual",
+    "channel": "development",
+    "automaticUpdatesSupported": false
+  }
+}
+```
+
+Agent list responses include `agentVersion`, `protocolVersion`, and `compatibility`. Legacy Agents that have not reported protocol metadata are classified as `unknown`.
 
 Health endpoints remain public:
 

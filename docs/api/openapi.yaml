@@ -250,6 +250,22 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/system/version:
+    get:
+      tags: [System]
+      summary: Read Manager and compatibility version metadata
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: System version metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemVersionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/users:
     get:
       tags: [Users]
@@ -715,7 +731,7 @@ components:
 
     Agent:
       type: object
-      required: [id, serverId, name, version, hostname, status, lastSeen, createdAt]
+      required: [id, serverId, agentVersion, version, status, compatibility, createdAt]
       properties:
         id:
           type: string
@@ -729,6 +745,15 @@ components:
         version:
           type: string
           example: 0.1.0
+        agentVersion:
+          type: string
+          example: dev
+        protocolVersion:
+          type: integer
+          nullable: true
+          example: 1
+        compatibility:
+          $ref: "#/components/schemas/AgentCompatibility"
         hostname:
           type: string
           example: fi-demo-routegate
@@ -750,6 +775,47 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Agent"
+
+    AgentCompatibility:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [compatible, upgrade_recommended, upgrade_required, unsupported, unknown]
+        message:
+          type: string
+
+    SystemVersionResponse:
+      type: object
+      properties:
+        manager:
+          type: object
+          properties:
+            version: { type: string, example: dev }
+            gitCommit: { type: string, example: unknown }
+            buildDate: { type: string, example: unknown }
+        webUi:
+          type: object
+          properties:
+            version: { type: string, example: dev }
+        database:
+          type: object
+          properties:
+            expectedSchemaVersion: { type: integer, example: 102 }
+            appliedSchemaVersion: { type: string, example: "000102_agent_protocol_version" }
+        agentCompatibility:
+          type: object
+          properties:
+            protocolVersion: { type: integer, example: 1 }
+            minimumProtocolVersion: { type: integer, example: 1 }
+            recommendedAgentVersion: { type: string, example: dev }
+        update:
+          type: object
+          properties:
+            status: { type: string, example: manual }
+            channel: { type: string, example: development }
+            automaticUpdatesSupported: { type: boolean, example: false }
 
     RegisterAgentRequest:
       type: object

@@ -15,6 +15,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
+	"github.com/ikaevus/routegate/backend/internal/system"
 	"github.com/ikaevus/routegate/backend/internal/traffic"
 	"github.com/ikaevus/routegate/backend/internal/users"
 	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
@@ -31,6 +32,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	configsHandler := configs.NewHandler(logger, pool)
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
+	systemHandler := system.NewHandler(logger, pool)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
 	routingProfilesHandler := routingprofiles.NewHandler(logger, pool)
@@ -123,6 +125,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/users/{id}/enable", authn(auth.RequirePermission("users:disable")(stdhttp.HandlerFunc(usersHandler.Enable))))
 	mux.Handle("GET /api/v1/roles", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListRoles))))
 	mux.Handle("GET /api/v1/permissions", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListPermissions))))
+	mux.Handle("GET /api/v1/system/version", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(systemHandler.Version))))
 	mux.HandleFunc("POST /api/v1/agent/register", agentsHandler.Register)
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", agentsHandler.Heartbeat)
 	mux.HandleFunc("GET /api/v1/agent/tasks/next", agentsHandler.NextTask)

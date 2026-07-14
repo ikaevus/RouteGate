@@ -121,16 +121,17 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	// repository exposes transaction-scoped registration operations. The one-time
 	// registration token has already been consumed atomically.
 	agent, err := h.repository.CreateOrReplaceAgentForServer(r.Context(), CreateOrReplaceAgentInput{
-		ServerID:     registrationToken.ServerID,
-		Hostname:     strings.TrimSpace(request.Hostname),
-		OS:           strings.TrimSpace(request.OS),
-		Arch:         strings.TrimSpace(request.Arch),
-		AgentVersion: strings.TrimSpace(request.AgentVersion),
-		TokenHash:    HashToken(agentToken),
-		Capabilities: request.Capabilities,
-		Status:       StatusOnline,
-		RegisteredAt: &now,
-		LastSeenAt:   &now,
+		ServerID:        registrationToken.ServerID,
+		Hostname:        strings.TrimSpace(request.Hostname),
+		OS:              strings.TrimSpace(request.OS),
+		Arch:            strings.TrimSpace(request.Arch),
+		AgentVersion:    strings.TrimSpace(request.AgentVersion),
+		ProtocolVersion: request.ProtocolVersion,
+		TokenHash:       HashToken(agentToken),
+		Capabilities:    request.Capabilities,
+		Status:          StatusOnline,
+		RegisteredAt:    &now,
+		LastSeenAt:      &now,
 	})
 	if err != nil {
 		h.recordRegistrationFailure(r, request.RegistrationToken, "agent_create_failed")
@@ -166,6 +167,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			"agent_token_preview":        agentTokenPreview,
 			"hostname":                   strings.TrimSpace(request.Hostname),
 			"agent_version":              strings.TrimSpace(request.AgentVersion),
+			"protocol_version":           request.ProtocolVersion,
 			"os":                         strings.TrimSpace(request.OS),
 			"arch":                       strings.TrimSpace(request.Arch),
 		},
@@ -193,7 +195,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agent, err := h.repository.UpdateAgentHeartbeat(r.Context(), UpdateAgentHeartbeatInput{
-		TokenHash: HashToken(token), AgentVersion: request.AgentVersion, Capabilities: request.Capabilities,
+		TokenHash: HashToken(token), AgentVersion: request.AgentVersion, ProtocolVersion: request.ProtocolVersion, Capabilities: request.Capabilities,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeAgentUnauthorized(w)

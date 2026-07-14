@@ -209,6 +209,7 @@ const serverWithAgentSelect = `
 		a.os,
 		a.arch,
 		a.agent_version,
+		a.protocol_version,
 		a.status,
 		a.token_hash,
 		a.capabilities,
@@ -246,6 +247,7 @@ func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 	var result ServerWithAgent
 	var agentID, serverID, hostname, osName, arch, version sql.NullString
 	var status, tokenHash, name sql.NullString
+	var protocolVersion sql.NullInt32
 	var registeredAt, lastSeenAt, createdAt, updatedAt sql.NullTime
 	var capabilities []byte
 
@@ -267,6 +269,7 @@ func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 		&osName,
 		&arch,
 		&version,
+		&protocolVersion,
 		&status,
 		&tokenHash,
 		&capabilities,
@@ -298,6 +301,11 @@ func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 		UpdatedAt:    updatedAt.Time,
 		Name:         name.String,
 	}
+	if protocolVersion.Valid {
+		value := int(protocolVersion.Int32)
+		agent.ProtocolVersion = &value
+	}
+	agent.Compatibility = agents.EvaluateCompatibility(agent.AgentVersion, agent.ProtocolVersion)
 	if len(capabilities) > 0 {
 		if err := json.Unmarshal(capabilities, &agent.Capabilities); err != nil {
 			return ServerWithAgent{}, err
