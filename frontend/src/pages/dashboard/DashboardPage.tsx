@@ -228,7 +228,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
 
           return (
             <div className="dashboard-table-row" key={server.name}>
-              <strong>{server.name}</strong>
+              <strong title={server.name}>{server.name}</strong>
               <span className="server-region-cell">
                 <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={t('dashboard.countryCode', { code: countryCode })} />
                 <span className="server-region-name">{server.region}</span>
@@ -255,7 +255,7 @@ function RecentDeploymentsWidget() {
         </div>
         {deploymentRows.map((row) => (
           <div className="dashboard-table-row" key={row.config}>
-            <strong>{row.config}</strong>
+            <strong title={row.config}>{row.config}</strong>
             <span>{row.targetKey ? t(row.targetKey) : row.target}</span>
             <StatusBadge status={row.status} />
             <span>{row.initiator}</span>

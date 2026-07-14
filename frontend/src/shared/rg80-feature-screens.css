@@ -464,7 +464,7 @@
 
 .vpn-accounts-table-row {
   grid-template-columns: minmax(0, 1.8fr) auto minmax(90px, 0.7fr) minmax(110px, 0.8fr) minmax(116px, 0.7fr);
-  padding: 12px 0;
+  padding: 12px 8px;
 }
 
 .portal-page,
