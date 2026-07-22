@@ -253,6 +253,13 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeServerNotFound(w)
 		return
 	}
+	if errors.Is(err, ErrServerInUse) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(
+			"server_in_use",
+			"Server cannot be deleted while it has an Agent, VPN accounts, or config versions.",
+		))
+		return
+	}
 	if err != nil {
 		h.databaseError(w, "delete server", err)
 		return

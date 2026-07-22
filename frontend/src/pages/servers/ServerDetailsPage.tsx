@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
 import {
   applyConfigVersion,
   assignServerRoutingProfile,
   clearServerRoutingProfile,
   createServerRegistrationToken,
+  deleteServer,
   getConfigApplyJobs,
   getConfigVersions,
   getServer,
@@ -40,6 +41,19 @@ function formatCapabilities(capabilities?: Record<string, unknown> | null): stri
   }
 
   return JSON.stringify(capabilities, null, 2);
+}
+
+function getDeleteErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'server_in_use' || error.status === 409) {
+      return t('serverDetails.deleteInUseError');
+    }
+    if (error.status === 403) {
+      return t('serverDetails.deletePermissionError');
+    }
+  }
+
+  return t('serverDetails.deleteError');
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
@@ -96,12 +110,15 @@ function StageSummary({ resultPayload }: { resultPayload?: Record<string, unknow
 export function ServerDetailsPage() {
   const { serverId } = useParams<{ serverId: string }>();
   const routeLocation = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const wasJustCreated = Boolean(
     (routeLocation.state as { serverCreated?: boolean } | null)?.serverCreated,
   );
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
   const [selectedRoutingProfileId, setSelectedRoutingProfileId] = useState('');
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
@@ -188,6 +205,14 @@ export function ServerDetailsPage() {
     onSuccess: refreshConfigQueries,
   });
 
+  const deleteServerMutation = useMutation({
+    mutationFn: () => deleteServer(serverId ?? ''),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['servers'] });
+      navigate('/servers', { replace: true, state: { serverDeleted: true } });
+    },
+  });
+
   if (!serverId) {
     return (
       <section className="page">
@@ -236,6 +261,7 @@ export function ServerDetailsPage() {
   }
 
   const agent = server.agent;
+  const canDeleteServer = deleteConfirmation === server.name && !deleteServerMutation.isPending;
   const routingProfiles = routingProfilesQuery.data?.items ?? [];
   const assignedRoutingProfile = serverRoutingProfileQuery.data?.routingProfile ?? null;
   const canSaveRoutingProfile = selectedRoutingProfileId.trim() !== '';
@@ -535,6 +561,81 @@ export function ServerDetailsPage() {
           </div>
         )}
       </div>
+
+      <div className="panel server-danger-zone">
+        <div>
+          <div className="panel-title">{t('serverDetails.dangerZoneTitle')}</div>
+          <p className="panel-subtitle">{t('serverDetails.dangerZoneSubtitle')}</p>
+        </div>
+        <button
+          className="danger-button"
+          type="button"
+          onClick={() => {
+            setDeleteConfirmation('');
+            deleteServerMutation.reset();
+            setIsDeleteOpen(true);
+          }}
+        >
+          {t('serverDetails.deleteServer')}
+        </button>
+      </div>
+
+      {isDeleteOpen && (
+        <div className="server-delete-modal-backdrop">
+          <div
+            className="server-delete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-server-title"
+          >
+            <div>
+              <h2 id="delete-server-title">{t('serverDetails.deleteTitle')}</h2>
+              <p>{t('serverDetails.deleteWarning', { name: server.name })}</p>
+            </div>
+
+            <label className="field">
+              <span>{t('serverDetails.deleteConfirmationLabel', { name: server.name })}</span>
+              <input
+                autoFocus
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                disabled={deleteServerMutation.isPending}
+              />
+            </label>
+
+            {deleteServerMutation.isError && (
+              <div className="form-message form-message-error" role="alert">
+                {getDeleteErrorMessage(deleteServerMutation.error)}
+              </div>
+            )}
+
+            <div className="form-actions">
+              <button
+                className="danger-button"
+                type="button"
+                disabled={!canDeleteServer}
+                onClick={() => deleteServerMutation.mutate()}
+              >
+                {deleteServerMutation.isPending
+                  ? t('serverDetails.deleting')
+                  : t('serverDetails.confirmDelete')}
+              </button>
+              <button
+                className="small-button"
+                type="button"
+                disabled={deleteServerMutation.isPending}
+                onClick={() => {
+                  setIsDeleteOpen(false);
+                  setDeleteConfirmation('');
+                  deleteServerMutation.reset();
+                }}
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

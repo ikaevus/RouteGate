@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/agents"
 )
+
+var ErrServerInUse = errors.New("server has dependent resources")
 
 type Repository struct {
 	pool *pgxpool.Pool
@@ -101,12 +104,40 @@ func (r *Repository) UpdateServer(ctx context.Context, id string, input UpdateSe
 }
 
 func (r *Repository) DeleteServer(ctx context.Context, id string) error {
-	result, err := r.pool.Exec(ctx, `DELETE FROM servers WHERE id = $1::uuid`, id)
+	var serverExists bool
+	var serverDeleted bool
+	err := r.pool.QueryRow(ctx, `
+		WITH target AS (
+			SELECT id
+			FROM servers
+			WHERE id = $1::uuid
+		),
+		deleted AS (
+			DELETE FROM servers
+			WHERE id IN (SELECT id FROM target)
+			  AND NOT EXISTS (
+				SELECT 1 FROM agents WHERE agents.server_id = servers.id
+			  )
+			  AND NOT EXISTS (
+				SELECT 1 FROM vpn_accounts WHERE vpn_accounts.server_id = servers.id
+			  )
+			  AND NOT EXISTS (
+				SELECT 1 FROM config_versions WHERE config_versions.server_id = servers.id
+			  )
+			RETURNING id
+		)
+		SELECT
+			EXISTS (SELECT 1 FROM target),
+			EXISTS (SELECT 1 FROM deleted)
+	`, id).Scan(&serverExists, &serverDeleted)
 	if err != nil {
 		return err
 	}
-	if result.RowsAffected() == 0 {
+	if !serverExists {
 		return pgx.ErrNoRows
+	}
+	if !serverDeleted {
+		return ErrServerInUse
 	}
 	return nil
 }

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   createServer,
   getServers,
@@ -91,7 +91,11 @@ function ServerRow({ server }: { server: Server }) {
 
 export function ServersPage() {
   const navigate = useNavigate();
+  const routeLocation = useLocation();
   const queryClient = useQueryClient();
+  const wasJustDeleted = Boolean(
+    (routeLocation.state as { serverDeleted?: boolean } | null)?.serverDeleted,
+  );
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [name, setName] = useState('');
@@ -170,6 +174,12 @@ export function ServersPage() {
           </div>
         </div>
       </div>
+
+      {wasJustDeleted && (
+        <div className="form-message form-message-success" role="status">
+          {t('servers.deleteSuccess')}
+        </div>
+      )}
 
       <div className="panel table-panel servers-table-panel">
         <div className="panel-header">
