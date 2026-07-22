@@ -144,6 +144,14 @@ export interface CreateServerRequest {
   publicIp: string;
 }
 
+export interface UpdateServerRequest {
+  name?: string;
+  description?: string;
+  location?: string;
+  provider?: string;
+  publicIp?: string;
+}
+
 export function getServers(): Promise<ListServersResponse> {
   return apiGet<ListServersResponse>('/api/v1/servers');
 }
@@ -154,6 +162,16 @@ export function getServer(serverId: string): Promise<Server> {
 
 export function createServer(request: CreateServerRequest): Promise<Server> {
   return apiPost<CreateServerRequest, Server>('/api/v1/servers', request);
+}
+
+export function updateServer(
+  serverId: string,
+  request: UpdateServerRequest,
+): Promise<Server> {
+  return apiPatch<UpdateServerRequest, Server>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}`,
+    request,
+  );
 }
 
 export function deleteServer(serverId: string): Promise<void> {

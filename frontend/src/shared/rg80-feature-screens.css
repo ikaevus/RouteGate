@@ -663,6 +663,22 @@
   }
 }
 
+.server-edit-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.server-edit-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.server-edit-description {
+  grid-column: 1 / -1;
+}
+
 .server-danger-zone {
   align-items: center;
   border-color: rgba(248, 113, 113, 0.32);
@@ -730,6 +746,14 @@
 }
 
 @media (max-width: 720px) {
+  .server-edit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .server-edit-description {
+    grid-column: auto;
+  }
+
   .server-danger-zone {
     align-items: flex-start;
     flex-direction: column;
