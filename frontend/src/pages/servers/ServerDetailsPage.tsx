@@ -13,6 +13,7 @@ import {
   getServer,
   getServerRoutingProfile,
   renderConfig,
+  updateServer,
   validateConfigVersion,
   type ConfigApplyJob,
   type ConfigVersion,
@@ -41,6 +42,45 @@ function formatCapabilities(capabilities?: Record<string, unknown> | null): stri
   }
 
   return JSON.stringify(capabilities, null, 2);
+}
+
+function isValidIpAddress(value: string): boolean {
+  const candidate = value.trim();
+  const ipv4Parts = candidate.split('.');
+
+  if (
+    ipv4Parts.length === 4
+    && ipv4Parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+  ) {
+    return true;
+  }
+
+  if (!candidate.includes(':')) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(`http://[${candidate}]/`);
+    return parsed.hostname.length > 2;
+  } catch {
+    return false;
+  }
+}
+
+function getUpdateErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'name_required') {
+      return t('serverDetails.editValidationNameRequired');
+    }
+    if (error.status === 400) {
+      return t('serverDetails.editValidationPublicIpInvalid');
+    }
+    if (error.status === 403) {
+      return t('serverDetails.editPermissionError');
+    }
+  }
+
+  return t('serverDetails.editError');
 }
 
 function getDeleteErrorMessage(error: unknown): string {
@@ -119,6 +159,14 @@ export function ServerDetailsPage() {
   const [selectedRoutingProfileId, setSelectedRoutingProfileId] = useState('');
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [hasSubmittedEdit, setHasSubmittedEdit] = useState(false);
+  const [updateSucceeded, setUpdateSucceeded] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editProvider, setEditProvider] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editPublicIp, setEditPublicIp] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
@@ -205,6 +253,25 @@ export function ServerDetailsPage() {
     onSuccess: refreshConfigQueries,
   });
 
+  const updateServerMutation = useMutation({
+    mutationFn: () => updateServer(serverId ?? '', {
+      name: editName.trim(),
+      provider: editProvider.trim(),
+      location: editLocation.trim(),
+      publicIp: editPublicIp.trim(),
+      description: editDescription.trim(),
+    }),
+    onSuccess: async () => {
+      setIsEditing(false);
+      setHasSubmittedEdit(false);
+      setUpdateSucceeded(true);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['server', serverId] }),
+        queryClient.invalidateQueries({ queryKey: ['servers'] }),
+      ]);
+    },
+  });
+
   const deleteServerMutation = useMutation({
     mutationFn: () => deleteServer(serverId ?? ''),
     onSuccess: async () => {
@@ -261,6 +328,11 @@ export function ServerDetailsPage() {
   }
 
   const agent = server.agent;
+  const editNameIsValid = editName.trim() !== '';
+  const editPublicIpIsValid = isValidIpAddress(editPublicIp);
+  const publicIpChanged = editPublicIp.trim() !== (server.publicIp ?? '');
+  const canSaveServer =
+    editNameIsValid && editPublicIpIsValid && !updateServerMutation.isPending;
   const canDeleteServer = deleteConfirmation === server.name && !deleteServerMutation.isPending;
   const routingProfiles = routingProfilesQuery.data?.items ?? [];
   const assignedRoutingProfile = serverRoutingProfileQuery.data?.routingProfile ?? null;
@@ -282,6 +354,12 @@ export function ServerDetailsPage() {
         </div>
       )}
 
+      {updateSucceeded && (
+        <div className="form-message form-message-success" role="status">
+          {t('serverDetails.editSuccess')}
+        </div>
+      )}
+
       <div className="page-header server-details-header">
         <div>
           <h1>{formatValue(server.name)}</h1>
@@ -293,18 +371,147 @@ export function ServerDetailsPage() {
 
       <div className="details-layout">
         <div className="panel">
-          <div className="panel-title">{t('serverDetails.detailsTitle')}</div>
-          <div className="detail-list">
-            <DetailRow label={t('serverDetails.labelName')}>{formatValue(server.name)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelDescription')}>{formatValue(server.description)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelProvider')}>{formatValue(server.provider)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelLocation')}>{formatValue(server.location)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelPublicIp')}>{formatValue(server.publicIp)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelPrivateIp')}>{formatValue(server.privateIp)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelServerStatus')}><StatusBadge status={server.status} /></DetailRow>
-            <DetailRow label={t('serverDetails.labelCreatedAt')}>{formatDate(server.createdAt)}</DetailRow>
-            <DetailRow label={t('serverDetails.labelUpdatedAt')}>{formatDate(server.updatedAt)}</DetailRow>
+          <div className="panel-header">
+            <div className="panel-title">{t('serverDetails.detailsTitle')}</div>
+            {!isEditing && (
+              <button
+                className="small-button"
+                type="button"
+                onClick={() => {
+                  setEditName(server.name);
+                  setEditProvider(server.provider ?? '');
+                  setEditLocation(server.location ?? '');
+                  setEditPublicIp(server.publicIp ?? '');
+                  setEditDescription(server.description ?? '');
+                  setHasSubmittedEdit(false);
+                  setUpdateSucceeded(false);
+                  updateServerMutation.reset();
+                  setIsEditing(true);
+                }}
+              >
+                {t('serverDetails.editServer')}
+              </button>
+            )}
           </div>
+
+          {isEditing ? (
+            <form
+              className="server-edit-form"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                setHasSubmittedEdit(true);
+                if (canSaveServer) {
+                  updateServerMutation.mutate();
+                }
+              }}
+            >
+              <div className="server-edit-grid">
+                <label className="field">
+                  <span>{t('servers.name')}</span>
+                  <input
+                    autoFocus
+                    required
+                    value={editName}
+                    onChange={(event) => setEditName(event.target.value)}
+                    aria-invalid={hasSubmittedEdit && !editNameIsValid}
+                  />
+                  {hasSubmittedEdit && !editNameIsValid && (
+                    <small className="field-error">
+                      {t('serverDetails.editValidationNameRequired')}
+                    </small>
+                  )}
+                </label>
+
+                <label className="field">
+                  <span>{t('servers.publicIp')}</span>
+                  <input
+                    required
+                    value={editPublicIp}
+                    onChange={(event) => setEditPublicIp(event.target.value)}
+                    aria-invalid={hasSubmittedEdit && !editPublicIpIsValid}
+                  />
+                  {hasSubmittedEdit && !editPublicIpIsValid && (
+                    <small className="field-error">
+                      {t('serverDetails.editValidationPublicIpInvalid')}
+                    </small>
+                  )}
+                </label>
+
+                <label className="field">
+                  <span>{t('servers.provider')}</span>
+                  <input
+                    value={editProvider}
+                    onChange={(event) => setEditProvider(event.target.value)}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>{t('servers.location')}</span>
+                  <input
+                    value={editLocation}
+                    onChange={(event) => setEditLocation(event.target.value)}
+                  />
+                </label>
+
+                <label className="field server-edit-description">
+                  <span>{t('servers.description')}</span>
+                  <input
+                    value={editDescription}
+                    onChange={(event) => setEditDescription(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              {publicIpChanged && (
+                <div className="form-message form-message-warning" role="status">
+                  {t('serverDetails.editPublicIpWarning')}
+                </div>
+              )}
+
+              {updateServerMutation.isError && (
+                <div className="form-message form-message-error" role="alert">
+                  {getUpdateErrorMessage(updateServerMutation.error)}
+                </div>
+              )}
+
+              <div className="form-actions">
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={updateServerMutation.isPending}
+                >
+                  {updateServerMutation.isPending
+                    ? t('serverDetails.editSaving')
+                    : t('serverDetails.editSave')}
+                </button>
+                <button
+                  className="small-button"
+                  type="button"
+                  disabled={updateServerMutation.isPending}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setHasSubmittedEdit(false);
+                    updateServerMutation.reset();
+                  }}
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="detail-list">
+              <DetailRow label={t('serverDetails.labelName')}>{formatValue(server.name)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelDescription')}>{formatValue(server.description)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelProvider')}>{formatValue(server.provider)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelLocation')}>{formatValue(server.location)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelPublicIp')}>{formatValue(server.publicIp)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelPrivateIp')}>{formatValue(server.privateIp)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelServerStatus')}><StatusBadge status={server.status} /></DetailRow>
+              <DetailRow label={t('serverDetails.labelCreatedAt')}>{formatDate(server.createdAt)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelUpdatedAt')}>{formatDate(server.updatedAt)}</DetailRow>
+            </div>
+          )}
         </div>
 
         <div className="panel">
