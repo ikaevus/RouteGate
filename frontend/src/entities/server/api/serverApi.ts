@@ -156,6 +156,10 @@ export function createServer(request: CreateServerRequest): Promise<Server> {
   return apiPost<CreateServerRequest, Server>('/api/v1/servers', request);
 }
 
+export function deleteServer(serverId: string): Promise<void> {
+  return apiDelete(`/api/v1/servers/${encodeURIComponent(serverId)}`);
+}
+
 export function createServerRegistrationToken(
   serverId: string,
 ): Promise<RegistrationTokenResponse> {
