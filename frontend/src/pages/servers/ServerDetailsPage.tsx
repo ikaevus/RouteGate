@@ -254,13 +254,28 @@ export function ServerDetailsPage() {
   });
 
   const updateServerMutation = useMutation({
-    mutationFn: () => updateServer(serverId ?? '', {
-      name: editName.trim(),
-      provider: editProvider.trim(),
-      location: editLocation.trim(),
-      publicIp: editPublicIp.trim(),
-      description: editDescription.trim(),
-    }),
+    mutationFn: () => {
+      const currentServer = serverQuery.data;
+      if (!currentServer) {
+        throw new Error('Server data is unavailable.');
+      }
+
+      const nextName = editName.trim();
+      const nextProvider = editProvider.trim();
+      const nextLocation = editLocation.trim();
+      const nextPublicIp = editPublicIp.trim();
+      const nextDescription = editDescription.trim();
+
+      return updateServer(serverId ?? '', {
+        ...(nextName !== currentServer.name ? { name: nextName } : {}),
+        ...(nextProvider !== (currentServer.provider ?? '') ? { provider: nextProvider } : {}),
+        ...(nextLocation !== (currentServer.location ?? '') ? { location: nextLocation } : {}),
+        ...(nextPublicIp !== (currentServer.publicIp ?? '') ? { publicIp: nextPublicIp } : {}),
+        ...(nextDescription !== (currentServer.description ?? '')
+          ? { description: nextDescription }
+          : {}),
+      });
+    },
     onSuccess: async () => {
       setIsEditing(false);
       setHasSubmittedEdit(false);
@@ -331,8 +346,17 @@ export function ServerDetailsPage() {
   const editNameIsValid = editName.trim() !== '';
   const editPublicIpIsValid = isValidIpAddress(editPublicIp);
   const publicIpChanged = editPublicIp.trim() !== (server.publicIp ?? '');
+  const hasServerChanges =
+    editName.trim() !== server.name
+    || editProvider.trim() !== (server.provider ?? '')
+    || editLocation.trim() !== (server.location ?? '')
+    || publicIpChanged
+    || editDescription.trim() !== (server.description ?? '');
   const canSaveServer =
-    editNameIsValid && editPublicIpIsValid && !updateServerMutation.isPending;
+    hasServerChanges
+    && editNameIsValid
+    && editPublicIpIsValid
+    && !updateServerMutation.isPending;
   const canDeleteServer = deleteConfirmation === server.name && !deleteServerMutation.isPending;
   const routingProfiles = routingProfilesQuery.data?.items ?? [];
   const assignedRoutingProfile = serverRoutingProfileQuery.data?.routingProfile ?? null;
@@ -479,7 +503,7 @@ export function ServerDetailsPage() {
                 <button
                   className="primary-button"
                   type="submit"
-                  disabled={updateServerMutation.isPending}
+                  disabled={updateServerMutation.isPending || !hasServerChanges}
                 >
                   {updateServerMutation.isPending
                     ? t('serverDetails.editSaving')
