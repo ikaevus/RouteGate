@@ -145,11 +145,11 @@ export interface CreateServerRequest {
 }
 
 export interface UpdateServerRequest {
-  name: string;
-  description: string;
-  location: string;
-  provider: string;
-  publicIp: string;
+  name?: string;
+  description?: string;
+  location?: string;
+  provider?: string;
+  publicIp?: string;
 }
 
 export function getServers(): Promise<ListServersResponse> {
