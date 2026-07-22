@@ -136,12 +136,24 @@ export interface ListServersResponse {
   items: Server[];
 }
 
+export interface CreateServerRequest {
+  name: string;
+  description?: string;
+  location?: string;
+  provider?: string;
+  publicIp: string;
+}
+
 export function getServers(): Promise<ListServersResponse> {
-  return apiGet<ListServersResponse>('/api/admin/servers');
+  return apiGet<ListServersResponse>('/api/v1/servers');
 }
 
 export function getServer(serverId: string): Promise<Server> {
-  return apiGet<Server>(`/api/admin/servers/${encodeURIComponent(serverId)}`);
+  return apiGet<Server>(`/api/v1/servers/${encodeURIComponent(serverId)}`);
+}
+
+export function createServer(request: CreateServerRequest): Promise<Server> {
+  return apiPost<CreateServerRequest, Server>('/api/v1/servers', request);
 }
 
 export function createServerRegistrationToken(
