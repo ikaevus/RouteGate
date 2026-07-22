@@ -407,6 +407,11 @@ a {
   color: #fecaca;
 }
 
+.form-message-success {
+  background: rgba(34, 197, 94, 0.14);
+  color: #bbf7d0;
+}
+
 @media (max-width: 980px) {
   .split-layout {
     grid-template-columns: 1fr;

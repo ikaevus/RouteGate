@@ -276,7 +276,8 @@
   justify-content: flex-end;
 }
 
-.vpn-account-create-form {
+.vpn-account-create-form,
+.server-create-form {
   border: 1px solid rgba(38, 52, 73, 0.78);
   border-radius: 14px;
   background: rgba(2, 6, 23, 0.24);
@@ -290,6 +291,21 @@
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(0, 1fr);
+}
+
+.server-create-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.server-create-description {
+  grid-column: 1 / -1;
+}
+
+.field-error {
+  color: #fecaca;
+  font-size: 12px;
 }
 
 .form-actions {
@@ -446,5 +462,15 @@
 
   .portal-card-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .server-create-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .server-create-description {
+    grid-column: auto;
   }
 }

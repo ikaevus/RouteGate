@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
 import {
   applyConfigVersion,
@@ -95,7 +95,11 @@ function StageSummary({ resultPayload }: { resultPayload?: Record<string, unknow
 
 export function ServerDetailsPage() {
   const { serverId } = useParams<{ serverId: string }>();
+  const routeLocation = useLocation();
   const queryClient = useQueryClient();
+  const wasJustCreated = Boolean(
+    (routeLocation.state as { serverCreated?: boolean } | null)?.serverCreated,
+  );
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
   const [selectedRoutingProfileId, setSelectedRoutingProfileId] = useState('');
 
@@ -245,6 +249,12 @@ export function ServerDetailsPage() {
   return (
     <section className="page server-details-page">
       <Link className="text-link" to="/servers">{t('serverDetails.backToServersArrow')}</Link>
+
+      {wasJustCreated && (
+        <div className="form-message form-message-success" role="status">
+          {t('servers.createSuccess')}
+        </div>
+      )}
 
       <div className="page-header server-details-header">
         <div>
