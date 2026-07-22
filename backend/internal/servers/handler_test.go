@@ -26,6 +26,7 @@ type fakeServerRepository struct {
 	updated      Server
 	updateInput  UpdateServerInput
 	deletedID    string
+	deleteErr    error
 }
 
 func (f *fakeServerRepository) CreateServer(_ context.Context, input CreateServerInput) (Server, error) {
@@ -52,7 +53,7 @@ func (f *fakeServerRepository) UpdateServer(_ context.Context, _ string, input U
 
 func (f *fakeServerRepository) DeleteServer(_ context.Context, id string) error {
 	f.deletedID = id
-	return nil
+	return f.deleteErr
 }
 
 type fakeRegistrationTokenRepository struct {
@@ -207,6 +208,58 @@ func TestCreateRegistrationTokenStoresOnlyHash(t *testing.T) {
 	}
 	if payload.ServerID != "server-id" || !payload.ExpiresAt.Equal(wantExpiry) {
 		t.Fatalf("unexpected response: %+v", payload)
+	}
+}
+
+func TestDeleteServerReturnsNoContent(t *testing.T) {
+	repository := &fakeServerRepository{}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/servers/server-id", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.Delete(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNoContent, response.Body.String())
+	}
+	if repository.deletedID != "server-id" {
+		t.Fatalf("deleted id = %q, want server-id", repository.deletedID)
+	}
+}
+
+func TestDeleteServerReturnsConflictWhenInUse(t *testing.T) {
+	repository := &fakeServerRepository{deleteErr: ErrServerInUse}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/servers/server-id", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.Delete(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusConflict, response.Body.String())
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["status"] != "server_in_use" || payload["message"] == "" {
+		t.Fatalf("unexpected error response: %v", payload)
+	}
+}
+
+func TestDeleteServerReturnsNotFound(t *testing.T) {
+	repository := &fakeServerRepository{deleteErr: pgx.ErrNoRows}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/servers/missing-id", nil)
+	request.SetPathValue("server_id", "missing-id")
+	response := httptest.NewRecorder()
+
+	handler.Delete(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNotFound, response.Body.String())
 	}
 }
 
