@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../../shared/api/client';
@@ -112,6 +112,71 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+function RegistrationTokenResult({
+  registrationToken,
+  configSnippet,
+  onCopy,
+  isCopied = false,
+  isConfigCollapsible = false,
+}: {
+  registrationToken: RegistrationTokenResponse;
+  configSnippet: string;
+  onCopy?: () => void;
+  isCopied?: boolean;
+  isConfigCollapsible?: boolean;
+}) {
+  const [isConfigExpanded, setIsConfigExpanded] = useState(false);
+
+  return (
+    <div className="token-result">
+      <div className="form-message form-message-warning" role="status">
+        {t('serverDetails.registrationTokenWarning')}
+      </div>
+      <div className="registration-token-display">
+        <span>{t('serverDetails.registrationToken')}</span>
+        <div className="registration-token-field">
+          <code>{registrationToken.registrationToken}</code>
+          {onCopy && (
+            <button
+              className="small-button registration-token-copy-button"
+              type="button"
+              autoFocus
+              onClick={onCopy}
+            >
+              {t('serverDetails.copyRegistrationToken')}
+            </button>
+          )}
+        </div>
+        {isCopied && (
+          <span className="registration-token-copy-feedback" role="status">
+            {t('serverDetails.registrationTokenCopied')}
+          </span>
+        )}
+      </div>
+      <DetailRow label={t('vpnAccounts.expiresAt')}>{formatDate(registrationToken.expiresAt)}</DetailRow>
+      <div className="registration-token-config-example">
+        {isConfigCollapsible ? (
+          <button
+            className="small-button registration-token-config-toggle"
+            type="button"
+            aria-expanded={isConfigExpanded}
+            onClick={() => setIsConfigExpanded((current) => !current)}
+          >
+            {isConfigExpanded
+              ? t('serverDetails.hideAgentConfigExample')
+              : t('serverDetails.showAgentConfigExample')}
+          </button>
+        ) : (
+          <div className="panel-title token-snippet-title">{t('serverDetails.exampleAgentConfig')}</div>
+        )}
+        {(!isConfigCollapsible || isConfigExpanded) && (
+          <pre className="code-block">{configSnippet}</pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function shortHash(value?: string | null): string {
   return value && value.length > 12 ? value.slice(0, 12) : formatValue(value);
 }
@@ -155,7 +220,10 @@ export function ServerDetailsPage() {
   const wasJustCreated = Boolean(
     (routeLocation.state as { serverCreated?: boolean } | null)?.serverCreated,
   );
+  const openRegistrationTokenDialogOnSuccess = useRef(false);
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
+  const [isRegistrationTokenDialogOpen, setIsRegistrationTokenDialogOpen] = useState(false);
+  const [isRegistrationTokenCopied, setIsRegistrationTokenCopied] = useState(false);
   const [selectedRoutingProfileId, setSelectedRoutingProfileId] = useState('');
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -193,11 +261,51 @@ export function ServerDetailsPage() {
     mutationFn: () => createServerRegistrationToken(serverId ?? ''),
     onMutate: () => {
       setRegistrationToken(null);
+      setIsRegistrationTokenDialogOpen(false);
+      setIsRegistrationTokenCopied(false);
     },
     onSuccess: (response) => {
       setRegistrationToken(response);
+      if (openRegistrationTokenDialogOnSuccess.current) {
+        setIsRegistrationTokenDialogOpen(true);
+      }
     },
   });
+
+  const createRegistrationToken = (showDialog: boolean) => {
+    openRegistrationTokenDialogOnSuccess.current = showDialog;
+    registrationTokenMutation.mutate();
+  };
+
+  const copyRegistrationToken = async () => {
+    if (!registrationToken || !navigator.clipboard) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(registrationToken.registrationToken);
+    setIsRegistrationTokenCopied(true);
+    window.setTimeout(() => setIsRegistrationTokenCopied(false), 1800);
+  };
+
+  useEffect(() => {
+    if (!isRegistrationTokenDialogOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsRegistrationTokenDialogOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isRegistrationTokenDialogOpen]);
 
   const configVersionsQuery = useQuery({
     queryKey: ['server-config-versions', serverId],
@@ -554,7 +662,25 @@ export function ServerDetailsPage() {
               <DetailRow label={t('serverDetails.labelLastSeenAt')}>{formatDate(agent.lastSeenAt)}</DetailRow>
             </div>
           ) : (
-            <p className="empty-state">{t('serverDetails.noAgent')}</p>
+            <div className="empty-state empty-state-card agent-registration-empty-state">
+              <strong>{t('serverDetails.noAgent')}</strong>
+              <span>{t('serverDetails.noAgentDescription')}</span>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={registrationTokenMutation.isPending || !serverId}
+                onClick={() => createRegistrationToken(true)}
+              >
+                {registrationTokenMutation.isPending
+                  ? t('serverDetails.generating')
+                  : t('serverDetails.createRegistrationToken')}
+              </button>
+              {registrationTokenMutation.isError && openRegistrationTokenDialogOnSuccess.current && (
+                <div className="form-message form-message-error" role="alert">
+                  {t('serverDetails.registrationTokenError')}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -636,27 +762,20 @@ export function ServerDetailsPage() {
           className="primary-button"
           type="button"
           disabled={registrationTokenMutation.isPending || !serverId}
-          onClick={() => registrationTokenMutation.mutate()}
+          onClick={() => createRegistrationToken(false)}
         >
           {registrationTokenMutation.isPending ? t('serverDetails.generating') : t('serverDetails.generateRegistrationToken')}
         </button>
 
-        {registrationTokenMutation.isError && (
-          <div className="form-message form-message-error">{t('serverDetails.registrationTokenError')}</div>
+        {registrationTokenMutation.isError && !openRegistrationTokenDialogOnSuccess.current && (
+          <div className="form-message form-message-error" role="alert">{t('serverDetails.registrationTokenError')}</div>
         )}
 
         {registrationToken && (
-          <div className="token-result">
-            <div className="form-message form-message-warning">
-              {t('serverDetails.registrationTokenWarning')}
-            </div>
-            <DetailRow label={t('serverDetails.registrationToken')}>
-              <code>{registrationToken.registrationToken}</code>
-            </DetailRow>
-            <DetailRow label={t('vpnAccounts.expiresAt')}>{formatDate(registrationToken.expiresAt)}</DetailRow>
-            <div className="panel-title token-snippet-title">{t('serverDetails.exampleAgentConfig')}</div>
-            <pre className="code-block">{configSnippet}</pre>
-          </div>
+          <RegistrationTokenResult
+            registrationToken={registrationToken}
+            configSnippet={configSnippet}
+          />
         )}
       </div>
 
@@ -810,6 +929,43 @@ export function ServerDetailsPage() {
           {t('serverDetails.deleteServer')}
         </button>
       </div>
+
+      {isRegistrationTokenDialogOpen && registrationToken && (
+        <div
+          className="subscription-qr-modal-backdrop"
+          onClick={() => setIsRegistrationTokenDialogOpen(false)}
+        >
+          <div
+            className="subscription-qr-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="registration-token-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="subscription-qr-modal-header">
+              <h3 id="registration-token-dialog-title">{t('serverDetails.registrationTokenTitle')}</h3>
+              <button
+                className="registration-token-dialog-close"
+                type="button"
+                aria-label={t('common.close')}
+                title={t('common.close')}
+                onClick={() => setIsRegistrationTokenDialogOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="subscription-qr-modal-body">
+              <RegistrationTokenResult
+                registrationToken={registrationToken}
+                configSnippet={configSnippet}
+                onCopy={() => void copyRegistrationToken()}
+                isCopied={isRegistrationTokenCopied}
+                isConfigCollapsible
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {isDeleteOpen && (
         <div className="server-delete-modal-backdrop">
