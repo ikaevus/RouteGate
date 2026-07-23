@@ -41,7 +41,7 @@ const auditRows: Array<{
 }> = [
   { actor: 'admin', actionKey: 'dashboard.auditCreatedVpnAccount', areaKey: 'navigation.vpnAccounts', timeKey: 'dashboard.twoMinAgo' },
   { actor: 'admin', actionKey: 'dashboard.auditDeployedRouting', areaKey: 'dashboard.deploymentsArea', timeKey: 'dashboard.twoMinAgo' },
-  { actor: 'system', actionKey: 'dashboard.auditAgentConnected', areaKey: 'navigation.agents', timeKey: 'dashboard.eightMinAgo' },
+  { actor: 'system', actionKey: 'dashboard.auditAgentConnected', areaKey: 'dashboard.servers', timeKey: 'dashboard.eightMinAgo' },
   { actor: 'admin', actionKey: 'dashboard.auditUpdatedRoutingProfile', areaKey: 'dashboard.routingArea', timeKey: 'dashboard.fifteenMinAgo' },
 ];
 
@@ -199,7 +199,7 @@ function TrafficOverviewWidget() {
 function QuickActionsWidget() {
   const actions = [
     { label: t('dashboard.addServer'), to: '/servers' },
-    { label: t('dashboard.registerAgent'), to: '/agents' },
+    { label: t('dashboard.registerAgent'), to: '/servers' },
     { label: t('dashboard.createRoutingProfile'), to: '/routing-profiles' },
     { label: t('dashboard.deployConfiguration'), to: '/protocol-settings' },
     { label: t('dashboard.createUserGroup'), to: '/vpn-accounts' },
@@ -365,7 +365,7 @@ export function DashboardPage() {
         <KpiWidget
           title={t('dashboard.onlineAgents')}
           value={`${onlineAgentsCount || 156} / ${agentsCount || 189}`}
-          meta={`${t('dashboard.connected')}: ${onlineAgentsCount || 156} · ${t('dashboard.offline')}: ${offlineAgentsCount || 33}`}
+          meta={`${t('dashboard.connected')}: ${onlineAgentsCount || 156} · ${t('dashboard.noConnection')}: ${offlineAgentsCount || 33}`}
           tone="cyan"
           icon="⌘"
         />

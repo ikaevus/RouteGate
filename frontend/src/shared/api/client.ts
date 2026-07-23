@@ -1,6 +1,14 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 export const AUTH_TOKEN_STORAGE_KEY = 'routegate.auth.token';
 
+export function getManagerBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return API_BASE_URL.replace(/\/$/, '');
+  }
+
+  return new URL(API_BASE_URL || '/', window.location.origin).toString().replace(/\/$/, '');
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
