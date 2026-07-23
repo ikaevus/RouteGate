@@ -492,6 +492,204 @@
   color: var(--rg-text-primary);
 }
 
+.agent-onboarding-dialog {
+  max-height: min(92vh, 900px);
+  max-width: min(760px, calc(100vw - 32px));
+}
+
+.agent-onboarding-body,
+.agent-registration-success {
+  display: grid;
+  gap: 18px;
+}
+
+.agent-onboarding-introduction {
+  border-bottom: 1px solid rgba(38, 52, 73, 0.72);
+  color: var(--rg-text-secondary);
+  line-height: 1.55;
+  margin: 0;
+  padding-bottom: 16px;
+}
+
+.agent-purpose-summary {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agent-purpose-summary span {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.4;
+  padding-left: 16px;
+  position: relative;
+}
+
+.agent-purpose-summary span::before {
+  background: var(--rg-accent-cyan);
+  border-radius: 50%;
+  content: '';
+  height: 6px;
+  left: 0;
+  position: absolute;
+  top: 6px;
+  width: 6px;
+}
+
+.agent-onboarding-steps {
+  counter-reset: agent-step;
+  display: grid;
+  gap: 18px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agent-onboarding-steps > li {
+  counter-increment: agent-step;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 40px;
+  position: relative;
+}
+
+.agent-onboarding-steps > li::before {
+  align-items: center;
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: 50%;
+  color: #bfdbfe;
+  content: counter(agent-step);
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  height: 28px;
+  justify-content: center;
+  left: 0;
+  position: absolute;
+  top: -3px;
+  width: 28px;
+}
+
+.agent-onboarding-steps > li > span,
+.agent-registration-waiting p,
+.agent-registration-success p {
+  color: var(--rg-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.agent-setup-command {
+  max-height: 240px;
+  overflow: auto;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.agent-setup-actions,
+.agent-registration-waiting {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.agent-setup-actions span {
+  color: #86efac;
+  font-size: 12px;
+}
+
+.agent-registration-waiting,
+.agent-registration-success {
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.agent-registration-waiting > div {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-registration-success {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(74, 222, 128, 0.28);
+}
+
+.agent-registration-success .primary-button {
+  justify-self: start;
+}
+
+.server-connection-state {
+  display: grid;
+  gap: 14px;
+}
+
+.server-connection-summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.server-connection-summary > strong {
+  color: var(--rg-text-primary);
+  font-size: 16px;
+}
+
+.server-connection-component {
+  color: var(--rg-text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+
+.server-connection-technical-details {
+  border-top: 1px solid rgba(38, 52, 73, 0.72);
+  padding-top: 12px;
+}
+
+.server-connection-technical-details summary {
+  color: var(--rg-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.server-connection-technical-details summary:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--rg-primary);
+  outline-offset: 3px;
+}
+
+.server-connection-technical-details[open] summary {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 720px) {
+  .agent-onboarding-dialog {
+    max-width: calc(100vw - 20px);
+  }
+
+  .agent-onboarding-steps > li {
+    padding-left: 36px;
+  }
+
+  .agent-purpose-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-registration-waiting {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+}
+
 .portal-instruction-button-selected,
 .portal-profile-row-selected,
 .vpn-account-row-selected {

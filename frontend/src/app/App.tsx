@@ -247,7 +247,6 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
   const adminNavigationItems = [
     { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
     { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
-    { to: '/agents', label: t('navigation.agents'), icon: 'agents' as const },
     { to: '/vpn-accounts', label: t('navigation.vpnAccounts'), icon: 'accounts' as const },
     { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
     { to: '/routing-profiles', label: t('navigation.routingProfiles'), icon: 'routing' as const },

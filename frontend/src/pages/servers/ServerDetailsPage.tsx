@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ApiError } from '../../shared/api/client';
+import { ApiError, getManagerBaseUrl } from '../../shared/api/client';
 import {
   applyConfigVersion,
   assignServerRoutingProfile,
@@ -103,6 +103,18 @@ function StatusBadge({ status }: { status?: string | null }) {
   return <span className={`badge badge-${statusClassName}`}>{translateStatus(normalizedStatus)}</span>;
 }
 
+function ConnectionStatusBadge({ status }: { status?: string | null }) {
+  const normalizedStatus = status?.trim().toLowerCase() || 'unknown';
+  const label = normalizedStatus === 'online'
+    ? t('serverDetails.connectionOnline')
+    : normalizedStatus === 'offline'
+      ? t('serverDetails.connectionOffline')
+      : translateStatus(normalizedStatus);
+  const statusClassName = normalizedStatus.replace(/[^a-z0-9-]/g, '-');
+
+  return <span className={`badge badge-${statusClassName}`}>{label}</span>;
+}
+
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="detail-row">
@@ -140,7 +152,6 @@ function RegistrationTokenResult({
             <button
               className="small-button registration-token-copy-button"
               type="button"
-              autoFocus
               onClick={onCopy}
             >
               {t('serverDetails.copyRegistrationToken')}
@@ -224,6 +235,9 @@ export function ServerDetailsPage() {
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
   const [isRegistrationTokenDialogOpen, setIsRegistrationTokenDialogOpen] = useState(false);
   const [isRegistrationTokenCopied, setIsRegistrationTokenCopied] = useState(false);
+  const [isSetupCommandCopied, setIsSetupCommandCopied] = useState(false);
+  const [statusCheckError, setStatusCheckError] = useState(false);
+  const registrationSuccessHandled = useRef(false);
   const [selectedRoutingProfileId, setSelectedRoutingProfileId] = useState('');
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -240,6 +254,13 @@ export function ServerDetailsPage() {
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId ?? ''),
     enabled: Boolean(serverId),
+    refetchInterval: (query) => (
+      isRegistrationTokenDialogOpen
+      && Boolean(registrationToken)
+      && !query.state.data?.agent
+        ? 5000
+        : false
+    ),
   });
 
   const routingProfilesQuery = useQuery({
@@ -263,6 +284,9 @@ export function ServerDetailsPage() {
       setRegistrationToken(null);
       setIsRegistrationTokenDialogOpen(false);
       setIsRegistrationTokenCopied(false);
+      setIsSetupCommandCopied(false);
+      setStatusCheckError(false);
+      registrationSuccessHandled.current = false;
     },
     onSuccess: (response) => {
       setRegistrationToken(response);
@@ -286,6 +310,73 @@ export function ServerDetailsPage() {
     setIsRegistrationTokenCopied(true);
     window.setTimeout(() => setIsRegistrationTokenCopied(false), 1800);
   };
+
+  const copySetupCommand = async (setupCommand: string) => {
+    if (!navigator.clipboard) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(setupCommand);
+    setIsSetupCommandCopied(true);
+    window.setTimeout(() => setIsSetupCommandCopied(false), 1800);
+  };
+
+  const checkAgentStatus = async () => {
+    setStatusCheckError(false);
+    const result = await serverQuery.refetch();
+    if (result.isError) {
+      setStatusCheckError(true);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      isRegistrationTokenDialogOpen
+      && registrationToken
+      && serverQuery.isError
+      && serverQuery.data
+    ) {
+      setStatusCheckError(true);
+    }
+    if (
+      isRegistrationTokenDialogOpen
+      && registrationToken
+      && serverQuery.data
+      && !serverQuery.isError
+    ) {
+      setStatusCheckError(false);
+    }
+  }, [
+    isRegistrationTokenDialogOpen,
+    registrationToken,
+    serverQuery.data,
+    serverQuery.dataUpdatedAt,
+    serverQuery.isError,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isRegistrationTokenDialogOpen
+      || !registrationToken
+      || !serverQuery.data?.agent
+      || registrationSuccessHandled.current
+    ) {
+      return;
+    }
+
+    registrationSuccessHandled.current = true;
+    setStatusCheckError(false);
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['server', serverId] }),
+      queryClient.invalidateQueries({ queryKey: ['servers'] }),
+    ]);
+  }, [
+    isRegistrationTokenDialogOpen,
+    queryClient,
+    registrationToken,
+    serverId,
+    serverQuery.data?.agent,
+  ]);
 
   useEffect(() => {
     if (!isRegistrationTokenDialogOpen) {
@@ -472,8 +563,12 @@ export function ServerDetailsPage() {
   const configVersions = configVersionsQuery.data?.items ?? [];
   const applyJobs = applyJobsQuery.data?.items ?? [];
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
+  const managerBaseUrl = getManagerBaseUrl();
   const configSnippet = registrationToken
-    ? `manager_url: "http://localhost:8080"\nregistration_token: "${registrationToken.registrationToken}"\nheartbeat_interval_seconds: 30`
+    ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
+    : '';
+  const setupCommand = configSnippet
+    ? `sudo install -d -m 0755 /etc/routegate\nsudo tee /etc/routegate/agent.yaml >/dev/null <<'ROUTEGATE_AGENT_CONFIG'\n${configSnippet}\nROUTEGATE_AGENT_CONFIG\nsudo chmod 0600 /etc/routegate/agent.yaml`
     : '';
 
   return (
@@ -646,20 +741,35 @@ export function ServerDetailsPage() {
           )}
         </div>
 
-        <div className="panel">
-          <div className="panel-title">{t('servers.agent')}</div>
+        <div className="panel server-connection-panel">
+          <div className="panel-title">{t('serverDetails.routeGateConnectionTitle')}</div>
           {agent ? (
-            <div className="detail-list">
-              <DetailRow label={t('serverDetails.labelAgentId')}>{formatValue(agent.id)}</DetailRow>
-              <DetailRow label={t('serverDetails.labelHostname')}>{formatValue(agent.hostname)}</DetailRow>
-              <DetailRow label="OS">{formatValue(agent.os)}</DetailRow>
-              <DetailRow label={t('serverDetails.labelArch')}>{formatValue(agent.arch)}</DetailRow>
-              <DetailRow label={t('serverDetails.labelAgentVersion')}>{formatValue(agent.agentVersion)}</DetailRow>
-              <DetailRow label={t('serverDetails.labelAgentStatus')}><StatusBadge status={agent.status} /></DetailRow>
-              <DetailRow label={t('serverDetails.labelCapabilities')}>
-                <pre className="inline-code">{formatCapabilities(agent.capabilities)}</pre>
-              </DetailRow>
-              <DetailRow label={t('serverDetails.labelLastSeenAt')}>{formatDate(agent.lastSeenAt)}</DetailRow>
+            <div className="server-connection-state">
+              <div className="server-connection-summary">
+                <strong>{t('serverDetails.serverConnected')}</strong>
+                <ConnectionStatusBadge status={agent.status} />
+              </div>
+              <div className="detail-list server-connection-primary-details">
+                <DetailRow label={t('serverDetails.lastContact')}>{formatDate(agent.lastSeenAt)}</DetailRow>
+              </div>
+              <p className="server-connection-component">
+                {t('serverDetails.managementComponent', { version: formatValue(agent.agentVersion) })}
+              </p>
+              <details className="server-connection-technical-details">
+                <summary>{t('serverDetails.technicalDetails')}</summary>
+                <div className="detail-list">
+                  <DetailRow label={t('serverDetails.labelHostname')}>{formatValue(agent.hostname)}</DetailRow>
+                  <DetailRow label={t('serverDetails.labelAgentId')}>{formatValue(agent.id)}</DetailRow>
+                  <DetailRow label={t('serverDetails.labelServerId')}>{formatValue(server.id)}</DetailRow>
+                  <DetailRow label={t('serverDetails.labelAgentVersion')}>{formatValue(agent.agentVersion)}</DetailRow>
+                  <DetailRow label={t('serverDetails.labelOs')}>{formatValue(agent.os)}</DetailRow>
+                  <DetailRow label={t('serverDetails.labelArch')}>{formatValue(agent.arch)}</DetailRow>
+                  <DetailRow label={t('serverDetails.labelCapabilities')}>
+                    <pre className="inline-code">{formatCapabilities(agent.capabilities)}</pre>
+                  </DetailRow>
+                  <DetailRow label={t('serverDetails.labelLastSeenAt')}>{formatDate(agent.lastSeenAt)}</DetailRow>
+                </div>
+              </details>
             </div>
           ) : (
             <div className="empty-state empty-state-card agent-registration-empty-state">
@@ -936,14 +1046,16 @@ export function ServerDetailsPage() {
           onClick={() => setIsRegistrationTokenDialogOpen(false)}
         >
           <div
-            className="subscription-qr-modal"
+            className="subscription-qr-modal agent-onboarding-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="registration-token-dialog-title"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="subscription-qr-modal-header">
-              <h3 id="registration-token-dialog-title">{t('serverDetails.registrationTokenTitle')}</h3>
+              <div>
+                <h3 id="registration-token-dialog-title">{t('serverDetails.agentConnectionTitle')}</h3>
+              </div>
               <button
                 className="registration-token-dialog-close"
                 type="button"
@@ -954,14 +1066,56 @@ export function ServerDetailsPage() {
                 ×
               </button>
             </div>
-            <div className="subscription-qr-modal-body">
-              <RegistrationTokenResult
-                registrationToken={registrationToken}
-                configSnippet={configSnippet}
-                onCopy={() => void copyRegistrationToken()}
-                isCopied={isRegistrationTokenCopied}
-                isConfigCollapsible
-              />
+            <div className="subscription-qr-modal-body agent-onboarding-body">
+              {server.agent ? (
+                <div className="agent-registration-success" role="status" aria-live="polite">
+                  <div>
+                    <strong>{t('serverDetails.agentRegistrationSuccessTitle')}</strong>
+                    <p>{t('serverDetails.agentRegistrationSuccessDescription')}</p>
+                  </div>
+                  <div className="detail-list">
+                    <DetailRow label={t('serverDetails.labelHostname')}>{formatValue(server.agent.hostname)}</DetailRow>
+                    <DetailRow label={t('serverDetails.labelAgentStatus')}><StatusBadge status={server.agent.status} /></DetailRow>
+                    <DetailRow label={t('serverDetails.labelAgentVersion')}>{formatValue(server.agent.agentVersion)}</DetailRow>
+                    <DetailRow label={t('serverDetails.labelLastSeenAt')}>{formatDate(server.agent.lastSeenAt)}</DetailRow>
+                  </div>
+                  <button className="primary-button" type="button" onClick={() => setIsRegistrationTokenDialogOpen(false)}>
+                    {t('common.close')}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="agent-onboarding-introduction">
+                    {t('serverDetails.agentConnectionSubtitle')}
+                  </p>
+                  <div className="agent-purpose-summary" aria-label={t('serverDetails.agentPurposeLabel')}>
+                    <span>{t('serverDetails.agentPurposeDeploy')}</span>
+                    <span>{t('serverDetails.agentPurposeMonitor')}</span>
+                    <span>{t('serverDetails.agentPurposeTraffic')}</span>
+                  </div>
+                  <ol className="agent-onboarding-steps">
+                    <li><strong>{t('serverDetails.agentStepPrepareTitle')}</strong><span>{t('serverDetails.agentStepPrepareDescription')}</span></li>
+                    <li><strong>{t('serverDetails.agentStepInstallTitle')}</strong><span>{t('serverDetails.agentStepInstallDescription')}</span><pre className="code-block">cd agent{`\n`}go build -o routegate-agent ./cmd/routegate-agent{`\n`}sudo install -m 0755 routegate-agent /usr/local/bin/routegate-agent</pre></li>
+                    <li><strong>{t('serverDetails.agentStepConfigureTitle')}</strong><span>{t('serverDetails.agentStepConfigureDescription')}</span><pre className="code-block agent-setup-command">{setupCommand}</pre><div className="agent-setup-actions"><button className="primary-button" type="button" aria-label={t('serverDetails.copySetupCommand')} onClick={() => void copySetupCommand(setupCommand)}>{t('serverDetails.copySetupCommand')}</button>{isSetupCommandCopied && <span role="status" aria-live="polite">{t('serverDetails.setupCommandCopied')}</span>}</div></li>
+                    <li><strong>{t('serverDetails.agentStepStartTitle')}</strong><span>{t('serverDetails.agentStepStartDescription')}</span><pre className="code-block">sudo /usr/local/bin/routegate-agent -config /etc/routegate/agent.yaml</pre></li>
+                    <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>
+                  </ol>
+
+                  <div className="agent-registration-waiting" role="status" aria-live="polite">
+                    <div><strong>{t('serverDetails.waitingForAgent')}</strong><p>{t('serverDetails.waitingForAgentDescription')}</p></div>
+                    <button className="small-button" type="button" aria-label={t('serverDetails.checkAgentStatus')} disabled={serverQuery.isFetching} onClick={() => void checkAgentStatus()}>{serverQuery.isFetching ? t('serverDetails.checkingAgentStatus') : t('serverDetails.checkAgentStatus')}</button>
+                  </div>
+                  {statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
+
+                  <RegistrationTokenResult
+                    registrationToken={registrationToken}
+                    configSnippet={configSnippet}
+                    onCopy={() => void copyRegistrationToken()}
+                    isCopied={isRegistrationTokenCopied}
+                    isConfigCollapsible
+                  />
+                </>
+              )}
             </div>
           </div>
         </div>
