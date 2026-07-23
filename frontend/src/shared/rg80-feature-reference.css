@@ -409,6 +409,89 @@
   padding: 14px;
 }
 
+.agent-registration-empty-state .primary-button {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.registration-token-display {
+  display: grid;
+  gap: 7px;
+}
+
+.registration-token-display > span:first-child {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.registration-token-field {
+  align-items: center;
+  background: rgba(2, 6, 23, 0.68);
+  border: 1px solid rgba(38, 52, 73, 0.9);
+  border-radius: 13px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.registration-token-field code {
+  color: #dbeafe;
+  flex: 1;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 0;
+  white-space: nowrap;
+}
+
+.registration-token-copy-button {
+  flex: none;
+  min-height: 30px;
+  padding: 6px 9px;
+}
+
+.registration-token-copy-feedback {
+  color: #86efac;
+  font-size: 12px;
+  justify-self: end;
+}
+
+.registration-token-config-example {
+  border-top: 1px solid rgba(38, 52, 73, 0.72);
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 16px;
+}
+
+.registration-token-config-toggle {
+  color: var(--rg-text-secondary);
+  justify-self: start;
+}
+
+.registration-token-dialog-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--rg-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 24px;
+  height: 32px;
+  justify-content: center;
+  line-height: 1;
+  width: 32px;
+}
+
+.registration-token-dialog-close:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--rg-text-primary);
+}
+
 .portal-instruction-button-selected,
 .portal-profile-row-selected,
 .vpn-account-row-selected {
