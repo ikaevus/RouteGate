@@ -18,6 +18,10 @@ type agentOperationCreateRepository interface {
 	CreateAgentOperationJob(context.Context, CreateAgentOperationJobInput) (AgentConfigTask, error)
 }
 
+type agentOperationQueryRepository interface {
+	GetAgentOperationJob(context.Context, string, string) (AgentConfigTask, error)
+}
+
 type CreateVPNCoreOperationRequest struct {
 	Operation string `json:"operation"`
 }
@@ -45,12 +49,9 @@ func (h *Handler) CreateVPNCoreOperation(w http.ResponseWriter, r *http.Request)
 	}
 
 	serverID := strings.TrimSpace(r.PathValue("server_id"))
-	job, err := repository.CreateAgentOperationJob(r.Context(), CreateAgentOperationJobInput{
-		ServerID:  serverID,
-		Operation: request.Operation,
-	})
+	job, err := repository.CreateAgentOperationJob(r.Context(), CreateAgentOperationJobInput{ServerID: serverID, Operation: request.Operation})
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("server_or_agent_not_found", "A connected server was not found."))
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("server_or_agent_not_found", "A connected compatible Agent was not found."))
 		return
 	}
 	var pgErr *pgconn.PgError
@@ -65,16 +66,27 @@ func (h *Handler) CreateVPNCoreOperation(w http.ResponseWriter, r *http.Request)
 	}
 
 	h.recordAudit(r.Context(), audit.EventInput{
-		ActorType:    audit.ActorTypeUser,
-		Action:       "vpn_core.operation.created",
-		ResourceType: "agent_operation_job",
-		ResourceID:   job.ID,
-		Result:       audit.ResultSuccess,
-		Metadata: map[string]any{
-			"server_id": serverID,
-			"kind":      job.Kind,
-			"operation": job.Operation,
-		},
+		ActorType: audit.ActorTypeUser, Action: "vpn_core.operation.created", ResourceType: "agent_operation_job", ResourceID: job.ID, Result: audit.ResultSuccess,
+		Metadata: map[string]any{"server_id": serverID, "kind": job.Kind, "operation": job.Operation},
 	})
 	httpx.WriteJSON(w, http.StatusAccepted, CreateVPNCoreOperationResponse{Job: job})
+}
+
+func (h *Handler) GetVPNCoreOperation(w http.ResponseWriter, r *http.Request) {
+	repository, ok := h.repository.(agentOperationQueryRepository)
+	if !ok {
+		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("operation_not_supported", "VPN Core service operations are not supported by this Manager."))
+		return
+	}
+	job, err := repository.GetAgentOperationJob(r.Context(), strings.TrimSpace(r.PathValue("server_id")), strings.TrimSpace(r.PathValue("job_id")))
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("operation_not_found", "VPN Core operation was not found."))
+		return
+	}
+	if err != nil {
+		h.logger.Error("read VPN Core operation job failed", "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to read VPN Core operation."))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, job)
 }
