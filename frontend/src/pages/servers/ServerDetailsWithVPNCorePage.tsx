@@ -52,7 +52,7 @@ export function ServerDetailsWithVPNCorePage() {
     description = text.connectedFirstDescription;
     nextAction = '';
     badgeLabel = text.unavailableStatus;
-    tone = 'offline';
+    tone = 'pending';
     canRetry = false;
   } else if (!status) {
     title = text.legacyTitle;
