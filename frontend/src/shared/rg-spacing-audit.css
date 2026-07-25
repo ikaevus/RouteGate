@@ -1,0 +1,109 @@
+:root {
+  --rg-space-surface-x: 18px;
+  --rg-space-surface-y: 18px;
+  --rg-space-compact-x: 14px;
+  --rg-space-compact-y: 12px;
+}
+
+/* Keep text and controls away from the borders of primary application surfaces. */
+.card,
+.panel,
+.auth-card,
+.portal-card {
+  padding: var(--rg-space-surface-y) var(--rg-space-surface-x);
+}
+
+.feature-page-header,
+.page-header,
+.server-details-page .page-header,
+.protocol-settings-page .page-header,
+.routing-profiles-page .page-header,
+.vpn-accounts-page .page-header,
+.portal-page .page-header {
+  padding: 18px 20px;
+}
+
+/* Bordered detail containers need their own inset in addition to panel padding. */
+.detail-list,
+.credentials-detail-list {
+  padding: 5px var(--rg-space-compact-x);
+}
+
+.detail-row {
+  padding: 10px 0;
+}
+
+.detail-row:first-child {
+  padding-top: 10px;
+}
+
+.detail-row:last-child {
+  padding-bottom: 10px;
+}
+
+/* Compact bordered surfaces follow the same minimum inset. */
+.empty-state,
+.empty-state-card,
+.feature-subpanel,
+.qr-payload-panel,
+.client-config-preview,
+.traffic-limit-card,
+.traffic-metric-card,
+.subscription-url-stack,
+.vpn-account-create-form,
+.server-create-form,
+.traffic-checkbox-field,
+.routing-profile-default-field {
+  padding: var(--rg-space-compact-y) var(--rg-space-compact-x);
+}
+
+.code-block,
+.inline-code,
+.subscription-url-value {
+  padding: 12px 14px;
+}
+
+.form-message {
+  padding: 11px 13px;
+}
+
+/* Preserve breathing room in table-like panels without widening every cell. */
+.table-panel,
+.admin-table-panel,
+.servers-table-panel {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.table-row,
+.admin-table-row {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.table-row:first-child,
+.admin-table-row:first-child {
+  padding-top: 8px;
+}
+
+.table-row:last-child,
+.admin-table-row:last-child {
+  padding-bottom: 8px;
+}
+
+@media (max-width: 980px) {
+  :root {
+    --rg-space-surface-x: 16px;
+    --rg-space-surface-y: 16px;
+  }
+
+  .feature-page-header,
+  .page-header,
+  .server-details-page .page-header,
+  .protocol-settings-page .page-header,
+  .routing-profiles-page .page-header,
+  .vpn-accounts-page .page-header,
+  .portal-page .page-header {
+    padding: 16px;
+  }
+}
