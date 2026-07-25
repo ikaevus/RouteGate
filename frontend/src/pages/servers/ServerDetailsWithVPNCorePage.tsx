@@ -88,8 +88,8 @@ export function ServerDetailsWithVPNCorePage() {
   } else if (!status) {
     title = text.legacyTitle;
     description = text.legacyDescription;
-    badgeLabel = title;
-    tone = 'upgrade-recommended';
+    badgeLabel = text.legacyStatus;
+    tone = 'pending';
     canRetry = false;
   } else {
     tone = status.state;
