@@ -4,73 +4,7 @@ import { getServer } from '../../entities/server/api/serverApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
 import { ServerDetailsPage as LegacyServerDetailsPage } from './ServerDetailsLegacyPage';
-
-const copy = {
-  en: {
-    title: 'VPN service',
-    subtitle: 'RouteGate checks the VPN Core installed on this server and shows the next recommended action.',
-    connectedFirst: 'Connect the server first',
-    connectedFirstDescription: 'RouteGate Agent must be connected before RouteGate can inspect or manage the VPN service.',
-    legacyTitle: 'Update RouteGate Agent',
-    legacyDescription: 'This Agent does not report VPN Core status yet. Update it to enable guided VPN service management.',
-    notInstalledTitle: 'VPN Core is not installed',
-    notInstalledDescription: 'Install sing-box to prepare this server for VPN configuration deployment.',
-    installedTitle: 'VPN Core is installed',
-    installedDescription: 'sing-box is available, but RouteGate could not confirm that the service is running.',
-    stoppedTitle: 'VPN service is stopped',
-    stoppedDescription: 'Start sing-box before deploying or serving VPN configurations.',
-    runningTitle: 'VPN service is running',
-    runningDescription: 'sing-box is available and the system service is active.',
-    failedTitle: 'VPN service needs attention',
-    failedDescription: 'The sing-box service reported a failed state. Review technical details before retrying.',
-    unknownTitle: 'VPN service state is unknown',
-    unknownDescription: 'RouteGate could not determine the current sing-box service state.',
-    installAction: 'Install VPN Core',
-    startAction: 'Start VPN service',
-    retryAction: 'Check again',
-    updateAction: 'Update Agent',
-    plannedAction: 'Management action coming next',
-    version: 'Version',
-    service: 'Service',
-    serviceState: 'Service state',
-    binaryPath: 'Binary path',
-    checkedAt: 'Last checked',
-    technicalDetails: 'Technical details',
-    notAvailable: 'Not available',
-  },
-  ru: {
-    title: 'VPN-служба',
-    subtitle: 'RouteGate проверяет VPN Core на этом сервере и показывает следующее рекомендуемое действие.',
-    connectedFirst: 'Сначала подключите сервер',
-    connectedFirstDescription: 'RouteGate Agent должен быть подключён, прежде чем RouteGate сможет проверять VPN-службу и управлять ею.',
-    legacyTitle: 'Обновите RouteGate Agent',
-    legacyDescription: 'Эта версия Agent ещё не передаёт состояние VPN Core. Обновите её, чтобы включить управляемый сценарий VPN-службы.',
-    notInstalledTitle: 'VPN Core не установлен',
-    notInstalledDescription: 'Установите sing-box, чтобы подготовить сервер к развёртыванию VPN-конфигураций.',
-    installedTitle: 'VPN Core установлен',
-    installedDescription: 'sing-box доступен, но RouteGate не смог подтвердить, что служба запущена.',
-    stoppedTitle: 'VPN-служба остановлена',
-    stoppedDescription: 'Запустите sing-box перед развёртыванием и обслуживанием VPN-конфигураций.',
-    runningTitle: 'VPN-служба работает',
-    runningDescription: 'sing-box доступен, а системная служба активна.',
-    failedTitle: 'VPN-служба требует внимания',
-    failedDescription: 'Служба sing-box сообщила об ошибке. Перед повторной попыткой проверьте технические сведения.',
-    unknownTitle: 'Состояние VPN-службы неизвестно',
-    unknownDescription: 'RouteGate не смог определить текущее состояние службы sing-box.',
-    installAction: 'Установить VPN Core',
-    startAction: 'Запустить VPN-службу',
-    retryAction: 'Проверить снова',
-    updateAction: 'Обновить Agent',
-    plannedAction: 'Управляющее действие будет добавлено следующим этапом',
-    version: 'Версия',
-    service: 'Служба',
-    serviceState: 'Состояние службы',
-    binaryPath: 'Путь к бинарному файлу',
-    checkedAt: 'Последняя проверка',
-    technicalDetails: 'Технические сведения',
-    notAvailable: 'Нет данных',
-  },
-} as const;
+import { getVPNCoreMessages } from './vpnCoreMessages';
 
 function valueOrFallback(value: string | null | undefined, fallback: string): string {
   return value?.trim() ? value : fallback;
@@ -87,8 +21,7 @@ function formatDate(value: string | null | undefined, fallback: string): string 
 
 export function ServerDetailsWithVPNCorePage() {
   const { serverId } = useParams<{ serverId: string }>();
-  const locale = getCurrentLocale();
-  const text = copy[locale];
+  const text = getVPNCoreMessages(getCurrentLocale());
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId ?? ''),
@@ -103,17 +36,20 @@ export function ServerDetailsWithVPNCorePage() {
   let description = text.unknownDescription;
   let action = text.retryAction;
   let tone = 'unknown';
+  let canRetry = true;
 
   if (!agent) {
     title = text.connectedFirst;
     description = text.connectedFirstDescription;
     action = text.connectedFirst;
     tone = 'offline';
+    canRetry = false;
   } else if (!status) {
     title = text.legacyTitle;
     description = text.legacyDescription;
     action = text.updateAction;
     tone = 'upgrade-recommended';
+    canRetry = false;
   } else {
     tone = status.state;
     switch (status.state) {
@@ -121,16 +57,19 @@ export function ServerDetailsWithVPNCorePage() {
         title = text.notInstalledTitle;
         description = text.notInstalledDescription;
         action = text.installAction;
+        canRetry = false;
         break;
       case 'running':
         title = text.runningTitle;
         description = text.runningDescription;
         action = text.plannedAction;
+        canRetry = false;
         break;
       case 'stopped':
         title = text.stoppedTitle;
         description = text.stoppedDescription;
         action = text.startAction;
+        canRetry = false;
         break;
       case 'failed':
       case 'degraded':
@@ -142,6 +81,7 @@ export function ServerDetailsWithVPNCorePage() {
         title = text.installedTitle;
         description = text.installedDescription;
         action = text.startAction;
+        canRetry = false;
         break;
       default:
         break;
@@ -164,8 +104,13 @@ export function ServerDetailsWithVPNCorePage() {
           <div className="empty-state empty-state-card">
             <strong>{title}</strong>
             <span>{description}</span>
-            <button className="primary-button" type="button" disabled>
-              {action}
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!canRetry || serverQuery.isFetching}
+              onClick={() => void serverQuery.refetch()}
+            >
+              {serverQuery.isFetching && canRetry ? text.checkingAction : action}
             </button>
           </div>
 
