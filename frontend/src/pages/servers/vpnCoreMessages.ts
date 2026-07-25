@@ -22,10 +22,16 @@ export interface VPNCoreMessages {
   unknownDescription: string;
   installAction: string;
   startAction: string;
+  stopAction: string;
+  restartAction: string;
   retryAction: string;
   checkingAction: string;
   updateAction: string;
-  plannedAction: string;
+  operationPending: string;
+  operationQueued: string;
+  operationFailed: string;
+  confirmStop: string;
+  unsupportedControls: string;
   version: string;
   service: string;
   serviceState: string;
@@ -57,11 +63,17 @@ const messages: Record<Locale, VPNCoreMessages> = {
     unknownTitle: 'VPN service state is unknown',
     unknownDescription: 'RouteGate could not determine the current sing-box service state.',
     installAction: 'Install VPN Core',
-    startAction: 'Start VPN service',
+    startAction: 'Start service',
+    stopAction: 'Stop service',
+    restartAction: 'Restart service',
     retryAction: 'Check again',
     checkingAction: 'Checking...',
     updateAction: 'Update Agent',
-    plannedAction: 'Management action coming next',
+    operationPending: 'Applying operation...',
+    operationQueued: 'The operation was queued. RouteGate is waiting for the Agent to confirm the new service state.',
+    operationFailed: 'The operation could not be queued.',
+    confirmStop: 'Stop the VPN service? Connected VPN clients may be disconnected.',
+    unsupportedControls: 'Update RouteGate Agent to enable service controls.',
     version: 'Version',
     service: 'Service',
     serviceState: 'Service state',
@@ -91,11 +103,17 @@ const messages: Record<Locale, VPNCoreMessages> = {
     unknownTitle: 'Состояние VPN-службы неизвестно',
     unknownDescription: 'RouteGate не смог определить текущее состояние службы sing-box.',
     installAction: 'Установить VPN Core',
-    startAction: 'Запустить VPN-службу',
+    startAction: 'Запустить службу',
+    stopAction: 'Остановить службу',
+    restartAction: 'Перезапустить службу',
     retryAction: 'Проверить снова',
     checkingAction: 'Проверка...',
     updateAction: 'Обновить Agent',
-    plannedAction: 'Управляющее действие будет добавлено следующим этапом',
+    operationPending: 'Операция выполняется...',
+    operationQueued: 'Операция поставлена в очередь. RouteGate ожидает подтверждения нового состояния от Agent.',
+    operationFailed: 'Не удалось поставить операцию в очередь.',
+    confirmStop: 'Остановить VPN-службу? Подключённые VPN-клиенты могут потерять соединение.',
+    unsupportedControls: 'Обновите RouteGate Agent, чтобы включить управление службой.',
     version: 'Версия',
     service: 'Служба',
     serviceState: 'Состояние службы',
