@@ -40,12 +40,11 @@ func DetectCapabilities() map[string]any {
 }
 
 func detectVPNCore() map[string]any {
-	checkedAt := time.Now().UTC().Format(time.RFC3339)
 	status := map[string]any{
 		"type":      "sing-box",
 		"installed": false,
 		"state":     "not_installed",
-		"checkedAt": checkedAt,
+		"checkedAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
 	binaryPath, err := exec.LookPath("sing-box")
@@ -57,14 +56,11 @@ func detectVPNCore() map[string]any {
 	status["binaryPath"] = binaryPath
 	status["state"] = "installed"
 
-	ctx, cancel := context.WithTimeout(context.Background(), vpnCoreCheckTimeout)
-	defer cancel()
-
-	if output, commandErr := exec.CommandContext(ctx, binaryPath, "version").CombinedOutput(); commandErr == nil {
+	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
 		if version := firstNonEmptyLine(string(output)); version != "" {
 			status["version"] = version
 		}
-	} else if ctx.Err() != nil {
+	} else if timedOut {
 		status["versionError"] = "version_check_timeout"
 	} else {
 		status["versionError"] = "version_check_failed"
@@ -75,9 +71,12 @@ func detectVPNCore() map[string]any {
 		return status
 	}
 
-	serviceOutput, serviceErr := exec.CommandContext(ctx, "systemctl", "is-active", "sing-box").CombinedOutput()
+	serviceOutput, serviceErr, timedOut := runCommand("systemctl", "is-active", "sing-box")
 	serviceState := strings.TrimSpace(string(serviceOutput))
-	if serviceState == "" {
+	if timedOut {
+		serviceState = "unknown"
+		status["serviceError"] = "service_check_timeout"
+	} else if serviceState == "" {
 		serviceState = "unknown"
 	}
 	status["serviceName"] = "sing-box.service"
@@ -99,6 +98,13 @@ func detectVPNCore() map[string]any {
 	}
 
 	return status
+}
+
+func runCommand(name string, args ...string) ([]byte, error, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), vpnCoreCheckTimeout)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return output, err, ctx.Err() == context.DeadlineExceeded
 }
 
 func firstNonEmptyLine(value string) string {
