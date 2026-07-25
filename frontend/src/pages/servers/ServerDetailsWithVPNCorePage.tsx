@@ -34,20 +34,20 @@ export function ServerDetailsWithVPNCorePage() {
 
   let title = text.unknownTitle;
   let description = text.unknownDescription;
-  let action = text.retryAction;
+  let nextAction = text.retryAction;
   let tone = 'unknown';
   let canRetry = true;
 
   if (!agent) {
     title = text.connectedFirst;
     description = text.connectedFirstDescription;
-    action = text.connectedFirst;
+    nextAction = text.connectedFirst;
     tone = 'offline';
     canRetry = false;
   } else if (!status) {
     title = text.legacyTitle;
     description = text.legacyDescription;
-    action = text.updateAction;
+    nextAction = text.updateAction;
     tone = 'upgrade-recommended';
     canRetry = false;
   } else {
@@ -56,31 +56,31 @@ export function ServerDetailsWithVPNCorePage() {
       case 'not_installed':
         title = text.notInstalledTitle;
         description = text.notInstalledDescription;
-        action = text.installAction;
+        nextAction = text.installAction;
         canRetry = false;
         break;
       case 'running':
         title = text.runningTitle;
         description = text.runningDescription;
-        action = text.plannedAction;
+        nextAction = text.plannedAction;
         canRetry = false;
         break;
       case 'stopped':
         title = text.stoppedTitle;
         description = text.stoppedDescription;
-        action = text.startAction;
+        nextAction = text.startAction;
         canRetry = false;
         break;
       case 'failed':
       case 'degraded':
         title = text.failedTitle;
         description = text.failedDescription;
-        action = text.retryAction;
+        nextAction = text.retryAction;
         break;
       case 'installed':
         title = text.installedTitle;
         description = text.installedDescription;
-        action = text.startAction;
+        nextAction = text.startAction;
         canRetry = false;
         break;
       default:
@@ -104,14 +104,18 @@ export function ServerDetailsWithVPNCorePage() {
           <div className="empty-state empty-state-card">
             <strong>{title}</strong>
             <span>{description}</span>
-            <button
-              className="primary-button"
-              type="button"
-              disabled={!canRetry || serverQuery.isFetching}
-              onClick={() => void serverQuery.refetch()}
-            >
-              {serverQuery.isFetching && canRetry ? text.checkingAction : action}
-            </button>
+            {canRetry ? (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={serverQuery.isFetching}
+                onClick={() => void serverQuery.refetch()}
+              >
+                {serverQuery.isFetching ? text.checkingAction : nextAction}
+              </button>
+            ) : (
+              <span className="muted-text">{nextAction}</span>
+            )}
           </div>
 
           {status && (
