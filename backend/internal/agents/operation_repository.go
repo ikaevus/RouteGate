@@ -55,6 +55,7 @@ func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAg
 		FROM agents a
 		WHERE a.server_id = $1::uuid
 		  AND a.status <> 'disabled'
+		  AND a.capabilities ? 'vpnCoreServiceOperations'
 		ORDER BY a.updated_at DESC
 		LIMIT 1
 		RETURNING
