@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getServer } from '../../entities/server/api/serverApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
-import { ServerDetailsPage } from './ServerDetailsPage';
+import { ServerDetailsPage } from './ServerDetailsPage.tsx';
 
 const copy = {
   en: {
