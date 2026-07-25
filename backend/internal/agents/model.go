@@ -49,7 +49,6 @@ type Agent struct {
 	CreatedAt       time.Time     `json:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt"`
 
-	// These fields retain compatibility with the existing API response shape.
 	Name     string    `json:"name,omitempty"`
 	Version  string    `json:"version,omitempty"`
 	LastSeen time.Time `json:"lastSeen,omitempty"`
@@ -66,8 +65,12 @@ type AgentConfigTask struct {
 	Status          string          `json:"status"`
 	RenderedConfig  json.RawMessage `json:"renderedConfig,omitempty"`
 	ConfigHash      string          `json:"configHash,omitempty"`
+	ResultPayload   map[string]any  `json:"resultPayload,omitempty"`
+	ErrorMessage    string          `json:"errorMessage,omitempty"`
 	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       *time.Time      `json:"updatedAt,omitempty"`
 	StartedAt       *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
 }
 
 func (t AgentConfigTask) EffectiveKind() string {
