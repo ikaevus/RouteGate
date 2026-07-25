@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,30 +49,24 @@ func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAg
 		return AgentConfigTask{}, fmt.Errorf("unsupported VPN Core operation %q", operation)
 	}
 
-	var task AgentConfigTask
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO agent_operation_jobs (server_id, kind, operation)
-		VALUES ($1::uuid, $2, $3)
+	return scanAgentOperationTask(r.pool.QueryRow(ctx, `
+		INSERT INTO agent_operation_jobs (server_id, agent_id, kind, operation)
+		SELECT $1::uuid, a.id, $2, $3
+		FROM agents a
+		WHERE a.server_id = $1::uuid
+		  AND a.status <> 'disabled'
+		ORDER BY a.updated_at DESC
+		LIMIT 1
 		RETURNING
 			id::text,
 			server_id::text,
-			COALESCE(agent_id::text, ''),
+			agent_id::text,
 			kind,
 			operation,
 			status,
 			created_at,
 			started_at
-	`, input.ServerID, AgentTaskKindVPNCoreService, operation).Scan(
-		&task.ID,
-		&task.ServerID,
-		&task.AgentID,
-		&task.Kind,
-		&task.Operation,
-		&task.Status,
-		&task.CreatedAt,
-		&task.StartedAt,
-	)
-	return task, err
+	`, input.ServerID, AgentTaskKindVPNCoreService, operation))
 }
 
 func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash string) (*AgentConfigTask, error) {
@@ -86,13 +81,12 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 		return nil, err
 	}
 
-	var task AgentConfigTask
-	err = tx.QueryRow(ctx, `
+	task, err := scanAgentOperationTask(tx.QueryRow(ctx, `
 		WITH next_job AS (
 			SELECT id
 			FROM agent_operation_jobs
 			WHERE server_id = $1::uuid
-			  AND (agent_id IS NULL OR agent_id = $2::uuid)
+			  AND agent_id = $2::uuid
 			  AND status = 'pending'
 			ORDER BY created_at ASC
 			LIMIT 1
@@ -100,7 +94,6 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 		)
 		UPDATE agent_operation_jobs j
 		SET
-			agent_id = $2::uuid,
 			status = 'in_progress',
 			started_at = COALESCE(j.started_at, now()),
 			updated_at = now()
@@ -115,16 +108,7 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 			j.status,
 			j.created_at,
 			j.started_at
-	`, agent.ServerID, agent.ID).Scan(
-		&task.ID,
-		&task.ServerID,
-		&task.AgentID,
-		&task.Kind,
-		&task.Operation,
-		&task.Status,
-		&task.CreatedAt,
-		&task.StartedAt,
-	)
+	`, agent.ServerID, agent.ID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return nil, commitErr
@@ -174,4 +158,26 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func scanAgentOperationTask(row scanner) (AgentConfigTask, error) {
+	var task AgentConfigTask
+	var startedAt sql.NullTime
+	err := row.Scan(
+		&task.ID,
+		&task.ServerID,
+		&task.AgentID,
+		&task.Kind,
+		&task.Operation,
+		&task.Status,
+		&task.CreatedAt,
+		&startedAt,
+	)
+	if err != nil {
+		return AgentConfigTask{}, err
+	}
+	if startedAt.Valid {
+		task.StartedAt = &startedAt.Time
+	}
+	return task, nil
 }
