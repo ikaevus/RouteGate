@@ -72,11 +72,11 @@ const copy = {
   },
 } as const;
 
-function valueOrFallback(value: string | undefined, fallback: string): string {
+function valueOrFallback(value: string | null | undefined, fallback: string): string {
   return value?.trim() ? value : fallback;
 }
 
-function formatDate(value: string | undefined, fallback: string): string {
+function formatDate(value: string | null | undefined, fallback: string): string {
   if (!value) {
     return fallback;
   }
