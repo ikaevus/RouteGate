@@ -7,6 +7,7 @@ export interface VPNCoreMessages {
   connectedFirstDescription: string;
   unavailableStatus: string;
   legacyTitle: string;
+  legacyStatus: string;
   legacyDescription: string;
   notInstalledTitle: string;
   notInstalledDescription: string;
@@ -49,6 +50,7 @@ const messages: Record<Locale, VPNCoreMessages> = {
     connectedFirstDescription: 'VPN service management becomes available after this server is connected to RouteGate.',
     unavailableStatus: 'Awaiting connection',
     legacyTitle: 'Update RouteGate Agent',
+    legacyStatus: 'Update required',
     legacyDescription: 'This Agent does not report VPN Core status yet. Update it to enable guided VPN service management.',
     notInstalledTitle: 'VPN Core is not installed',
     notInstalledDescription: 'Install sing-box to prepare this server for VPN configuration deployment.',
@@ -89,6 +91,7 @@ const messages: Record<Locale, VPNCoreMessages> = {
     connectedFirstDescription: 'Управление VPN-службой станет доступно после подключения этого сервера к RouteGate.',
     unavailableStatus: 'Ожидает подключения',
     legacyTitle: 'Обновите RouteGate Agent',
+    legacyStatus: 'Требуется обновление',
     legacyDescription: 'Эта версия Agent ещё не передаёт состояние VPN Core. Обновите её, чтобы включить управляемый сценарий VPN-службы.',
     notInstalledTitle: 'VPN Core не установлен',
     notInstalledDescription: 'Установите sing-box, чтобы подготовить сервер к развёртыванию VPN-конфигураций.',
