@@ -30,12 +30,13 @@ func Collect() Info {
 
 func DetectCapabilities() map[string]any {
 	names := []string{"systemctl", "sing-box", "xray", "nft"}
-	caps := make(map[string]any, len(names)+1)
+	caps := make(map[string]any, len(names)+2)
 	for _, name := range names {
 		_, err := exec.LookPath(name)
 		caps[name] = err == nil
 	}
 	caps["vpnCore"] = detectVPNCore()
+	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
 	return caps
 }
 
