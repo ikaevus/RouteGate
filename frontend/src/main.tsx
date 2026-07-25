@@ -14,6 +14,7 @@ import './shared/rg80-dashboard-tables.css';
 import './shared/rg80-feature-reference.css';
 import './shared/rg80-auth.css';
 import './shared/rg80-locale.css';
+import './shared/rg-spacing-audit.css';
 
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');
