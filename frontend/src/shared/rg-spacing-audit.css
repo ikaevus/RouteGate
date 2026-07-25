@@ -91,6 +91,25 @@
   padding-bottom: 8px;
 }
 
+/* Keep server identity metadata readable without increasing overall table density. */
+.protocol-server-identity {
+  align-content: center;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.protocol-server-identity > strong,
+.protocol-server-identity > span {
+  display: block;
+  margin: 0;
+  min-width: 0;
+}
+
+.protocol-server-identity > span {
+  line-height: 1.35;
+}
+
 @media (max-width: 980px) {
   :root {
     --rg-space-surface-x: 16px;
