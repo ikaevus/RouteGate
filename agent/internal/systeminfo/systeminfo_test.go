@@ -74,6 +74,10 @@ func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 	if got := vpnCore["type"]; got != "sing-box" {
 		t.Fatalf("expected sing-box core type, got %v", got)
 	}
+	operations, ok := capabilities["vpnCoreServiceOperations"].([]string)
+	if !ok || len(operations) != 3 || operations[0] != "start" || operations[1] != "stop" || operations[2] != "restart" {
+		t.Fatalf("unexpected VPN Core service operations capability: %#v", capabilities["vpnCoreServiceOperations"])
+	}
 }
 
 func writeExecutable(t *testing.T, path, content string) {
