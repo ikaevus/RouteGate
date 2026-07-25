@@ -16,7 +16,7 @@ function ServerSettingsRow({ server, selected }: { server: Server; selected: boo
       className={`admin-table-row protocol-server-table-row vpn-account-row-link${selected ? ' vpn-account-row-selected' : ''}`}
       to={`/protocol-settings/${server.id}`}
     >
-      <div>
+      <div className="protocol-server-identity">
         <strong>{formatValue(server.name)}</strong>
         <span>{formatValue(server.description)}</span>
       </div>
