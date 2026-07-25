@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getServer } from '../../entities/server/api/serverApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
-import { ServerDetailsPage } from './ServerDetailsPage.tsx';
+import { ServerDetailsPage as LegacyServerDetailsPage } from './ServerDetailsLegacyPage';
 
 const copy = {
   en: {
@@ -150,7 +150,7 @@ export function ServerDetailsWithVPNCorePage() {
 
   return (
     <>
-      <ServerDetailsPage />
+      <LegacyServerDetailsPage />
       <section className="page server-details-page vpn-core-management-section">
         <div className="panel vpn-core-status-panel">
           <div className="panel-header">
