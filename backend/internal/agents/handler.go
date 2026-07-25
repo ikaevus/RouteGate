@@ -27,6 +27,11 @@ type agentAPIRepository interface {
 	CompleteConfigTask(context.Context, CompleteConfigTaskInput) error
 }
 
+type agentOperationTaskRepository interface {
+	ClaimNextAgentOperationTask(context.Context, string) (*AgentConfigTask, error)
+	CompleteAgentOperationTask(context.Context, CompleteAgentOperationJobInput) error
+}
+
 type Handler struct {
 	logger             *slog.Logger
 	service            *Service
@@ -222,16 +227,33 @@ func (h *Handler) NextTask(w http.ResponseWriter, r *http.Request) {
 		writeAgentUnauthorized(w)
 		return
 	}
+	tokenHash := HashToken(token)
 
-	task, err := h.repository.ClaimNextConfigTask(r.Context(), HashToken(token))
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeAgentUnauthorized(w)
-		return
+	var task *AgentConfigTask
+	var err error
+	if operationRepository, supported := h.repository.(agentOperationTaskRepository); supported {
+		task, err = operationRepository.ClaimNextAgentOperationTask(r.Context(), tokenHash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeAgentUnauthorized(w)
+			return
+		}
+		if err != nil {
+			h.logger.Error("claim next agent operation task failed", "error", err)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to fetch next agent task."))
+			return
+		}
 	}
-	if err != nil {
-		h.logger.Error("claim next agent task failed", "error", err)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to fetch next agent task."))
-		return
+	if task == nil {
+		task, err = h.repository.ClaimNextConfigTask(r.Context(), tokenHash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeAgentUnauthorized(w)
+			return
+		}
+		if err != nil {
+			h.logger.Error("claim next agent config task failed", "error", err)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to fetch next agent task."))
+			return
+		}
 	}
 	if task != nil {
 		h.recordTaskClaimed(r, *task)
@@ -261,8 +283,30 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := r.PathValue("job_id")
-	err := h.repository.CompleteConfigTask(r.Context(), CompleteConfigTaskInput{
-		TokenHash:     HashToken(token),
+	tokenHash := HashToken(token)
+	var err error
+	if operationRepository, supported := h.repository.(agentOperationTaskRepository); supported {
+		err = operationRepository.CompleteAgentOperationTask(r.Context(), CompleteAgentOperationJobInput{
+			TokenHash:     tokenHash,
+			JobID:         jobID,
+			Status:        request.Status,
+			ErrorMessage:  strings.TrimSpace(request.ErrorMessage),
+			ResultPayload: request.ResultPayload,
+		})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Error("complete agent operation task failed", "error", err, "job_id", jobID)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to complete agent task."))
+			return
+		}
+	}
+	if err == nil {
+		h.recordTaskCompleted(r, jobID, request.Status, AgentTaskKindVPNCoreService)
+		httpx.WriteJSON(w, http.StatusOK, CompleteAgentTaskResponse{OK: true, TaskID: jobID, Status: request.Status})
+		return
+	}
+
+	err = h.repository.CompleteConfigTask(r.Context(), CompleteConfigTaskInput{
+		TokenHash:     tokenHash,
 		JobID:         jobID,
 		Status:        request.Status,
 		ErrorMessage:  strings.TrimSpace(request.ErrorMessage),
@@ -274,12 +318,12 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.logger.Error("complete agent task failed", "error", err, "job_id", jobID)
+		h.logger.Error("complete agent config task failed", "error", err, "job_id", jobID)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to complete agent task."))
 		return
 	}
 
-	h.recordTaskCompleted(r, jobID, request.Status)
+	h.recordTaskCompleted(r, jobID, request.Status, AgentTaskKindConfigApply)
 	httpx.WriteJSON(w, http.StatusOK, CompleteAgentTaskResponse{OK: true, TaskID: jobID, Status: request.Status})
 }
 
@@ -297,31 +341,43 @@ func (h *Handler) recordRegistrationFailure(r *http.Request, registrationToken s
 }
 
 func (h *Handler) recordTaskClaimed(r *http.Request, task AgentConfigTask) {
+	kind := task.EffectiveKind()
+	resourceType := "config_apply_job"
+	if kind == AgentTaskKindVPNCoreService {
+		resourceType = "agent_operation_job"
+	}
 	h.recordAudit(r.Context(), audit.EventInput{
 		ActorType:    audit.ActorTypeAgent,
 		Action:       "agent.task.claimed",
-		ResourceType: "config_apply_job",
+		ResourceType: resourceType,
 		ResourceID:   task.ID,
 		Result:       audit.ResultSuccess,
 		Metadata: map[string]any{
 			"server_id":         task.ServerID,
 			"agent_id":          task.AgentID,
+			"kind":              kind,
 			"config_version_id": task.ConfigVersionID,
 			"action":            task.Action,
+			"operation":         task.Operation,
 			"status":            task.Status,
 		},
 	})
 }
 
-func (h *Handler) recordTaskCompleted(r *http.Request, jobID string, status string) {
+func (h *Handler) recordTaskCompleted(r *http.Request, jobID string, status string, kind string) {
+	resourceType := "config_apply_job"
+	if kind == AgentTaskKindVPNCoreService {
+		resourceType = "agent_operation_job"
+	}
 	h.recordAudit(r.Context(), audit.EventInput{
 		ActorType:    audit.ActorTypeAgent,
 		Action:       "agent.task.completed",
-		ResourceType: "config_apply_job",
+		ResourceType: resourceType,
 		ResourceID:   jobID,
 		Result:       audit.ResultSuccess,
 		Metadata: map[string]any{
 			"job_id": jobID,
+			"kind":   kind,
 			"status": status,
 		},
 	})
@@ -331,7 +387,7 @@ func (h *Handler) recordTaskCompletionRejected(r *http.Request, jobID string, re
 	h.recordAudit(r.Context(), audit.EventInput{
 		ActorType:    audit.ActorTypeAgent,
 		Action:       "agent.task.completion_rejected",
-		ResourceType: "config_apply_job",
+		ResourceType: "agent_task",
 		ResourceID:   jobID,
 		Result:       audit.ResultFailure,
 		Metadata: map[string]any{
