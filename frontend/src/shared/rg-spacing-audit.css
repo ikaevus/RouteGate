@@ -1,0 +1,293 @@
+:root {
+  --rg-space-surface-x: 18px;
+  --rg-space-surface-y: 18px;
+  --rg-space-compact-x: 14px;
+  --rg-space-compact-y: 12px;
+}
+
+/* Keep text and controls away from the borders of primary application surfaces. */
+.card,
+.panel,
+.auth-card,
+.portal-card {
+  padding: var(--rg-space-surface-y) var(--rg-space-surface-x);
+}
+
+.feature-page-header,
+.page-header,
+.server-details-page .page-header,
+.protocol-settings-page .page-header,
+.routing-profiles-page .page-header,
+.vpn-accounts-page .page-header,
+.portal-page .page-header {
+  padding: 18px 20px;
+}
+
+/* Bordered detail containers need their own inset in addition to panel padding. */
+.detail-list,
+.credentials-detail-list {
+  padding: 5px var(--rg-space-compact-x);
+}
+
+.detail-row {
+  padding: 10px 0;
+}
+
+.detail-row:first-child {
+  padding-top: 10px;
+}
+
+.detail-row:last-child {
+  padding-bottom: 10px;
+}
+
+/* Compact bordered surfaces follow the same minimum inset. */
+.empty-state,
+.empty-state-card,
+.feature-subpanel,
+.qr-payload-panel,
+.client-config-preview,
+.traffic-limit-card,
+.traffic-metric-card,
+.subscription-url-stack,
+.vpn-account-create-form,
+.server-create-form,
+.traffic-checkbox-field,
+.routing-profile-default-field {
+  padding: var(--rg-space-compact-y) var(--rg-space-compact-x);
+}
+
+.code-block,
+.inline-code,
+.subscription-url-value {
+  padding: 12px 14px;
+}
+
+.form-message {
+  padding: 11px 13px;
+}
+
+/* Keep full panel padding; give table rows their own horizontal inset instead. */
+.table-row,
+.admin-table-row {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.table-row:first-child,
+.admin-table-row:first-child {
+  padding-top: 8px;
+}
+
+.table-row:last-child,
+.admin-table-row:last-child {
+  padding-bottom: 8px;
+}
+
+.protocol-server-table-row {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.protocol-server-table-row:not(.admin-table-head) {
+  min-height: 58px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+/* Keep server identity metadata clearly separated without making every row bulky. */
+.protocol-server-identity {
+  align-content: center;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 2px;
+}
+
+.protocol-server-identity > strong,
+.protocol-server-identity > span {
+  display: block;
+  margin: 0;
+  min-width: 0;
+}
+
+.protocol-server-identity > strong {
+  line-height: 1.25;
+}
+
+.protocol-server-identity > span {
+  line-height: 1.45;
+}
+
+/* The dashboard action rail is narrow, so its primary action needs its own inset. */
+.quick-actions-widget {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.quick-actions-widget .quick-primary-action {
+  min-height: 44px;
+  padding: 9px 12px;
+  white-space: normal;
+}
+
+.quick-actions-widget .quick-primary-action span {
+  flex: 0 0 auto;
+}
+
+.quick-actions-widget .quick-action-list {
+  margin-top: 13px;
+}
+
+.quick-actions-widget .quick-action-list a {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* VPN Core controls are operational actions, not a generic empty state. */
+.vpn-core-status-panel {
+  overflow: hidden;
+}
+
+.vpn-core-status-panel .panel-header {
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  margin-bottom: 16px;
+  padding-bottom: 15px;
+}
+
+.vpn-core-status-panel .panel-subtitle {
+  margin: 6px 0 0;
+  max-width: 760px;
+}
+
+.vpn-core-status-panel .empty-state-card {
+  align-items: flex-start;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.58), rgba(15, 23, 42, 0.36));
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.vpn-core-status-panel .empty-state-card > strong {
+  align-items: center;
+  color: var(--rg-text-primary);
+  display: inline-flex;
+  font-size: 15px;
+  gap: 9px;
+  line-height: 1.3;
+}
+
+.vpn-core-status-panel .empty-state-card > strong::before {
+  background: var(--rg-success);
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.6);
+  content: "";
+  height: 8px;
+  width: 8px;
+}
+
+.vpn-core-status-panel .empty-state-card > span:not(.form-message) {
+  color: var(--rg-text-secondary);
+  line-height: 1.5;
+}
+
+.vpn-core-status-panel .form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.vpn-core-status-panel .primary-button,
+.vpn-core-status-panel .secondary-button {
+  align-items: center;
+  appearance: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  justify-content: center;
+  min-height: 38px;
+  padding: 9px 14px;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.vpn-core-status-panel .primary-button {
+  background: linear-gradient(135deg, var(--rg-primary), var(--rg-primary-hover));
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.2);
+  color: #fff;
+}
+
+.vpn-core-status-panel .secondary-button {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: #dbeafe;
+}
+
+.vpn-core-status-panel .primary-button:hover:not(:disabled),
+.vpn-core-status-panel .secondary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.vpn-core-status-panel .secondary-button:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #fff;
+}
+
+.vpn-core-status-panel .primary-button:disabled,
+.vpn-core-status-panel .secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.vpn-core-status-panel .server-connection-technical-details {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.vpn-core-status-panel .server-connection-technical-details > summary {
+  color: var(--rg-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 980px) {
+  :root {
+    --rg-space-surface-x: 16px;
+    --rg-space-surface-y: 16px;
+  }
+
+  .feature-page-header,
+  .page-header,
+  .server-details-page .page-header,
+  .protocol-settings-page .page-header,
+  .routing-profiles-page .page-header,
+  .vpn-accounts-page .page-header,
+  .portal-page .page-header {
+    padding: 16px;
+  }
+
+  .protocol-server-table-row {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .vpn-core-status-panel .panel-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .vpn-core-status-panel .form-actions {
+    width: 100%;
+  }
+}

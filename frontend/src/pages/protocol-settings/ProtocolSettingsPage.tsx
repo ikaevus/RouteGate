@@ -10,15 +10,19 @@ function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : t('common.notAvailable');
 }
 
+function hasValue(value?: string | null): value is string {
+  return Boolean(value?.trim());
+}
+
 function ServerSettingsRow({ server, selected }: { server: Server; selected: boolean }) {
   return (
     <Link
       className={`admin-table-row protocol-server-table-row vpn-account-row-link${selected ? ' vpn-account-row-selected' : ''}`}
       to={`/protocol-settings/${server.id}`}
     >
-      <div>
+      <div className="protocol-server-identity">
         <strong>{formatValue(server.name)}</strong>
-        <span>{formatValue(server.description)}</span>
+        {hasValue(server.description) && <span>{server.description}</span>}
       </div>
       <span>{formatValue(server.provider)}</span>
       <span>{formatValue(server.location)}</span>

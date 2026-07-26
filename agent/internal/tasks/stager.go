@@ -8,15 +8,29 @@ import (
 	"path/filepath"
 )
 
+const (
+	TaskKindConfigApply    = "config_apply"
+	TaskKindVPNCoreService = "vpn_core_service"
+)
+
 type ConfigTask struct {
 	ID              string          `json:"id"`
+	Kind            string          `json:"kind,omitempty"`
 	ServerID        string          `json:"serverId"`
 	AgentID         string          `json:"agentId"`
-	ConfigVersionID string          `json:"configVersionId"`
-	Action          string          `json:"action"`
+	ConfigVersionID string          `json:"configVersionId,omitempty"`
+	Action          string          `json:"action,omitempty"`
+	Operation       string          `json:"operation,omitempty"`
 	Status          string          `json:"status"`
-	RenderedConfig  json.RawMessage `json:"renderedConfig"`
-	ConfigHash      string          `json:"configHash"`
+	RenderedConfig  json.RawMessage `json:"renderedConfig,omitempty"`
+	ConfigHash      string          `json:"configHash,omitempty"`
+}
+
+func (t ConfigTask) EffectiveKind() string {
+	if t.Kind == "" {
+		return TaskKindConfigApply
+	}
+	return t.Kind
 }
 
 type StageResult struct {
@@ -34,6 +48,9 @@ func NewStager(dir string) Stager {
 }
 
 func (s Stager) Stage(task ConfigTask) (StageResult, error) {
+	if task.EffectiveKind() != TaskKindConfigApply {
+		return StageResult{}, fmt.Errorf("task kind %q cannot be staged as config", task.EffectiveKind())
+	}
 	if task.ID == "" {
 		return StageResult{}, fmt.Errorf("task id is required")
 	}
@@ -80,11 +97,15 @@ func extractSingBoxConfig(renderedConfig json.RawMessage) (json.RawMessage, erro
 	if err := json.Unmarshal(renderedConfig, &envelope); err != nil {
 		return nil, fmt.Errorf("decode rendered config envelope: %w", err)
 	}
-	if envelope.SchemaVersion == "routegate.config.v1" {
-		if len(envelope.SingBox) == 0 || !json.Valid(envelope.SingBox) {
-			return nil, fmt.Errorf("routegate config envelope must include valid singBox payload")
-		}
-		return envelope.SingBox, nil
+
+	// Keep backward compatibility with tasks that contain a plain sing-box
+	// configuration instead of the RouteGate config envelope.
+	if envelope.SchemaVersion == "" {
+		return renderedConfig, nil
 	}
-	return renderedConfig, nil
+
+	if len(envelope.SingBox) == 0 || !json.Valid(envelope.SingBox) {
+		return nil, fmt.Errorf("rendered config envelope must contain valid singBox JSON")
+	}
+	return envelope.SingBox, nil
 }

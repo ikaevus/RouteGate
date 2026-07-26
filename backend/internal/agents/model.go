@@ -19,6 +19,17 @@ const (
 	ConfigApplyJobStatusFailed     = "failed"
 )
 
+const (
+	AgentTaskKindConfigApply    = "config_apply"
+	AgentTaskKindVPNCoreService = "vpn_core_service"
+)
+
+const (
+	VPNCoreOperationStart   = "start"
+	VPNCoreOperationStop    = "stop"
+	VPNCoreOperationRestart = "restart"
+)
+
 type Capabilities map[string]any
 
 type Agent struct {
@@ -38,7 +49,6 @@ type Agent struct {
 	CreatedAt       time.Time     `json:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt"`
 
-	// These fields retain compatibility with the existing API response shape.
 	Name     string    `json:"name,omitempty"`
 	Version  string    `json:"version,omitempty"`
 	LastSeen time.Time `json:"lastSeen,omitempty"`
@@ -46,15 +56,28 @@ type Agent struct {
 
 type AgentConfigTask struct {
 	ID              string          `json:"id"`
+	Kind            string          `json:"kind,omitempty"`
 	ServerID        string          `json:"serverId"`
 	AgentID         string          `json:"agentId"`
-	ConfigVersionID string          `json:"configVersionId"`
-	Action          string          `json:"action"`
+	ConfigVersionID string          `json:"configVersionId,omitempty"`
+	Action          string          `json:"action,omitempty"`
+	Operation       string          `json:"operation,omitempty"`
 	Status          string          `json:"status"`
-	RenderedConfig  json.RawMessage `json:"renderedConfig"`
-	ConfigHash      string          `json:"configHash"`
+	RenderedConfig  json.RawMessage `json:"renderedConfig,omitempty"`
+	ConfigHash      string          `json:"configHash,omitempty"`
+	ResultPayload   map[string]any  `json:"resultPayload,omitempty"`
+	ErrorMessage    string          `json:"errorMessage,omitempty"`
 	CreatedAt       time.Time       `json:"createdAt"`
+	UpdatedAt       *time.Time      `json:"updatedAt,omitempty"`
 	StartedAt       *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt     *time.Time      `json:"completedAt,omitempty"`
+}
+
+func (t AgentConfigTask) EffectiveKind() string {
+	if t.Kind == "" {
+		return AgentTaskKindConfigApply
+	}
+	return t.Kind
 }
 
 type CompleteConfigTaskInput struct {

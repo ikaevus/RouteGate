@@ -59,7 +59,7 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 		r.logger.Warn("heartbeat failed", "error", err)
 	}
 	if err := r.processNextTask(ctx); err != nil {
-		r.logger.Warn("process config task failed", "error", err)
+		r.logger.Warn("process agent task failed", "error", err)
 	}
 	if err := r.reportTrafficUsage(ctx); err != nil {
 		r.logger.Warn("report traffic usage failed", "error", err)
@@ -75,7 +75,7 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 				r.logger.Warn("heartbeat failed", "error", err)
 			}
 			if err := r.processNextTask(ctx); err != nil {
-				r.logger.Warn("process config task failed", "error", err)
+				r.logger.Warn("process agent task failed", "error", err)
 			}
 			if err := r.reportTrafficUsage(ctx); err != nil {
 				r.logger.Warn("report traffic usage failed", "error", err)
@@ -151,8 +151,22 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 	if task == nil {
-		r.logger.Debug("no config task available")
+		r.logger.Debug("no agent task available")
 		return nil
+	}
+
+	switch task.EffectiveKind() {
+	case tasks.TaskKindVPNCoreService:
+		return r.processVPNCoreServiceTask(ctx, *task)
+	case tasks.TaskKindConfigApply:
+		// Continue through the existing config deployment workflow.
+	default:
+		err := fmt.Errorf("unsupported agent task kind %q", task.Kind)
+		report := map[string]any{"kind": task.Kind, "status": "rejected"}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("reject unsupported task kind: %v; report failure: %w", err, completeErr)
+		}
+		return err
 	}
 
 	stageResult, err := tasks.NewStager(r.cfg.ConfigStagingDir).Stage(*task)
