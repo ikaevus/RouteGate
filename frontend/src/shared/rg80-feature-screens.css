@@ -99,6 +99,36 @@
   white-space: nowrap;
 }
 
+/* Server links and badges must not inherit the generic table ellipsis decoration. */
+.servers-table-row.table-row-link,
+.servers-table-row.table-row-link:visited,
+.servers-table-row.table-row-link:hover,
+.servers-table-row.table-row-link:active {
+  text-decoration: none;
+}
+
+.servers-table-row.table-row-link .text-link,
+.servers-table-row.table-row-link .badge {
+  overflow: visible;
+  text-decoration: none;
+  text-overflow: clip;
+}
+
+.servers-table-row.table-row-link::before,
+.servers-table-row.table-row-link::after,
+.servers-table-row.table-row-link .text-link::before,
+.servers-table-row.table-row-link .text-link::after,
+.servers-table-row.table-row-link .badge::before,
+.servers-table-row.table-row-link .badge::after {
+  content: none;
+}
+
+.servers-table-row.table-row-link:focus-visible {
+  border-radius: 10px;
+  outline: 2px solid rgba(96, 165, 250, 0.76);
+  outline-offset: -2px;
+}
+
 .portal-page .detail-row > strong,
 .portal-page .detail-row > span,
 .portal-page .detail-row > code,

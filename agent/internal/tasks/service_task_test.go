@@ -49,3 +49,13 @@ func TestEffectiveKindKeepsLegacyConfigTasksCompatible(t *testing.T) {
 		t.Fatalf("effective kind = %q", got)
 	}
 }
+
+func TestVPNCoreInstallationTaskContract(t *testing.T) {
+	task := ConfigTask{Kind: TaskKindVPNCoreInstall, Operation: InstallOperationSingBox}
+	if task.EffectiveKind() != TaskKindVPNCoreInstall {
+		t.Fatalf("kind = %q", task.EffectiveKind())
+	}
+	if task.Operation != InstallOperationSingBox {
+		t.Fatalf("operation = %q", task.Operation)
+	}
+}

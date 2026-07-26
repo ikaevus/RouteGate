@@ -158,6 +158,8 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 	switch task.EffectiveKind() {
 	case tasks.TaskKindVPNCoreService:
 		return r.processVPNCoreServiceTask(ctx, *task)
+	case tasks.TaskKindVPNCoreInstall:
+		return r.processVPNCoreInstallTask(ctx, *task)
 	case tasks.TaskKindConfigApply:
 		// Continue through the existing config deployment workflow.
 	default:

@@ -22,12 +22,14 @@ const (
 const (
 	AgentTaskKindConfigApply    = "config_apply"
 	AgentTaskKindVPNCoreService = "vpn_core_service"
+	AgentTaskKindVPNCoreInstall = "vpn_core_install"
 )
 
 const (
-	VPNCoreOperationStart   = "start"
-	VPNCoreOperationStop    = "stop"
-	VPNCoreOperationRestart = "restart"
+	VPNCoreOperationStart          = "start"
+	VPNCoreOperationStop           = "stop"
+	VPNCoreOperationRestart        = "restart"
+	VPNCoreOperationInstallSingBox = "install_sing_box"
 )
 
 type Capabilities map[string]any

@@ -29,7 +29,7 @@ type agentAPIRepository interface {
 
 type agentOperationTaskRepository interface {
 	ClaimNextAgentOperationTask(context.Context, string) (*AgentConfigTask, error)
-	CompleteAgentOperationTask(context.Context, CompleteAgentOperationJobInput) error
+	CompleteAgentOperationTask(context.Context, CompleteAgentOperationJobInput) (string, error)
 }
 
 type Handler struct {
@@ -285,8 +285,9 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	jobID := r.PathValue("job_id")
 	tokenHash := HashToken(token)
 	var err error
+	var operationKind string
 	if operationRepository, supported := h.repository.(agentOperationTaskRepository); supported {
-		err = operationRepository.CompleteAgentOperationTask(r.Context(), CompleteAgentOperationJobInput{
+		operationKind, err = operationRepository.CompleteAgentOperationTask(r.Context(), CompleteAgentOperationJobInput{
 			TokenHash:     tokenHash,
 			JobID:         jobID,
 			Status:        request.Status,
@@ -300,7 +301,7 @@ func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err == nil {
-		h.recordTaskCompleted(r, jobID, request.Status, AgentTaskKindVPNCoreService)
+		h.recordTaskCompleted(r, jobID, request.Status, operationKind)
 		httpx.WriteJSON(w, http.StatusOK, CompleteAgentTaskResponse{OK: true, TaskID: jobID, Status: request.Status})
 		return
 	}
@@ -343,7 +344,7 @@ func (h *Handler) recordRegistrationFailure(r *http.Request, registrationToken s
 func (h *Handler) recordTaskClaimed(r *http.Request, task AgentConfigTask) {
 	kind := task.EffectiveKind()
 	resourceType := "config_apply_job"
-	if kind == AgentTaskKindVPNCoreService {
+	if kind == AgentTaskKindVPNCoreService || kind == AgentTaskKindVPNCoreInstall {
 		resourceType = "agent_operation_job"
 	}
 	h.recordAudit(r.Context(), audit.EventInput{
@@ -366,7 +367,7 @@ func (h *Handler) recordTaskClaimed(r *http.Request, task AgentConfigTask) {
 
 func (h *Handler) recordTaskCompleted(r *http.Request, jobID string, status string, kind string) {
 	resourceType := "config_apply_job"
-	if kind == AgentTaskKindVPNCoreService {
+	if kind == AgentTaskKindVPNCoreService || kind == AgentTaskKindVPNCoreInstall {
 		resourceType = "agent_operation_job"
 	}
 	h.recordAudit(r.Context(), audit.EventInput{
