@@ -30,6 +30,7 @@ const (
 	defaultSourcePath   = "/etc/apt/sources.list.d/sagernet.sources"
 	signingKeyURL       = "https://sing-box.app/gpg.key"
 	maxSigningKeyBytes  = 1 << 20
+	signingKeyTimeout   = 30 * time.Second
 	commandTimeout      = 10 * time.Minute
 	verificationTimeout = 15 * time.Second
 )
@@ -98,6 +99,7 @@ type Installer struct {
 	keyPath           string
 	sourcePath        string
 	serviceName       string
+	downloadTimeout   time.Duration
 	run               commandRunner
 	download          downloader
 }
@@ -113,6 +115,7 @@ func New() Installer {
 		keyPath:           defaultKeyPath,
 		sourcePath:        defaultSourcePath,
 		serviceName:       DefaultServiceName,
+		downloadTimeout:   signingKeyTimeout,
 		run:               runCommand,
 		download:          downloadSigningKey,
 	}
@@ -157,7 +160,7 @@ func (i Installer) Execute(ctx context.Context, operation string) (Report, error
 		)
 	} else {
 		if err := i.configureRepository(ctx); err != nil {
-			return i.fail(report, "configure_repository", "repository_configuration_failed")
+			return i.fail(report, "configure_repository", errorCode(err, "repository_configuration_failed"))
 		}
 		report.Stages = append(report.Stages, StageResult{Stage: "configure_repository", Status: "succeeded"})
 
@@ -250,9 +253,8 @@ func (i Installer) runWithTimeout(ctx context.Context, timeout time.Duration, na
 }
 
 func (i Installer) configureRepository(ctx context.Context) error {
-	if _, err := os.Stat(i.sourcePath); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	sourceExists, err := validateManagedFile(i.sourcePath, []byte(repositorySource), "repository_source_conflict")
+	if err != nil {
 		return err
 	}
 
@@ -262,19 +264,60 @@ func (i Installer) configureRepository(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Dir(i.sourcePath), 0o755); err != nil {
 		return err
 	}
-	if _, err := os.Stat(i.keyPath); errors.Is(err, os.ErrNotExist) {
-		key, downloadErr := i.download(ctx, signingKeyURL)
-		if downloadErr != nil {
-			return downloadErr
+
+	timeout := i.downloadTimeout
+	if timeout <= 0 {
+		timeout = signingKeyTimeout
+	}
+	downloadCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	key, downloadErr := i.download(downloadCtx, signingKeyURL)
+	if downloadErr != nil {
+		if errors.Is(downloadErr, context.DeadlineExceeded) || errors.Is(downloadCtx.Err(), context.DeadlineExceeded) {
+			return &InstallError{Stage: "configure_repository", Code: "signing_key_download_timeout"}
 		}
-		if err := writeNewAtomic(i.keyPath, key, 0o644); err != nil && !errors.Is(err, os.ErrExist) {
-			return err
-		}
-	} else if err != nil {
+		return &InstallError{Stage: "configure_repository", Code: "signing_key_download_failed"}
+	}
+	if len(key) == 0 || len(key) > maxSigningKeyBytes {
+		return &InstallError{Stage: "configure_repository", Code: "signing_key_download_failed"}
+	}
+
+	if err := ensureManagedFile(i.keyPath, key, 0o644, "signing_key_conflict"); err != nil {
 		return err
 	}
-	if err := writeNewAtomic(i.sourcePath, []byte(repositorySource), 0o644); err != nil && !errors.Is(err, os.ErrExist) {
+	if !sourceExists {
+		if err := ensureManagedFile(i.sourcePath, []byte(repositorySource), 0o644, "repository_source_conflict"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateManagedFile(path string, expected []byte, conflictCode string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !bytes.Equal(data, expected) {
+		return true, &InstallError{Stage: "configure_repository", Code: conflictCode}
+	}
+	return true, nil
+}
+
+func ensureManagedFile(path string, expected []byte, mode os.FileMode, conflictCode string) error {
+	exists, err := validateManagedFile(path, expected, conflictCode)
+	if err != nil || exists {
 		return err
+	}
+	if err := writeNewAtomic(path, expected, mode); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		_, validationErr := validateManagedFile(path, expected, conflictCode)
+		return validationErr
 	}
 	return nil
 }
@@ -311,7 +354,8 @@ func downloadSigningKey(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	response, err := http.DefaultClient.Do(request)
+	client := &http.Client{Timeout: signingKeyTimeout}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}

@@ -3,11 +3,14 @@ package vpncoreinstall
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDetectPlatformSupportsDebianAndUbuntuLTS(t *testing.T) {
@@ -142,6 +145,163 @@ func TestInstallerExecutesOnlyExactAllowListedCommands(t *testing.T) {
 	}
 }
 
+func TestInstallerSigningKeyDownloadTimeoutReturnsStructuredFailure(t *testing.T) {
+	installer, calls := testInstaller(t)
+	installer.downloadTimeout = 20 * time.Millisecond
+	installer.download = func(ctx context.Context, _ string) ([]byte, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	started := time.Now()
+	report, err := installer.Execute(context.Background(), OperationInstall)
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("installer remained blocked for %s", elapsed)
+	}
+	assertInstallErrorCode(t, err, "signing_key_download_timeout")
+	assertStageCode(t, report, "configure_repository", "signing_key_download_timeout")
+	if len(*calls) != 0 {
+		t.Fatalf("commands executed after download timeout: %#v", *calls)
+	}
+}
+
+func TestSigningKeyHTTPDownloadHonorsContextDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err := downloadSigningKey(ctx, server.URL)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("download error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("HTTP download remained blocked for %s", elapsed)
+	}
+}
+
+func TestInstallerSigningKeyDownloadFailureReturnsStructuredFailure(t *testing.T) {
+	installer, calls := testInstaller(t)
+	installer.download = func(context.Context, string) ([]byte, error) {
+		return nil, errors.New("network unavailable")
+	}
+
+	report, err := installer.Execute(context.Background(), OperationInstall)
+	assertInstallErrorCode(t, err, "signing_key_download_failed")
+	assertStageCode(t, report, "configure_repository", "signing_key_download_failed")
+	if len(*calls) != 0 {
+		t.Fatalf("commands executed after download failure: %#v", *calls)
+	}
+}
+
+func TestInstallerRepairsSourcePresentKeyMissing(t *testing.T) {
+	installer, _ := testInstaller(t)
+	if err := os.MkdirAll(filepath.Dir(installer.sourcePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installer.sourcePath, []byte(repositorySource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installer.Execute(context.Background(), OperationInstall); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	got, err := os.ReadFile(installer.keyPath)
+	if err != nil {
+		t.Fatalf("read repaired key: %v", err)
+	}
+	if string(got) != "test-signing-key" {
+		t.Fatalf("key = %q", got)
+	}
+}
+
+func TestInstallerRepairsKeyPresentSourceMissing(t *testing.T) {
+	installer, _ := testInstaller(t)
+	if err := os.MkdirAll(filepath.Dir(installer.keyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installer.keyPath, []byte("test-signing-key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := installer.Execute(context.Background(), OperationInstall); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	got, err := os.ReadFile(installer.sourcePath)
+	if err != nil {
+		t.Fatalf("read repaired source: %v", err)
+	}
+	if string(got) != repositorySource {
+		t.Fatalf("source = %q", got)
+	}
+}
+
+func TestInstallerRejectsConflictingRepositoryFilesWithoutOverwrite(t *testing.T) {
+	tests := []struct {
+		name         string
+		code         string
+		path         func(Installer) string
+		content      string
+		wantDownload bool
+	}{
+		{
+			name: "source",
+			code: "repository_source_conflict",
+			path: func(installer Installer) string {
+				return installer.sourcePath
+			},
+			content: "user-managed repository\n",
+		},
+		{
+			name: "key",
+			code: "signing_key_conflict",
+			path: func(installer Installer) string {
+				return installer.keyPath
+			},
+			content:      "user-managed signing key\n",
+			wantDownload: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			installer, calls := testInstaller(t)
+			path := test.path(installer)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(test.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			downloaded := false
+			originalDownload := installer.download
+			installer.download = func(ctx context.Context, url string) ([]byte, error) {
+				downloaded = true
+				return originalDownload(ctx, url)
+			}
+
+			report, err := installer.Execute(context.Background(), OperationInstall)
+			assertInstallErrorCode(t, err, test.code)
+			assertStageCode(t, report, "configure_repository", test.code)
+			if downloaded != test.wantDownload {
+				t.Fatalf("downloaded = %v, want %v", downloaded, test.wantDownload)
+			}
+			got, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(got) != test.content {
+				t.Fatalf("conflicting file overwritten: %q", got)
+			}
+			if len(*calls) != 0 {
+				t.Fatalf("commands executed after conflict: %#v", *calls)
+			}
+		})
+	}
+}
+
 func TestInstallerRejectsUnknownOperationBeforeExecution(t *testing.T) {
 	installer, calls := testInstaller(t)
 	_, err := installer.Execute(context.Background(), "install_anything")
@@ -152,6 +312,27 @@ func TestInstallerRejectsUnknownOperationBeforeExecution(t *testing.T) {
 	if len(*calls) != 0 {
 		t.Fatalf("commands executed: %#v", *calls)
 	}
+}
+
+func assertInstallErrorCode(t *testing.T, err error, code string) {
+	t.Helper()
+	var installErr *InstallError
+	if !errors.As(err, &installErr) || installErr.Code != code {
+		t.Fatalf("error = %v, want code %q", err, code)
+	}
+}
+
+func assertStageCode(t *testing.T, report Report, stage, code string) {
+	t.Helper()
+	for _, result := range report.Stages {
+		if result.Stage == stage {
+			if result.Status != "failed" || result.Code != code {
+				t.Fatalf("stage %q = %#v, want failed code %q", stage, result, code)
+			}
+			return
+		}
+	}
+	t.Fatalf("stage %q missing from %#v", stage, report.Stages)
 }
 
 func TestInstallationCapabilityAdvertisedOnlyForSupportedEnvironment(t *testing.T) {

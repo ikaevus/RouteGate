@@ -255,3 +255,16 @@ func TestGetVPNCoreInstallationSanitizesAgentResult(t *testing.T) {
 		t.Fatalf("safe error code missing: %s", body)
 	}
 }
+
+func TestSafeInstallationErrorCodeAllowsRepositoryReliabilityFailures(t *testing.T) {
+	for _, code := range []string{
+		"signing_key_download_failed",
+		"signing_key_download_timeout",
+		"signing_key_conflict",
+		"repository_source_conflict",
+	} {
+		if got := safeInstallationErrorCode(code); got != code {
+			t.Fatalf("safeInstallationErrorCode(%q) = %q", code, got)
+		}
+	}
+}

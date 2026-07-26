@@ -199,6 +199,10 @@ export function ServerDetailsWithVPNCorePage() {
       case 'unsupported_architecture':
         return text.unsupportedPlatform;
       case 'repository_configuration_failed':
+      case 'signing_key_download_failed':
+      case 'signing_key_download_timeout':
+      case 'signing_key_conflict':
+      case 'repository_source_conflict':
         return text.repositoryConfigurationFailed;
       case 'package_index_refresh_failed':
       case 'package_installation_failed':
