@@ -119,6 +119,31 @@
   line-height: 1.45;
 }
 
+/* The dashboard action rail is narrow, so its primary action needs its own inset. */
+.quick-actions-widget {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.quick-actions-widget .quick-primary-action {
+  min-height: 44px;
+  padding: 9px 12px;
+  white-space: normal;
+}
+
+.quick-actions-widget .quick-primary-action span {
+  flex: 0 0 auto;
+}
+
+.quick-actions-widget .quick-action-list {
+  margin-top: 13px;
+}
+
+.quick-actions-widget .quick-action-list a {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 @media (max-width: 980px) {
   :root {
     --rg-space-surface-x: 16px;
