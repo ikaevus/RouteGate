@@ -81,6 +81,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/servers/{server_id}/routing-profile", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteServerAssignment))))
 	mux.Handle("POST /api/v1/servers/{server_id}/registration-token", authn(auth.RequirePermission("agents:register")(stdhttp.HandlerFunc(serversHandler.CreateRegistrationToken))))
 	mux.Handle("POST /api/v1/servers/{server_id}/vpn-core/operations", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(agentsHandler.CreateVPNCoreOperation))))
+	mux.Handle("POST /api/v1/servers/{server_id}/vpn-core/installations", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(agentsHandler.CreateVPNCoreInstallation))))
+	mux.Handle("GET /api/v1/servers/{server_id}/vpn-core/installations/{job_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(agentsHandler.GetVPNCoreInstallation))))
 	mux.Handle("POST /api/v1/servers/{server_id}/config/render", authn(auth.RequirePermission("configs:render")(stdhttp.HandlerFunc(configsHandler.Render))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.List))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions/{version_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.Get))))

@@ -4,9 +4,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { getServer } from '../../entities/server/api/serverApi';
 import {
+  createVPNCoreInstallation,
   createVPNCoreOperation,
+  getVPNCoreInstallation,
   type VPNCoreOperation,
 } from '../../entities/server/api/vpnCoreApi';
+import { ApiError } from '../../shared/api/client';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
 import { ServerDetailsPage as LegacyServerDetailsPage } from './ServerDetailsLegacyPage';
@@ -29,6 +32,11 @@ function supportedOperations(capabilities?: Record<string, unknown>): Set<VPNCor
     item === 'start' || item === 'stop' || item === 'restart'));
 }
 
+function supportsInstallation(capabilities?: Record<string, unknown>): boolean {
+  const value = capabilities?.vpnCoreInstallationOperations;
+  return Array.isArray(value) && value.includes('install_sing_box');
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
@@ -37,18 +45,40 @@ export function ServerDetailsWithVPNCorePage() {
   const { serverId } = useParams<{ serverId: string }>();
   const [panelTarget, setPanelTarget] = useState<HTMLElement | null>(null);
   const [activeOperation, setActiveOperation] = useState<{ operation: VPNCoreOperation; startedAt: number } | null>(null);
+  const [installationJobId, setInstallationJobId] = useState<string | null>(null);
+  const [installationFailureCode, setInstallationFailureCode] = useState<string | null>(null);
   const text = getVPNCoreMessages(getCurrentLocale());
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId ?? ''),
     enabled: Boolean(serverId),
-    refetchInterval: activeOperation ? 2_000 : 30_000,
+    refetchInterval: activeOperation || installationJobId ? 2_000 : 30_000,
   });
   const operationMutation = useMutation({
     mutationFn: (operation: VPNCoreOperation) => createVPNCoreOperation(serverId ?? '', operation),
     onSuccess: (_, operation) => {
       setActiveOperation({ operation, startedAt: Date.now() });
       void serverQuery.refetch();
+    },
+  });
+  const installationMutation = useMutation({
+    mutationFn: () => createVPNCoreInstallation(serverId ?? ''),
+    onSuccess: ({ job }) => {
+      setInstallationFailureCode(null);
+      setInstallationJobId(job.id);
+      void serverQuery.refetch();
+    },
+    onError: (error) => {
+      setInstallationFailureCode(error instanceof ApiError ? error.code ?? 'installation_failed' : 'installation_failed');
+    },
+  });
+  const installationQuery = useQuery({
+    queryKey: ['vpn-core-installation', serverId, installationJobId],
+    queryFn: () => getVPNCoreInstallation(serverId ?? '', installationJobId ?? ''),
+    enabled: Boolean(serverId && installationJobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'failed' || status === 'succeeded' ? false : 2_000;
     },
   });
 
@@ -61,6 +91,7 @@ export function ServerDetailsWithVPNCorePage() {
   const isDisconnected = !agent;
   const operations = useMemo(() => supportedOperations(agent?.capabilities), [agent?.capabilities]);
   const controlsSupported = operations.size > 0;
+  const installationSupported = supportsInstallation(agent?.capabilities);
 
   useEffect(() => {
     if (!activeOperation || !status) return;
@@ -72,6 +103,26 @@ export function ServerDetailsWithVPNCorePage() {
       setActiveOperation(null);
     }
   }, [activeOperation, status]);
+
+  useEffect(() => {
+    const job = installationQuery.data;
+    if (!installationJobId || !job) return;
+    if (job.status === 'failed') {
+      setInstallationFailureCode(
+        typeof job.errorMessage === 'string' && job.errorMessage.trim()
+          ? job.errorMessage.trim()
+          : 'installation_failed',
+      );
+      setInstallationJobId(null);
+      return;
+    }
+    if (job.status === 'succeeded') {
+      void serverQuery.refetch();
+      if (status?.installed) {
+        setInstallationJobId(null);
+      }
+    }
+  }, [installationJobId, installationQuery.data?.status, status?.installed]);
 
   let title = text.unknownTitle;
   let description = text.unknownDescription;
@@ -122,12 +173,47 @@ export function ServerDetailsWithVPNCorePage() {
     canRetry = status.state === 'failed' || status.state === 'degraded' || status.state === 'unknown';
   }
 
-  const busy = operationMutation.isPending || activeOperation !== null;
+  const installationJob = installationQuery.data;
+  const installationBusy = installationMutation.isPending || installationJobId !== null;
+  const busy = operationMutation.isPending || activeOperation !== null || installationBusy;
   const runOperation = (operation: VPNCoreOperation) => {
     if (operation === 'stop' && !window.confirm(text.confirmStop)) return;
     operationMutation.reset();
     operationMutation.mutate(operation);
   };
+
+  const runInstallation = () => {
+    if (!window.confirm(text.confirmInstall)) return;
+    installationMutation.reset();
+    setInstallationFailureCode(null);
+    installationMutation.mutate();
+  };
+
+  const installationError = (() => {
+    const code = installationQuery.isError ? 'installation_failed' : installationFailureCode;
+    switch (code) {
+      case 'agent_installation_unsupported':
+        return text.installationUnsupported;
+      case 'unsupported_platform':
+      case 'unsupported_distribution':
+      case 'unsupported_architecture':
+        return text.unsupportedPlatform;
+      case 'repository_configuration_failed':
+        return text.repositoryConfigurationFailed;
+      case 'package_index_refresh_failed':
+      case 'package_installation_failed':
+      case 'service_start_guard_failed':
+      case 'service_start_guard_cleanup_failed':
+        return text.packageInstallationFailed;
+      case 'installed_binary_not_found':
+      case 'binary_verification_failed':
+      case 'binary_version_unavailable':
+      case 'service_verification_failed':
+        return text.installationVerificationFailed;
+      default:
+        return code ? text.installationFailed : null;
+    }
+  })();
 
   const controls = status && status.installed && controlsSupported ? (
     <div className="form-actions">
@@ -149,6 +235,14 @@ export function ServerDetailsWithVPNCorePage() {
     </div>
   ) : null;
 
+  const installationControl = status?.state === 'not_installed' && installationSupported ? (
+    <div className="form-actions">
+      <button className="primary-button" type="button" disabled={busy} onClick={runInstallation}>
+        {installationBusy ? text.installationPending : text.installAction}
+      </button>
+    </div>
+  ) : null;
+
   const panel = (
     <section className="vpn-core-management-section" style={{ gridColumn: '1 / -1' }}>
       <div className="panel vpn-core-status-panel">
@@ -164,12 +258,25 @@ export function ServerDetailsWithVPNCorePage() {
           {!isDisconnected && <strong>{title}</strong>}
           <span>{description}</span>
           {activeOperation && <span className="muted-text">{text.operationQueued}</span>}
+          {installationJobId && installationJob?.status !== 'succeeded' && (
+            <span className="muted-text">{text.installationQueued}</span>
+          )}
+          {installationJobId && installationJob?.status === 'succeeded' && !status?.installed && (
+            <span className="muted-text">{text.installationAwaitingHeartbeat}</span>
+          )}
           {operationMutation.isError && (
             <span className="form-message form-message-error">
               {errorMessage(operationMutation.error, text.operationFailed)}
             </span>
           )}
+          {installationError && (
+            <span className="form-message form-message-error">{installationError}</span>
+          )}
+          {installationControl}
           {controls}
+          {!isDisconnected && status?.state === 'not_installed' && !installationSupported && (
+            <span className="muted-text">{text.installationUnsupported}</span>
+          )}
           {!isDisconnected && status?.installed && !controlsSupported && (
             <span className="muted-text">{text.unsupportedControls}</span>
           )}

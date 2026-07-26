@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	TaskKindConfigApply    = "config_apply"
-	TaskKindVPNCoreService = "vpn_core_service"
+	TaskKindConfigApply     = "config_apply"
+	TaskKindVPNCoreService  = "vpn_core_service"
+	TaskKindVPNCoreInstall  = "vpn_core_install"
+	InstallOperationSingBox = "install_sing_box"
 )
 
 type ConfigTask struct {

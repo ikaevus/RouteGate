@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/ikaevus/routegate/agent/internal/vpncoreinstall"
 )
 
 func TestDetectVPNCoreNotInstalled(t *testing.T) {
@@ -77,6 +79,15 @@ func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 	operations, ok := capabilities["vpnCoreServiceOperations"].([]string)
 	if !ok || len(operations) != 3 || operations[0] != "start" || operations[1] != "stop" || operations[2] != "restart" {
 		t.Fatalf("unexpected VPN Core service operations capability: %#v", capabilities["vpnCoreServiceOperations"])
+	}
+	installationOperations, advertised := capabilities["vpnCoreInstallationOperations"]
+	if vpncoreinstall.SupportsCurrentPlatform() {
+		operations, ok := installationOperations.([]string)
+		if !advertised || !ok || len(operations) != 1 || operations[0] != vpncoreinstall.OperationInstall {
+			t.Fatalf("unexpected installation capability: %#v", installationOperations)
+		}
+	} else if advertised {
+		t.Fatalf("installation capability advertised on unsupported environment: %#v", installationOperations)
 	}
 }
 

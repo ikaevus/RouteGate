@@ -20,6 +20,7 @@ const (
 
 type CreateAgentOperationJobInput struct {
 	ServerID  string
+	Kind      string
 	Operation string
 }
 
@@ -41,12 +42,21 @@ func ValidVPNCoreOperation(operation string) bool {
 }
 
 func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAgentOperationJobInput) (AgentConfigTask, error) {
+	kind := strings.TrimSpace(input.Kind)
+	if kind == "" {
+		kind = AgentTaskKindVPNCoreService
+	}
 	operation := strings.TrimSpace(input.Operation)
 	if strings.TrimSpace(input.ServerID) == "" {
 		return AgentConfigTask{}, fmt.Errorf("server id is required")
 	}
-	if !ValidVPNCoreOperation(operation) {
-		return AgentConfigTask{}, fmt.Errorf("unsupported VPN Core operation %q", operation)
+	capability, err := operationCapability(kind, operation)
+	if err != nil {
+		return AgentConfigTask{}, err
+	}
+	capabilityJSON, err := json.Marshal(map[string]any{capability: []string{operation}})
+	if err != nil {
+		return AgentConfigTask{}, err
 	}
 
 	return scanAgentOperationTask(r.pool.QueryRow(ctx, `
@@ -55,7 +65,7 @@ func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAg
 		FROM agents a
 		WHERE a.server_id = $1::uuid
 		  AND a.status <> 'disabled'
-		  AND a.capabilities ? 'vpnCoreServiceOperations'
+		  AND a.capabilities @> $4::jsonb
 		ORDER BY a.updated_at DESC
 		LIMIT 1
 		RETURNING
@@ -67,7 +77,18 @@ func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAg
 			status,
 			created_at,
 			started_at
-	`, input.ServerID, AgentTaskKindVPNCoreService, operation))
+	`, input.ServerID, kind, operation, capabilityJSON))
+}
+
+func operationCapability(kind, operation string) (string, error) {
+	switch {
+	case kind == AgentTaskKindVPNCoreService && ValidVPNCoreOperation(operation):
+		return "vpnCoreServiceOperations", nil
+	case kind == AgentTaskKindVPNCoreInstall && operation == VPNCoreOperationInstallSingBox:
+		return "vpnCoreInstallationOperations", nil
+	default:
+		return "", fmt.Errorf("unsupported Agent operation kind %q operation %q", kind, operation)
+	}
 }
 
 func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash string) (*AgentConfigTask, error) {
@@ -125,9 +146,9 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 	return &task, nil
 }
 
-func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input CompleteAgentOperationJobInput) error {
+func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input CompleteAgentOperationJobInput) (string, error) {
 	if input.Status != AgentOperationJobStatusSucceeded && input.Status != AgentOperationJobStatusFailed {
-		return fmt.Errorf("invalid operation job completion status %q", input.Status)
+		return "", fmt.Errorf("invalid operation job completion status %q", input.Status)
 	}
 	resultPayload := input.ResultPayload
 	if resultPayload == nil {
@@ -135,10 +156,11 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 	}
 	payloadBytes, err := json.Marshal(resultPayload)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	result, err := r.pool.Exec(ctx, `
+	var kind string
+	err = r.pool.QueryRow(ctx, `
 		UPDATE agent_operation_jobs j
 		SET
 			status = $3,
@@ -151,14 +173,12 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 		  AND a.token_hash = $2
 		  AND j.agent_id = a.id
 		  AND j.status = 'in_progress'
-	`, input.JobID, input.TokenHash, input.Status, payloadBytes, strings.TrimSpace(input.ErrorMessage))
+		RETURNING j.kind
+	`, input.JobID, input.TokenHash, input.Status, payloadBytes, strings.TrimSpace(input.ErrorMessage)).Scan(&kind)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if result.RowsAffected() == 0 {
-		return pgx.ErrNoRows
-	}
-	return nil
+	return kind, nil
 }
 
 func scanAgentOperationTask(row scanner) (AgentConfigTask, error) {

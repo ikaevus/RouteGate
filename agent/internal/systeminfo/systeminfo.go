@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/buildinfo"
+	"github.com/ikaevus/routegate/agent/internal/vpncoreinstall"
 )
 
 const vpnCoreCheckTimeout = 3 * time.Second
@@ -37,6 +38,9 @@ func DetectCapabilities() map[string]any {
 	}
 	caps["vpnCore"] = detectVPNCore()
 	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
+	if vpncoreinstall.SupportsCurrentPlatform() {
+		caps["vpnCoreInstallationOperations"] = []string{vpncoreinstall.OperationInstall}
+	}
 	return caps
 }
 

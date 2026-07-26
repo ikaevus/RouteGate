@@ -13,6 +13,6 @@ func (f *fakeAgentAPIRepository) ClaimNextAgentOperationTask(context.Context, st
 	return nil, nil
 }
 
-func (f *fakeAgentAPIRepository) CompleteAgentOperationTask(context.Context, CompleteAgentOperationJobInput) error {
-	return pgx.ErrNoRows
+func (f *fakeAgentAPIRepository) CompleteAgentOperationTask(context.Context, CompleteAgentOperationJobInput) (string, error) {
+	return "", pgx.ErrNoRows
 }
