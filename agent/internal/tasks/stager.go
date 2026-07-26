@@ -97,6 +97,13 @@ func extractSingBoxConfig(renderedConfig json.RawMessage) (json.RawMessage, erro
 	if err := json.Unmarshal(renderedConfig, &envelope); err != nil {
 		return nil, fmt.Errorf("decode rendered config envelope: %w", err)
 	}
+
+	// Keep backward compatibility with tasks that contain a plain sing-box
+	// configuration instead of the RouteGate config envelope.
+	if envelope.SchemaVersion == "" {
+		return renderedConfig, nil
+	}
+
 	if len(envelope.SingBox) == 0 || !json.Valid(envelope.SingBox) {
 		return nil, fmt.Errorf("rendered config envelope must contain valid singBox JSON")
 	}
