@@ -67,14 +67,7 @@
   padding: 11px 13px;
 }
 
-/* Preserve breathing room in table-like panels without widening every cell. */
-.table-panel,
-.admin-table-panel,
-.servers-table-panel {
-  padding-left: 2px;
-  padding-right: 2px;
-}
-
+/* Keep full panel padding; give table rows their own horizontal inset instead. */
 .table-row,
 .admin-table-row {
   padding-top: 11px;
@@ -91,12 +84,24 @@
   padding-bottom: 8px;
 }
 
-/* Keep server identity metadata readable without increasing overall table density. */
+.protocol-server-table-row {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.protocol-server-table-row:not(.admin-table-head) {
+  min-height: 58px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+/* Keep server identity metadata clearly separated without making every row bulky. */
 .protocol-server-identity {
   align-content: center;
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
+  padding-left: 2px;
 }
 
 .protocol-server-identity > strong,
@@ -106,8 +111,12 @@
   min-width: 0;
 }
 
+.protocol-server-identity > strong {
+  line-height: 1.25;
+}
+
 .protocol-server-identity > span {
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 @media (max-width: 980px) {
@@ -124,5 +133,10 @@
   .vpn-accounts-page .page-header,
   .portal-page .page-header {
     padding: 16px;
+  }
+
+  .protocol-server-table-row {
+    padding-left: 10px;
+    padding-right: 10px;
   }
 }
