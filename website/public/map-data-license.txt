@@ -1,0 +1,15 @@
+World map geographic outlines
+================================
+
+The static world map in world-map-natural-earth.svg is derived from
+Natural Earth Admin 0 Countries at 1:110m scale, distributed through
+world-atlas 2.0.2.
+
+Natural Earth data is in the public domain:
+https://www.naturalearthdata.com/about/terms-of-use/
+
+world-atlas:
+https://github.com/topojson/world-atlas
+
+The RouteGate-specific colors, marker placement, and presentation are
+project styling and are not part of the Natural Earth dataset.
