@@ -459,11 +459,40 @@ button { font: inherit; }
 .github-link,
 .button { font-size: 14px; }
 .button--small { font-size: 13px; }
-.locale { font-size: 13px; }
+.locale {
+  min-height: 34px;
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #71859e;
+  border: 1px solid rgba(86, 111, 141, .42);
+  border-radius: 8px;
+  background: rgba(9, 22, 40, .72);
+  font-size: 12px;
+}
+.locale span {
+  min-width: 29px;
+  height: 26px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  color: #71859e;
+  border-radius: 5px;
+}
+.locale span.is-active {
+  color: #e4efff;
+  background: rgba(37, 99, 235, .24);
+}
+.locale i {
+  color: #405773;
+  font-size: 10px;
+  font-style: normal;
+}
 
 .hero h1 {
-  max-width: 720px;
-  font-size: clamp(72px, 6.5vw, 100px);
+  max-width: 660px;
+  font-size: clamp(68px, 5.8vw, 90px);
 }
 .hero h2 { font-size: clamp(28px, 2.2vw, 35px); }
 .hero-copy > p {
@@ -661,6 +690,8 @@ button { font: inherit; }
 }
 
 @media (max-width: 560px) {
+  .locale { padding-left: 3px; }
+  .locale span { min-width: 27px; }
   .hero h1 { font-size: 54px; }
   .hero h2 { font-size: 25px; }
   .hero-copy > p { font-size: 16px; }
