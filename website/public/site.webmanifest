@@ -1,0 +1,21 @@
+{
+  "name": "RouteGate",
+  "short_name": "RouteGate",
+  "description": "Open-source self-hosted Linux VPN Management Platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06101e",
+  "theme_color": "#06101e",
+  "icons": [
+    {
+      "src": "/favicon-256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
