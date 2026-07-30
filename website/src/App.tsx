@@ -197,7 +197,7 @@ export function App() {
             {t.product.cards.map((card, index) => (
               <article className="feature-card" key={card.title}>
                 <span className="feature-icon"><Icon name={icons[index]} /></span>
-                <div><h3>{card.title}</h3><p>{card.text}</p></div><b>0{index + 1}</b>
+                <div><h3>{card.title}</h3><p>{card.text}</p></div>
               </article>
             ))}
           </div>
@@ -210,7 +210,7 @@ export function App() {
               {t.workflow.steps.map((step, index) => (
                 <article key={step.title}>
                   <div className="workflow-icon"><b>{index + 1}</b><Icon name={icons[index]} /></div>
-                  <div><span>0{index + 1}</span><h3>{step.title}</h3><p>{step.text}</p></div>
+                  <div><h3>{step.title}</h3><p>{step.text}</p></div>
                   {index < t.workflow.steps.length - 1 && <i className="workflow-arrow" aria-hidden="true">→</i>}
                 </article>
               ))}
@@ -232,7 +232,7 @@ export function App() {
         <section className="section deployment-section container" id="roadmap">
           <div className="section-heading"><div><span>{t.deployment.eyebrow}</span><h2>{t.deployment.title}</h2></div><p>{t.deployment.text}</p></div>
           <div className="deployment-grid">
-            {t.deployment.cards.map((card, index) => <article key={card.title}><span>0{index + 1}</span><h3>{card.title}</h3><p>{card.text}</p></article>)}
+            {t.deployment.cards.map(card => <article key={card.title}><h3>{card.title}</h3><p>{card.text}</p></article>)}
           </div>
         </section>
 
