@@ -152,7 +152,11 @@ function AppHeader({ locale, setLocale, t }: { locale: Locale; setLocale: (value
         </nav>
         <div className="header-actions">
           <a className="github-link" href={githubUrl}>GitHub <span>↗</span></a>
-          <button className="locale" onClick={() => setLocale(locale === 'ru' ? 'en' : 'ru')} aria-label="Switch language">{locale.toUpperCase()} <span>⌄</span></button>
+          <button className="locale" onClick={() => setLocale(locale === 'ru' ? 'en' : 'ru')} aria-label="Switch language">
+            <span className={locale === 'ru' ? 'is-active' : ''}>RU</span>
+            <i>/</i>
+            <span className={locale === 'en' ? 'is-active' : ''}>EN</span>
+          </button>
           <a className="button button--small button--primary" href="#start">{t.action.start}</a>
         </div>
       </div>
