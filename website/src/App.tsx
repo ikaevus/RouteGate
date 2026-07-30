@@ -23,12 +23,13 @@ function Icon({ name }: { name: 'server' | 'account' | 'route' | 'client' }) {
 }
 
 function WorldMap({ t }: { t: SiteContent['dashboard'] }) {
-  const regions = [
-    { code: 'NA', count: 28, left: '20%', top: '39%' },
-    { code: 'EU', count: 63, left: '49%', top: '31%' },
-    { code: 'AS', count: 42, left: '75%', top: '43%' },
-    { code: 'SA', count: 15, left: '31%', top: '70%' },
-    { code: 'AF', count: 8, left: '52%', top: '61%' },
+  const servers = [
+    { name: 'New York', left: '29.1%', top: '41.4%' },
+    { name: 'São Paulo', left: '34.5%', top: '69.7%' },
+    { name: 'Frankfurt', left: '52.5%', top: '35.1%' },
+    { name: 'Nuremberg', left: '53.2%', top: '36.3%' },
+    { name: 'Singapore', left: '78.8%', top: '62.4%' },
+    { name: 'Tokyo', left: '87.7%', top: '42.7%' },
   ]
 
   return (
@@ -38,34 +39,16 @@ function WorldMap({ t }: { t: SiteContent['dashboard'] }) {
         <button aria-label="More map options">•••</button>
       </div>
       <div className="world-map">
-        <svg viewBox="0 0 1000 430" role="img" aria-label={t.map}>
-          <g className="map-grid">
-            <path d="M0 86H1000M0 172H1000M0 258H1000M0 344H1000M125 0V430M250 0V430M375 0V430M500 0V430M625 0V430M750 0V430M875 0V430" />
-          </g>
-          <g className="map-land">
-            <path d="M55 93l31-39 58-28 65 7 36 22 42 8 29 35-6 28-24 11-20 30-36 6-17 29-28 4-20 38-24 1-11-31-32-14-9-31-30-12-15-36 11-28z" />
-            <path d="M177 255l31 3 29 21 20 37-7 44-25 50-18-10-10-43-22-27-10-38z" />
-            <path d="M318 37l38-24 48 6 18 25-21 22-48 2-31-12z" />
-            <path d="M424 86l35-27 46-5 36 19 12 23-28 11-19 22-45-4-21 18-27-13-12-27z" />
-            <path d="M463 145l40-14 55 14 31 35 1 48-21 52-12 51-29 38-19-23-7-50-28-41-12-48-25-33z" />
-            <path d="M536 74l56-33 80-17 79 17 58-4 61 22 70 13 42 33-16 28-46 8-34 28-46-5-31 24-50-5-36 25-45-18-43 10-32-27-43-5-12-28-33-17z" />
-            <path d="M657 176l40-13 43 18 19 32-20 27-37-4-16-27-32-8z" />
-            <path d="M778 292l55-28 58 9 50 35 9 40-37 34-67 11-58-24-25-38z" />
-            <path d="M898 198l25-15 31 12 2 25-24 20-28-7z" />
-            <path d="M954 358l17-6 14 11-8 13-18-2z" />
-          </g>
-          <g className="map-borders">
-            <path d="M86 54l32 55 54 16 35 48M463 64l19 61 40 7M593 43l32 75 75 45M809 38l-16 107 47 19M833 264l15 64 65 54" />
-          </g>
-        </svg>
-        {regions.map(region => (
-          <span className="region-marker" style={{ left: region.left, top: region.top }} key={region.code}>
-            <strong>{region.count}</strong><em>{region.code}</em>
+        <img src="/world-map-natural-earth.svg" alt="" />
+        {servers.map(server => (
+          <span className="server-marker" style={{ left: server.left, top: server.top }} key={server.name}>
+            <i /><em>{server.name}</em>
           </span>
         ))}
       </div>
-      <div className="map-legend">
-        {regions.map(region => <span key={region.code}><i />{region.code}<b>{region.count}</b></span>)}
+      <div className="map-status">
+        <span><i />{t.online}</span>
+        <span>Natural Earth · 1:110m</span>
       </div>
     </div>
   )
