@@ -14,8 +14,8 @@
 
 <p align="center">
   <a href="https://routegate.org">Website</a> ·
-  <a href="docs/README.md">Documentation</a> ·
-  <a href="ROADMAP.md">Roadmap</a> ·
+  <a href="docs/">Documentation</a> ·
+  <a href="https://routegate.org/#roadmap">Roadmap</a> ·
   <a href="SECURITY.md">Security</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -174,15 +174,14 @@ Development defaults are documented in [`.env.example`](.env.example). Never use
 
 ## Documentation
 
-Start with the documentation index:
+Project documentation is organized by topic under [`docs/`](docs/):
 
-- [Documentation overview](docs/README.md)
 - [Architecture](docs/architecture/)
 - [API documentation](docs/api/)
 - [Deployment documentation](docs/deployment/)
 - [Feature documentation](docs/features/)
 - [Release documentation](docs/release/)
-- [Website](https://routegate.org)
+- [Official website](https://routegate.org)
 
 Documentation follows the same policy as the product: **English first, with Russian localization developed alongside it**.
 
