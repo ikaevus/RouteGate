@@ -48,7 +48,8 @@ export const content: Record<Locale, SiteContent> = {
       ],
     },
     workflow: {
-      eyebrow: 'КАК ЭТО РАБОТАЕТ', title: 'От управления до подключения',
+      eyebrow: 'КАК ЭТО РАБОТАЕТ',
+      title: 'От управления до подключения',
       steps: [
         { title: 'Manager', text: 'Единая веб-панель и API.' },
         { title: 'Agent', text: 'Безопасное управление Linux-серверами.' },
@@ -57,13 +58,15 @@ export const content: Record<Locale, SiteContent> = {
       ],
     },
     source: {
-      eyebrow: 'OPEN SOURCE', title: 'Открытый исходный код',
+      eyebrow: 'OPEN SOURCE',
+      title: 'Открытый исходный код',
       text: 'RouteGate развивается открыто. Исходники Manager, Agent и Admin UI доступны на GitHub — проект можно собрать и развернуть в собственной инфраструктуре.',
       points: ['Исходники на GitHub', 'Самостоятельная сборка', 'Self-hosted развёртывание', 'AGPLv3-or-later'],
       repository: 'routegate/manager/config/apply.go',
     },
     deployment: {
-      eyebrow: 'РАЗВЁРТЫВАНИЕ', title: 'Начните с одного сервера. Расширяйте по мере роста.',
+      eyebrow: 'РАЗВЁРТЫВАНИЕ',
+      title: 'Начните с одного сервера. Расширяйте по мере роста.',
       text: 'Одна и та же платформа для личной инфраструктуры, домашней лаборатории и небольших команд.',
       cards: [
         { title: 'Один VPS', text: 'Простой старт на Linux-сервере.' },
@@ -74,7 +77,8 @@ export const content: Record<Locale, SiteContent> = {
     },
     cta: { title: 'VPN-инфраструктура под вашим контролем', text: 'Разверните RouteGate и управляйте серверами, доступом и маршрутами из одной панели.' },
     footer: {
-      description: 'Open-source self-hosted Linux VPN Management Platform.', project: 'Проект', resources: 'Ресурсы', legal: 'Открытый код',
+      description: 'Open-source self-hosted Linux VPN Management Platform.',
+      project: 'Проект', resources: 'Ресурсы', legal: 'Открытый код',
       items: ['Продукт', 'Дорожная карта', 'Документация', 'GitHub', 'Releases', 'AGPLv3-or-later'],
     },
   },
@@ -82,7 +86,8 @@ export const content: Record<Locale, SiteContent> = {
     nav: { product: 'Product', openSource: 'Open Source', docs: 'Docs', roadmap: 'Roadmap', changelog: 'Changelog' },
     action: { start: 'Get Started', github: 'View on GitHub' },
     hero: {
-      eyebrow: 'OPEN SOURCE · AGPLv3-OR-LATER', title: 'RouteGate',
+      eyebrow: 'OPEN SOURCE · AGPLv3-OR-LATER',
+      title: 'RouteGate',
       subtitle: 'Open-source self-hosted Linux VPN Management Platform',
       description: 'Manage VPN servers, accounts, routing profiles, and client access from one clean web interface.',
       note: 'Deploy it yourself. Keep control of your infrastructure.',
@@ -94,7 +99,8 @@ export const content: Record<Locale, SiteContent> = {
       connected: 'Server connected', latency: 'Average latency',
     },
     product: {
-      eyebrow: 'ONE CONTROL PLANE', title: 'Everything you need to manage VPN infrastructure',
+      eyebrow: 'ONE CONTROL PLANE',
+      title: 'Everything you need to manage VPN infrastructure',
       intro: 'From the first server to distributed infrastructure — without disconnected scripts and panels.',
       cards: [
         { title: 'Server management', text: 'Connect and control Linux VPN servers from one place.' },
@@ -104,7 +110,8 @@ export const content: Record<Locale, SiteContent> = {
       ],
     },
     workflow: {
-      eyebrow: 'HOW IT WORKS', title: 'From control to connection',
+      eyebrow: 'HOW IT WORKS',
+      title: 'From control to connection',
       steps: [
         { title: 'Manager', text: 'A single web interface and API.' },
         { title: 'Agent', text: 'Safe control of Linux servers.' },
@@ -113,12 +120,15 @@ export const content: Record<Locale, SiteContent> = {
       ],
     },
     source: {
-      eyebrow: 'OPEN SOURCE', title: 'Open-source by design',
+      eyebrow: 'OPEN SOURCE',
+      title: 'Open-source by design',
       text: 'RouteGate is developed in the open. The Manager, Agent, and Admin UI are available on GitHub, ready to build and run in your own infrastructure.',
-      points: ['Source on GitHub', 'Build from source', 'Self-hosted deployment', 'AGPLv3-or-later'], repository: 'routegate/manager/config/apply.go',
+      points: ['Source on GitHub', 'Build from source', 'Self-hosted deployment', 'AGPLv3-or-later'],
+      repository: 'routegate/manager/config/apply.go',
     },
     deployment: {
-      eyebrow: 'DEPLOYMENT', title: 'Start with one server. Expand as you grow.',
+      eyebrow: 'DEPLOYMENT',
+      title: 'Start with one server. Expand as you grow.',
       text: 'The same platform for personal infrastructure, home labs, and small teams.',
       cards: [
         { title: 'One VPS', text: 'A simple start on a Linux server.' },
@@ -129,8 +139,10 @@ export const content: Record<Locale, SiteContent> = {
     },
     cta: { title: 'Your VPN infrastructure. Under your control.', text: 'Deploy RouteGate and manage servers, access, and routing from one control plane.' },
     footer: {
-      description: 'Open-source self-hosted Linux VPN Management Platform.', project: 'Project', resources: 'Resources', legal: 'Open source',
+      description: 'Open-source self-hosted Linux VPN Management Platform.',
+      project: 'Project', resources: 'Resources', legal: 'Open source',
       items: ['Product', 'Roadmap', 'Documentation', 'GitHub', 'Releases', 'AGPLv3-or-later'],
     },
   },
 }
+
