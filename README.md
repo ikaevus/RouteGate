@@ -1,283 +1,211 @@
-# RouteGate
+<p align="center">
+  <a href="https://routegate.org">
+    <img src="brand/logos/svg/logo-primary-horizontal-dark.svg" alt="RouteGate" width="620">
+  </a>
+</p>
 
-RouteGate is a self-hosted VPN and routing management platform concept.
+<p align="center">
+  <strong>Open-source, self-hosted Linux VPN Management Platform.</strong>
+</p>
 
-The current repository contains the Foundation implementation for the RouteGate Manager, Agent shell, Admin UI, PostgreSQL persistence, and local developer environment.
+<p align="center">
+  Manage VPN servers, accounts, routing profiles, configuration delivery, client access, and traffic visibility from one web interface.
+</p>
 
-## Current status
+<p align="center">
+  <a href="https://routegate.org">Website</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="ROADMAP.md">Roadmap</a> ·
+  <a href="SECURITY.md">Security</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-Foundation is active and includes:
+<p align="center">
+  <img alt="License: AGPLv3-or-later" src="https://img.shields.io/badge/license-AGPLv3--or--later-2563EB">
+  <img alt="Backend: Go" src="https://img.shields.io/badge/backend-Go-07111F">
+  <img alt="Frontend: React and TypeScript" src="https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-07111F">
+  <img alt="Database: PostgreSQL" src="https://img.shields.io/badge/database-PostgreSQL-07111F">
+</p>
 
-- Go backend Manager API.
-- React / TypeScript Admin UI.
-- PostgreSQL persistence.
-- Docker Compose development stack.
-- Server registry shell.
-- Agent registry and heartbeat shell.
-- Development auth shell.
-- Dashboard overview.
-- Request ID middleware.
-- Panic recovery middleware.
-- Development CORS middleware.
-- Shared JSON response helpers.
-- API conventions document.
-- OpenAPI seed.
-- Developer Makefile commands.
+---
+
+## What is RouteGate?
+
+RouteGate is an independent, open-source platform for operating self-hosted Linux VPN infrastructure.
+
+Its product model is intentionally simple:
+
+```text
+RouteGate Manager → RouteGate Agent → VPN Core
+```
+
+- **Manager** provides the web interface, API, persistence, configuration lifecycle, and administrative workflows.
+- **Agent** runs on managed Linux servers and performs allow-listed infrastructure operations.
+- **VPN Core** handles the actual VPN runtime. RouteGate currently integrates with **sing-box**.
+
+RouteGate is designed for administrators who want to operate their own infrastructure without relying on scattered scripts or a closed control panel.
+
+## Project principles
+
+- **Self-hosted by design** — infrastructure and data stay under the operator's control.
+- **Open source** — source code is available for inspection, modification, and self-builds.
+- **Guided workflows** — the interface should always expose the next logical operational action.
+- **Product model over implementation model** — users manage servers and access, not internal service plumbing.
+- **Security-sensitive code remains open** — no hidden critical components or artificial product limits.
+- **Protected brand** — the code is open under AGPLv3-or-later; the RouteGate name and official branding are governed separately.
+
+## Current capabilities
+
+RouteGate is under active development. The repository already includes foundations and working flows for:
+
+- Linux server registration and guided Agent onboarding;
+- Manager-to-Agent task delivery and heartbeat reporting;
+- VPN account lifecycle and client subscription delivery;
+- VLESS / Reality credentials and configuration rendering;
+- configuration render, validation, deployment, health checking, and rollback;
+- routing profiles with Direct, VPN, and Block actions;
+- QR and client configuration presentation;
+- user portal and portal access hardening;
+- traffic collection, visibility, limits, and enforcement foundations;
+- VPN Core installation and service controls;
+- version, schema, protocol, and compatibility reporting;
+- PostgreSQL-backed persistence and migrations;
+- English-first UI with Russian localization.
+
+> RouteGate is not yet presented as a finished production release. Interfaces, installation paths, and compatibility boundaries may still change while the project approaches its first supported release.
 
 ## Architecture
 
-Current Foundation stack:
+```text
+Administrator
+     │
+     ▼
+RouteGate Admin UI
+     │
+     ▼
+RouteGate Manager ───── PostgreSQL
+     │
+     │ authenticated task queue
+     ▼
+RouteGate Agent
+     │
+     │ validate / stage / apply / restart / health check / rollback
+     ▼
+sing-box
+     │
+     ▼
+VPN clients
+```
 
-    Browser
-      |
-      v
-    RouteGate Frontend :5173
-      |
-      v
-    Vite dev proxy /api/*
-      |
-      v
-    RouteGate Manager :8080
-      |
-      v
-    PostgreSQL :5432
+The backend follows a **modular monolith** architecture. Components are extracted only when real operational pressure justifies it.
 
-Main repository areas:
+## Technology stack
 
-    backend/    Go RouteGate Manager API
-    agent/      Go RouteGate Agent skeleton
-    frontend/   React / TypeScript Admin UI
-    deploy/     Docker Compose and deployment files
-    docs/       Architecture, API, operations and decision notes
-    scripts/    Helper scripts
+| Area | Technology |
+|---|---|
+| Manager | Go |
+| Agent | Go |
+| Admin UI | React, TypeScript, Vite |
+| Database | PostgreSQL |
+| VPN Core | sing-box |
+| Development | Docker Compose |
+| Production direction | Native systemd services, PostgreSQL, reverse proxy, TLS |
+| Public website | Static React/Vite site deployed with GitHub Pages |
 
-## Requirements
+## Repository layout
 
-For local development:
+```text
+agent/       RouteGate Agent
+backend/     RouteGate Manager API and database migrations
+brand/       Official brand assets and design tokens
+deploy/      Development and deployment resources
+docs/        Architecture, API, operations, features, and release notes
+frontend/    RouteGate Admin UI
+scripts/     Development and operational helpers
+website/     Static public website for routegate.org
+```
+
+## Development quick start
+
+### Requirements
 
 - Git
-- Go 1.25+
-- Node.js 24+
-- npm
-- Docker
-- Docker Compose
-- VS Code recommended
+- Go
+- Node.js and npm
+- Docker with Docker Compose
+- GNU Make
 
-The backend Docker image currently uses Go 1.26.
+### Start the development stack
 
-## Quick start
-
-Start the full development stack:
-
-    make dev
-
-This starts:
-
-    routegate-postgres-dev
-    routegate-manager-dev
-    routegate-frontend-dev
+```bash
+git clone https://github.com/ikaevus/RouteGate.git
+cd RouteGate
+make dev
+```
 
 Open the Admin UI:
 
-    http://127.0.0.1:5173
+```text
+http://127.0.0.1:5173
+```
 
-Manager health through Vite proxy:
+Run the full project checks:
 
-    curl -i http://127.0.0.1:5173/api/admin/health
+```bash
+make check
+```
 
-Direct Manager health:
+Useful commands:
 
-    curl -i http://127.0.0.1:8080/api/admin/health
+```bash
+make help
+make dev
+make down
+make restart
+make logs
+make ps
+make backend-test
+make agent-test
+make frontend-build
+make frontend-i18n-check
+```
 
-## Developer commands
+Development defaults are documented in [`.env.example`](.env.example). Never use the example passwords or tokens for shared or production-like deployments.
 
-    make help
-    make dev
-    make down
-    make restart
-    make rebuild
-    make logs
-    make ps
-    make backend-test
-    make agent-test
-    make frontend-install
-    make frontend-i18n-check
-    make frontend-build
-    make check
-    make db-reset
-    make dev-traffic-usage
-    make clean
+## Documentation
 
-Common workflow:
+Start with the documentation index:
 
-    make check
-    make dev
+- [Documentation overview](docs/README.md)
+- [Architecture](docs/architecture/)
+- [API documentation](docs/api/)
+- [Deployment documentation](docs/deployment/)
+- [Feature documentation](docs/features/)
+- [Release documentation](docs/release/)
+- [Website](https://routegate.org)
 
-Frontend localization QA:
+Documentation follows the same policy as the product: **English first, with Russian localization developed alongside it**.
 
-    docs/development/frontend-i18n-check.md
+## Security
 
-Traffic usage dev scenario:
+Please do not report security vulnerabilities through public issues.
 
-    docs/features/traffic-usage-e2e-dev-scenario.md
+Read [SECURITY.md](SECURITY.md) for the supported reporting process and disclosure expectations.
 
-Stop stack:
+## Contributing
 
-    make down
+Contributions, testing, documentation improvements, and carefully scoped proposals are welcome.
 
-Reset development database volume:
+Before opening a pull request, read:
 
-    make db-reset
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [SECURITY.md](SECURITY.md)
 
-## MVP deployment and release readiness
+## License and trademarks
 
-MVP deployment baseline:
+RouteGate source code is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-    docs/deployment/mvp-deployment-baseline.md
+The RouteGate name, logo, and official-build designation are not granted by the software license. See [TRADEMARKS.md](TRADEMARKS.md) and [NOTICE](NOTICE) for the project boundary.
 
-Release readiness checklist:
-
-    docs/deployment/release-readiness-checklist.md
-
-MVP v0.1 acceptance pass:
-
-    docs/release/mvp-v0.1-acceptance-pass.md
-
-These documents cover the current single-node MVP path: environment variables, Docker Compose startup, migration verification, health checks, backup guidance, rollback notes, Manager / Agent compatibility reminders, and the full MVP v0.1 acceptance pass.
-
-## Ports
-
-| Service | Port | Description |
-|---|---:|---|
-| Frontend | 5173 | Vite dev server |
-| Manager API | 8080 | Go backend API |
-| PostgreSQL | 5432 | Development database |
-
-## Development auth shell
-
-The current authentication flow is a Foundation placeholder.
-
-Login page:
-
-    http://127.0.0.1:5173/login
-
-Default dev credentials:
-
-    email:    admin@routegate.local
-    password: admin
-
-Current dev token:
-
-    routegate-dev-token
-
-Production authentication is not implemented yet.
-
-## API endpoints
-
-Current Foundation endpoints:
-
-    GET  /api/admin/health
-    POST /api/admin/auth/login
-    POST /api/admin/auth/logout
-    GET  /api/admin/me
-
-    GET  /api/admin/servers
-    POST /api/admin/servers
-
-    GET  /api/admin/agents
-
-    GET  /api/agent/health
-    POST /api/agent/register
-    POST /api/agent/heartbeat
-
-API documentation:
-
-    docs/api/conventions.md
-    docs/api/openapi.yaml
-
-## Backend structure
-
-The backend uses a modular monolith structure.
-
-Typical module layout:
-
-    handler.go      HTTP request/response layer
-    service.go      validation and business flow
-    repository.go   PostgreSQL access
-    model.go        domain model
-    dto.go          API DTOs
-
-Implemented modules using this pattern:
-
-    backend/internal/servers
-    backend/internal/agents
-
-Shared backend packages:
-
-    backend/internal/config
-    backend/internal/db
-    backend/internal/http
-    backend/internal/httpx
-    backend/internal/health
-    backend/internal/auth
-
-## Database and migrations
-
-PostgreSQL is used as the main database.
-
-Migrations live in:
-
-    backend/migrations
-
-The Manager applies migrations at startup in the development stack.
-
-Current migration files:
-
-    000001_init.up.sql
-    000001_init.down.sql
-    000002_agent_identity.up.sql
-    000002_agent_identity.down.sql
-
-## Current Foundation milestones
-
-Completed:
-
-    MVP-0: dev stack
-    MVP-1: auth shell
-    MVP-2: server registry shell
-    MVP-3: agent registry shell
-    MVP-4: dashboard overview
-    MVP-5: PostgreSQL persistence
-    MVP-6: repository layer cleanup
-    MVP-7: service layer
-    MVP-8: shared HTTP response helpers
-    MVP-9: middleware stack
-    MVP-10: API conventions + OpenAPI seed
-    MVP-11: developer Makefile commands
-    MVP-12: README refresh
-
-## Next likely workstreams
-
-Recommended next workstreams:
-
-    Auth / Users / Roles
-    Server Registry / Agents
-    Config Render / Validate / Apply / Rollback
-    Agent runtime implementation
-    Audit Log
-    Routing Profiles / Split Tunnel
-    VPN Accounts / Subscriptions / QR
-
-## Notes
-
-The current implementation is still Foundation-level.
-
-Important limitations:
-
-- Auth is development-only.
-- Agent token handling is development-only.
-- Server and agent APIs are minimal.
-- No production RBAC yet.
-- No audit log writes yet.
-- No config rendering or apply workflow yet.
-- No real sing-box integration yet.
+**Open code. Protected brand. Trusted official builds.**
