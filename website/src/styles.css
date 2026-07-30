@@ -456,3 +456,236 @@ button { font: inherit; }
   }
 }
 
+/* RG-97 readability and geographic map refinement */
+.header nav,
+.github-link,
+.button { font-size: 14px; }
+.button--small { font-size: 13px; }
+.locale { font-size: 13px; }
+
+.hero h1 {
+  max-width: 720px;
+  font-size: clamp(72px, 6.5vw, 100px);
+}
+.hero h2 { font-size: clamp(28px, 2.2vw, 35px); }
+.hero-copy > p {
+  max-width: 600px;
+  color: #b4c2d3;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.hero-copy .hero-note {
+  margin-top: 7px;
+  color: #8295ac;
+  font-size: 15px;
+}
+.eyebrow { font-size: 12px; }
+.hero-meta span { font-size: 11px; }
+
+.section { padding: 68px 0; }
+.section h2 { font-size: clamp(31px, 3.25vw, 43px); }
+.section-heading { margin-bottom: 28px; }
+.section-heading span,
+.center-heading span,
+.section-label { font-size: 11px; }
+.section-heading p {
+  color: #9eafc3;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.feature-card { min-height: 142px; padding: 23px; }
+.feature-card h3 { margin-bottom: 9px; font-size: 19px; }
+.feature-card p {
+  max-width: 490px;
+  color: #93a5ba;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.feature-card > b { font-size: 22px; }
+
+.dashboard-menu span { font-size: 10px; }
+.dashboard-user strong { font-size: 10px; }
+.dashboard-user small { font-size: 8px; }
+.dashboard-search,
+.dashboard-tools span { font-size: 9px; }
+.dashboard-top > div > span { font-size: 10px; }
+.dashboard-top h3 { font-size: 18px; }
+.health { font-size: 9px; }
+.stats article > span { height: 20px; font-size: 9px; line-height: 1.25; }
+.stats strong { font-size: 17px; }
+.stats small { font-size: 8px; }
+.widget-heading { height: 38px; }
+.widget-heading strong { font-size: 11px; }
+.widget-heading span,
+.widget-heading button { font-size: 9px; }
+
+.world-map {
+  height: 190px;
+  padding: 8px 12px 2px;
+  background:
+    linear-gradient(rgba(111, 136, 167, .055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(111, 136, 167, .055) 1px, transparent 1px),
+    #081525;
+  background-size: 20% 25%;
+}
+.world-map img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  opacity: .88;
+}
+.server-marker {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
+}
+.server-marker i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid #dbeafe;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .18), 0 0 8px rgba(96, 165, 250, .7);
+}
+.server-marker em {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  padding: 2px 4px;
+  transform: translateX(-50%);
+  color: #aebed0;
+  border: 1px solid rgba(86, 111, 141, .42);
+  border-radius: 3px;
+  background: rgba(7, 17, 31, .88);
+  font-size: 7px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.map-status {
+  min-height: 30px;
+  padding: 0 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #71869f;
+  border-top: 1px solid rgba(38, 52, 73, .8);
+  font-size: 9px;
+}
+.map-status span { display: flex; align-items: center; gap: 6px; }
+.map-status i { width: 5px; height: 5px; border-radius: 50%; background: #34d399; }
+.health-row { font-size: 9px; }
+.health-row b { font-size: 9px; }
+.traffic-card > span { font-size: 9px; }
+.traffic-card > strong { font-size: 17px; }
+.dashboard-caption { font-size: 9px; }
+
+.workflow article { min-height: 130px; padding: 18px; }
+.workflow h3 { font-size: 18px; }
+.workflow p {
+  color: #91a3b8;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.workflow article > div:nth-child(2) > span { font-size: 9px; }
+
+.source-grid {
+  grid-template-columns: minmax(0, .92fr) minmax(520px, 1.08fr);
+  gap: 64px;
+}
+.source-copy h2 { margin-bottom: 18px; font-size: clamp(34px, 3.2vw, 43px); }
+.source-copy > p {
+  max-width: 590px;
+  color: #aab9ca;
+  font-size: 17px;
+  line-height: 1.7;
+}
+.source-copy ul {
+  gap: 10px;
+  margin: 25px 0 23px;
+}
+.source-copy li {
+  min-height: 45px;
+  padding: 10px 12px;
+  color: #c6d2df;
+  border: 1px solid rgba(38, 52, 73, .78);
+  border-radius: 8px;
+  background: rgba(15, 28, 47, .52);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.source-copy li i {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+.source-copy > a { font-size: 14px; }
+.code-window pre { font-size: 12px; line-height: 1.7; }
+.code-toolbar span { font-size: 10px; }
+.code-toolbar small,
+.code-status { font-size: 9px; }
+
+.deployment-grid h3 { font-size: 18px; }
+.deployment-grid p {
+  color: #91a3b8;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.final-cta p { font-size: 15px; }
+
+.footer { padding: 34px 0; }
+.footer-grid {
+  grid-template-columns: minmax(280px, 1.55fr) repeat(3, minmax(130px, .75fr));
+  gap: 36px;
+}
+.footer p {
+  max-width: 360px;
+  margin: 12px 0 16px;
+  color: #8296ad;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.footer small { font-size: 13px; }
+.footer strong { font-size: 15px; }
+.footer-grid a { font-size: 14px; }
+.footer-grid > div:not(:first-child) { gap: 9px; }
+
+@media (max-width: 1160px) {
+  .source-grid { grid-template-columns: 1fr 1.1fr; gap: 38px; }
+}
+
+@media (max-width: 800px) {
+  .hero h1 { font-size: 68px; }
+  .hero h2 { font-size: 30px; }
+  .source-grid { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: 1.4fr 1fr 1fr; }
+  .footer-grid > div:last-child { grid-column: 2 / 3; }
+}
+
+@media (max-width: 560px) {
+  .hero h1 { font-size: 54px; }
+  .hero h2 { font-size: 25px; }
+  .hero-copy > p { font-size: 16px; }
+  .hero-copy .hero-note { font-size: 14px; }
+  .section { padding: 56px 0; }
+  .section h2,
+  .source-copy h2 { font-size: 31px; }
+  .feature-card h3 { font-size: 18px; }
+  .feature-card p { font-size: 14px; }
+  .world-map { height: 154px; padding-inline: 6px; }
+  .server-marker em { display: none; }
+  .map-status { font-size: 8px; }
+  .workflow h3 { font-size: 17px; }
+  .workflow p { font-size: 14px; }
+  .source-copy > p { font-size: 16px; }
+  .source-copy ul { grid-template-columns: 1fr; }
+  .source-copy li { font-size: 14px; }
+  .code-window pre { font-size: 10px; }
+  .footer { padding: 30px 0; }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 26px 20px; }
+  .footer-grid > div:first-child { grid-column: 1 / -1; }
+  .footer-grid > div:last-child { grid-column: auto; }
+}
+
