@@ -31,6 +31,30 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+  agent:
+    name: Agent tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: agent/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -52,6 +76,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check localization
+        run: npm run i18n:check
 
       - name: Build frontend
         run: npm run build
