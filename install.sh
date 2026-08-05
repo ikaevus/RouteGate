@@ -328,7 +328,7 @@ validate_platform() {
   [[ "$arch" == "amd64" ]] || die "Unsupported architecture: ${arch:-unknown}. The installer MVP currently accepts amd64 only."
   [[ -d /run/systemd/system ]] || die "systemd is required and does not appear to be running."
   command -v systemctl >/dev/null 2>&1 || die "systemctl is required."
-  command -v apt-get >/dev/null 2>&1 || die "apt-get is required."
+  command -v apt-get >/dev/null 2>&1 || die "apt-get is required to run the installer."
   command -v curl >/dev/null 2>&1 || die "curl is required to run the installer."
   command -v getent >/dev/null 2>&1 || die "getent is required."
   command -v ip >/dev/null 2>&1 || die "the ip command is required."
@@ -647,13 +647,23 @@ confirm_installation() {
   log "  TLS: Let's Encrypt"
 
   [[ "$ROUTEGATE_ASSUME_YES" == "1" ]] && return 0
+  interactive_tty_available || die "Non-interactive installation requires --yes."
+
   local answer=""
-  if [[ -r /dev/tty ]]; then
-    read -r -p "Continue with RouteGate installation? [y/N] " answer </dev/tty
-  else
-    die "Non-interactive installation requires --yes."
-  fi
-  [[ "$answer" =~ ^[Yy]$ ]] || die "Installation cancelled."
+  while true; do
+    read -r -p "Proceed with RouteGate installation? [Y/n] " answer </dev/tty
+    case "$answer" in
+      ""|Y|y)
+        return 0
+        ;;
+      N|n)
+        die "Installation cancelled."
+        ;;
+      *)
+        printf '[RouteGate] Enter Y to continue or N to cancel.\n' >/dev/tty
+        ;;
+    esac
+  done
 }
 
 install_dependencies() {
@@ -1155,30 +1165,32 @@ verify_final_state() {
 }
 
 print_success() {
+  printf '\nRouteGate installation completed successfully.\n\n'
+  printf 'NEXT ACTION — Complete administrator setup\n\n'
+  printf 'Ctrl+click the link below, or copy the complete URL and paste it into your browser:\n\n'
+  printf '  \033]8;;%s\033\\Open RouteGate first-time setup\033]8;;\033\\\n\n' "$ROUTEGATE_SETUP_URL"
+  printf '  %s\n\n' "$ROUTEGATE_SETUP_URL"
+
   cat <<EOF_SUCCESS
-
-RouteGate installation completed successfully.
-
-Open:
-  https://${ROUTEGATE_DOMAIN}/
-
-First access:
-  ${ROUTEGATE_SETUP_URL}
-
 Administrator:
   ${ROUTEGATE_ADMIN_EMAIL}
 
 The setup link is single-use and expires at ${ROUTEGATE_SETUP_EXPIRES_AT}.
-Recovery details are stored root-only in:
+After activation, RouteGate signs the administrator in automatically.
+
+Lost the setup link? Recovery details are stored root-only in:
   ${ROUTEGATE_CREDENTIALS_FILE}
+
+Read them with:
+  sudo cat ${ROUTEGATE_CREDENTIALS_FILE}
 
 SMTP delivery is not configured by default. RouteGate does not email passwords.
 
 Services:
   PostgreSQL, nginx, RouteGate Manager, and RouteGate Agent are active and enabled.
 
-Next action:
-  Sign in, open the local server, and use the guided Install sing-box action.
+After administrator activation:
+  Open the local server and use the guided Install sing-box action.
 
 Installer log:
   ${ROUTEGATE_LOG_FILE}
