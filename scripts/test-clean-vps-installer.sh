@@ -211,7 +211,7 @@ test_success_output() {
     grep -Fq "sudo cat /root/routegate-first-login.txt" <<<"$output"
   assert_false \
     "completion output no longer presents the generic Open block" \
-    grep -Fq $'\nOpen:\n' <<<"$output"
+    grep -Fq 'Open:' <<<"$output"
   assert_false \
     "setup token is not written to the installer log" \
     grep -Fq "setup-secret-token" "$ROUTEGATE_LOG_FILE"
