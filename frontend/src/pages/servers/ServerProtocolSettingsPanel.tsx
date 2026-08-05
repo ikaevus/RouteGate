@@ -47,15 +47,22 @@ function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>):
   };
 }
 
-function toRequest(form: ProtocolSettingsFormState): UpdateProtocolSettingsRequest {
-  return {
+function toRequest(
+  form: ProtocolSettingsFormState,
+  savedRealityPublicKey: string,
+): UpdateProtocolSettingsRequest {
+  const request: UpdateProtocolSettingsRequest = {
     vlessPort: Number(form.vlessPort),
     vlessFlow: form.vlessFlow.trim(),
     vlessNetwork: form.vlessNetwork.trim(),
-    realityPublicKey: form.realityPublicKey.trim(),
     realityShortId: form.realityShortId.trim(),
     realityServerName: form.realityServerName.trim(),
   };
+  const realityPublicKey = form.realityPublicKey.trim();
+  if (realityPublicKey !== savedRealityPublicKey.trim()) {
+    request.realityPublicKey = realityPublicKey;
+  }
+  return request;
 }
 
 export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) {
@@ -85,9 +92,11 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
   const realityKeypairMutation = useMutation({
     mutationFn: () => generateRealityKeypair(serverId),
-    onSuccess: async (response) => {
-      setForm(toFormState(response));
-      await queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', serverId] });
+    onSuccess: (response) => {
+      setForm((current) => ({
+        ...current,
+        realityPublicKey: response.reality.publicKey ?? '',
+      }));
     },
   });
 
@@ -100,7 +109,9 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    updateSettingsMutation.mutate(toRequest(form));
+    updateSettingsMutation.mutate(
+      toRequest(form, settingsQuery.data?.reality.publicKey ?? ''),
+    );
   }
 
   const portNumber = Number(form.vlessPort);
@@ -110,7 +121,6 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
     portNumber <= 65535 &&
     !updateSettingsMutation.isPending &&
     !realityKeypairMutation.isPending;
-  const keypairActionLabel = form.realityPublicKey.trim() === '' ? 'Generate Reality keypair' : 'Rotate Reality keypair';
   const translatedKeypairActionLabel = form.realityPublicKey.trim() === ''
     ? t('protocolSettings.generateRealityKeypair')
     : t('protocolSettings.rotateRealityKeypair');
