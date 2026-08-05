@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const defaultListenerHealthTimeout = 3 * time.Second
+const (
+	defaultListenerHealthTimeout       = 3 * time.Second
+	defaultListenerHealthRetryInterval = 100 * time.Millisecond
+)
 
 type ListenerHealthResult struct {
 	Address string `json:"address"`
@@ -19,6 +22,20 @@ type ListenerHealthResult struct {
 }
 
 func CheckVLESSListener(ctx context.Context, configPath string) (ListenerHealthResult, error) {
+	return checkVLESSListener(
+		ctx,
+		configPath,
+		defaultListenerHealthTimeout,
+		defaultListenerHealthRetryInterval,
+	)
+}
+
+func checkVLESSListener(
+	ctx context.Context,
+	configPath string,
+	timeout time.Duration,
+	retryInterval time.Duration,
+) (ListenerHealthResult, error) {
 	payload, err := os.ReadFile(strings.TrimSpace(configPath))
 	if err != nil {
 		return ListenerHealthResult{}, fmt.Errorf("read active sing-box config: %w", err)
@@ -53,8 +70,14 @@ func CheckVLESSListener(ctx context.Context, configPath string) (ListenerHealthR
 	if port < 1 || port > 65535 {
 		return ListenerHealthResult{}, fmt.Errorf("active sing-box config has no valid VLESS listen_port")
 	}
+	if timeout <= 0 {
+		timeout = defaultListenerHealthTimeout
+	}
+	if retryInterval <= 0 {
+		retryInterval = defaultListenerHealthRetryInterval
+	}
 
-	checkCtx, cancel := context.WithTimeout(ctx, defaultListenerHealthTimeout)
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	dialer := net.Dialer{}
@@ -63,13 +86,36 @@ func CheckVLESSListener(ctx context.Context, configPath string) (ListenerHealthR
 		net.JoinHostPort("::1", strconv.Itoa(port)),
 	}
 	var lastErr error
-	for _, address := range addresses {
-		connection, dialErr := dialer.DialContext(checkCtx, "tcp", address)
-		if dialErr == nil {
-			_ = connection.Close()
-			return ListenerHealthResult{Address: address, Port: port}, nil
+
+	for {
+		for _, address := range addresses {
+			connection, dialErr := dialer.DialContext(checkCtx, "tcp", address)
+			if dialErr == nil {
+				_ = connection.Close()
+				return ListenerHealthResult{Address: address, Port: port}, nil
+			}
+			lastErr = dialErr
+			if checkCtx.Err() != nil {
+				break
+			}
 		}
-		lastErr = dialErr
+
+		if checkCtx.Err() != nil {
+			break
+		}
+
+		timer := time.NewTimer(retryInterval)
+		select {
+		case <-checkCtx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+		case <-timer.C:
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = checkCtx.Err()
 	}
 	return ListenerHealthResult{Port: port}, fmt.Errorf("VLESS listener on port %d is unreachable: %w", port, lastErr)
 }
