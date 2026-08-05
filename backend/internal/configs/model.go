@@ -185,8 +185,9 @@ type ConfigRoutingProfileRule struct {
 }
 
 type ConfigMetadata struct {
-	Source     string    `json:"source"`
-	RenderedAt time.Time `json:"renderedAt"`
+	Source         string    `json:"source"`
+	RenderedAt     time.Time `json:"renderedAt"`
+	RealityEnabled bool      `json:"realityEnabled"`
 }
 
 type SingBoxConfig struct {
