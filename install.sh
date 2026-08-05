@@ -32,6 +32,8 @@ ROUTEGATE_DB_PASSWORD=""
 ROUTEGATE_ADMIN_PASSWORD=""
 ROUTEGATE_SECRETS_FILE="/var/lib/routegate-installer/secrets.env"
 ROUTEGATE_RESUME_INSTALL=0
+ROUTEGATE_SETUP_URL=""
+ROUTEGATE_SETUP_EXPIRES_AT=""
 ROUTEGATE_LOCK_FILE="/run/lock/routegate-installer.lock"
 
 usage() {
@@ -1075,6 +1077,29 @@ wait_for_agent_registration() {
   return 1
 }
 
+create_initial_setup_link() {
+  local admin_password=$1
+  local session_token auth_config response token
+  log "Creating the one-time administrator activation link."
+
+  session_token=$(manager_login_token "$admin_password")
+  auth_config="$ROUTEGATE_WORK_DIR/setup-auth.curl"
+  write_auth_curl_config "$session_token" "$auth_config"
+
+  response=$(curl -fsS --max-time 15 \
+    --config "$auth_config" \
+    -H 'Content-Type: application/json' \
+    -X POST \
+    "${ROUTEGATE_LOCAL_API}/api/v1/auth/initial-setup-token") \
+    || die "Failed to create the initial administrator activation link."
+
+  token=$(jq -er '.token' <<<"$response") \
+    || die "Initial setup response did not contain a token."
+  ROUTEGATE_SETUP_EXPIRES_AT=$(jq -er '.expires_at' <<<"$response") \
+    || die "Initial setup response did not contain an expiration time."
+  ROUTEGATE_SETUP_URL="https://${ROUTEGATE_DOMAIN}/setup#token=${token}"
+}
+
 remove_bootstrap_environment() {
   log "Removing first-user bootstrap secrets from the Manager environment."
   sed -i '/^ROUTEGATE_BOOTSTRAP_ADMIN_/d' "$ROUTEGATE_MANAGER_ENV"
@@ -1093,15 +1118,20 @@ write_initial_credentials() {
   local admin_password=$1
   install -m 0600 /dev/null "$ROUTEGATE_CREDENTIALS_FILE"
   cat >"$ROUTEGATE_CREDENTIALS_FILE" <<EOF_CREDENTIALS
-RouteGate initial access
+RouteGate first access
 
-URL: https://${ROUTEGATE_DOMAIN}/
-Login: ${ROUTEGATE_ADMIN_EMAIL}
-Username: admin
-Password: ${admin_password}
+Setup URL: ${ROUTEGATE_SETUP_URL}
+Administrator email: ${ROUTEGATE_ADMIN_EMAIL}
+Setup link expires at: ${ROUTEGATE_SETUP_EXPIRES_AT}
 
-This password was generated uniquely for this installation.
-Store it in a password manager and remove this file afterwards:
+Open the setup URL and choose your own password. The link is single-use.
+
+Recovery only:
+A unique bootstrap password is retained below so the server owner can recover
+if the setup link expires before activation. Do not send this password by email.
+Bootstrap password: ${admin_password}
+
+Remove this file after activation and password verification:
   sudo rm -f ${ROUTEGATE_CREDENTIALS_FILE}
 EOF_CREDENTIALS
   chmod 0600 "$ROUTEGATE_CREDENTIALS_FILE"
@@ -1132,13 +1162,17 @@ RouteGate installation completed successfully.
 Open:
   https://${ROUTEGATE_DOMAIN}/
 
-Initial administrator:
-  Login:    ${ROUTEGATE_ADMIN_EMAIL}
-  Username: admin
-  Password: stored in ${ROUTEGATE_CREDENTIALS_FILE}
+First access:
+  ${ROUTEGATE_SETUP_URL}
 
-Show the generated password:
-  sudo cat ${ROUTEGATE_CREDENTIALS_FILE}
+Administrator:
+  ${ROUTEGATE_ADMIN_EMAIL}
+
+The setup link is single-use and expires at ${ROUTEGATE_SETUP_EXPIRES_AT}.
+Recovery details are stored root-only in:
+  ${ROUTEGATE_CREDENTIALS_FILE}
+
+SMTP delivery is not configured by default. RouteGate does not email passwords.
 
 Services:
   PostgreSQL, nginx, RouteGate Manager, and RouteGate Agent are active and enabled.
@@ -1177,6 +1211,7 @@ main() {
   start_manager
   configure_nginx_and_tls
   bootstrap_local_agent "$ROUTEGATE_ADMIN_PASSWORD"
+  create_initial_setup_link "$ROUTEGATE_ADMIN_PASSWORD"
   remove_bootstrap_environment
   write_initial_credentials "$ROUTEGATE_ADMIN_PASSWORD"
   verify_final_state

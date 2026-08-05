@@ -15,6 +15,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
+	"github.com/ikaevus/routegate/backend/internal/setup"
 	"github.com/ikaevus/routegate/backend/internal/system"
 	"github.com/ikaevus/routegate/backend/internal/traffic"
 	"github.com/ikaevus/routegate/backend/internal/users"
@@ -33,6 +34,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
 	systemHandler := system.NewHandler(logger, pool)
+	setupHandler := setup.NewHandler(logger, pool, cfg.AuthSessionTTL)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
 	routingProfilesHandler := routingprofiles.NewHandler(logger, pool)
@@ -52,6 +54,10 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/admin/auth/logout", adminAuth(authHandler.Logout))
 	mux.Handle("GET /api/admin/me", adminAuth(authHandler.Me))
 	mux.Handle("GET /api/v1/auth/me", authn(stdhttp.HandlerFunc(authHandler.Me)))
+	mux.Handle("POST /api/v1/auth/initial-setup-token", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(setupHandler.CreateToken))))
+	mux.HandleFunc("POST /api/v1/auth/initial-setup/inspect", setupHandler.Inspect)
+	mux.HandleFunc("POST /api/v1/auth/initial-setup/complete", setupHandler.Complete)
+	mux.Handle("POST /api/v1/auth/change-password", authn(stdhttp.HandlerFunc(setupHandler.ChangePassword)))
 	mux.Handle("POST /api/v1/auth/login", stdhttp.HandlerFunc(authHandler.Login))
 	mux.Handle("POST /api/v1/auth/logout", authn(stdhttp.HandlerFunc(authHandler.Logout)))
 

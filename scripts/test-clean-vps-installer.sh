@@ -154,6 +154,16 @@ test_piped_entrypoint_guard() {
     "$guard"
 }
 
+
+test_setup_url_contract() {
+  ROUTEGATE_DOMAIN="us.routegate.org"
+  ROUTEGATE_SETUP_URL="https://${ROUTEGATE_DOMAIN}/setup#token=test-token"
+  assert_equal \
+    "uses a URL fragment for the initial setup token" \
+    "https://us.routegate.org/setup#token=test-token" \
+    "$ROUTEGATE_SETUP_URL"
+}
+
 test_agent_credentials_detection() {
   local original_config="$ROUTEGATE_AGENT_CONFIG"
   local config_file="$TEST_TMP/agent.yaml"
@@ -204,6 +214,7 @@ test_argument_parsing
 test_artifact_urls
 test_checksum_verification
 test_piped_entrypoint_guard
+test_setup_url_contract
 test_agent_credentials_detection
 test_conflict_recommendations
 test_conflict_collection
