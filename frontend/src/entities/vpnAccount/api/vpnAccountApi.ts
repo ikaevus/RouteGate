@@ -139,8 +139,9 @@ export function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
   return apiGet<ListVpnAccountsResponse>('/api/v1/vpn-accounts');
 }
 
-export function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {
-  return apiPost<CreateVpnAccountRequest, VpnAccount>('/api/v1/vpn-accounts', request);
+export async function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {
+  const account = await apiPost<CreateVpnAccountRequest, VpnAccount>('/api/v1/vpn-accounts', request);
+  return activateVpnAccount(account.id);
 }
 
 export function activateVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
