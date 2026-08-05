@@ -22,7 +22,8 @@ const (
 	singBoxVLESSInboundTag = "vless-in"
 	singBoxDirectTag       = "direct"
 	singBoxBlockTag        = "block"
-	defaultVLESSPort      = 443
+	defaultVLESSPort       = 443
+	defaultRealityPort     = 443
 )
 
 const (
@@ -163,6 +164,7 @@ func (s *Service) GetApplyJob(ctx context.Context, serverID, jobID string) (Conf
 }
 
 func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedConfig {
+	realityEnabled := realityRequested(info)
 	config := RenderedConfig{
 		SchemaVersion: SchemaVersion,
 		Server: ConfigServer{
@@ -189,8 +191,9 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 			},
 		},
 		Metadata: ConfigMetadata{
-			Source:     "routegate-manager",
-			RenderedAt: renderedAt,
+			Source:         "routegate-manager",
+			RenderedAt:     renderedAt,
+			RealityEnabled: realityEnabled,
 		},
 	}
 
@@ -230,18 +233,46 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 			users = append(users, user)
 		}
 
-		config.SingBox.Inbounds = append(config.SingBox.Inbounds, map[string]any{
+		inbound := map[string]any{
 			"type":        "vless",
 			"tag":         singBoxVLESSInboundTag,
 			"listen":      "::",
 			"listen_port": serverVLESSPort(info),
 			"users":       users,
-		})
+		}
+		if realityEnabled {
+			inbound["tls"] = buildRealityTLS(info)
+		}
+		config.SingBox.Inbounds = append(config.SingBox.Inbounds, inbound)
 	}
 
 	applyServerRoutingProfile(&config, info.RoutingProfile)
 
 	return config
+}
+
+func realityRequested(info ServerConfigInfo) bool {
+	return strings.TrimSpace(info.RealityPrivateKey) != "" ||
+		strings.TrimSpace(info.RealityPublicKey) != "" ||
+		strings.TrimSpace(info.RealityShortID) != "" ||
+		strings.TrimSpace(info.RealityServerName) != ""
+}
+
+func buildRealityTLS(info ServerConfigInfo) map[string]any {
+	serverName := strings.TrimSpace(info.RealityServerName)
+	return map[string]any{
+		"enabled":     true,
+		"server_name": serverName,
+		"reality": map[string]any{
+			"enabled": true,
+			"handshake": map[string]any{
+				"server":      serverName,
+				"server_port": defaultRealityPort,
+			},
+			"private_key": strings.TrimSpace(info.RealityPrivateKey),
+			"short_id":    []string{strings.TrimSpace(info.RealityShortID)},
+		},
+	}
 }
 
 func applyServerRoutingProfile(config *RenderedConfig, profile *RoutingProfileConfigInfo) {
@@ -411,10 +442,65 @@ func ValidateRenderedConfig(config RenderedConfig) ValidationResult {
 		result.Valid = false
 		result.Errors = append(result.Errors, "singBox.route.final is required.")
 	}
+	if len(config.SingBox.Inbounds) == 0 {
+		result.Warnings = append(result.Warnings, "No active VPN accounts are available; this config has no VPN listener and cannot be applied.")
+	}
+	if config.Metadata.RealityEnabled {
+		inbound := findVLESSInbound(config)
+		if inbound == nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, "Reality is enabled but the VLESS inbound is missing.")
+		} else {
+			for _, message := range validateRealityInbound(inbound) {
+				result.Valid = false
+				result.Errors = append(result.Errors, message)
+			}
+		}
+	}
 	if config.Agent == nil {
 		result.Warnings = append(result.Warnings, "No registered agent is attached to this server yet; the config can be rendered but cannot be applied.")
 	}
 	return result
+}
+
+func validateRealityInbound(inbound map[string]any) []string {
+	errorsList := []string{}
+	tls, ok := inbound["tls"].(map[string]any)
+	if !ok {
+		return []string{"Reality is enabled but singBox VLESS TLS settings are missing."}
+	}
+	if !boolValue(tls["enabled"]) {
+		errorsList = append(errorsList, "Reality is enabled but singBox VLESS TLS is disabled.")
+	}
+	if strings.TrimSpace(stringValue(tls["server_name"])) == "" {
+		errorsList = append(errorsList, "Reality server name is required in singBox VLESS TLS settings.")
+	}
+	reality, ok := tls["reality"].(map[string]any)
+	if !ok {
+		return append(errorsList, "Reality settings are missing from singBox VLESS TLS settings.")
+	}
+	if !boolValue(reality["enabled"]) {
+		errorsList = append(errorsList, "singBox VLESS Reality must be enabled.")
+	}
+	if strings.TrimSpace(stringValue(reality["private_key"])) == "" {
+		errorsList = append(errorsList, "Reality private key is required for the server config.")
+	}
+	handshake, ok := reality["handshake"].(map[string]any)
+	if !ok {
+		errorsList = append(errorsList, "Reality handshake settings are required.")
+	} else {
+		if strings.TrimSpace(stringValue(handshake["server"])) == "" {
+			errorsList = append(errorsList, "Reality handshake server is required.")
+		}
+		port := intValue(handshake["server_port"])
+		if port < 1 || port > 65535 {
+			errorsList = append(errorsList, "Reality handshake server port must be between 1 and 65535.")
+		}
+	}
+	if sliceLength(reality["short_id"]) == 0 {
+		errorsList = append(errorsList, "Reality short_id must be present in the server config.")
+	}
+	return errorsList
 }
 
 func ensureConfigVersionSafeForApply(version ConfigVersion) error {
@@ -427,7 +513,7 @@ func ensureConfigVersionSafeForApply(version ConfigVersion) error {
 		return ErrConfigApplyUnsafe
 	}
 	validation := ValidateRenderedConfig(rendered)
-	if !validation.Valid {
+	if !validation.Valid || !vpnServiceReady(rendered) {
 		return ErrConfigApplyUnsafe
 	}
 
@@ -439,6 +525,74 @@ func ensureConfigVersionSafeForApply(version ConfigVersion) error {
 		return ErrConfigHashMismatch
 	}
 	return nil
+}
+
+func vpnServiceReady(config RenderedConfig) bool {
+	inbound := findVLESSInbound(config)
+	if inbound == nil {
+		return false
+	}
+	if port := intValue(inbound["listen_port"]); port < 1 || port > 65535 {
+		return false
+	}
+	if sliceLength(inbound["users"]) == 0 {
+		return false
+	}
+	if config.Metadata.RealityEnabled && len(validateRealityInbound(inbound)) > 0 {
+		return false
+	}
+	return true
+}
+
+func findVLESSInbound(config RenderedConfig) map[string]any {
+	for _, inbound := range config.SingBox.Inbounds {
+		if strings.EqualFold(strings.TrimSpace(stringValue(inbound["type"])), "vless") {
+			return inbound
+		}
+	}
+	return nil
+}
+
+func boolValue(value any) bool {
+	result, _ := value.(bool)
+	return result
+}
+
+func stringValue(value any) string {
+	result, _ := value.(string)
+	return result
+}
+
+func intValue(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case json.Number:
+		value, err := typed.Int64()
+		if err == nil {
+			return int(value)
+		}
+	}
+	return 0
+}
+
+func sliceLength(value any) int {
+	switch typed := value.(type) {
+	case []any:
+		return len(typed)
+	case []map[string]any:
+		return len(typed)
+	case []string:
+		return len(typed)
+	default:
+		return 0
+	}
 }
 
 func hashRenderedConfig(config RenderedConfig) (string, error) {
