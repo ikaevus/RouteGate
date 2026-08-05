@@ -35,7 +35,7 @@ type ConfigVersion struct {
 	Version        int             `json:"version"`
 	ConfigHash     string          `json:"configHash"`
 	Status         string          `json:"status"`
-	RenderedConfig json.RawMessage `json:"renderedConfig"`
+	RenderedConfig json.RawMessage `json:"-"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	AppliedAt      *time.Time      `json:"appliedAt,omitempty"`
 }
@@ -63,20 +63,24 @@ type ValidationResult struct {
 }
 
 type ServerConfigInfo struct {
-	ID             string
-	Name           string
-	Hostname       string
-	PublicIP       string
-	PrivateIP      string
-	Location       string
-	Provider       string
-	Status         string
-	VLESSPort      int
-	VLESSFlow      string
-	VLESSNetwork   string
-	Agent          *AgentConfigInfo
-	VPNAccounts    []VPNAccountConfigInfo
-	RoutingProfile *RoutingProfileConfigInfo
+	ID                string
+	Name              string
+	Hostname          string
+	PublicIP          string
+	PrivateIP         string
+	Location          string
+	Provider          string
+	Status            string
+	VLESSPort         int
+	VLESSFlow         string
+	VLESSNetwork      string
+	RealityPrivateKey string
+	RealityPublicKey  string
+	RealityShortID    string
+	RealityServerName string
+	Agent             *AgentConfigInfo
+	VPNAccounts       []VPNAccountConfigInfo
+	RoutingProfile    *RoutingProfileConfigInfo
 }
 
 type AgentConfigInfo struct {
