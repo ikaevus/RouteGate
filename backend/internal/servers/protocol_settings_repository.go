@@ -16,8 +16,11 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			vless_port = CASE WHEN $2 THEN $3 ELSE vless_port END,
 			vless_flow = CASE WHEN $4 THEN NULLIF($5, '') ELSE vless_flow END,
 			vless_network = CASE WHEN $6 THEN NULLIF($7, '') ELSE vless_network END,
+			reality_private_key = CASE
+				WHEN $8 AND NULLIF($9, '') IS DISTINCT FROM reality_public_key THEN NULL
+				ELSE reality_private_key
+			END,
 			reality_public_key = CASE WHEN $8 THEN NULLIF($9, '') ELSE reality_public_key END,
-			reality_private_key = CASE WHEN $8 THEN NULL ELSE reality_private_key END,
 			reality_short_id = CASE WHEN $10 THEN NULLIF($11, '') ELSE reality_short_id END,
 			reality_server_name = CASE WHEN $12 THEN NULLIF($13, '') ELSE reality_server_name END,
 			updated_at = now()
