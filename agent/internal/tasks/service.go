@@ -56,20 +56,7 @@ func (s ServiceController) Stop(ctx context.Context) (ServiceResult, error) {
 }
 
 func (s ServiceController) Restart(ctx context.Context) (ServiceResult, error) {
-	enableResult, err := s.Enable(ctx)
-	if err != nil {
-		return enableResult, fmt.Errorf("enable service before restart: %w", err)
-	}
-	restartResult, err := s.Execute(ctx, ServiceOperationRestart)
-	restartResult.Command = enableResult.Command + " && " + restartResult.Command
-	if enableResult.Output != "" {
-		if restartResult.Output != "" {
-			restartResult.Output = enableResult.Output + "\n" + restartResult.Output
-		} else {
-			restartResult.Output = enableResult.Output
-		}
-	}
-	return restartResult, err
+	return s.Execute(ctx, ServiceOperationRestart)
 }
 
 func (s ServiceController) Enable(ctx context.Context) (ServiceResult, error) {
