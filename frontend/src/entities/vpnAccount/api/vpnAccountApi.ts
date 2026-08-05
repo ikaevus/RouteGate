@@ -190,7 +190,7 @@ export function buildVlessRealityShareLink(subscription: PublicSubscriptionRespo
   const serverName = requiredText(outbound.tls?.server_name, 'Reality server name');
   const publicKey = requiredText(outbound.tls?.reality?.public_key, 'Reality public key');
   const serverPort = outbound.server_port;
-  if (!Number.isInteger(serverPort) || (serverPort ?? 0) < 1 || (serverPort ?? 0) > 65535) {
+  if (typeof serverPort !== 'number' || !Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
     throw new Error('VLESS server port is invalid.');
   }
   if (!outbound.tls?.enabled || !outbound.tls.reality?.enabled) {
