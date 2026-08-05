@@ -97,6 +97,56 @@ func TestBuildRenderedConfigIncludesRenderableVPNAccounts(t *testing.T) {
 	}
 }
 
+func TestBuildRenderedConfigIncludesRealityServerTLS(t *testing.T) {
+	config := buildRenderedConfig(ServerConfigInfo{
+		ID:                "server-id",
+		Name:              "us-01",
+		Status:            "active",
+		VLESSPort:         8443,
+		RealityPrivateKey: "private-key",
+		RealityPublicKey:  "public-key",
+		RealityShortID:    "",
+		RealityServerName: "www.microsoft.com",
+		VPNAccounts: []VPNAccountConfigInfo{{
+			ID:                       "account-id",
+			DisplayName:              "Felix",
+			Status:                   "active",
+			VLESSUUID:                "11111111-1111-1111-1111-111111111111",
+			TrafficEnforcementStatus: traffic.TrafficLimitEnforcementNotEnforced,
+		}},
+	}, time.Date(2026, time.August, 5, 8, 0, 0, 0, time.UTC))
+
+	if !config.Metadata.RealityEnabled {
+		t.Fatal("Reality metadata must be enabled")
+	}
+	if len(config.SingBox.Inbounds) != 1 {
+		t.Fatalf("inbounds = %+v", config.SingBox.Inbounds)
+	}
+	inbound := config.SingBox.Inbounds[0]
+	if inbound["listen_port"] != 8443 {
+		t.Fatalf("listen_port = %#v", inbound["listen_port"])
+	}
+	tls, ok := inbound["tls"].(map[string]any)
+	if !ok || tls["enabled"] != true || tls["server_name"] != "www.microsoft.com" {
+		t.Fatalf("unexpected tls: %#v", inbound["tls"])
+	}
+	reality, ok := tls["reality"].(map[string]any)
+	if !ok || reality["enabled"] != true || reality["private_key"] != "private-key" {
+		t.Fatalf("unexpected reality: %#v", tls["reality"])
+	}
+	shortIDs, ok := reality["short_id"].([]string)
+	if !ok || len(shortIDs) != 1 || shortIDs[0] != "" {
+		t.Fatalf("short_id = %#v, want one empty short id", reality["short_id"])
+	}
+	handshake, ok := reality["handshake"].(map[string]any)
+	if !ok || handshake["server"] != "www.microsoft.com" || handshake["server_port"] != 443 {
+		t.Fatalf("unexpected handshake: %#v", reality["handshake"])
+	}
+	if result := ValidateRenderedConfig(config); !result.Valid {
+		t.Fatalf("Reality config must validate: %+v", result)
+	}
+}
+
 func TestBuildRenderedConfigExcludesOverLimitVPNAccounts(t *testing.T) {
 	renderedAt := time.Date(2026, time.June, 25, 12, 0, 0, 0, time.UTC)
 	config := buildRenderedConfig(ServerConfigInfo{
@@ -252,7 +302,7 @@ func TestBuildRenderedConfigKeepsVPNRoutingRuleAsMetadataOnlyOnServerConfig(t *t
 	}
 }
 
-func TestValidateRenderedConfigWarnsWhenAgentIsMissing(t *testing.T) {
+func TestValidateRenderedConfigWarnsWhenAgentAndVPNServiceAreMissing(t *testing.T) {
 	config := buildRenderedConfig(ServerConfigInfo{
 		ID:     "server-id",
 		Name:   "fi-01",
@@ -264,8 +314,33 @@ func TestValidateRenderedConfigWarnsWhenAgentIsMissing(t *testing.T) {
 	if !result.Valid {
 		t.Fatalf("config should remain valid before apply: %+v", result)
 	}
-	if len(result.Warnings) != 1 {
-		t.Fatalf("warnings = %v, want one missing-agent warning", result.Warnings)
+	if len(result.Warnings) != 2 {
+		t.Fatalf("warnings = %v, want missing VPN service and missing-agent warnings", result.Warnings)
+	}
+}
+
+func TestValidateRenderedConfigRejectsIncompleteReality(t *testing.T) {
+	config := buildRenderedConfig(ServerConfigInfo{
+		ID:                "server-id",
+		Name:              "us-01",
+		Status:            "active",
+		VLESSPort:         8443,
+		RealityPublicKey:  "public-key",
+		RealityServerName: "www.microsoft.com",
+		VPNAccounts: []VPNAccountConfigInfo{{
+			ID:                       "account-id",
+			Status:                   "active",
+			VLESSUUID:                "11111111-1111-1111-1111-111111111111",
+			TrafficEnforcementStatus: traffic.TrafficLimitEnforcementNotEnforced,
+		}},
+	}, time.Now().UTC())
+
+	result := ValidateRenderedConfig(config)
+	if result.Valid {
+		t.Fatalf("Reality without a private key must be invalid: %+v", result)
+	}
+	if !strings.Contains(strings.Join(result.Errors, " "), "private key") {
+		t.Fatalf("expected private-key validation error: %+v", result)
 	}
 }
 
