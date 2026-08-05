@@ -142,8 +142,6 @@ test_checksum_verification() {
       _ "$ROOT_DIR/install.sh" "$ROUTEGATE_LOG_FILE" "$bundle" "$checksums" "$bundle_name"
 }
 
-
-
 test_piped_entrypoint_guard() {
   local guard
   guard=$(tail -n 3 "$ROOT_DIR/install.sh" | head -n1)
@@ -154,7 +152,6 @@ test_piped_entrypoint_guard() {
     "$guard"
 }
 
-
 test_setup_url_contract() {
   ROUTEGATE_DOMAIN="us.routegate.org"
   ROUTEGATE_SETUP_URL="https://${ROUTEGATE_DOMAIN}/setup#token=test-token"
@@ -162,6 +159,62 @@ test_setup_url_contract() {
     "uses a URL fragment for the initial setup token" \
     "https://us.routegate.org/setup#token=test-token" \
     "$ROUTEGATE_SETUP_URL"
+}
+
+run_confirmation_prompt() {
+  local input=$1
+  local command
+  printf -v command \
+    'source %q; ROUTEGATE_LOG_FILE=%q; ROUTEGATE_DOMAIN=us.routegate.org; ROUTEGATE_ADMIN_EMAIL=admin@example.org; ROUTEGATE_ARCH=amd64; ROUTEGATE_ASSUME_YES=0; confirm_installation' \
+    "$ROOT_DIR/install.sh" "$ROUTEGATE_LOG_FILE"
+  printf '%b' "$input" | script -qefc "bash -c $(printf '%q' "$command")" /dev/null
+}
+
+test_confirmation_prompt() {
+  command -v script >/dev/null 2>&1 || {
+    fail "util-linux script command is available for confirmation tests"
+    return
+  }
+
+  assert_true "empty confirmation input continues installation" run_confirmation_prompt '\n'
+  assert_false "n confirmation input cancels installation" run_confirmation_prompt 'n\n'
+
+  local output
+  output=$(run_confirmation_prompt 'unexpected\n\n' 2>&1)
+  assert_true \
+    "unexpected confirmation input reprompts before continuing" \
+    grep -Fq "Enter Y to continue or N to cancel." <<<"$output"
+}
+
+test_success_output() {
+  ROUTEGATE_DOMAIN="us.routegate.org"
+  ROUTEGATE_ADMIN_EMAIL="admin@example.org"
+  ROUTEGATE_SETUP_URL="https://us.routegate.org/setup#token=setup-secret-token"
+  ROUTEGATE_SETUP_EXPIRES_AT="2026-08-05T09:30:00Z"
+  ROUTEGATE_CREDENTIALS_FILE="/root/routegate-first-login.txt"
+  : >"$ROUTEGATE_LOG_FILE"
+
+  local output
+  output=$(print_success)
+
+  assert_true \
+    "completion output prioritizes administrator activation" \
+    grep -Fq "NEXT ACTION — Complete administrator setup" <<<"$output"
+  assert_true \
+    "completion output includes a short clickable setup label" \
+    grep -Fq "Open RouteGate first-time setup" <<<"$output"
+  assert_true \
+    "completion output includes the full setup URL fallback" \
+    grep -Fq "$ROUTEGATE_SETUP_URL" <<<"$output"
+  assert_true \
+    "completion output includes the recovery command" \
+    grep -Fq "sudo cat /root/routegate-first-login.txt" <<<"$output"
+  assert_false \
+    "completion output no longer presents the generic Open block" \
+    grep -Fq $'\nOpen:\n' <<<"$output"
+  assert_false \
+    "setup token is not written to the installer log" \
+    grep -Fq "setup-secret-token" "$ROUTEGATE_LOG_FILE"
 }
 
 test_agent_credentials_detection() {
@@ -181,7 +234,6 @@ EOF_AGENT_TEST
 
   ROUTEGATE_AGENT_CONFIG="$original_config"
 }
-
 
 test_conflict_recommendations() {
   local postgres nginx ports
@@ -215,6 +267,8 @@ test_artifact_urls
 test_checksum_verification
 test_piped_entrypoint_guard
 test_setup_url_contract
+test_confirmation_prompt
+test_success_output
 test_agent_credentials_detection
 test_conflict_recommendations
 test_conflict_collection
