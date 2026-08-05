@@ -26,6 +26,7 @@ const (
 	defaultSystemctl    = "/usr/bin/systemctl"
 	defaultSystemdRun   = "/run/systemd/system"
 	defaultSingBoxPath  = "/usr/bin/sing-box"
+	defaultConfigPath   = "/etc/sing-box/config.json"
 	defaultKeyPath      = "/etc/apt/keyrings/sagernet.asc"
 	defaultSourcePath   = "/etc/apt/sources.list.d/sagernet.sources"
 	signingKeyURL       = "https://sing-box.app/gpg.key"
@@ -96,6 +97,7 @@ type Installer struct {
 	systemctlPath     string
 	systemdRunPath    string
 	packageBinaryPath string
+	configPath        string
 	keyPath           string
 	sourcePath        string
 	serviceName       string
@@ -112,6 +114,7 @@ func New() Installer {
 		systemctlPath:     defaultSystemctl,
 		systemdRunPath:    defaultSystemdRun,
 		packageBinaryPath: defaultSingBoxPath,
+		configPath:        defaultConfigPath,
 		keyPath:           defaultKeyPath,
 		sourcePath:        defaultSourcePath,
 		serviceName:       DefaultServiceName,
@@ -146,6 +149,10 @@ func (i Installer) Execute(ctx context.Context, operation string) (Report, error
 
 	binaryPath := i.packageBinaryPath
 	alreadyInstalled := regularExecutable(binaryPath)
+	configExistedBefore, err := pathExists(i.configPath)
+	if err != nil {
+		return i.fail(report, "check_existing_installation", "config_inspection_failed")
+	}
 	checkCode := "not_installed"
 	if alreadyInstalled {
 		checkCode = "already_installed"
@@ -189,7 +196,16 @@ func (i Installer) Execute(ctx context.Context, operation string) (Report, error
 		if unmaskErr != nil {
 			return i.fail(report, "install_package", "service_start_guard_cleanup_failed")
 		}
-		report.Stages = append(report.Stages, StageResult{Stage: "install_package", Status: "succeeded"})
+
+		if !configExistedBefore {
+			if err := removeNewPackageConfig(i.configPath); err != nil {
+				return i.fail(report, "install_package", "package_default_config_cleanup_failed")
+			}
+		}
+		if err := i.leaveServiceInactive(ctx); err != nil {
+			return i.fail(report, "install_package", errorCode(err, "service_handoff_failed"))
+		}
+		report.Stages = append(report.Stages, StageResult{Stage: "install_package", Status: "succeeded", Code: "installed_unconfigured"})
 
 		binaryPath = i.packageBinaryPath
 		if !regularExecutable(binaryPath) {
@@ -213,11 +229,67 @@ func (i Installer) Execute(ctx context.Context, operation string) (Report, error
 	if err != nil || strings.TrimSpace(string(serviceOutput)) != "loaded" {
 		return i.fail(report, "verify_service", "service_verification_failed")
 	}
+	if !alreadyInstalled {
+		if err := i.verifyInactiveDisabled(ctx); err != nil {
+			return i.fail(report, "verify_service", errorCode(err, "service_handoff_verification_failed"))
+		}
+	}
 	report.Stages = append(report.Stages, StageResult{Stage: "verify_service", Status: "succeeded"})
 
 	report.Status = "succeeded"
 	report.Stages = append(report.Stages, StageResult{Stage: "complete", Status: "succeeded"})
 	return report, nil
+}
+
+func (i Installer) leaveServiceInactive(ctx context.Context) error {
+	if _, err := i.runWithTimeout(ctx, verificationTimeout, i.systemctlPath,
+		"disable", "--now", "--quiet", i.serviceName); err != nil {
+		return &InstallError{Stage: "install_package", Code: "service_stop_disable_failed"}
+	}
+	// reset-failed is best-effort: a cleanly stopped unit may already have been
+	// unloaded from systemd's runtime state.
+	_, _ = i.runWithTimeout(ctx, verificationTimeout, i.systemctlPath,
+		"reset-failed", i.serviceName)
+	return i.verifyInactiveDisabled(ctx)
+}
+
+func (i Installer) verifyInactiveDisabled(ctx context.Context) error {
+	activeOutput, err := i.runWithTimeout(ctx, verificationTimeout, i.systemctlPath,
+		"show", "--property", "ActiveState", "--value", i.serviceName)
+	if err != nil || strings.TrimSpace(string(activeOutput)) != "inactive" {
+		return &InstallError{Stage: "verify_service", Code: "service_not_inactive"}
+	}
+	enabledOutput, err := i.runWithTimeout(ctx, verificationTimeout, i.systemctlPath,
+		"show", "--property", "UnitFileState", "--value", i.serviceName)
+	if err != nil || strings.TrimSpace(string(enabledOutput)) != "disabled" {
+		return &InstallError{Stage: "verify_service", Code: "service_not_disabled"}
+	}
+	return nil
+}
+
+func removeNewPackageConfig(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to remove non-regular package config %s", path)
+	}
+	return os.Remove(path)
+}
+
+func pathExists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (i Installer) fail(report Report, stage, code string) (Report, error) {
@@ -257,7 +329,6 @@ func (i Installer) configureRepository(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	if err := os.MkdirAll(filepath.Dir(i.keyPath), 0o755); err != nil {
 		return err
 	}
