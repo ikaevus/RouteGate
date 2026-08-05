@@ -102,6 +102,33 @@ export interface SubscriptionQRCodeResponse {
   format: string;
 }
 
+interface SingBoxClientReality {
+  enabled?: boolean;
+  public_key?: string;
+  short_id?: string;
+}
+
+interface SingBoxClientTLS {
+  enabled?: boolean;
+  server_name?: string;
+  reality?: SingBoxClientReality;
+}
+
+interface SingBoxClientOutbound {
+  type?: string;
+  server?: string;
+  server_port?: number;
+  uuid?: string;
+  flow?: string;
+  network?: string;
+  tls?: SingBoxClientTLS;
+}
+
+interface SingBoxClientConfig {
+  outbounds?: SingBoxClientOutbound[];
+  [key: string]: unknown;
+}
+
 export interface PublicSubscriptionResponse {
   status: string;
   format: string;
@@ -130,9 +157,65 @@ export interface PublicSubscriptionResponse {
     message?: string;
     rendered?: {
       format: string;
-      content: Record<string, unknown>;
+      content: SingBoxClientConfig;
     } | null;
   };
+}
+
+function requiredText(value: string | undefined, field: string): string {
+  const normalized = value?.trim() ?? '';
+  if (normalized === '') {
+    throw new Error(`${field} is required to create a VLESS connection link.`);
+  }
+  return normalized;
+}
+
+function formatVlessHost(server: string): string {
+  if (server.includes(':') && !server.startsWith('[')) {
+    return `[${server}]`;
+  }
+  return server;
+}
+
+export function buildVlessRealityShareLink(subscription: PublicSubscriptionResponse): string {
+  const outbound = subscription.config.rendered?.content.outbounds?.find(
+    (candidate) => candidate.type?.trim().toLowerCase() === 'vless',
+  );
+  if (!outbound) {
+    throw new Error('Rendered client config does not contain a VLESS outbound.');
+  }
+
+  const server = requiredText(outbound.server, 'VLESS server');
+  const uuid = requiredText(outbound.uuid, 'VLESS UUID');
+  const serverName = requiredText(outbound.tls?.server_name, 'Reality server name');
+  const publicKey = requiredText(outbound.tls?.reality?.public_key, 'Reality public key');
+  const serverPort = outbound.server_port;
+  if (!Number.isInteger(serverPort) || (serverPort ?? 0) < 1 || (serverPort ?? 0) > 65535) {
+    throw new Error('VLESS server port is invalid.');
+  }
+  if (!outbound.tls?.enabled || !outbound.tls.reality?.enabled) {
+    throw new Error('Rendered client config does not enable Reality.');
+  }
+
+  const parameters = new URLSearchParams();
+  parameters.set('encryption', 'none');
+  parameters.set('security', 'reality');
+  parameters.set('type', outbound.network?.trim() || 'tcp');
+  parameters.set('sni', serverName);
+  parameters.set('fp', 'chrome');
+  parameters.set('pbk', publicKey);
+  if (typeof outbound.tls.reality.short_id === 'string') {
+    parameters.set('sid', outbound.tls.reality.short_id.trim());
+  }
+  if (outbound.flow?.trim()) {
+    parameters.set('flow', outbound.flow.trim());
+  }
+
+  const label = subscription.account.displayName.trim()
+    || subscription.server?.name?.trim()
+    || 'RouteGate';
+
+  return `vless://${encodeURIComponent(uuid)}@${formatVlessHost(server)}:${serverPort}?${parameters.toString()}#${encodeURIComponent(label)}`;
 }
 
 export function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
@@ -192,15 +275,24 @@ export function rotateVpnAccountSubscriptionToken(
   );
 }
 
-export function getVpnAccountSubscriptionQRCode(
+export async function getVpnAccountSubscriptionQRCode(
   vpnAccountId: string,
   subscriptionToken: string,
 ): Promise<SubscriptionQRCodeResponse> {
-  const params = new URLSearchParams({ token: subscriptionToken });
+  const subscription = await getPublicSubscription(subscriptionToken);
+  if (subscription.vpnAccountId !== vpnAccountId) {
+    throw new Error('Subscription belongs to a different VPN account.');
+  }
 
-  return apiGet<SubscriptionQRCodeResponse>(
-    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/qr?${params.toString()}`,
-  );
+  return {
+    vpnAccountId,
+    subscriptionUrl: new URL(
+      `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
+      globalThis.location.origin,
+    ).toString(),
+    qrText: buildVlessRealityShareLink(subscription),
+    format: 'vless-reality-uri',
+  };
 }
 
 export function getPublicSubscription(
