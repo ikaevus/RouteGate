@@ -11,8 +11,8 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@routegate.local');
-  const [password, setPassword] = useState('admin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<'success' | 'error'>('success');
 
@@ -60,15 +60,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         <label className="field">
           <span>{t('login.email')}</span>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
         </label>
 
         <label className="field">
           <span>{t('login.password')}</span>
           <input
             type="password"
+            autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            required
           />
         </label>
 
