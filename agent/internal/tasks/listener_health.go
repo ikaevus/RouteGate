@@ -107,9 +107,7 @@ func checkVLESSListener(
 		timer := time.NewTimer(retryInterval)
 		select {
 		case <-checkCtx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			timer.Stop()
 		case <-timer.C:
 		}
 	}
