@@ -143,6 +143,12 @@ export function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnA
   return apiPost<CreateVpnAccountRequest, VpnAccount>('/api/v1/vpn-accounts', request);
 }
 
+export function activateVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
+  return apiPost<undefined, VpnAccount>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/activate`,
+  );
+}
+
 export function getVpnAccountCredentials(
   vpnAccountId: string,
 ): Promise<VpnAccountCredentialsResponse> {
