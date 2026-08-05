@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26"
           cache-dependency-path: backend/go.sum
@@ -41,10 +41,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26"
           cache-dependency-path: agent/go.sum
@@ -54,6 +54,72 @@ jobs:
 
       - name: Run tests
         run: go test ./...
+
+  installer:
+    name: Clean VPS installer checks
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Validate shell syntax
+        run: bash -n install.sh scripts/build-release-bundle.sh scripts/test-clean-vps-installer.sh
+
+      - name: Run ShellCheck
+        run: shellcheck -x install.sh scripts/build-release-bundle.sh scripts/test-clean-vps-installer.sh
+
+      - name: Run installer unit tests
+        run: scripts/test-clean-vps-installer.sh
+
+      - name: Build and verify amd64 release bundle
+        env:
+          VERSION: ci-test
+          COMMIT: ${{ github.sha }}
+          ARCHITECTURES: amd64
+          OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
+        run: |
+          scripts/build-release-bundle.sh
+          cd "$OUTPUT_DIR"
+          sha256sum -c SHA256SUMS
+          tar -tzf routegate-ci-test-linux-amd64.tar.gz > bundle-files.txt
+          grep -Fxq './bin/routegate-manager' bundle-files.txt
+          grep -Fxq './bin/routegate-agent' bundle-files.txt
+          grep -Fxq './frontend/index.html' bundle-files.txt
+          grep -Fq './manager/migrations/' bundle-files.txt
+          grep -Fxq './metadata/manifest.env' bundle-files.txt
+
+      - name: Upload amd64 clean-host E2E bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: routegate-${{ github.event.pull_request.head.sha || github.sha }}-linux-amd64
+          path: |
+            ${{ runner.temp }}/routegate-dist/routegate-ci-test-linux-amd64.tar.gz
+            ${{ runner.temp }}/routegate-dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
 
   frontend:
     name: Frontend build
@@ -65,10 +131,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -93,10 +159,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
