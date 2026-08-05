@@ -16,6 +16,7 @@ func TestServiceControllerExecutesAllowedOperations(t *testing.T) {
 		{name: "start", operation: ServiceOperationStart, wantArgs: "start sing-box"},
 		{name: "stop", operation: ServiceOperationStop, wantArgs: "stop sing-box"},
 		{name: "restart", operation: ServiceOperationRestart, wantArgs: "restart sing-box"},
+		{name: "enable", operation: ServiceOperationEnable, wantArgs: "enable sing-box"},
 	}
 
 	for _, tt := range tests {
@@ -65,7 +66,7 @@ func TestServiceControllerConvenienceMethods(t *testing.T) {
 	}
 
 	got := strings.Join(commands, ",")
-	want := "start sing-box,stop sing-box,restart sing-box"
+	want := "start sing-box,stop sing-box,enable sing-box,restart sing-box"
 	if got != want {
 		t.Fatalf("commands = %q, want %q", got, want)
 	}
@@ -91,33 +92,61 @@ func TestServiceControllerRejectsUnknownOperationWithoutExecutingCommand(t *test
 	}
 }
 
-func TestServiceControllerChecksHealth(t *testing.T) {
-	var gotArgs []string
+func TestServiceControllerChecksHealthAndPersistence(t *testing.T) {
+	var commands []string
 	controller := NewServiceController("sing-box")
 	controller.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
-		gotArgs = args
+		commands = append(commands, strings.Join(args, " "))
 		return []byte(""), nil
 	}
 
-	result, err := controller.IsActive(context.Background())
+	activeResult, err := controller.IsActive(context.Background())
 	if err != nil {
 		t.Fatalf("check service health: %v", err)
 	}
-	if strings.Join(gotArgs, " ") != "is-active --quiet sing-box" {
-		t.Fatalf("args = %v", gotArgs)
+	enabledResult, err := controller.IsEnabled(context.Background())
+	if err != nil {
+		t.Fatalf("check service persistence: %v", err)
 	}
-	if result.Command != "systemctl is-active --quiet sing-box" {
-		t.Fatalf("unexpected result: %+v", result)
+	if strings.Join(commands, ",") != "is-active --quiet sing-box,is-enabled --quiet sing-box" {
+		t.Fatalf("commands = %v", commands)
 	}
-	if result.Operation != "" {
-		t.Fatalf("healthcheck operation = %q", result.Operation)
+	if activeResult.Command != "systemctl is-active --quiet sing-box" {
+		t.Fatalf("unexpected active result: %+v", activeResult)
+	}
+	if enabledResult.Command != "systemctl is-enabled --quiet sing-box" {
+		t.Fatalf("unexpected enabled result: %+v", enabledResult)
 	}
 }
 
-func TestServiceControllerReturnsCommandOutputOnFailure(t *testing.T) {
+func TestServiceControllerReturnsEnableFailureBeforeRestart(t *testing.T) {
 	controller := NewServiceController("sing-box")
-	controller.run = func(context.Context, string, ...string) ([]byte, error) {
-		return []byte("failed"), errors.New("exit status 1")
+	controller.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if args[0] == "enable" {
+			return []byte("failed"), errors.New("exit status 1")
+		}
+		return nil, nil
+	}
+
+	result, err := controller.Restart(context.Background())
+	if err == nil {
+		t.Fatal("expected restart failure")
+	}
+	if result.Operation != ServiceOperationEnable {
+		t.Fatalf("operation = %q", result.Operation)
+	}
+	if result.Output != "failed" || !strings.Contains(err.Error(), "enable service before restart") {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestServiceControllerReturnsRestartFailureAfterEnable(t *testing.T) {
+	controller := NewServiceController("sing-box")
+	controller.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if args[0] == "restart" {
+			return []byte("restart failed"), errors.New("exit status 1")
+		}
+		return nil, nil
 	}
 
 	result, err := controller.Restart(context.Background())
@@ -127,7 +156,10 @@ func TestServiceControllerReturnsCommandOutputOnFailure(t *testing.T) {
 	if result.Operation != ServiceOperationRestart {
 		t.Fatalf("operation = %q", result.Operation)
 	}
-	if result.Output != "failed" || !strings.Contains(err.Error(), "failed") {
+	if !strings.Contains(result.Command, "systemctl enable sing-box") || !strings.Contains(result.Command, "systemctl restart sing-box") {
+		t.Fatalf("unexpected command: %q", result.Command)
+	}
+	if result.Output != "restart failed" || !strings.Contains(err.Error(), "restart failed") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
