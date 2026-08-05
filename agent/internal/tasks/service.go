@@ -16,6 +16,7 @@ const (
 	ServiceOperationStart   ServiceOperation = "start"
 	ServiceOperationStop    ServiceOperation = "stop"
 	ServiceOperationRestart ServiceOperation = "restart"
+	ServiceOperationEnable  ServiceOperation = "enable"
 )
 
 type ServiceResult struct {
@@ -39,7 +40,7 @@ func NewServiceController(service string) ServiceController {
 
 func (s ServiceController) Execute(ctx context.Context, operation ServiceOperation) (ServiceResult, error) {
 	switch operation {
-	case ServiceOperationStart, ServiceOperationStop, ServiceOperationRestart:
+	case ServiceOperationStart, ServiceOperationStop, ServiceOperationRestart, ServiceOperationEnable:
 		return s.systemctl(ctx, operation)
 	default:
 		return ServiceResult{Operation: operation}, fmt.Errorf("unsupported service operation %q", operation)
@@ -58,8 +59,16 @@ func (s ServiceController) Restart(ctx context.Context) (ServiceResult, error) {
 	return s.Execute(ctx, ServiceOperationRestart)
 }
 
+func (s ServiceController) Enable(ctx context.Context) (ServiceResult, error) {
+	return s.Execute(ctx, ServiceOperationEnable)
+}
+
 func (s ServiceController) IsActive(ctx context.Context) (ServiceResult, error) {
 	return s.systemctlCommand(ctx, "is-active", "--quiet")
+}
+
+func (s ServiceController) IsEnabled(ctx context.Context) (ServiceResult, error) {
+	return s.systemctlCommand(ctx, "is-enabled", "--quiet")
 }
 
 func (s ServiceController) systemctl(ctx context.Context, operation ServiceOperation) (ServiceResult, error) {
