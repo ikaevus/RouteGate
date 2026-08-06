@@ -102,6 +102,46 @@ export interface SubscriptionQRCodeResponse {
   format: string;
 }
 
+export type ClientFingerprintMode = 'auto' | 'manual';
+
+export interface VpnClientProfile {
+  id: string;
+  vpnAccountId: string;
+  name: string;
+  clientType: string;
+  deviceType: string;
+  fingerprintMode: ClientFingerprintMode;
+  fingerprint: string;
+  resolvedFingerprint: string;
+  serverNameOverride?: string;
+  spiderX: string;
+  mtu?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VpnClientConnectionResponse {
+  vpnAccountId: string;
+  format: string;
+  vlessLink: string;
+  profile: VpnClientProfile;
+  endpoint: string;
+  serverName: string;
+  network: string;
+  flow?: string;
+}
+
+export interface UpdateVpnClientProfileRequest {
+  name: string;
+  clientType: string;
+  deviceType: string;
+  fingerprintMode: ClientFingerprintMode;
+  fingerprint: string;
+  serverNameOverride: string;
+  spiderX: string;
+  mtu?: number | null;
+}
+
 interface SingBoxClientReality {
   enabled?: boolean;
   public_key?: string;
@@ -177,7 +217,10 @@ function formatVlessHost(server: string): string {
   return server;
 }
 
-export function buildVlessRealityShareLink(subscription: PublicSubscriptionResponse): string {
+export function buildVlessRealityShareLink(
+  subscription: PublicSubscriptionResponse,
+  fingerprint = 'firefox',
+): string {
   const outbound = subscription.config.rendered?.content.outbounds?.find(
     (candidate) => candidate.type?.trim().toLowerCase() === 'vless',
   );
@@ -202,7 +245,7 @@ export function buildVlessRealityShareLink(subscription: PublicSubscriptionRespo
   parameters.set('security', 'reality');
   parameters.set('type', outbound.network?.trim() || 'tcp');
   parameters.set('sni', serverName);
-  parameters.set('fp', 'chrome');
+  parameters.set('fp', fingerprint);
   parameters.set('pbk', publicKey);
   if (typeof outbound.tls.reality.short_id === 'string') {
     parameters.set('sid', outbound.tls.reality.short_id.trim());
@@ -238,6 +281,24 @@ export function getVpnAccountCredentials(
 ): Promise<VpnAccountCredentialsResponse> {
   return apiGet<VpnAccountCredentialsResponse>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/credentials`,
+  );
+}
+
+export function getVpnAccountClientConnection(
+  vpnAccountId: string,
+): Promise<VpnClientConnectionResponse> {
+  return apiGet<VpnClientConnectionResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/client-connection`,
+  );
+}
+
+export function updateVpnAccountClientProfile(
+  vpnAccountId: string,
+  request: UpdateVpnClientProfileRequest,
+): Promise<VpnClientConnectionResponse> {
+  return apiPatch<UpdateVpnClientProfileRequest, VpnClientConnectionResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/client-profile`,
+    request,
   );
 }
 
