@@ -1,14 +1,15 @@
-import { useState, type ReactNode } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createVpnAccountSubscriptionToken,
-  getPublicSubscription,
-  getVpnAccountSubscriptionQRCode,
+  getVpnAccountClientConnection,
   rotateVpnAccountSubscriptionToken,
+  updateVpnAccountClientProfile,
+  type ClientFingerprintMode,
   type SubscriptionTokenResponse,
+  type UpdateVpnClientProfileRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
-import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import './vpn-client-connection.css';
 
@@ -16,65 +17,66 @@ type VpnClientConnectionPanelProps = {
   accountId: string;
 };
 
+const fingerprintOptions = ['chrome', 'firefox', 'safari', 'ios', 'android', 'edge', 'random', 'randomized'];
+
 function formatDate(value?: string | null): string {
   if (!value) {
     return t('common.notAvailable');
   }
-
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function formatValue(value?: string | null): string {
-  return value && value.trim() !== '' ? value : t('common.notAvailable');
-}
-
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="detail-row">
-      <span>{label}</span>
-      <strong>{children}</strong>
-    </div>
-  );
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
 }
 
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       title: 'Подключение VPN-клиента',
-      subtitle: 'Создайте QR-код или VLESS-ссылку для V2Box, V2RayTun и других клиентов с поддержкой VLESS Reality.',
-      create: 'Создать подключение',
-      creating: 'Создание...',
-      rotate: 'Обновить URL подписки',
-      rotating: 'Обновление...',
-      createError: 'Не удалось подготовить подключение VPN-клиента.',
-      emptyTitle: 'Подключение ещё не подготовлено',
-      emptyDescription: 'Создайте подключение, чтобы получить QR-код и прямую VLESS-ссылку для VPN-клиента.',
+      subtitle: 'Постоянный профиль VLESS Reality сохраняется в RouteGate и не меняется после повторного входа.',
+      loading: 'Загрузка клиентского профиля...',
+      loadError: 'Не удалось загрузить клиентский профиль.',
       ready: 'Готово к подключению',
-      readyDescription: 'Отсканируйте QR-код в VPN-клиенте. QR-код и кнопка копирования используют один и тот же профиль VLESS Reality.',
+      readyDescription: 'QR-код и VLESS-ссылка используют сохранённые параметры этого профиля.',
       format: 'VLESS Reality',
-      showQr: 'Показать QR для VPN-клиента',
+      showQr: 'Показать QR',
       copyVless: 'Скопировать VLESS-ссылку',
-      copied: 'Скопировано',
-      loading: 'Подготовка VLESS-профиля...',
-      qrError: 'Не удалось подготовить VLESS-профиль для QR-кода.',
-      credentialWarning: 'QR-код и VLESS-ссылка предоставляют доступ к VPN. Не публикуйте их и не отправляйте посторонним.',
-      advanced: 'Расширенные настройки',
-      advancedDescription: 'URL подписки RouteGate использует внутренний формат RouteGate и не является прямым профилем для V2Box или V2RayTun.',
-      subscriptionUrl: 'URL подписки RouteGate',
       copy: 'Копировать',
+      copied: 'Скопировано',
+      credentialWarning: 'QR-код и VLESS-ссылка предоставляют доступ к VPN. Не публикуйте их.',
+      profileSettings: 'Настройки клиентского профиля',
+      profileName: 'Название профиля',
+      clientType: 'VPN-клиент',
+      deviceType: 'Устройство',
+      fingerprintMode: 'Режим fingerprint',
+      auto: 'Auto — рекомендуется',
+      manual: 'Вручную',
+      fingerprint: 'TLS fingerprint',
+      resolvedFingerprint: 'Фактически выбран',
+      autoHint: 'Auto сохраняет совместимый вариант. Сейчас RouteGate выбирает Firefox как безопасный профиль совместимости.',
+      endpoint: 'Endpoint',
+      serverName: 'Reality SNI',
+      network: 'Transport',
+      flow: 'Flow',
+      serverNameOverride: 'Переопределить SNI',
+      serverNameHint: 'Оставьте пустым, чтобы использовать настройку сервера.',
+      spiderX: 'SpiderX',
+      mtu: 'MTU',
+      mtuHint: 'Пусто — Auto. Сторонний клиент может игнорировать MTU из профиля.',
+      save: 'Сохранить профиль',
+      saving: 'Сохранение...',
+      saved: 'Профиль сохранён',
+      saveError: 'Не удалось сохранить клиентский профиль.',
+      advancedSubscription: 'Расширенный URL подписки',
+      subscriptionDescription: 'Отдельный токен для внутреннего формата RouteGate. Он не нужен для прямого QR-кода.',
+      createSubscription: 'Создать URL подписки',
+      rotateSubscription: 'Обновить URL подписки',
+      subscriptionBusy: 'Подготовка...',
+      subscriptionError: 'Не удалось создать URL подписки.',
+      subscriptionUrl: 'URL подписки RouteGate',
       expires: 'Истекает',
-      subscriptionFormat: 'Формат подписки',
-      configStatus: 'Статус конфига',
-      configFormat: 'Формат конфига',
-      generatedAt: 'Создано',
-      serverEndpoint: 'Endpoint сервера',
-      configPreview: 'Превью клиентского конфига',
-      configPreviewDescription: 'Технический ответ подписки и отрендеренный sing-box-конфиг для диагностики.',
-      copyConfig: 'Копировать конфиг',
-      loadingConfig: 'Загрузка технического превью...',
-      configError: 'Не удалось загрузить техническое превью подписки.',
-      noConfig: 'Отрендеренный клиентский конфиг пока недоступен.',
       qrTitle: 'QR-код для VPN-клиента',
       vlessLink: 'VLESS-ссылка',
       close: 'Закрыть',
@@ -83,39 +85,48 @@ function getCopy() {
 
   return {
     title: 'Connect VPN client',
-    subtitle: 'Create a QR code or VLESS link for V2Box, V2RayTun, and other VLESS Reality clients.',
-    create: 'Create connection',
-    creating: 'Creating...',
-    rotate: 'Refresh subscription URL',
-    rotating: 'Refreshing...',
-    createError: 'Could not prepare the VPN client connection.',
-    emptyTitle: 'Connection is not ready yet',
-    emptyDescription: 'Create a connection to get a QR code and a direct VLESS link for the VPN client.',
+    subtitle: 'The persistent VLESS Reality profile is stored in RouteGate and remains stable after signing in again.',
+    loading: 'Loading client profile...',
+    loadError: 'Could not load the client profile.',
     ready: 'Ready to connect',
-    readyDescription: 'Scan the QR code in the VPN client. The QR code and copy button use the same VLESS Reality profile.',
+    readyDescription: 'The QR code and VLESS link use the saved settings of this profile.',
     format: 'VLESS Reality',
-    showQr: 'Show QR for VPN client',
+    showQr: 'Show QR',
     copyVless: 'Copy VLESS link',
-    copied: 'Copied',
-    loading: 'Preparing VLESS profile...',
-    qrError: 'Could not prepare the VLESS profile for the QR code.',
-    credentialWarning: 'The QR code and VLESS link grant VPN access. Do not publish or share them with other people.',
-    advanced: 'Advanced settings',
-    advancedDescription: 'The RouteGate subscription URL uses RouteGate’s internal format and is not a direct V2Box or V2RayTun profile.',
-    subscriptionUrl: 'RouteGate subscription URL',
     copy: 'Copy',
+    copied: 'Copied',
+    credentialWarning: 'The QR code and VLESS link grant VPN access. Do not publish them.',
+    profileSettings: 'Client profile settings',
+    profileName: 'Profile name',
+    clientType: 'VPN client',
+    deviceType: 'Device',
+    fingerprintMode: 'Fingerprint mode',
+    auto: 'Auto — recommended',
+    manual: 'Manual',
+    fingerprint: 'TLS fingerprint',
+    resolvedFingerprint: 'Resolved value',
+    autoHint: 'Auto stores a compatible option. RouteGate currently selects Firefox as the compatibility-safe profile.',
+    endpoint: 'Endpoint',
+    serverName: 'Reality SNI',
+    network: 'Transport',
+    flow: 'Flow',
+    serverNameOverride: 'Override SNI',
+    serverNameHint: 'Leave empty to inherit the server setting.',
+    spiderX: 'SpiderX',
+    mtu: 'MTU',
+    mtuHint: 'Blank means Auto. A third-party client may ignore profile MTU.',
+    save: 'Save profile',
+    saving: 'Saving...',
+    saved: 'Profile saved',
+    saveError: 'Could not save the client profile.',
+    advancedSubscription: 'Advanced subscription URL',
+    subscriptionDescription: 'A separate token for RouteGate’s internal subscription format. Direct QR does not require it.',
+    createSubscription: 'Create subscription URL',
+    rotateSubscription: 'Refresh subscription URL',
+    subscriptionBusy: 'Preparing...',
+    subscriptionError: 'Could not create the subscription URL.',
+    subscriptionUrl: 'RouteGate subscription URL',
     expires: 'Expires',
-    subscriptionFormat: 'Subscription format',
-    configStatus: 'Config status',
-    configFormat: 'Config format',
-    generatedAt: 'Generated at',
-    serverEndpoint: 'Server endpoint',
-    configPreview: 'Client config preview',
-    configPreviewDescription: 'Technical subscription response and rendered sing-box config for diagnostics.',
-    copyConfig: 'Copy config',
-    loadingConfig: 'Loading technical preview...',
-    configError: 'Could not load the technical subscription preview.',
-    noConfig: 'Rendered client config is not available yet.',
     qrTitle: 'QR code for VPN client',
     vlessLink: 'VLESS link',
     close: 'Close',
@@ -124,39 +135,74 @@ function getCopy() {
 
 export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanelProps) {
   const copy = getCopy();
-  const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
+  const queryClient = useQueryClient();
+  const queryKey = ['vpn-account-client-connection', accountId] as const;
   const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
   const [isQrOpen, setIsQrOpen] = useState(false);
+  const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [profileName, setProfileName] = useState('Default');
+  const [clientType, setClientType] = useState('other');
+  const [deviceType, setDeviceType] = useState('other');
+  const [fingerprintMode, setFingerprintMode] = useState<ClientFingerprintMode>('auto');
+  const [fingerprint, setFingerprint] = useState('firefox');
+  const [serverNameOverride, setServerNameOverride] = useState('');
+  const [spiderX, setSpiderX] = useState('/');
+  const [mtu, setMtu] = useState('');
 
-  const qrQuery = useQuery({
-    queryKey: ['vpn-account-client-connection', accountId, subscriptionToken?.subscriptionToken],
-    queryFn: () => getVpnAccountSubscriptionQRCode(accountId, subscriptionToken?.subscriptionToken ?? ''),
-    enabled: Boolean(subscriptionToken?.subscriptionToken),
+  const connectionQuery = useQuery({
+    queryKey,
+    queryFn: () => getVpnAccountClientConnection(accountId),
   });
 
-  const publicSubscriptionQuery = useQuery({
-    queryKey: ['public-subscription-preview', subscriptionToken?.subscriptionToken],
-    queryFn: () => getPublicSubscription(subscriptionToken?.subscriptionToken ?? ''),
-    enabled: Boolean(subscriptionToken?.subscriptionToken),
-  });
+  useEffect(() => {
+    const profile = connectionQuery.data?.profile;
+    if (!profile) {
+      return;
+    }
+    setProfileName(profile.name);
+    setClientType(profile.clientType);
+    setDeviceType(profile.deviceType);
+    setFingerprintMode(profile.fingerprintMode);
+    setFingerprint(profile.fingerprint);
+    setServerNameOverride(profile.serverNameOverride ?? '');
+    setSpiderX(profile.spiderX || '/');
+    setMtu(profile.mtu ? String(profile.mtu) : '');
+  }, [connectionQuery.data]);
 
-  const createMutation = useMutation({
-    mutationFn: () => createVpnAccountSubscriptionToken(accountId),
-    onMutate: () => {
-      setSubscriptionToken(null);
-      setCopiedTarget(null);
-      setIsQrOpen(false);
+  useEffect(() => {
+    setSubscriptionToken(null);
+    setCopiedTarget(null);
+    setIsQrOpen(false);
+    setSaved(false);
+  }, [accountId]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const request: UpdateVpnClientProfileRequest = {
+        name: profileName.trim() || 'Default',
+        clientType,
+        deviceType,
+        fingerprintMode,
+        fingerprint,
+        serverNameOverride: serverNameOverride.trim(),
+        spiderX: spiderX.trim() || '/',
+        mtu: mtu.trim() === '' ? null : Number(mtu),
+      };
+      return updateVpnAccountClientProfile(accountId, request);
     },
-    onSuccess: setSubscriptionToken,
+    onMutate: () => setSaved(false),
+    onSuccess: (connection) => {
+      queryClient.setQueryData(queryKey, connection);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2200);
+    },
   });
 
-  const rotateMutation = useMutation({
-    mutationFn: () => rotateVpnAccountSubscriptionToken(accountId),
-    onMutate: () => {
-      setSubscriptionToken(null);
-      setCopiedTarget(null);
-      setIsQrOpen(false);
-    },
+  const subscriptionMutation = useMutation({
+    mutationFn: () => subscriptionToken
+      ? rotateVpnAccountSubscriptionToken(accountId)
+      : createVpnAccountSubscriptionToken(accountId),
     onSuccess: setSubscriptionToken,
   });
 
@@ -164,19 +210,12 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     if (!navigator.clipboard || value.trim() === '') {
       return;
     }
-
     await navigator.clipboard.writeText(value);
     setCopiedTarget(target);
     window.setTimeout(() => setCopiedTarget(null), 1800);
   };
 
-  const isBusy = createMutation.isPending || rotateMutation.isPending;
-  const qr = qrQuery.data;
-  const publicSubscription = publicSubscriptionQuery.data;
-  const renderedConfig = publicSubscription?.config.rendered;
-  const renderedConfigText = renderedConfig
-    ? JSON.stringify(renderedConfig.content, null, 2)
-    : '';
+  const connection = connectionQuery.data;
 
   return (
     <div className="panel subscription-panel feature-detail-panel vpn-client-connection-panel">
@@ -185,40 +224,16 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
           <div className="panel-title">{copy.title}</div>
           <p className="panel-subtitle">{copy.subtitle}</p>
         </div>
-
-        {!subscriptionToken ? (
-          <button
-            className="primary-button"
-            type="button"
-            disabled={isBusy}
-            onClick={() => createMutation.mutate()}
-          >
-            {createMutation.isPending ? copy.creating : copy.create}
-          </button>
-        ) : (
-          <button
-            className="small-button"
-            type="button"
-            disabled={isBusy}
-            onClick={() => rotateMutation.mutate()}
-          >
-            {rotateMutation.isPending ? copy.rotating : copy.rotate}
-          </button>
-        )}
       </div>
 
-      {(createMutation.isError || rotateMutation.isError) && (
-        <div className="form-message form-message-error">{copy.createError}</div>
-      )}
-
-      {!subscriptionToken && !createMutation.isPending && (
-        <div className="vpn-client-empty-state">
-          <strong>{copy.emptyTitle}</strong>
-          <p>{copy.emptyDescription}</p>
+      {connectionQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
+      {connectionQuery.isError && (
+        <div className="form-message form-message-error">
+          {getErrorMessage(connectionQuery.error, copy.loadError)}
         </div>
       )}
 
-      {subscriptionToken && (
+      {connection && (
         <div className="subscription-result subscription-self-service-card">
           <div className="form-message form-message-warning">{copy.credentialWarning}</div>
 
@@ -231,110 +246,164 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
               <span className="vpn-client-format-badge">{copy.format}</span>
             </div>
 
-            {qrQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
-            {qrQuery.isError && (
-              <div className="form-message form-message-error">{copy.qrError}</div>
-            )}
-
             <div className="vpn-client-primary-actions">
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => setIsQrOpen(true)}
-                disabled={!qr?.qrText}
-              >
+              <button className="primary-button" type="button" onClick={() => setIsQrOpen(true)}>
                 {copy.showQr}
               </button>
               <button
                 className="small-button"
                 type="button"
-                onClick={() => void copyToClipboard('vless-link', qr?.qrText ?? '')}
-                disabled={!qr?.qrText}
+                onClick={() => void copyToClipboard('vless-link', connection.vlessLink)}
               >
                 {copiedTarget === 'vless-link' ? copy.copied : copy.copyVless}
               </button>
             </div>
+
+            <div className="vpn-client-runtime-grid">
+              <div><span>{copy.endpoint}</span><strong>{connection.endpoint}</strong></div>
+              <div><span>{copy.serverName}</span><strong>{connection.serverName}</strong></div>
+              <div><span>{copy.network}</span><strong>{connection.network}</strong></div>
+              <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>
+              <div><span>{copy.resolvedFingerprint}</span><strong>{connection.profile.resolvedFingerprint}</strong></div>
+            </div>
           </div>
 
-          <details className="vpn-client-advanced feature-subpanel">
-            <summary>{copy.advanced}</summary>
+          <details className="vpn-client-advanced feature-subpanel" open>
+            <summary>{copy.profileSettings}</summary>
             <div className="vpn-client-advanced-content">
-              <div className="form-message form-message-warning">{copy.advancedDescription}</div>
-
-              <div className="subscription-url-stack">
-                <div className="subscription-url-header">
-                  <div className="subscription-url-meta">
-                    <div className="subscription-url-label">{copy.subscriptionUrl}</div>
-                  </div>
-                  <button
-                    className="small-button"
-                    type="button"
-                    onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}
+              <div className="vpn-client-settings-grid">
+                <label className="field">
+                  <span>{copy.profileName}</span>
+                  <input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
+                </label>
+                <label className="field">
+                  <span>{copy.clientType}</span>
+                  <select value={clientType} onChange={(event) => setClientType(event.target.value)}>
+                    <option value="v2rayn">v2rayN</option>
+                    <option value="v2raytun">V2RayTun</option>
+                    <option value="v2box">V2Box</option>
+                    <option value="sing-box">sing-box</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{copy.deviceType}</span>
+                  <select value={deviceType} onChange={(event) => setDeviceType(event.target.value)}>
+                    <option value="windows">Windows</option>
+                    <option value="ios">iOS</option>
+                    <option value="android">Android</option>
+                    <option value="macos">macOS</option>
+                    <option value="linux">Linux</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{copy.fingerprintMode}</span>
+                  <select
+                    value={fingerprintMode}
+                    onChange={(event) => setFingerprintMode(event.target.value as ClientFingerprintMode)}
                   >
-                    {copiedTarget === 'subscription-url' ? copy.copied : copy.copy}
-                  </button>
-                </div>
-                <code className="subscription-url-value">{subscriptionToken.subscriptionUrl}</code>
+                    <option value="auto">{copy.auto}</option>
+                    <option value="manual">{copy.manual}</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{copy.fingerprint}</span>
+                  <select
+                    value={fingerprint}
+                    disabled={fingerprintMode === 'auto'}
+                    onChange={(event) => setFingerprint(event.target.value)}
+                  >
+                    {fingerprintOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                  </select>
+                  {fingerprintMode === 'auto' && <small>{copy.autoHint}</small>}
+                </label>
+                <label className="field">
+                  <span>{copy.serverNameOverride}</span>
+                  <input
+                    value={serverNameOverride}
+                    placeholder={connection.serverName}
+                    onChange={(event) => setServerNameOverride(event.target.value)}
+                  />
+                  <small>{copy.serverNameHint}</small>
+                </label>
+                <label className="field">
+                  <span>{copy.spiderX}</span>
+                  <input value={spiderX} onChange={(event) => setSpiderX(event.target.value)} />
+                </label>
+                <label className="field">
+                  <span>{copy.mtu}</span>
+                  <input
+                    type="number"
+                    min="576"
+                    max="9000"
+                    value={mtu}
+                    placeholder="Auto"
+                    onChange={(event) => setMtu(event.target.value)}
+                  />
+                  <small>{copy.mtuHint}</small>
+                </label>
               </div>
 
-              <div className="subscription-secondary-meta">
-                <div className="subscription-meta-chip">
-                  <span>{copy.expires}</span>
-                  <strong>{formatDate(subscriptionToken.expiresAt)}</strong>
+              {saveMutation.isError && (
+                <div className="form-message form-message-error">
+                  {getErrorMessage(saveMutation.error, copy.saveError)}
                 </div>
-                <div className="subscription-meta-chip">
-                  <span>{copy.subscriptionFormat}</span>
-                  <strong>{formatValue(publicSubscription?.format)}</strong>
-                </div>
-              </div>
+              )}
+              {saved && <div className="form-message form-message-success">{copy.saved}</div>}
 
-              <div className="client-config-preview feature-subpanel">
-                <div className="panel-header client-config-header">
-                  <div>
-                    <div className="panel-title token-snippet-title">{copy.configPreview}</div>
-                    <p className="panel-subtitle">{copy.configPreviewDescription}</p>
-                  </div>
-                  {renderedConfig && (
+              <div className="form-actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  {saveMutation.isPending ? copy.saving : copy.save}
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details className="vpn-client-advanced feature-subpanel">
+            <summary>{copy.advancedSubscription}</summary>
+            <div className="vpn-client-advanced-content">
+              <div className="form-message form-message-warning">{copy.subscriptionDescription}</div>
+              <button
+                className="small-button"
+                type="button"
+                disabled={subscriptionMutation.isPending}
+                onClick={() => subscriptionMutation.mutate()}
+              >
+                {subscriptionMutation.isPending
+                  ? copy.subscriptionBusy
+                  : subscriptionToken
+                    ? copy.rotateSubscription
+                    : copy.createSubscription}
+              </button>
+
+              {subscriptionMutation.isError && (
+                <div className="form-message form-message-error">{copy.subscriptionError}</div>
+              )}
+
+              {subscriptionToken && (
+                <div className="subscription-url-stack">
+                  <div className="subscription-url-header">
+                    <div className="subscription-url-meta">
+                      <div className="subscription-url-label">{copy.subscriptionUrl}</div>
+                      <p className="subscription-url-helper">{copy.expires}: {formatDate(subscriptionToken.expiresAt)}</p>
+                    </div>
                     <button
                       className="small-button"
                       type="button"
-                      onClick={() => void copyToClipboard('client-config', renderedConfigText)}
+                      onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}
                     >
-                      {copiedTarget === 'client-config' ? copy.copied : copy.copyConfig}
+                      {copiedTarget === 'subscription-url' ? copy.copied : copy.copy}
                     </button>
-                  )}
-                </div>
-
-                {publicSubscriptionQuery.isLoading && (
-                  <p className="empty-state">{copy.loadingConfig}</p>
-                )}
-                {publicSubscriptionQuery.isError && (
-                  <div className="form-message form-message-error">{copy.configError}</div>
-                )}
-
-                {publicSubscription && (
-                  <div className="subscription-meta-grid">
-                    <DetailRow label={copy.configStatus}>
-                      <StatusBadge status={publicSubscription.config.status} />
-                    </DetailRow>
-                    <DetailRow label={copy.configFormat}>
-                      {formatValue(renderedConfig?.format ?? publicSubscription.config.format)}
-                    </DetailRow>
-                    <DetailRow label={copy.generatedAt}>{formatDate(publicSubscription.generatedAt)}</DetailRow>
-                    <DetailRow label={copy.serverEndpoint}>{formatValue(publicSubscription.server?.endpoint)}</DetailRow>
                   </div>
-                )}
-
-                {publicSubscription?.config.message && (
-                  <div className="form-message form-message-warning">{publicSubscription.config.message}</div>
-                )}
-
-                {renderedConfig ? (
-                  <pre className="code-block client-config-code">{renderedConfigText}</pre>
-                ) : publicSubscription && (
-                  <p className="empty-state">{copy.noConfig}</p>
-                )}
-              </div>
+                  <code className="subscription-url-value">{subscriptionToken.subscriptionUrl}</code>
+                </div>
+              )}
             </div>
           </details>
         </div>
@@ -344,18 +413,18 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         isOpen={isQrOpen}
         title={copy.qrTitle}
         onClose={() => setIsQrOpen(false)}
-        qrText={qr?.qrText}
+        qrText={connection?.vlessLink}
         qrTitle={copy.qrTitle}
-        qrSubtitle={copy.format}
-        url={qr?.qrText}
+        qrSubtitle={connection?.profile.resolvedFingerprint ?? copy.format}
+        url={connection?.vlessLink}
         urlLabel={copy.vlessLink}
-        onCopyQrText={() => void copyToClipboard('qr-vless-link', qr?.qrText ?? '')}
+        onCopyQrText={() => void copyToClipboard('qr-vless-link', connection?.vlessLink ?? '')}
         copyQrLabel={copy.copyVless}
         copyCopiedLabel={copy.copied}
         copied={copiedTarget === 'qr-vless-link'}
         closeLabel={copy.close}
         loadingLabel={copy.loading}
-        unavailableLabel={copy.qrError}
+        unavailableLabel={copy.loadError}
       />
     </div>
   );
