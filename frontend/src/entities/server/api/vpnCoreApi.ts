@@ -30,6 +30,15 @@ export function createVPNCoreOperation(
   );
 }
 
+export function getVPNCoreOperation(
+  serverId: string,
+  jobId: string,
+): Promise<VPNCoreOperationJob> {
+  return apiGet<VPNCoreOperationJob>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/vpn-core/operations/${encodeURIComponent(jobId)}`,
+  );
+}
+
 export function createVPNCoreInstallation(
   serverId: string,
 ): Promise<CreateVPNCoreOperationResponse> {
