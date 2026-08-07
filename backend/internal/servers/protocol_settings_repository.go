@@ -23,6 +23,7 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			reality_public_key = CASE WHEN $8 THEN NULLIF($9, '') ELSE reality_public_key END,
 			reality_short_id = CASE WHEN $10 THEN NULLIF($11, '') ELSE reality_short_id END,
 			reality_server_name = CASE WHEN $12 THEN NULLIF($13, '') ELSE reality_server_name END,
+			protocol_updated_at = now(),
 			updated_at = now()
 		WHERE id = $1::uuid
 		RETURNING
@@ -33,7 +34,7 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			COALESCE(reality_public_key, ''),
 			COALESCE(reality_short_id, ''),
 			COALESCE(reality_server_name, ''),
-			updated_at
+			protocol_updated_at
 	`,
 		serverID,
 		input.VLESSPort != nil, input.VLESSPort,
@@ -51,6 +52,7 @@ func (r *Repository) UpdateRealityKeypair(ctx context.Context, serverID string, 
 		SET
 			reality_private_key = $2,
 			reality_public_key = $3,
+			protocol_updated_at = now(),
 			updated_at = now()
 		WHERE id = $1::uuid
 		RETURNING
@@ -61,7 +63,7 @@ func (r *Repository) UpdateRealityKeypair(ctx context.Context, serverID string, 
 			COALESCE(reality_public_key, ''),
 			COALESCE(reality_short_id, ''),
 			COALESCE(reality_server_name, ''),
-			updated_at
+			protocol_updated_at
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
 
@@ -74,7 +76,7 @@ const protocolSettingsSelect = `
 		COALESCE(reality_public_key, ''),
 		COALESCE(reality_short_id, ''),
 		COALESCE(reality_server_name, ''),
-		updated_at
+		protocol_updated_at
 	FROM servers`
 
 func scanProtocolSettings(row scanner) (ProtocolSettings, error) {
