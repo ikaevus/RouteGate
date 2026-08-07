@@ -18,8 +18,11 @@ import (
 
 const activeServerStatus = "active"
 
-type agentAPIRepository interface {
+type agentListRepository interface {
 	List(context.Context) ([]Agent, error)
+}
+
+type agentAPIRepository interface {
 	ConsumeValidRegistrationTokenByHash(context.Context, string) (ServerRegistrationToken, error)
 	CreateOrReplaceAgentForServer(context.Context, CreateOrReplaceAgentInput) (Agent, error)
 	ActivateServer(context.Context, string) error
@@ -35,6 +38,7 @@ type agentOperationTaskRepository interface {
 
 type Handler struct {
 	logger             *slog.Logger
+	listRepository     agentListRepository
 	repository         agentAPIRepository
 	audit              *audit.Recorder
 	generateAgentToken func() (string, error)
@@ -46,6 +50,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 
 	return &Handler{
 		logger:             logger,
+		listRepository:     repository,
 		repository:         repository,
 		audit:              audit.NewRecorder(logger, pool),
 		generateAgentToken: GenerateAgentToken,
@@ -54,7 +59,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	items, err := h.repository.List(r.Context())
+	items, err := h.listRepository.List(r.Context())
 	if err != nil {
 		h.logger.Error("list agents failed", "error", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
