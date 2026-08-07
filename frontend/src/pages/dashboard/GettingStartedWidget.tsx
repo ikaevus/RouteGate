@@ -111,7 +111,7 @@ function getCopy() {
       },
       protocol: {
         complete: { label: 'VLESS / Reality настроен', description: 'Протокол, Reality-ключ и SNI готовы.' },
-        current: { label: 'Настроить VLESS / Reality', description: 'Задайте параметры VLESS, сгенерируйте Reality keypair и сохраните SNI.' },
+        current: { label: 'Настроить VLESS / Reality', description: 'RouteGate автоматически выберет рекомендуемые параметры и создаст Reality-ключи.' },
         pending: { label: 'Настроить VLESS / Reality', description: 'Этот шаг станет доступен после установки VPN Core.' },
       },
       final: {
@@ -137,7 +137,7 @@ function getCopy() {
       installCoreConfirm: (server: string) => `Установить VPN Core на ${server}?\n\nRouteGate установит sing-box. Сервис будет запущен позже, после создания и применения рабочего VPN-конфига.`,
       openCoreAction: 'Открыть VPN Core',
       protocolTitle: 'Настроить VLESS / Reality',
-      protocolDescription: 'Задайте параметры VLESS, сгенерируйте Reality keypair и сохраните SNI.',
+      protocolDescription: 'RouteGate настроит рекомендуемые параметры VLESS / Reality для этого сервера.',
       protocolAction: 'Настроить протокол',
       accountTitle: 'Создать первый VPN-аккаунт',
       accountDescription: 'Создайте активный аккаунт и привяжите его к этому серверу.',
@@ -189,7 +189,7 @@ function getCopy() {
     },
     protocol: {
       complete: { label: 'VLESS / Reality configured', description: 'Protocol settings, Reality key, and SNI are ready.' },
-      current: { label: 'Configure VLESS / Reality', description: 'Set the VLESS parameters, generate the Reality keypair, and save the SNI.' },
+      current: { label: 'Configure VLESS / Reality', description: 'RouteGate will automatically choose the recommended settings and generate the Reality keys.' },
       pending: { label: 'Configure VLESS / Reality', description: 'This step becomes available after VPN Core is installed.' },
     },
     final: {
@@ -215,7 +215,7 @@ function getCopy() {
     installCoreConfirm: (server: string) => `Install VPN Core on ${server}?\n\nRouteGate will install sing-box. The service will be started later, after a working VPN configuration is created and applied.`,
     openCoreAction: 'Open VPN Core',
     protocolTitle: 'Configure VLESS / Reality',
-    protocolDescription: 'Set the VLESS parameters, generate the Reality keypair, and save the SNI.',
+    protocolDescription: 'RouteGate will configure the recommended VLESS / Reality settings for this server.',
     protocolAction: 'Configure protocol',
     accountTitle: 'Create your first VPN account',
     accountDescription: 'Create an active account and assign it to this server.',
