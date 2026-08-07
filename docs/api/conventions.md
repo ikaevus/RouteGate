@@ -4,9 +4,10 @@
 
 RouteGate API is split into explicit zones:
 
-    /api/admin/*   Admin UI and operator API
-    /api/agent/*   Agent-to-Manager API
-    /api/portal/*  Future end-user portal API
+    /api/v1/*         Versioned Manager/operator API
+    /api/v1/agent/*   Agent-to-Manager runtime API
+    /api/portal/*     End-user portal API
+    /api/admin/*      Limited compatibility aliases retained by older Manager surfaces
 
 ## Transport
 
@@ -90,23 +91,25 @@ Examples:
 | 409 | Conflict |
 | 500 | Internal server error |
 
-## Current Foundation endpoints
+## Current representative endpoints
 
-Admin:
+Manager/operator:
 
     GET  /api/admin/health
-    POST /api/admin/auth/login
-    POST /api/admin/auth/logout
-    GET  /api/admin/me
-    GET  /api/admin/servers
-    POST /api/admin/servers
-    GET  /api/admin/agents
+    POST /api/v1/auth/login
+    POST /api/v1/auth/logout
+    GET  /api/v1/auth/me
+    GET  /api/v1/servers
+    POST /api/v1/servers
+    GET  /api/v1/agents
 
-Agent:
+Agent runtime:
 
-    GET  /api/agent/health
-    POST /api/agent/register
-    POST /api/agent/heartbeat
+    POST /api/v1/agent/register
+    POST /api/v1/agent/heartbeat
+    GET  /api/v1/agent/tasks/next
+    POST /api/v1/agent/tasks/{job_id}/result
+    POST /api/v1/agent/traffic-usage
 
 ## Naming conventions
 
@@ -159,7 +162,7 @@ Future production auth should replace this with one of:
 
 ## Agent API convention
 
-Agent API should be designed for:
+Agent API is designed for:
 
     idempotent operations
     safe retries
@@ -167,4 +170,4 @@ Agent API should be designed for:
     explicit agent identity
     minimal long-lived secrets
 
-Future agent endpoints should use a dedicated agent token, not admin auth.
+Registration starts with a short-lived server registration token. After successful registration, the Agent uses its dedicated persistent Agent credential for heartbeat, task polling, task completion, and traffic reporting. Admin session credentials are not used for Agent runtime calls.
