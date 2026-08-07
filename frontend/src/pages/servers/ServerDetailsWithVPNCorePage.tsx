@@ -7,6 +7,7 @@ import {
   createVPNCoreInstallation,
   createVPNCoreOperation,
   getVPNCoreInstallation,
+  getVPNCoreOperation,
   type VPNCoreOperation,
 } from '../../entities/server/api/vpnCoreApi';
 import { ApiError } from '../../shared/api/client';
@@ -44,23 +45,45 @@ function errorMessage(error: unknown, fallback: string): string {
 export function ServerDetailsWithVPNCorePage() {
   const { serverId } = useParams<{ serverId: string }>();
   const [panelTarget, setPanelTarget] = useState<HTMLElement | null>(null);
-  const [activeOperation, setActiveOperation] = useState<{ operation: VPNCoreOperation; startedAt: number } | null>(null);
+  const [activeOperation, setActiveOperation] = useState<{
+    operation: VPNCoreOperation;
+    jobId: string;
+    startedAt: number;
+  } | null>(null);
+  const [operationFailure, setOperationFailure] = useState<string | null>(null);
   const [installationJobId, setInstallationJobId] = useState<string | null>(null);
   const [installationFailureCode, setInstallationFailureCode] = useState<string | null>(null);
   const text = getVPNCoreMessages(getCurrentLocale());
+
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
     queryFn: () => getServer(serverId ?? ''),
     enabled: Boolean(serverId),
     refetchInterval: activeOperation || installationJobId ? 2_000 : 30_000,
   });
+
   const operationMutation = useMutation({
     mutationFn: (operation: VPNCoreOperation) => createVPNCoreOperation(serverId ?? '', operation),
-    onSuccess: (_, operation) => {
-      setActiveOperation({ operation, startedAt: Date.now() });
+    onSuccess: ({ job }, operation) => {
+      setOperationFailure(null);
+      setActiveOperation({ operation, jobId: job.id, startedAt: Date.now() });
       void serverQuery.refetch();
     },
+    onError: (error) => {
+      setOperationFailure(errorMessage(error, text.operationFailed));
+    },
   });
+
+  const operationQuery = useQuery({
+    queryKey: ['vpn-core-operation', serverId, activeOperation?.jobId],
+    queryFn: () => getVPNCoreOperation(serverId ?? '', activeOperation?.jobId ?? ''),
+    enabled: Boolean(serverId && activeOperation?.jobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'failed' || status === 'succeeded' ? false : 2_000;
+    },
+  });
+
   const installationMutation = useMutation({
     mutationFn: () => createVPNCoreInstallation(serverId ?? ''),
     onSuccess: ({ job }) => {
@@ -72,6 +95,7 @@ export function ServerDetailsWithVPNCorePage() {
       setInstallationFailureCode(error instanceof ApiError ? error.code ?? 'installation_failed' : 'installation_failed');
     },
   });
+
   const installationQuery = useQuery({
     queryKey: ['vpn-core-installation', serverId, installationJobId],
     queryFn: () => getVPNCoreInstallation(serverId ?? '', installationJobId ?? ''),
@@ -94,15 +118,41 @@ export function ServerDetailsWithVPNCorePage() {
   const installationSupported = supportsInstallation(agent?.capabilities);
 
   useEffect(() => {
-    if (!activeOperation || !status) return;
-    if (Date.now() - activeOperation.startedAt < 2_500) return;
+    if (!activeOperation) return;
+
+    if (operationQuery.isError) {
+      setOperationFailure(text.operationFailed);
+      setActiveOperation(null);
+      return;
+    }
+
+    const job = operationQuery.data;
+    if (!job) return;
+
+    if (job.status === 'failed') {
+      setOperationFailure(text.operationFailed);
+      setActiveOperation(null);
+      void serverQuery.refetch();
+      return;
+    }
+
+    if (job.status !== 'succeeded') return;
+
+    void serverQuery.refetch();
     const reachedExpectedState =
-      (activeOperation.operation === 'stop' && status.state === 'stopped') ||
-      ((activeOperation.operation === 'start' || activeOperation.operation === 'restart') && status.state === 'running');
+      (activeOperation.operation === 'stop' && status?.state === 'stopped')
+      || ((activeOperation.operation === 'start' || activeOperation.operation === 'restart') && status?.state === 'running');
+
     if (reachedExpectedState) {
       setActiveOperation(null);
+      return;
     }
-  }, [activeOperation, status]);
+
+    if (Date.now() - activeOperation.startedAt > 30_000) {
+      setOperationFailure(text.operationFailed);
+      setActiveOperation(null);
+    }
+  }, [activeOperation, operationQuery.data, operationQuery.isError, status?.state]);
 
   useEffect(() => {
     const job = installationQuery.data;
@@ -176,9 +226,11 @@ export function ServerDetailsWithVPNCorePage() {
   const installationJob = installationQuery.data;
   const installationBusy = installationMutation.isPending || installationJobId !== null;
   const busy = operationMutation.isPending || activeOperation !== null || installationBusy;
+
   const runOperation = (operation: VPNCoreOperation) => {
     if (operation === 'stop' && !window.confirm(text.confirmStop)) return;
     operationMutation.reset();
+    setOperationFailure(null);
     operationMutation.mutate(operation);
   };
 
@@ -268,9 +320,9 @@ export function ServerDetailsWithVPNCorePage() {
           {installationJobId && installationJob?.status === 'succeeded' && !status?.installed && (
             <span className="muted-text">{text.installationAwaitingHeartbeat}</span>
           )}
-          {operationMutation.isError && (
+          {(operationMutation.isError || operationFailure) && (
             <span className="form-message form-message-error">
-              {errorMessage(operationMutation.error, text.operationFailed)}
+              {operationFailure ?? errorMessage(operationMutation.error, text.operationFailed)}
             </span>
           )}
           {installationError && (
