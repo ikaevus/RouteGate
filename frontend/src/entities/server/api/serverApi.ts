@@ -202,6 +202,14 @@ export function updateProtocolSettings(
   );
 }
 
+export function configureRecommendedProtocolSettings(
+  serverId: string,
+): Promise<ProtocolSettingsResponse> {
+  return apiPost<undefined, ProtocolSettingsResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/recommended`,
+  );
+}
+
 export function generateRealityKeypair(serverId: string): Promise<ProtocolSettingsResponse> {
   return apiPost<undefined, ProtocolSettingsResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/reality-keypair`,
