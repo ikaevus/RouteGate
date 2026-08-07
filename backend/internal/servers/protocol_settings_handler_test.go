@@ -2,6 +2,7 @@ package servers
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -40,6 +41,7 @@ func (f *fakeServerRepository) UpdateProtocolSettings(_ context.Context, serverI
 	if input.RealityServerName != nil {
 		result.RealityServerName = *input.RealityServerName
 	}
+	fakeProtocolSettingsResult = result
 	return result, nil
 }
 
@@ -48,6 +50,7 @@ func (f *fakeServerRepository) UpdateRealityKeypair(_ context.Context, serverID 
 	result := fakeProtocolSettingsResult
 	result.ServerID = serverID
 	result.RealityPublicKey = input.PublicKey
+	fakeProtocolSettingsResult = result
 	return result, nil
 }
 
@@ -128,6 +131,89 @@ func TestUpdateProtocolSettingsRejectsInvalidPort(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	handler.UpdateProtocolSettings(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+}
+
+func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing.T) {
+	fakeProtocolSettingsResult = ProtocolSettings{
+		ServerID:  "server-id",
+		VLESSPort: 443,
+		UpdatedAt: time.Date(2026, time.August, 7, 17, 0, 0, 0, time.UTC),
+	}
+	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
+	fakeRealityKeypairInput = UpdateRealityKeypairInput{}
+	repository := &fakeServerRepository{
+		getByID: Server{
+			ID:       "server-id",
+			Name:     "US RouteGate",
+			Hostname: "us.routegate.org",
+		},
+	}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	handler.generateRealityKeypair = func() (RealityKeypair, error) {
+		return RealityKeypair{PrivateKey: "private-key-secret", PublicKey: "public-key"}, nil
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/recommended", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.ConfigureRecommendedProtocolSettings(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if fakeRealityKeypairInput.PrivateKey != "private-key-secret" || fakeRealityKeypairInput.PublicKey != "public-key" {
+		t.Fatalf("unexpected keypair storage input: %+v", fakeRealityKeypairInput)
+	}
+	if fakeProtocolSettingsInput.VLESSPort == nil || *fakeProtocolSettingsInput.VLESSPort != 8443 {
+		t.Fatalf("recommended VLESS port = %+v, want 8443", fakeProtocolSettingsInput.VLESSPort)
+	}
+	if fakeProtocolSettingsInput.VLESSFlow == nil || *fakeProtocolSettingsInput.VLESSFlow != "xtls-rprx-vision" {
+		t.Fatalf("unexpected recommended flow: %+v", fakeProtocolSettingsInput.VLESSFlow)
+	}
+	if fakeProtocolSettingsInput.VLESSNetwork == nil || *fakeProtocolSettingsInput.VLESSNetwork != "tcp" {
+		t.Fatalf("unexpected recommended network: %+v", fakeProtocolSettingsInput.VLESSNetwork)
+	}
+	if fakeProtocolSettingsInput.RealityServerName == nil || *fakeProtocolSettingsInput.RealityServerName != "us.routegate.org" {
+		t.Fatalf("unexpected recommended server name: %+v", fakeProtocolSettingsInput.RealityServerName)
+	}
+	if fakeProtocolSettingsInput.RealityShortID == nil {
+		t.Fatal("recommended Reality short ID was not generated")
+	}
+	decodedShortID, err := hex.DecodeString(*fakeProtocolSettingsInput.RealityShortID)
+	if err != nil || len(decodedShortID) != realityShortIDBytes {
+		t.Fatalf("recommended short ID = %q, want %d random bytes encoded as hex", *fakeProtocolSettingsInput.RealityShortID, realityShortIDBytes)
+	}
+	if strings.Contains(response.Body.String(), "private-key-secret") || strings.Contains(response.Body.String(), "privateKey") {
+		t.Fatalf("response exposed private key: %s", response.Body.String())
+	}
+
+	var payload ProtocolSettingsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.VLESS.Port != 8443 || payload.VLESS.Flow != "xtls-rprx-vision" || payload.VLESS.Network != "tcp" {
+		t.Fatalf("unexpected recommended VLESS response: %+v", payload.VLESS)
+	}
+	if !payload.Reality.Enabled || payload.Reality.PublicKey != "public-key" || payload.Reality.ServerName != "us.routegate.org" || payload.Reality.ShortID == "" {
+		t.Fatalf("unexpected recommended Reality response: %+v", payload.Reality)
+	}
+}
+
+func TestConfigureRecommendedProtocolSettingsRequiresHostname(t *testing.T) {
+	fakeProtocolSettingsResult = ProtocolSettings{ServerID: "server-id", VLESSPort: 443}
+	repository := &fakeServerRepository{
+		getByID: Server{ID: "server-id", Name: "US production VPS"},
+	}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/recommended", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.ConfigureRecommendedProtocolSettings(response, request)
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())

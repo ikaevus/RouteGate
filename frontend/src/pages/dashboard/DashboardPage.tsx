@@ -9,6 +9,7 @@ import { t } from '../../shared/i18n/i18n';
 import type { TranslationKey } from '../../shared/i18n/locales/en';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { WorldMap } from '../../shared/ui/WorldMap';
+import { GettingStartedWidget } from './GettingStartedWidget';
 
 const fallbackServers = [
   { name: 'rg-eu-01', region: 'Frankfurt, DE', online: true, load: '36%', traffic: '1.2 TB', status: 'healthy' },
@@ -355,6 +356,7 @@ export function DashboardPage() {
   return (
     <section className="page dashboard-page dashboard-reference-page dashboard-fidelity-page">
       <div className="dashboard-reference-grid">
+        <GettingStartedWidget />
         <KpiWidget
           title={t('dashboard.activeServers')}
           value={`${serversCount || 24} / ${Math.max(serversCount, 28)}`}
