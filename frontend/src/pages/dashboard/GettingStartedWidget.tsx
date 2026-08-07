@@ -33,6 +33,30 @@ type SetupStep = {
   to?: string | null;
 };
 
+const GETTING_STARTED_DISMISSED_KEY = 'routegate.gettingStarted.dismissed.v1';
+
+function readGettingStartedDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(GETTING_STARTED_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistGettingStartedDismissed(dismissed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (dismissed) {
+      window.localStorage.setItem(GETTING_STARTED_DISMISSED_KEY, '1');
+    } else {
+      window.localStorage.removeItem(GETTING_STARTED_DISMISSED_KEY);
+    }
+  } catch {
+    // localStorage can be unavailable in restricted browser modes; onboarding still works in-memory.
+  }
+}
+
 function textPresent(value?: string | null): boolean {
   return typeof value === 'string' && value.trim() !== '';
 }
@@ -172,6 +196,11 @@ function getCopy() {
       readyTitle: 'VPN готов к подключению',
       readyDescription: 'Основная настройка завершена. Откройте аккаунт, покажите QR-код или скопируйте VLESS-ссылку на устройство.',
       readyAction: 'Открыть аккаунт и QR',
+      readyCompactEyebrow: 'Настройка завершена',
+      readyCompactTitle: 'RouteGate готов',
+      readyCompactDescription: 'VPN Core работает, VLESS / Reality настроен, первый VPN-аккаунт создан.',
+      readyCompactHint: 'Этот блок можно скрыть. Если обязательный шаг снова потребует внимания, RouteGate автоматически вернёт путеводитель.',
+      dismiss: 'Скрыть',
     } as const;
   }
 
@@ -287,6 +316,11 @@ function getCopy() {
     readyTitle: 'VPN is ready to connect',
     readyDescription: 'Core setup is complete. Open the account to show its QR code or copy the VLESS link to a device.',
     readyAction: 'Open account and QR',
+    readyCompactEyebrow: 'Setup complete',
+    readyCompactTitle: 'RouteGate is ready',
+    readyCompactDescription: 'VPN Core is running, VLESS / Reality is configured, and the first VPN account is ready.',
+    readyCompactHint: 'You can hide this card. If a required step needs attention again, RouteGate will automatically bring the guide back.',
+    dismiss: 'Hide',
   } as const;
 }
 
@@ -294,6 +328,7 @@ export function GettingStartedWidget() {
   const copy = getCopy();
   const [installationJobId, setInstallationJobId] = useState<string | null>(null);
   const [installationFailure, setInstallationFailure] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(readGettingStartedDismissed);
 
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
@@ -437,6 +472,12 @@ export function GettingStartedWidget() {
   const failed = managerHealthQuery.isError || serversQuery.isError || accountsQuery.isError
     || (Boolean(primaryServer?.id && vpnCoreReady) && protocolQuery.isError);
 
+  useEffect(() => {
+    if (!dismissed || loading || failed || allReady) return;
+    persistGettingStartedDismissed(false);
+    setDismissed(false);
+  }, [allReady, dismissed, failed, loading]);
+
   const retry = () => {
     void managerHealthQuery.refetch();
     void serversQuery.refetch();
@@ -444,6 +485,11 @@ export function GettingStartedWidget() {
     if (primaryServer?.id && vpnCoreReady) {
       void protocolQuery.refetch();
     }
+  };
+
+  const dismiss = () => {
+    persistGettingStartedDismissed(true);
+    setDismissed(true);
   };
 
   let actionTitle: string = copy.systemActionTitle;
@@ -484,6 +530,39 @@ export function GettingStartedWidget() {
     actionDescription = copy.readyDescription;
     actionLabel = copy.readyAction;
     actionTo = `/vpn-accounts/${firstReadyAccount.id}`;
+  }
+
+  if (!loading && !failed && allReady && dismissed) {
+    return null;
+  }
+
+  if (!loading && !failed && allReady) {
+    return (
+      <section
+        className="dashboard-widget getting-started-widget getting-started-widget-complete"
+        aria-labelledby="getting-started-complete-title"
+      >
+        <div className="getting-started-complete-layout">
+          <span className="getting-started-complete-check" aria-hidden="true">✓</span>
+          <div className="getting-started-complete-copy">
+            <span className="getting-started-eyebrow">{copy.readyCompactEyebrow}</span>
+            <h2 id="getting-started-complete-title">{copy.readyCompactTitle}</h2>
+            <p>{copy.readyCompactDescription}</p>
+            <small>{copy.readyCompactHint}</small>
+          </div>
+          <div className="getting-started-complete-actions">
+            {firstReadyAccount && (
+              <Link className="getting-started-action" to={`/vpn-accounts/${firstReadyAccount.id}`}>
+                {copy.readyAction} →
+              </Link>
+            )}
+            <button className="getting-started-dismiss" type="button" onClick={dismiss}>
+              {copy.dismiss} ×
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
