@@ -1,0 +1,18 @@
+# RouteGate Agent production-like configuration example.
+# Install as /etc/routegate/agent.yaml with owner root:root and mode 0600.
+
+manager_url: "https://manager.example.com"
+registration_token: "REPLACE_WITH_ONE_TIME_REGISTRATION_TOKEN"
+heartbeat_interval_seconds: 10
+
+config_staging_dir: "/var/lib/routegate-agent/configs"
+active_config_path: "/etc/sing-box/config.json"
+config_backup_dir: "/var/lib/routegate-agent/backups"
+
+sing_box_path: "/usr/bin/sing-box"
+sing_box_service_name: "sing-box"
+service_control_enabled: true
+
+traffic_collection_enabled: false
+traffic_collection_interval_seconds: 60
+traffic_usage_file_path: "/var/lib/routegate-agent/traffic-usage.json"

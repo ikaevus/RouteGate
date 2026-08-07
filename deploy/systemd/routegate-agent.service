@@ -1,5 +1,6 @@
 [Unit]
 Description=RouteGate Agent
+Documentation=https://github.com/ikaevus/RouteGate
 After=network-online.target
 Wants=network-online.target
 
@@ -7,10 +8,11 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-EnvironmentFile=/etc/routegate/agent.env
-ExecStart=/usr/local/bin/routegate-agent
-Restart=always
+ExecStart=/usr/local/bin/routegate-agent -config /etc/routegate/agent.yaml
+Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=30s
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
