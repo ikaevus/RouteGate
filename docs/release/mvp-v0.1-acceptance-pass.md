@@ -1,286 +1,190 @@
-# RG-90 — MVP v0.1 Release Candidate / Acceptance Pass
+# RouteGate MVP v0.1 — Final Acceptance Pass
 
 ## Status
 
-Acceptance Pass / Final documentation update
+**Accepted — production-like Clean VPS E2E completed**
 
-## Context
+This document supersedes the earlier development/Codespaces MVP acceptance result as the canonical v0.1 release acceptance record.
 
-RouteGate has completed the main MVP feature tracks:
+## Final baseline
 
-- RG-40 — VPN Accounts / Client Access
-- RG-50 — Config Deploy
-- RG-60 — Routing Profiles / Split Tunnel
-- RG-70 — Traffic Stats / Limits
-- RG-80 — UI Kit / Design System MVP Polish
-- RG-81–RG-84 — User Portal MVP Foundation
-- RG-90 — MVP Deployment Baseline
-- RG-91 — Security / Threat Model Baseline
-
-The goal now is to verify RouteGate as one coherent MVP product, not as isolated merged features.
-
-## Goal
-
-Prepare and verify **RouteGate MVP v0.1 Release Candidate**.
-
-The acceptance pass should prove that a clean RouteGate checkout can be started, configured, tested, and used through the core MVP workflow.
-
-The acceptance pass has now been completed for the MVP dev environment.
-
-Summary:
-
-- Runtime config apply dev path: Pass.
-- Config Deploy status/history UI: Pass.
-- User Portal API/UI: Pass with polish follow-up.
-- Traffic usage / monthly limits foundation: Pass.
-- Production systemd restart/healthcheck smoke: Later / RG-90-FOLLOWUP.
-
-## How to use this checklist
-
-Use a clean branch from `main` and record evidence while progressing through each section.
-
-Recommended evidence per section:
-
-- commands run;
-- relevant API responses;
-- screenshots where UI is involved;
-- notes for failures or follow-up issues;
-- final pass / fail / blocked status.
-
-A checkbox means the item was explicitly verified during this acceptance pass.
-
-## Scope
-
-### 1. Clean startup / deployment baseline
-
-- [ ] Start from clean `main`.
-- [ ] Verify `.env.example` is complete enough for MVP startup.
-- [ ] Verify Docker Compose stack starts successfully.
-- [ ] Verify PostgreSQL becomes healthy.
-- [ ] Verify Manager health endpoint.
-- [ ] Verify Agent health endpoint.
-- [ ] Verify frontend proxy health.
-- [ ] Verify migrations on a clean database.
-- [ ] Verify `make check` passes.
-
-Suggested commands:
-
-```bash
-git switch main
-git pull
-git status
-make check
-docker compose -f deploy/docker-compose.dev.yml up --build -d
-docker compose -f deploy/docker-compose.dev.yml ps
-curl -i http://127.0.0.1:8080/api/admin/health
-curl -i http://127.0.0.1:8080/api/agent/health
-curl -i http://127.0.0.1:5173/api/admin/health
-```
-
-### 2. Admin bootstrap / Auth
-
-- [ ] Verify bootstrap admin flow.
-- [ ] Verify admin login.
-- [ ] Verify protected Admin UI routes.
-- [ ] Verify EN/RU language switcher.
-- [ ] Verify Auth Shell visual state.
-- [ ] Verify Admin Shell visual state.
-
-### 3. Server / Agent flow
-
-- [ ] Create server.
-- [ ] Generate registration token.
-- [ ] Register Agent with registration token.
-- [ ] Verify token is consumed.
-- [ ] Verify Agent receives persistent agent token.
-- [ ] Verify Agent heartbeat.
-- [ ] Verify server online/offline status.
-
-### 4. VLESS / Reality / VPN account flow
-
-- [ ] Create VPN account.
-- [ ] Verify dedicated VLESS UUID exists.
-- [ ] Configure VLESS / Reality protocol settings.
-- [ ] Generate or rotate Reality keypair.
-- [ ] Verify Reality private key is not exposed.
-- [ ] Verify VPN account credentials view.
-- [ ] Verify subscription token generation.
-- [ ] Verify subscription URL / QR payload.
-- [ ] Verify scannable QR UI.
-- [ ] Verify public subscription response.
-- [ ] Verify rendered sing-box client config.
-
-### 5. User Portal flow
-
-- [ ] Login as portal user.
-- [ ] Open `/portal`.
-- [ ] Verify portal dashboard.
-- [ ] Verify profile list.
-- [ ] Verify profile detail.
-- [ ] Generate / refresh subscription from portal.
-- [ ] Verify ownership boundaries.
-- [ ] Verify QR and subscription metadata.
-- [ ] Verify disabled / expired profile behavior where practical.
-
-### 6. Config render / apply flow
-
-- [ ] Render server config.
-- [ ] Verify config version creation.
-- [ ] Verify config hash.
-- [ ] Verify apply job creation.
-- [ ] Verify Agent task pickup.
-- [ ] Verify staged config validation.
-- [ ] Verify apply result reporting.
-- [ ] Verify apply job status UI.
-- [ ] Verify rollback/safety documentation is still accurate.
-
-Dev/Codespace Agent apply readiness path:
-
-- [ ] Use `deploy/examples/routegate-agent-dev-apply.yaml`.
-- [ ] Verify Agent uses `/tmp/routegate-agent/...` paths.
-- [ ] Verify `sing-box` is available or `sing_box_path` points to a local binary.
-- [ ] Verify `service_control_enabled: false` skips systemd restart/healthcheck only in dev.
-- [ ] Verify apply report shows stage / validate / apply succeeded.
-- [ ] Verify restart / healthcheck are reported as skipped when service control is disabled.
-
-### 7. Routing Profiles / Split Tunnel
-
-- [ ] Create routing profile.
-- [ ] Add direct / vpn / block rules.
-- [ ] Assign routing profile to server.
-- [ ] Verify rendered server config includes routing profile metadata.
-- [ ] Verify public subscription rendered sing-box config contains split-tunnel route rules:
-  - [ ] direct → direct
-  - [ ] vpn → routegate-out
-  - [ ] block → block
-- [ ] Verify default/final route behavior.
-
-### 8. Traffic Stats / Limits
-
-- [ ] Verify traffic limit UI on VPN account detail.
-- [ ] Run documented dev traffic usage scenario.
-- [ ] Verify Agent reports usage to Manager.
-- [ ] Verify Manager stores traffic usage events.
-- [ ] Verify Admin UI shows traffic usage summary.
-- [ ] Configure monthly hard limit.
-- [ ] Verify enforcement status becomes `over_limit`.
-- [ ] Verify over-limit account is excluded from rendered config.
-
-### 9. UI / Brand / i18n sanity pass
-
-- [ ] Verify official RouteGate logo is used from `/brand`.
-- [ ] Verify favicon.
-- [ ] Verify Admin UI, Auth Shell, and User Portal use correct brand assets.
-- [ ] Verify Dashboard visual baseline.
-- [ ] Verify core feature screens visual baseline.
-- [ ] Verify world map asset in Dashboard.
-- [ ] Verify Russian layout does not visibly break main screens.
-- [ ] Verify no obvious old/temporary UI artifacts remain.
-
-### 10. Documentation pass
-
-- [ ] Verify README links are current.
-- [ ] Verify MVP deployment docs.
-- [ ] Verify security baseline docs.
-- [ ] Verify traffic docs.
-- [ ] Verify routing profiles docs.
-- [ ] Verify User Portal docs.
-- [ ] Verify brand source-of-truth rule.
-- [ ] Verify no active OPNsense references remain.
-
-Suggested checks:
-
-```bash
-grep -Rni "OPNsense" . \
-  --exclude-dir=.git \
-  --exclude-dir=node_modules \
-  --exclude-dir=dist \
-  --exclude-dir=.vite
-```
-
-## Out of scope
-
-- Kubernetes.
-- HA.
-- Appliance image.
-- Auto-update implementation.
-- Billing / tariff logic.
-- Real sing-box stats API integration.
-- Persistent Agent-side traffic counters.
-- Monthly traffic reset jobs.
-- Mobile apps.
-- Clash / V2Ray renderers.
-- OPNsense integration.
-
-## Acceptance Criteria
-
-RouteGate MVP v0.1 Release Candidate can be considered accepted when:
-
-- [x] Clean `main` starts successfully in dev Docker Compose.
-- [x] `make check` passes.
-- [x] Manager, Agent, PostgreSQL, and frontend health checks pass.
-- [x] Admin can create server, register Agent, and see heartbeat.
-- [x] Admin can create VPN account and generate usable subscription/QR.
-- [x] Public subscription returns `routegate.client_config.v1` and rendered `sing-box.config.v1` foundation.
-- [x] User Portal user can view own profile and generate own subscription safely.
-- [x] Config render/apply path works through Manager → Agent job flow.
-- [x] Routing profile rules reach public subscription client config foundation.
-- [x] Traffic usage and monthly limit foundation works; runtime over-limit exclusion remains a follow-up verification item.
-- [x] UI, brand, and language switcher are visually acceptable for MVP.
-- [x] Documentation is sufficient for MVP dev deployment and verification.
-
-## Acceptance results
+Final integrated runtime commit before release-closeout documentation:
 
 ```text
-Date: 2026-07-01
-Branch / commit: main after PR #77
-Environment: GitHub Codespaces / dev Docker Compose
-Tester: ikaevus
-
-Overall status:
-Pass with follow-ups
-
-Passed sections:
-- Clean startup / deployment baseline
-- Admin bootstrap / Auth
-- Server / Agent flow
-- VLESS / Reality / VPN account flow
-- User Portal API/UI
-- Config render / validate / apply dev runtime path
-- Config Deploy status/history UI
-- Routing Profiles / Split Tunnel foundation
-- Traffic Stats / Limits foundation
-- UI / Brand / i18n sanity pass
-- Documentation baseline
-
-Blocked sections:
-- None for MVP v0.1 dev acceptance.
-
-Follow-up issues:
-- RG-90-FOLLOWUP — Production systemd smoke test:
-  verify restart/healthcheck path on a real Linux host with service_control_enabled=true.
-- RG-81-FOLLOWUP — User Portal i18n & UI polish:
-  translate remaining instruction text, fix profile row spacing, improve setup wording.
-- Config Deploy UI polish:
-  improve long error display, latest-job highlighting, and runtime stage label presentation.
-- Traffic enforcement runtime verification:
-  verify real collected traffic and policy behavior later.
-- Public subscription/client config production endpoint values:
-  verify real public IP/domain/server endpoint outside dev placeholder data.
-
-Notes:
-- Dev/Codespaces Agent apply path uses service_control_enabled=false.
-- Restart and healthcheck are correctly reported as skipped in dev when service control is disabled.
-- Production systemd behavior is intentionally tracked as a separate smoke test.
-- User Portal token behavior is intentionally safe: raw subscription tokens are not recoverable from stored hashes.
-- OPNsense integration remains out of scope.
+9f2cacc3995ea1d921afff8f7ba0ecc3b3fa9fbb
 ```
 
-## Resulting Milestone
+Final integration chain:
 
-**MILESTONE — RouteGate MVP v0.1 Release Candidate**
+- PR #108 — RG-89C — VPN Core Installation E2E
+- PR #110 — RG-100 — Clean VPS Installer MVP
+- PR #112 — RG-101 — Secure First Access
+- PR #114 — RG-102 — Guided First-Run Setup
 
-Status: Accepted with follow-ups
+Post-merge RouteGate CI #451 passed on the canonical integrated commit.
 
-Result:
-RouteGate MVP v0.1 has passed the first full product acceptance pass across deployment, auth, Manager ↔ Agent, VPN accounts, subscriptions, User Portal, config deploy, routing profiles, traffic limits, UI/i18n, brand, and security documentation.
+## Acceptance environment
+
+```text
+Host: us.routegate.org
+Operating system: Ubuntu 24.04 LTS
+Architecture: amd64
+Deployment type: clean production-like VPS
+VPN Core: sing-box
+```
+
+The host was used as a disposable validation environment for the supported All-in-One RouteGate lifecycle.
+
+## Accepted lifecycle
+
+The final MVP acceptance proved the complete supported path:
+
+```text
+Clean VPS
+→ RouteGate installer
+→ PostgreSQL + Manager + frontend + nginx/HTTPS + Agent
+→ secure /setup activation
+→ automatic local Agent registration
+→ Guided Workflow
+→ sing-box installation through RouteGate
+→ VLESS / Reality configuration
+→ first VPN account
+→ Config Deploy
+→ persistent client profile / QR / VLESS link
+→ real desktop/mobile VPN connectivity
+→ reboot
+→ automatic service recovery
+→ VPN connectivity after reboot
+```
+
+## Platform installation
+
+Accepted behavior:
+
+- [x] installer runs on a clean Ubuntu 24.04 LTS amd64 VPS;
+- [x] host/DNS/conflict preflight runs before unsafe mutations;
+- [x] release bundle checksum verification is required;
+- [x] PostgreSQL is installed/configured locally;
+- [x] Manager is installed as a native systemd service;
+- [x] production frontend is installed and served through nginx;
+- [x] HTTPS is configured with Let's Encrypt;
+- [x] RouteGate Agent is installed as a native systemd service;
+- [x] local All-in-One Server is created automatically;
+- [x] local Agent registration is completed automatically;
+- [x] installer state/logging/retry boundaries work for the supported path.
+
+## Secure first access
+
+Accepted behavior:
+
+- [x] installer creates a high-entropy one-time setup token;
+- [x] first access uses `/setup#token=...` rather than a plaintext default login flow;
+- [x] the administrator chooses the operational password;
+- [x] setup token is consumed once;
+- [x] bootstrap sessions are revoked;
+- [x] the administrator is signed in automatically after activation;
+- [x] bootstrap environment values are removed from Manager configuration;
+- [x] root-only recovery information remains available for the server owner until intentionally removed.
+
+## Guided Workflow
+
+Accepted behavior:
+
+- [x] a new administrator is not left on a dead-end Dashboard;
+- [x] the Dashboard derives progress from actual system state;
+- [x] the current incomplete step exposes the next logical action;
+- [x] completed prerequisites are recognized without a separate onboarding-state subsystem;
+- [x] the completed guide collapses to a ready state;
+- [x] the guide can recover if required infrastructure later becomes incomplete.
+
+## VPN Core lifecycle
+
+Accepted behavior:
+
+- [x] sing-box absence is reported as `not_installed`;
+- [x] sing-box is installed through an explicit allow-listed Agent operation;
+- [x] installation does not expose arbitrary shell/package execution through Manager APIs;
+- [x] installed and VPN-ready/running-with-valid-config remain distinct states;
+- [x] RouteGate does not require a premature sing-box start before a valid config exists;
+- [x] Config Deploy owns the first real start/restart after configuration is rendered and validated.
+
+## VLESS / Reality and Config Deploy
+
+Accepted All-in-One behavior:
+
+- [x] nginx/RouteGate HTTPS owns TCP 443;
+- [x] recommended VLESS / Reality uses TCP 8443 to avoid the port conflict;
+- [x] TCP transport and `xtls-rprx-vision` are configured through the recommended setup path;
+- [x] Reality X25519 keys and Short ID are generated;
+- [x] first VPN account can be created;
+- [x] Config Deploy performs render → validate → apply → restart/start → health check;
+- [x] applied configuration metadata reaches the correct applied state;
+- [x] VPN Core readiness is confirmed after deployment.
+
+## Client access
+
+Validated clients:
+
+- [x] V2Box
+- [x] V2RayTun
+
+Accepted behavior:
+
+- [x] persistent client profiles survive page reload/re-login;
+- [x] QR code remains available from the saved profile;
+- [x] VLESS link remains available from the saved profile;
+- [x] `fingerprint=firefox` was validated as the working persistent Reality client fingerprint in the final path;
+- [x] real desktop/mobile connectivity was demonstrated.
+
+Advanced compatibility auto-tuning and richer profile controls remain tracked separately as RG-101C / #113 and are Post-MVP / Planned.
+
+## Reboot persistence
+
+Accepted behavior after host reboot:
+
+- [x] PostgreSQL recovers automatically;
+- [x] nginx recovers automatically;
+- [x] RouteGate Manager recovers automatically;
+- [x] RouteGate Agent recovers automatically;
+- [x] configured sing-box runtime recovers automatically;
+- [x] Agent connectivity returns;
+- [x] client VPN connectivity works after reboot.
+
+## Release-support boundary
+
+The v0.1.0 public MVP support claim is intentionally narrower than the full source tree:
+
+Supported live installer acceptance:
+
+```text
+Ubuntu 24.04 LTS + amd64 + single VPS + native systemd
+```
+
+Release packaging also builds arm64, but the first release does not claim the same live Clean VPS acceptance level for arm64.
+
+## Non-goals confirmed
+
+The final acceptance does not require:
+
+- RG-101C implementation;
+- additional VPN protocols;
+- additional VPN Cores;
+- appliance work;
+- Kubernetes or HA;
+- managed automatic updates;
+- official mobile clients;
+- opportunistic redesign/refactoring.
+
+## Historical development acceptance
+
+An earlier July 2026 acceptance pass validated the feature foundations in the development/Codespaces environment. That result was useful during construction, but it is no longer the final release gate because the production-like Clean VPS lifecycle has now been validated end to end.
+
+## Result
+
+```text
+RouteGate MVP v0.1 acceptance: PASS
+Release blocker from supported product path: NONE KNOWN
+Next action: release closeout → v0.1.0 tag → GitHub Release → asset verification
+```
+
+The public release may be declared complete only after the final release-closeout documentation commit is green on `main` and the tag-triggered release workflow publishes and verifies the official artifacts.

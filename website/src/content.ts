@@ -65,14 +65,14 @@ export const content: Record<Locale, SiteContent> = {
       repository: 'routegate/manager/config/apply.go',
     },
     deployment: {
-      eyebrow: 'РАЗВЁРТЫВАНИЕ',
-      title: 'Начните с одного сервера. Расширяйте по мере роста.',
-      text: 'Одна и та же платформа для личной инфраструктуры, домашней лаборатории и небольших команд.',
+      eyebrow: 'ПУБЛИЧНЫЙ MVP',
+      title: 'Разверните RouteGate на чистом Ubuntu VPS',
+      text: 'Поддерживаемый путь v0.1.0 — нативная установка на Ubuntu 24.04 LTS с PostgreSQL, systemd, nginx и HTTPS.',
       cards: [
-        { title: 'Один VPS', text: 'Простой старт на Linux-сервере.' },
-        { title: 'Несколько регионов', text: 'Единое управление распределёнными узлами.' },
-        { title: 'Docker Compose', text: 'Предсказуемое развёртывание Manager.' },
-        { title: 'systemd', text: 'Нативная эксплуатация Agent на Linux.' },
+        { title: 'Одна команда', text: 'Clean VPS Installer проверяет хост и устанавливает RouteGate из проверенного release bundle.' },
+        { title: 'HTTPS по умолчанию', text: 'nginx и Let’s Encrypt создают защищённую публичную точку входа RouteGate.' },
+        { title: 'Безопасный первый вход', text: 'Одноразовая ссылка /setup позволяет администратору выбрать собственный пароль.' },
+        { title: 'Guided Workflow', text: 'После входа RouteGate ведёт от установки sing-box до готового QR/VLESS-профиля.' },
       ],
     },
     cta: { title: 'VPN-инфраструктура под вашим контролем', text: 'Разверните RouteGate и управляйте серверами, доступом и маршрутами из одной панели.' },
@@ -127,14 +127,14 @@ export const content: Record<Locale, SiteContent> = {
       repository: 'routegate/manager/config/apply.go',
     },
     deployment: {
-      eyebrow: 'DEPLOYMENT',
-      title: 'Start with one server. Expand as you grow.',
-      text: 'The same platform for personal infrastructure, home labs, and small teams.',
+      eyebrow: 'PUBLIC MVP',
+      title: 'Deploy RouteGate on a clean Ubuntu VPS',
+      text: 'The supported v0.1.0 path is a native Ubuntu 24.04 LTS installation with PostgreSQL, systemd, nginx, and HTTPS.',
       cards: [
-        { title: 'One VPS', text: 'A simple start on a Linux server.' },
-        { title: 'Multiple regions', text: 'One view across distributed nodes.' },
-        { title: 'Docker Compose', text: 'Predictable Manager deployment.' },
-        { title: 'systemd', text: 'Native Agent operation on Linux.' },
+        { title: 'One command', text: 'The Clean VPS Installer checks the host and installs RouteGate from a verified release bundle.' },
+        { title: 'HTTPS by default', text: 'nginx and Let’s Encrypt provide the protected public RouteGate endpoint.' },
+        { title: 'Secure first access', text: 'A single-use /setup link lets the administrator choose the operational password.' },
+        { title: 'Guided Workflow', text: 'After sign-in, RouteGate guides the path from sing-box installation to a ready QR/VLESS profile.' },
       ],
     },
     cta: { title: 'Your VPN infrastructure. Under your control.', text: 'Deploy RouteGate and manage servers, access, and routing from one control plane.' },
@@ -145,4 +145,3 @@ export const content: Record<Locale, SiteContent> = {
     },
   },
 }
-

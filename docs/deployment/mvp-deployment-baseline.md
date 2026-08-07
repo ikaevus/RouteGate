@@ -1,252 +1,237 @@
 # MVP Deployment Baseline
 
-This document is the first release-readiness baseline for bringing up RouteGate on a single node.
+## Status
 
-RouteGate is an independent Linux VPN management platform. This guide keeps the MVP deployment simple and focused on a single VPS or development host.
+**RouteGate v0.1.0 MVP — supported public deployment baseline**
 
-## Current deployment profile
+This document defines the canonical deployment profile for the first public RouteGate release. Docker Compose remains available for local development, but it is not the supported public installation path.
 
-The current repository supports a development-oriented Docker Compose stack:
+## Supported v0.1.0 profile
 
-- PostgreSQL 16
-- RouteGate Manager API
-- RouteGate Admin UI through Vite
+The live-validated MVP profile is:
 
-The current stack is suitable for development and early MVP validation. It is not a hardened production deployment yet.
+- Ubuntu 24.04 LTS;
+- amd64;
+- one self-hosted VPS;
+- native systemd services;
+- local PostgreSQL;
+- RouteGate Manager + Admin UI;
+- nginx reverse proxy and static frontend delivery;
+- Let's Encrypt HTTPS;
+- local RouteGate Agent registered automatically by the installer;
+- sing-box installed later through RouteGate;
+- VLESS / Reality as the validated VPN path.
+
+Canonical architecture:
+
+```text
+Internet
+  │
+  ├─ TCP 443  → nginx / RouteGate HTTPS
+  │               │
+  │               ├─ Admin UI
+  │               └─ Manager API → PostgreSQL (loopback/local only)
+  │
+  └─ TCP 8443 → sing-box / VLESS / Reality
+
+RouteGate Manager → local RouteGate Agent → sing-box
+```
 
 ## Prerequisites
 
-Install these tools on the host:
+Before installation:
 
-- Git
-- Docker
-- Docker Compose plugin
-- Go 1.25+ for local backend and agent checks
-- Node.js 24+ and npm for frontend checks
+1. Provision a clean Ubuntu 24.04 LTS amd64 VPS.
+2. Create a DNS `A` record for the desired RouteGate FQDN pointing to the VPS public IPv4 address.
+3. Ensure inbound TCP 80 and 443 are reachable for HTTP/TLS setup.
+4. Keep SSH access working and use `root` or an account with functional `sudo`.
+5. Avoid reusing a host that already contains unrelated active PostgreSQL/web services unless you understand and resolve the detected conflicts first.
 
-Verify the basic tooling:
+The installer preserves SSH authentication policy and stops rather than silently overwriting unrelated host services or unowned RouteGate files.
+
+## Install
+
+Canonical interactive installation:
 
 ```bash
-git --version
-docker --version
-docker compose version
-go version
-node --version
-npm --version
+curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
+  | sudo bash
 ```
 
-## Clone the repository
+To pin the first public release explicitly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
+  | sudo bash -s -- \
+      --domain vpn.example.com \
+      --email owner@example.com \
+      --version v0.1.0
+```
+
+The installer resolves a published release bundle and verifies it against the release `SHA256SUMS` before installing it.
+
+Detailed installer behavior and options are documented in [clean-vps-installer.md](clean-vps-installer.md).
+
+## What a successful platform installation provides
+
+A completed installer run owns and verifies:
+
+- PostgreSQL installation and a RouteGate-specific local database/role;
+- RouteGate Manager binary and migrations;
+- production Admin UI assets;
+- RouteGate Agent binary and systemd service;
+- nginx configuration;
+- Let's Encrypt HTTPS;
+- local All-in-One Server creation;
+- automatic one-time Agent registration and persistent Agent identity;
+- single-use administrator `/setup` activation link;
+- resumable installer state and a root-only installer log.
+
+The installer does **not** install or start sing-box automatically.
+
+## First access
+
+After installation, the installer prints a URL in this form:
+
+```text
+https://vpn.example.com/setup#token=<single-use-token>
+```
+
+Open it before expiration and choose the administrator password. After successful activation, RouteGate signs the administrator in automatically.
+
+The root-only recovery file is:
+
+```text
+/root/routegate-first-login.txt
+```
+
+Remove it after activation and password verification:
+
+```bash
+sudo rm -f /root/routegate-first-login.txt
+```
+
+## Guided VPN bring-up
+
+A fresh installation is intentionally not considered VPN-ready merely because the management platform is running.
+
+RouteGate guides the remaining lifecycle from actual system state:
+
+```text
+Platform ready
+→ local Server / Agent connected
+→ Install sing-box
+→ configure recommended VLESS / Reality
+→ create first VPN account
+→ Deploy VPN
+   render → validate → apply → start/restart → health check
+→ open persistent client profile
+→ QR / VLESS link
+→ client connected
+```
+
+Installing sing-box and running sing-box with a valid RouteGate-generated configuration are separate states. The Config Deploy apply lifecycle owns the first real VPN Core startup after a valid configuration exists.
+
+## Validated client path
+
+Final clean-host MVP acceptance validated real VPN connectivity using:
+
+- V2Box;
+- V2RayTun.
+
+Persistent client profiles were validated across reload/re-login behavior, including a working Reality client fingerprint of `firefox`.
+
+RG-101C advanced compatibility auto-tuning remains Post-MVP / Planned and is not required for v0.1.0.
+
+## Service verification
+
+On the installed host:
+
+```bash
+sudo systemctl status postgresql nginx routegate-manager routegate-agent
+curl -fsS https://vpn.example.com/api/admin/health
+```
+
+After the VPN has been deployed through RouteGate:
+
+```bash
+sudo systemctl status sing-box
+```
+
+The exact VPN runtime state should also be inspected through RouteGate because installed, stopped, running, degraded, and failed states are represented explicitly by the Manager/Agent workflow.
+
+## Installer state and logs
+
+```text
+/etc/routegate/install-state.env
+/var/log/routegate-installer.log
+/var/lib/routegate-installer/
+```
+
+A completed RouteGate-owned installation can be rechecked by rerunning the installer. The completed path performs health/idempotency checks instead of reinstalling or rotating credentials.
+
+## Release artifacts
+
+The v0.1.0 GitHub Release publishes:
+
+```text
+routegate-v0.1.0-linux-amd64.tar.gz
+routegate-v0.1.0-linux-arm64.tar.gz
+SHA256SUMS
+```
+
+The release workflow builds and verifies both bundle architectures. The **supported live Clean VPS installation contract for v0.1.0 is amd64**, because that is the architecture accepted on the production-like clean-host E2E path.
+
+## Development profile
+
+For contributors and local development only:
 
 ```bash
 git clone https://github.com/ikaevus/RouteGate.git
 cd RouteGate
-```
-
-For private repository access, use the GitHub authentication method already configured for the deployment operator.
-
-## Configure environment
-
-Create a local environment file from the example:
-
-```bash
-cp .env.example .env
-```
-
-Before using a shared, public, or production-like host, replace every development placeholder in `.env`:
-
-- `ROUTEGATE_DATABASE_URL`
-- `ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL`
-- `ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME`
-- `ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD`
-- `POSTGRES_PASSWORD`
-- agent registration and credential placeholders if an agent is being prepared
-
-Do not commit `.env` or real secrets.
-
-The current `deploy/docker-compose.dev.yml` file contains development defaults directly in the compose file. Keep `.env.example` as the canonical list of MVP deployment variables while the deployment model is still being stabilized.
-
-## Start the development stack
-
-```bash
 make dev
 ```
 
-Equivalent direct command:
+This Docker Compose/Vite environment is useful for development and automated checks. It must not be confused with the supported v0.1.0 public deployment contract above.
 
-```bash
-docker compose -f deploy/docker-compose.dev.yml up --build
-```
-
-This starts:
-
-- `routegate-postgres-dev`
-- `routegate-manager-dev`
-- `routegate-frontend-dev`
-
-Check containers:
-
-```bash
-make ps
-```
-
-Follow logs:
-
-```bash
-make logs
-```
-
-Stop the stack:
-
-```bash
-make down
-```
-
-## Database migrations
-
-Migrations live in:
-
-```text
-backend/migrations
-```
-
-The Manager applies migrations during startup in the current development stack. To verify migration behavior, watch the Manager logs during startup:
-
-```bash
-docker compose -f deploy/docker-compose.dev.yml logs -f manager
-```
-
-If the development database becomes disposable or inconsistent, reset it with:
-
-```bash
-make db-reset
-make dev
-```
-
-`make db-reset` removes the development database volume. Do not use it against data you need to keep.
-
-## Health checks
-
-Check the Admin UI:
-
-```text
-http://127.0.0.1:5173
-```
-
-Check Manager health directly:
-
-```bash
-curl -i http://127.0.0.1:8080/api/admin/health
-```
-
-Check Manager health through the frontend dev proxy:
-
-```bash
-curl -i http://127.0.0.1:5173/api/admin/health
-```
-
-Check Agent API health:
-
-```bash
-curl -i http://127.0.0.1:8080/api/agent/health
-```
-
-Check PostgreSQL readiness through Docker:
-
-```bash
-docker compose -f deploy/docker-compose.dev.yml exec postgres pg_isready -U routegate -d routegate
-```
-
-## Default development login
-
-The development stack uses bootstrap admin values from the compose file.
-
-Default local credentials:
-
-```text
-email:    admin@routegate.local
-password: admin
-```
-
-Use these only for local development. Change bootstrap values before any shared or public deployment.
-
-## Useful Makefile commands
-
-```bash
-make help
-make dev
-make down
-make restart
-make rebuild
-make logs
-make ps
-make backend-test
-make agent-test
-make frontend-build
-make check
-make db-reset
-make clean
-```
-
-## Basic troubleshooting
-
-### Port already in use
-
-The development stack uses ports `5173`, `8080`, and `5432`. Stop the conflicting service or change the compose port mapping.
-
-### PostgreSQL is not ready
-
-Check the PostgreSQL container and health check:
-
-```bash
-make ps
-docker compose -f deploy/docker-compose.dev.yml logs postgres
-```
-
-### Manager cannot connect to database
-
-Verify that `ROUTEGATE_DATABASE_URL` matches the PostgreSQL host, database, user, password, and port used by the active deployment.
-
-Inside Docker Compose, the database host is `postgres`. From the host shell, the database host is usually `localhost`.
-
-### Frontend cannot reach API
-
-Check Manager health directly first:
-
-```bash
-curl -i http://127.0.0.1:8080/api/admin/health
-```
-
-Then check the Vite proxy path:
-
-```bash
-curl -i http://127.0.0.1:5173/api/admin/health
-```
-
-### Disposable dev database reset
-
-Only for local development:
-
-```bash
-make db-reset
-make dev
-```
-
-## Minimal MVP deployment acceptance checks
-
-Before calling the MVP deployment baseline ready, verify:
+Run the full repository validation with:
 
 ```bash
 make check
-make dev
-curl -i http://127.0.0.1:8080/api/admin/health
-curl -i http://127.0.0.1:8080/api/agent/health
-curl -i http://127.0.0.1:5173/api/admin/health
 ```
 
-Then open:
+## Explicit MVP deployment non-goals
+
+v0.1.0 does not claim support for:
+
+- Kubernetes or HA deployment;
+- an appliance image or appliance OS;
+- managed/automatic RouteGate upgrades;
+- external PostgreSQL as the canonical installer topology;
+- additional VPN Cores;
+- additional VPN protocols beyond the validated VLESS / Reality path;
+- official RouteGate mobile clients;
+- automatic client compatibility tuning.
+
+## Acceptance result
+
+The final clean-host lifecycle passed on the production-like `us.routegate.org` validation host:
 
 ```text
-http://127.0.0.1:5173
+Clean VPS
+→ installer
+→ secure /setup
+→ local Agent registration
+→ Guided Workflow
+→ sing-box installation
+→ VLESS / Reality
+→ VPN account
+→ Config Deploy
+→ persistent client profile
+→ real VPN connectivity
+→ reboot
+→ automatic service recovery
+→ real VPN connectivity after reboot
 ```
 
-Log in with the configured bootstrap admin account.
+This is the RouteGate v0.1.0 MVP deployment baseline.

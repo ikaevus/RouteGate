@@ -1,178 +1,172 @@
 # Release Readiness Checklist
 
-This checklist defines the minimum release discipline for RouteGate MVP work.
+## RouteGate v0.1.0 MVP
 
-Use it before creating an MVP tag, publishing a deployment note, or asking another person to test a release candidate.
+This checklist defines the final release gate for the first public RouteGate MVP. It evaluates the supported product contract, not speculative future features.
 
-## Scope
+A defect blocks v0.1.0 only when it breaks the supported MVP installation/operation path or makes that path unsafe or unusable.
 
-This checklist is for the current single-node MVP profile:
+## Release boundary
 
-- RouteGate Manager
-- RouteGate Admin UI
-- PostgreSQL
-- RouteGate Agent compatibility notes
-- Docker Compose based deployment baseline
+Supported live path:
 
-It does not cover Kubernetes, HA, marketplace images, appliance OS images, or a full auto-update system.
+- Ubuntu 24.04 LTS;
+- amd64 Clean VPS installation;
+- native systemd deployment;
+- PostgreSQL + Manager + Admin UI + nginx/HTTPS + local Agent;
+- secure `/setup` administrator activation;
+- guided sing-box installation;
+- VLESS / Reality;
+- first VPN account;
+- Config Deploy;
+- persistent client profile / QR / VLESS link;
+- real third-party client connectivity.
 
-## Pre-release checks
+Published release packaging also includes an arm64 native bundle, but arm64 is not part of the v0.1.0 live Clean VPS acceptance boundary.
 
-Run the full project check:
+## Explicit non-blocking Post-MVP work
+
+Do not delay v0.1.0 for:
+
+- RG-101C client compatibility auto-tuning / advanced profile controls;
+- additional VPN protocols or VPN Cores;
+- appliance work;
+- Kubernetes or HA;
+- managed/automatic update orchestration;
+- official mobile applications;
+- opportunistic redesign or refactoring.
+
+## Source-of-truth checks
+
+Before tagging:
+
+- [ ] `main` is the only active release branch.
+- [ ] the release candidate commit is known and recorded.
+- [ ] no unintended runtime changes were introduced after the final Clean VPS E2E acceptance.
+- [ ] all intended release-closeout documentation changes are merged.
+- [ ] required CI on final `main` is green.
+- [ ] no release-blocking issue remains open.
+- [ ] RG-101C remains explicitly Post-MVP / Planned.
+
+## Automated checks
+
+Run or verify the repository CI equivalent of:
 
 ```bash
 make check
 ```
 
-If investigating failures separately, run:
+Required areas include:
 
-```bash
-make backend-test
-make agent-test
-make frontend-build
-```
+- backend tests;
+- Agent tests;
+- frontend localization validation and production build;
+- website build;
+- installer Bash syntax;
+- ShellCheck;
+- installer TAP tests;
+- native release-bundle build/structure/checksum validation.
 
-The release candidate should not proceed while any required check is failing.
+Do not publish the tag while required checks are failing.
 
-## Frontend build
+## Clean VPS acceptance
 
-Confirm that the Admin UI production build succeeds:
+The release candidate must preserve the already validated lifecycle:
 
-```bash
-make frontend-build
-```
+- [x] clean Ubuntu 24.04 LTS host;
+- [x] installer owns PostgreSQL, Manager, frontend, nginx/HTTPS, and local Agent setup;
+- [x] installer creates/registrations the local All-in-One Server/Agent automatically;
+- [x] `/setup` activation is single-use and works end to end;
+- [x] the administrator lands in a state-aware Guided Workflow;
+- [x] sing-box can be installed through the allow-listed Agent workflow;
+- [x] installed-but-unconfigured sing-box is not treated as VPN-ready;
+- [x] recommended VLESS / Reality configuration works with nginx on 443 and VLESS on 8443;
+- [x] first VPN account can be created;
+- [x] Config Deploy renders, validates, applies, starts/restarts, and health-checks the runtime;
+- [x] persistent client profile is exposed as QR and VLESS link;
+- [x] V2Box connectivity works;
+- [x] V2RayTun connectivity works;
+- [x] working `fingerprint=firefox` profile persists;
+- [x] host reboot restores required services;
+- [x] VPN connectivity works after reboot.
 
-Do not commit generated frontend build output such as `frontend/dist`.
+## Security checks
 
-## Database migrations
+Confirm the public path still preserves these boundaries:
 
-Before release:
+- [ ] release bundle checksum verification is mandatory;
+- [ ] unsafe archive paths/links are rejected;
+- [ ] Manager is loopback-only behind nginx;
+- [ ] PostgreSQL is not exposed on a public wildcard listener;
+- [ ] HTTPS is required for a successful public installation;
+- [ ] unrelated active host services are not silently overwritten;
+- [ ] bootstrap administrator environment values are removed after platform bootstrap;
+- [ ] `/setup` token is single-use and time-limited;
+- [ ] root-only recovery material uses restrictive permissions;
+- [ ] Agent infrastructure operations remain allow-listed rather than arbitrary remote shell execution;
+- [ ] secrets/tokens are not included in release evidence or public logs.
 
-- Confirm every schema change has an up migration.
-- Confirm rollback expectations are documented when a down migration is risky or not enough.
-- Start the Manager against a disposable database and verify migrations are applied on startup.
-- Never test destructive migration behavior against data that must be preserved.
+## Documentation checks
 
-Migration location:
+Before tagging:
 
-```text
-backend/migrations
-```
+- [ ] README identifies v0.1.0 as the first public MVP release.
+- [ ] README links the supported Clean VPS installation guide.
+- [ ] deployment docs distinguish the public native installer from contributor Docker Compose.
+- [ ] `/setup` is documented as the canonical first-access path.
+- [ ] the `443` nginx / `8443` VLESS All-in-One boundary is documented.
+- [ ] release notes describe supported platforms, validated clients, and known boundaries.
+- [ ] arm64 packaging is not misrepresented as live-validated installer support.
+- [ ] no document presents the obsolete generated-password-only first login as the canonical path.
+- [ ] no document presents the July Docker/Codespaces acceptance as the final production-like MVP acceptance.
 
-## Environment validation
+## Tag and release checks
 
-Check `.env.example` when adding or changing configuration.
+Create the official release only after final `main` is green.
 
-The example file must:
-
-- list the required Manager variables;
-- list relevant PostgreSQL variables;
-- list Agent variables used by current examples or packaging work;
-- avoid real secrets;
-- make development-only values obvious;
-- make production-like placeholders obvious.
-
-Before a public or shared deployment, verify that development credentials were replaced.
-
-## Backup before update
-
-Before updating an existing MVP deployment, take a PostgreSQL backup.
-
-Example for the current development compose profile:
-
-```bash
-mkdir -p backups
-docker compose -f deploy/docker-compose.dev.yml exec -T postgres \
-  pg_dump -U routegate -d routegate > backups/routegate-$(date +%Y%m%d-%H%M%S).sql
-```
-
-For a production-like deployment, adapt the command to the real PostgreSQL host, database, and credentials.
-
-A backup is only useful if restore has been tested on a disposable database.
-
-## Basic restore drill
-
-For MVP release readiness, restore should be tested in a disposable environment before relying on a backup procedure.
-
-High-level restore flow:
-
-1. Stop services that write to the database.
-2. Create or reset a disposable PostgreSQL database.
-3. Restore the SQL dump.
-4. Start the Manager.
-5. Verify health endpoints and the Admin UI.
-6. Confirm core records are present.
-
-Do not perform restore drills on the only copy of useful data.
-
-## Rollback notes
-
-For each release candidate, document:
-
-- previous known-good commit or tag;
-- database migration impact;
-- whether database rollback is safe, manual, or not supported;
-- frontend rollback command or container/image reference when packaging exists;
-- Manager rollback command or container/image reference when packaging exists;
-- Agent compatibility expectations.
-
-For the current repository baseline, rollback usually means returning to the previous Git commit and restarting the compose stack. Database rollback must be considered separately.
-
-## Manager / Agent compatibility
-
-Before release, note whether the Manager and Agent must be upgraded together.
-
-Minimum compatibility notes:
-
-- Agent registration payload compatibility
-- Agent heartbeat payload compatibility
-- Config apply job API compatibility
-- Traffic usage payload compatibility
-- Client config or subscription payload compatibility when relevant
-
-Avoid silently breaking older agents. If compatibility is intentionally broken, document it in the release note.
-
-## Health checks after update
-
-After updating a deployment, verify:
-
-```bash
-curl -i http://127.0.0.1:8080/api/admin/health
-curl -i http://127.0.0.1:8080/api/agent/health
-curl -i http://127.0.0.1:5173/api/admin/health
-```
-
-Also verify the Admin UI manually:
+Expected tag:
 
 ```text
-http://127.0.0.1:5173
+v0.1.0
 ```
 
-## MVP release candidate checklist
+The tag must point to the final release-closeout `main` commit.
 
-A release candidate is ready for review when all items below are true:
+The tag push triggers `.github/workflows/release.yml`. The release is complete only when the workflow succeeds and the GitHub Release contains:
 
-- [ ] `make check` passes.
-- [ ] Backend tests pass.
-- [ ] Agent tests pass.
-- [ ] Frontend build passes.
-- [ ] Migrations are present and startup migration behavior is verified.
-- [ ] `.env.example` is current and contains no real secrets.
-- [ ] Deployment docs are current.
-- [ ] Release notes include known limitations.
-- [ ] Backup guidance is present.
-- [ ] Rollback notes are present.
-- [ ] Manager / Agent compatibility is documented.
-- [ ] Health checks pass after startup.
-- [ ] Admin UI opens and login works with configured credentials.
+```text
+routegate-v0.1.0-linux-amd64.tar.gz
+routegate-v0.1.0-linux-arm64.tar.gz
+SHA256SUMS
+```
 
-## Known MVP limitations to keep visible
+Verify:
 
-Keep the release note honest about incomplete areas. Depending on the current milestone, these may include:
+- [ ] release workflow conclusion is `success`;
+- [ ] all three assets are present;
+- [ ] asset sizes are non-zero;
+- [ ] `SHA256SUMS` contains both bundle filenames;
+- [ ] `sha256sum -c SHA256SUMS` passes against the downloaded bundles;
+- [ ] required bundle structure is present;
+- [ ] release title is `RouteGate v0.1.0`;
+- [ ] curated `docs/release/v0.1.0.md` notes are used.
 
-- development-oriented compose stack;
-- development bootstrap credentials unless replaced;
-- incomplete production hardening;
-- incomplete automated update system;
-- incomplete appliance image flow;
-- incomplete HA story.
+## Post-release confirmation
+
+After the GitHub Release exists:
+
+- [ ] the default installer can resolve the latest release as v0.1.0;
+- [ ] explicit `--version v0.1.0` points to the published assets;
+- [ ] README and routegate.org public deployment copy match the released contract;
+- [ ] RG-01A records `MVP Complete / RouteGate v0.1.0 Released`.
+
+## Final decision
+
+Release status can be declared:
+
+```text
+RouteGate MVP Complete
+RouteGate v0.1.0 Released
+```
+
+only after the tag-triggered release workflow and published asset verification pass.
