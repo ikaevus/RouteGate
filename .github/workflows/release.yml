@@ -1,0 +1,101 @@
+name: RouteGate Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version label used in generated bundle names
+        required: true
+        default: dev
+
+permissions:
+  contents: write
+
+jobs:
+  bundles:
+    name: Build native release bundles
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Resolve bundle version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            version="$TAG_NAME"
+          else
+            version="$MANUAL_VERSION"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Build bundles
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ github.sha }}
+        run: scripts/build-release-bundle.sh
+
+      - name: Verify checksums and bundle structure
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          for bundle in routegate-*.tar.gz; do
+            listing="${bundle}.files"
+            tar -tzf "$bundle" > "$listing"
+            grep -Fxq './bin/routegate-manager' "$listing"
+            grep -Fxq './bin/routegate-agent' "$listing"
+            grep -Fxq './frontend/index.html' "$listing"
+            grep -Fq './manager/migrations/' "$listing"
+            grep -Fxq './metadata/manifest.env' "$listing"
+          done
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: routegate-${{ steps.version.outputs.version }}-bundles
+          path: |
+            dist/routegate-*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish GitHub release assets
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" dist/routegate-*.tar.gz dist/SHA256SUMS --clobber
+          else
+            gh release create "$TAG_NAME" \
+              dist/routegate-*.tar.gz \
+              dist/SHA256SUMS \
+              --verify-tag \
+              --generate-notes \
+              --title "RouteGate $TAG_NAME"
+          fi
