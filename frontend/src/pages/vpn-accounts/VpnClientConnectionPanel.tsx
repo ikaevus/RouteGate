@@ -50,6 +50,7 @@ function getCopy() {
       profileName: 'Название профиля',
       clientType: 'VPN-клиент',
       deviceType: 'Устройство',
+      other: 'Другое',
       fingerprintMode: 'Режим fingerprint',
       auto: 'Auto — рекомендуется',
       manual: 'Вручную',
@@ -64,6 +65,7 @@ function getCopy() {
       serverNameHint: 'Оставьте пустым, чтобы использовать настройку сервера.',
       spiderX: 'SpiderX',
       mtu: 'MTU',
+      autoPlaceholder: 'Авто',
       mtuHint: 'Пусто — Auto. Сторонний клиент может игнорировать MTU из профиля.',
       save: 'Сохранить профиль',
       saving: 'Сохранение...',
@@ -100,6 +102,7 @@ function getCopy() {
     profileName: 'Profile name',
     clientType: 'VPN client',
     deviceType: 'Device',
+    other: 'Other',
     fingerprintMode: 'Fingerprint mode',
     auto: 'Auto — recommended',
     manual: 'Manual',
@@ -114,6 +117,7 @@ function getCopy() {
     serverNameHint: 'Leave empty to inherit the server setting.',
     spiderX: 'SpiderX',
     mtu: 'MTU',
+    autoPlaceholder: 'Auto',
     mtuHint: 'Blank means Auto. A third-party client may ignore profile MTU.',
     save: 'Save profile',
     saving: 'Saving...',
@@ -283,7 +287,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                     <option value="v2raytun">V2RayTun</option>
                     <option value="v2box">V2Box</option>
                     <option value="sing-box">sing-box</option>
-                    <option value="other">Other</option>
+                    <option value="other">{copy.other}</option>
                   </select>
                 </label>
                 <label className="field">
@@ -294,7 +298,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                     <option value="android">Android</option>
                     <option value="macos">macOS</option>
                     <option value="linux">Linux</option>
-                    <option value="other">Other</option>
+                    <option value="other">{copy.other}</option>
                   </select>
                 </label>
                 <label className="field">
@@ -338,7 +342,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                     min="576"
                     max="9000"
                     value={mtu}
-                    placeholder="Auto"
+                    placeholder={copy.autoPlaceholder}
                     onChange={(event) => setMtu(event.target.value)}
                   />
                   <small>{copy.mtuHint}</small>
