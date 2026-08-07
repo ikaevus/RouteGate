@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import {
@@ -6,6 +7,10 @@ import {
   getServers,
   type ProtocolSettingsResponse,
 } from '../../entities/server/api/serverApi';
+import {
+  createVPNCoreInstallation,
+  getVPNCoreInstallation,
+} from '../../entities/server/api/vpnCoreApi';
 import {
   isVPNCoreOperational,
   parseVPNCoreStatus,
@@ -25,6 +30,7 @@ type SetupStep = {
   key: string;
   complete: boolean;
   copy: Record<SetupStepState, SetupStepText>;
+  to?: string | null;
 };
 
 function textPresent(value?: string | null): boolean {
@@ -43,6 +49,15 @@ function protocolConfigured(settings?: ProtocolSettingsResponse): boolean {
     && textPresent(settings.reality.serverName);
 }
 
+function supportsInstallation(capabilities?: Record<string, unknown>): boolean {
+  const value = capabilities?.vpnCoreInstallationOperations;
+  return Array.isArray(value) && value.includes('install_sing_box');
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
+
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
@@ -58,6 +73,7 @@ function getCopy() {
       current: 'Сейчас',
       nextAction: 'Следующий шаг',
       serverName: 'Сервер',
+      openStep: 'Открыть',
       installed: {
         complete: {
           label: 'RouteGate установлен',
@@ -93,7 +109,7 @@ function getCopy() {
         },
         current: {
           label: 'Установить VPN Core',
-          description: 'Установите и запустите sing-box на подключённом сервере.',
+          description: 'RouteGate установит и запустит рекомендуемый VPN Core — sing-box.',
         },
         pending: {
           label: 'Установить VPN Core',
@@ -138,10 +154,15 @@ function getCopy() {
       addServerDescription: 'RouteGate не видит подключённый Agent. Откройте сервер и завершите подключение.',
       addServerAction: 'Открыть серверы',
       installCoreTitle: 'Установить VPN Core',
-      installCoreDescription: 'Установите и запустите sing-box на подключённом сервере.',
+      installCoreDescription: 'RouteGate установит sing-box через подключённый Agent и проверит результат.',
       manageCoreTitle: 'Запустить VPN Core',
       manageCoreDescription: 'sing-box установлен, но пока не находится в рабочем состоянии.',
-      installCoreAction: 'Открыть VPN Core',
+      installCoreAction: 'Установить',
+      installCorePending: 'Устанавливаем…',
+      installCoreQueued: 'Установка выполняется через RouteGate Agent. Этот шаг обновится автоматически.',
+      installCoreFailed: 'Не удалось установить VPN Core. Можно повторить попытку или открыть сервер для подробностей.',
+      installCoreConfirm: (server: string) => `Установить VPN Core на ${server}?\n\nRouteGate установит sing-box и настроит его как системную службу.`,
+      openCoreAction: 'Открыть VPN Core',
       protocolTitle: 'Настроить VLESS / Reality',
       protocolDescription: 'Задайте параметры VLESS, сгенерируйте Reality keypair и сохраните SNI.',
       protocolAction: 'Настроить протокол',
@@ -167,6 +188,7 @@ function getCopy() {
     current: 'Now',
     nextAction: 'Next action',
     serverName: 'Server',
+    openStep: 'Open',
     installed: {
       complete: {
         label: 'RouteGate installed',
@@ -202,7 +224,7 @@ function getCopy() {
       },
       current: {
         label: 'Install VPN Core',
-        description: 'Install and start sing-box on the connected server.',
+        description: 'RouteGate will install and start the recommended VPN Core — sing-box.',
       },
       pending: {
         label: 'Install VPN Core',
@@ -247,10 +269,15 @@ function getCopy() {
     addServerDescription: 'RouteGate does not see a connected Agent. Open Servers and finish the connection.',
     addServerAction: 'Open Servers',
     installCoreTitle: 'Install VPN Core',
-    installCoreDescription: 'Install and start sing-box on the connected server.',
+    installCoreDescription: 'RouteGate will install sing-box through the connected Agent and verify the result.',
     manageCoreTitle: 'Start VPN Core',
     manageCoreDescription: 'sing-box is installed, but it is not currently operational.',
-    installCoreAction: 'Open VPN Core',
+    installCoreAction: 'Install',
+    installCorePending: 'Installing…',
+    installCoreQueued: 'Installation is running through RouteGate Agent. This step will update automatically.',
+    installCoreFailed: 'VPN Core installation failed. You can retry or open the server for details.',
+    installCoreConfirm: (server: string) => `Install VPN Core on ${server}?\n\nRouteGate will install sing-box and configure it as a system service.`,
+    openCoreAction: 'Open VPN Core',
     protocolTitle: 'Configure VLESS / Reality',
     protocolDescription: 'Set the VLESS parameters, generate the Reality keypair, and save the SNI.',
     protocolAction: 'Configure protocol',
@@ -265,6 +292,8 @@ function getCopy() {
 
 export function GettingStartedWidget() {
   const copy = getCopy();
+  const [installationJobId, setInstallationJobId] = useState<string | null>(null);
+  const [installationFailure, setInstallationFailure] = useState<string | null>(null);
 
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
@@ -275,7 +304,7 @@ export function GettingStartedWidget() {
   const serversQuery = useQuery({
     queryKey: ['servers'],
     queryFn: getServers,
-    refetchInterval: 10_000,
+    refetchInterval: installationJobId ? 2_000 : 10_000,
   });
 
   const accountsQuery = useQuery({
@@ -289,6 +318,29 @@ export function GettingStartedWidget() {
   const serverConnected = primaryServer?.agent?.status === 'online';
   const vpnCoreStatus = parseVPNCoreStatus(primaryServer?.agent?.capabilities);
   const vpnCoreReady = serverConnected && isVPNCoreOperational(vpnCoreStatus);
+  const installationSupported = supportsInstallation(primaryServer?.agent?.capabilities);
+
+  const installationMutation = useMutation({
+    mutationFn: () => createVPNCoreInstallation(primaryServer?.id ?? ''),
+    onSuccess: ({ job }) => {
+      setInstallationFailure(null);
+      setInstallationJobId(job.id);
+      void serversQuery.refetch();
+    },
+    onError: (error) => {
+      setInstallationFailure(errorMessage(error, copy.installCoreFailed));
+    },
+  });
+
+  const installationQuery = useQuery({
+    queryKey: ['vpn-core-installation', primaryServer?.id, installationJobId],
+    queryFn: () => getVPNCoreInstallation(primaryServer?.id ?? '', installationJobId ?? ''),
+    enabled: Boolean(primaryServer?.id && installationJobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === 'failed' || status === 'succeeded' ? false : 2_000;
+    },
+  });
 
   const protocolQuery = useQuery({
     queryKey: ['server-protocol-settings', primaryServer?.id],
@@ -298,12 +350,52 @@ export function GettingStartedWidget() {
     refetchInterval: 10_000,
   });
 
+  useEffect(() => {
+    const job = installationQuery.data;
+    if (!installationJobId || !job) return;
+
+    if (job.status === 'failed') {
+      setInstallationFailure(
+        typeof job.errorMessage === 'string' && job.errorMessage.trim()
+          ? job.errorMessage.trim()
+          : copy.installCoreFailed,
+      );
+      setInstallationJobId(null);
+      return;
+    }
+
+    if (job.status === 'succeeded') {
+      void serversQuery.refetch();
+      if (vpnCoreStatus?.installed) {
+        setInstallationJobId(null);
+      }
+    }
+  }, [installationJobId, installationQuery.data, vpnCoreStatus?.installed]);
+
   const managerReady = managerHealthQuery.isSuccess;
   const protocolReady = vpnCoreReady && protocolConfigured(protocolQuery.data);
   const firstReadyAccount = accountsQuery.data?.items.find((account) =>
     account.serverId === primaryServer?.id && account.status.trim().toLowerCase() === 'active',
   ) ?? null;
   const accountReady = protocolReady && firstReadyAccount !== null;
+  const installationBusy = installationMutation.isPending || installationJobId !== null;
+  const inlineInstallAvailable = Boolean(
+    managerReady
+      && serverConnected
+      && primaryServer
+      && vpnCoreStatus?.installed !== true
+      && installationSupported,
+  );
+
+  const runInstallation = () => {
+    if (!primaryServer || installationBusy || !inlineInstallAvailable) return;
+    const serverName = primaryServer.name || primaryServer.id;
+    if (!window.confirm(copy.installCoreConfirm(serverName))) return;
+
+    installationMutation.reset();
+    setInstallationFailure(null);
+    installationMutation.mutate();
+  };
 
   const coreCopy = vpnCoreStatus?.installed === true && !vpnCoreReady
     ? { ...copy.core, current: copy.coreInstalledCurrent }
@@ -311,10 +403,30 @@ export function GettingStartedWidget() {
 
   const steps: SetupStep[] = [
     { key: 'installed', copy: copy.installed, complete: managerReady },
-    { key: 'server', copy: copy.server, complete: managerReady && serverConnected },
-    { key: 'core', copy: coreCopy, complete: managerReady && serverConnected && vpnCoreReady },
-    { key: 'protocol', copy: copy.protocol, complete: managerReady && serverConnected && vpnCoreReady && protocolReady },
-    { key: 'account', copy: copy.account, complete: managerReady && serverConnected && vpnCoreReady && protocolReady && accountReady },
+    {
+      key: 'server',
+      copy: copy.server,
+      complete: managerReady && serverConnected,
+      to: primaryServer ? `/servers/${primaryServer.id}` : '/servers',
+    },
+    {
+      key: 'core',
+      copy: coreCopy,
+      complete: managerReady && serverConnected && vpnCoreReady,
+      to: primaryServer ? `/servers/${primaryServer.id}` : null,
+    },
+    {
+      key: 'protocol',
+      copy: copy.protocol,
+      complete: managerReady && serverConnected && vpnCoreReady && protocolReady,
+      to: primaryServer ? `/protocol-settings/${primaryServer.id}` : null,
+    },
+    {
+      key: 'account',
+      copy: copy.account,
+      complete: managerReady && serverConnected && vpnCoreReady && protocolReady && accountReady,
+      to: firstReadyAccount ? `/vpn-accounts/${firstReadyAccount.id}` : '/vpn-accounts?create=1',
+    },
   ];
 
   const completedCount = steps.filter((step) => step.complete).length;
@@ -338,6 +450,7 @@ export function GettingStartedWidget() {
   let actionDescription: string = copy.systemActionDescription;
   let actionLabel: string = copy.retry;
   let actionTo: string | null = null;
+  let actionInstall = false;
 
   if (managerReady && !serverConnected) {
     actionTitle = copy.addServerTitle;
@@ -348,8 +461,14 @@ export function GettingStartedWidget() {
     const coreInstalled = vpnCoreStatus?.installed === true;
     actionTitle = coreInstalled ? copy.manageCoreTitle : copy.installCoreTitle;
     actionDescription = coreInstalled ? copy.manageCoreDescription : copy.installCoreDescription;
-    actionLabel = copy.installCoreAction;
-    actionTo = `/servers/${primaryServer.id}`;
+
+    if (!coreInstalled && installationSupported) {
+      actionLabel = installationBusy ? copy.installCorePending : copy.installCoreAction;
+      actionInstall = true;
+    } else {
+      actionLabel = copy.openCoreAction;
+      actionTo = `/servers/${primaryServer.id}`;
+    }
   } else if (managerReady && serverConnected && vpnCoreReady && !protocolReady && primaryServer) {
     actionTitle = copy.protocolTitle;
     actionDescription = copy.protocolDescription;
@@ -400,22 +519,52 @@ export function GettingStartedWidget() {
               const state: SetupStepState = step.complete ? 'complete' : isCurrent ? 'current' : 'pending';
               const stateLabel = step.complete ? copy.complete : isCurrent ? copy.current : copy.pending;
               const stepText = step.copy[state];
+              const stepTo = state === 'pending' ? null : step.to ?? null;
+              const showInlineInstall = step.key === 'core' && isCurrent && inlineInstallAvailable;
+              const interactive = Boolean(stepTo || showInlineInstall);
 
               return (
                 <li
-                  className={`getting-started-step getting-started-step-${state}`}
+                  className={`getting-started-step getting-started-step-${state}${interactive ? ' getting-started-step-interactive' : ''}`}
                   key={step.key}
                   aria-current={isCurrent ? 'step' : undefined}
                 >
+                  {stepTo && (
+                    <Link
+                      className="getting-started-step-overlay"
+                      to={stepTo}
+                      aria-label={`${copy.openStep}: ${stepText.label}`}
+                    />
+                  )}
                   <span className="getting-started-step-marker" aria-hidden="true">
                     {step.complete ? '✓' : index + 1}
                   </span>
-                  <div>
+                  <div className="getting-started-step-content">
                     <div className="getting-started-step-heading">
                       <strong>{stepText.label}</strong>
                       <small>{stateLabel}</small>
                     </div>
                     <p>{stepText.description}</p>
+                    {showInlineInstall ? (
+                      <button
+                        className="getting-started-step-action"
+                        type="button"
+                        disabled={installationBusy}
+                        onClick={runInstallation}
+                      >
+                        {installationBusy ? copy.installCorePending : `${copy.installCoreAction} →`}
+                      </button>
+                    ) : stepTo ? (
+                      <span className="getting-started-step-open">{copy.openStep} →</span>
+                    ) : null}
+                    {showInlineInstall && installationBusy && (
+                      <span className="getting-started-step-message">{copy.installCoreQueued}</span>
+                    )}
+                    {showInlineInstall && installationFailure && !installationBusy && (
+                      <span className="getting-started-step-message getting-started-step-message-error">
+                        {installationFailure}
+                      </span>
+                    )}
                   </div>
                 </li>
               );
@@ -429,7 +578,24 @@ export function GettingStartedWidget() {
             {primaryServer && (
               <small>{copy.serverName}: <strong>{primaryServer.name || primaryServer.id}</strong></small>
             )}
-            {actionTo ? (
+            {actionInstall && installationBusy && (
+              <small className="getting-started-action-status">{copy.installCoreQueued}</small>
+            )}
+            {actionInstall && installationFailure && !installationBusy && (
+              <small className="getting-started-action-status getting-started-action-status-error">
+                {installationFailure}
+              </small>
+            )}
+            {actionInstall ? (
+              <button
+                className="getting-started-action"
+                type="button"
+                disabled={installationBusy}
+                onClick={runInstallation}
+              >
+                {installationBusy ? copy.installCorePending : actionLabel}
+              </button>
+            ) : actionTo ? (
               <Link className="getting-started-action" to={actionTo}>{actionLabel} →</Link>
             ) : (
               <button className="getting-started-action" type="button" onClick={retry}>{actionLabel}</button>
