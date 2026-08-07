@@ -92,10 +92,20 @@ jobs:
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release upload "$TAG_NAME" dist/routegate-*.tar.gz dist/SHA256SUMS --clobber
           else
-            gh release create "$TAG_NAME" \
-              dist/routegate-*.tar.gz \
-              dist/SHA256SUMS \
-              --verify-tag \
-              --generate-notes \
-              --title "RouteGate $TAG_NAME"
+            notes_file="docs/release/${TAG_NAME}.md"
+            if [[ -f "$notes_file" ]]; then
+              gh release create "$TAG_NAME" \
+                dist/routegate-*.tar.gz \
+                dist/SHA256SUMS \
+                --verify-tag \
+                --notes-file "$notes_file" \
+                --title "RouteGate $TAG_NAME"
+            else
+              gh release create "$TAG_NAME" \
+                dist/routegate-*.tar.gz \
+                dist/SHA256SUMS \
+                --verify-tag \
+                --generate-notes \
+                --title "RouteGate $TAG_NAME"
+            fi
           fi
