@@ -40,6 +40,46 @@ func TestBuildClientVLESSLinkUsesResolvedAutoFingerprint(t *testing.T) {
 	}
 }
 
+func TestBuildClientVLESSLinkNormalizesFullLengthCIDREndpoint(t *testing.T) {
+	subscription := SubscriptionProfile{
+		Account: Account{
+			DisplayName: "Felix",
+			VLESSUUID:   "0038dfb4-5a0f-44d8-b26a-70d4772443b1",
+		},
+		Server: &SubscriptionServer{
+			PublicIP:          "139.60.162.138/32",
+			VLESSPort:         8443,
+			VLESSNetwork:      "tcp",
+			RealityPublicKey:  "public-key",
+			RealityServerName: "github.com",
+		},
+	}
+	profile := ClientProfile{
+		FingerprintMode: FingerprintModeAuto,
+		Fingerprint:     "firefox",
+		SpiderX:         "/",
+	}
+
+	link, endpoint, _, _, _, err := buildClientVLESSLink(subscription, profile)
+	if err != nil {
+		t.Fatalf("build link: %v", err)
+	}
+	if endpoint != "139.60.162.138:8443" {
+		t.Fatalf("expected normalized endpoint, got %q", endpoint)
+	}
+	if strings.Contains(link, "/32") {
+		t.Fatalf("VLESS link contains CIDR suffix: %q", link)
+	}
+
+	parsed, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("parse link: %v", err)
+	}
+	if parsed.Hostname() != "139.60.162.138" || parsed.Port() != "8443" {
+		t.Fatalf("unexpected VLESS authority: %q", parsed.Host)
+	}
+}
+
 func TestBuildClientVLESSLinkUsesManualFingerprintAndStableOutput(t *testing.T) {
 	subscription := SubscriptionProfile{
 		Account: Account{DisplayName: "Demo", VLESSUUID: "0038dfb4-5a0f-44d8-b26a-70d4772443b1"},

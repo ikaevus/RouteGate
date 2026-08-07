@@ -273,9 +273,9 @@ func buildClientVLESSLink(subscription SubscriptionProfile, profile ClientProfil
 		return "", "", "", "", "", errors.New("server is required")
 	}
 	server := subscription.Server
-	host := strings.TrimSpace(server.PublicIP)
+	host := normalizeServerEndpoint(server.PublicIP)
 	if host == "" {
-		host = strings.TrimSpace(server.Hostname)
+		host = normalizeServerEndpoint(server.Hostname)
 	}
 	if host == "" {
 		return "", "", "", "", "", errors.New("server endpoint is required")
