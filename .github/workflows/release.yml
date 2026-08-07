@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "rg-102-final-clean-vps-validation"
   workflow_dispatch:
     inputs:
       version:
@@ -44,11 +46,14 @@ jobs:
         id: version
         env:
           EVENT_NAME: ${{ github.event_name }}
-          TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
           MANUAL_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            version="$TAG_NAME"
+          if [[ "$EVENT_NAME" == "push" && "$REF_TYPE" == "branch" && "$REF_NAME" == "rg-102-final-clean-vps-validation" ]]; then
+            version="rg102-validation-582b5f4"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            version="$REF_NAME"
           else
             version="$MANUAL_VERSION"
           fi
@@ -87,15 +92,34 @@ jobs:
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/routegate-*.tar.gz dist/SHA256SUMS --clobber
+          if [[ "$REF_TYPE" == "branch" && "$REF_NAME" == "rg-102-final-clean-vps-validation" ]]; then
+            release_tag="$VERSION"
+            if gh release view "$release_tag" >/dev/null 2>&1; then
+              gh release upload "$release_tag" dist/routegate-*.tar.gz dist/SHA256SUMS --clobber
+            else
+              gh release create "$release_tag" \
+                dist/routegate-*.tar.gz \
+                dist/SHA256SUMS \
+                --target "$TARGET_SHA" \
+                --prerelease \
+                --generate-notes \
+                --title "RouteGate RG-102 Guided Setup validation"
+            fi
           else
-            gh release create "$TAG_NAME" \
-              dist/routegate-*.tar.gz \
-              dist/SHA256SUMS \
-              --verify-tag \
-              --generate-notes \
-              --title "RouteGate $TAG_NAME"
+            release_tag="$REF_NAME"
+            if gh release view "$release_tag" >/dev/null 2>&1; then
+              gh release upload "$release_tag" dist/routegate-*.tar.gz dist/SHA256SUMS --clobber
+            else
+              gh release create "$release_tag" \
+                dist/routegate-*.tar.gz \
+                dist/SHA256SUMS \
+                --verify-tag \
+                --generate-notes \
+                --title "RouteGate $release_tag"
+            fi
           fi
