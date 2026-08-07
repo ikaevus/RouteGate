@@ -14,11 +14,17 @@ import { getVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import './getting-started.css';
 
-type SetupStep = {
-  key: string;
+type SetupStepState = 'complete' | 'current' | 'pending';
+
+type SetupStepText = {
   label: string;
   description: string;
+};
+
+type SetupStep = {
+  key: string;
   complete: boolean;
+  copy: Record<SetupStepState, SetupStepText>;
 };
 
 function textPresent(value?: string | null): boolean {
@@ -53,24 +59,78 @@ function getCopy() {
       nextAction: 'Следующий шаг',
       serverName: 'Сервер',
       installed: {
-        label: 'RouteGate установлен',
-        description: 'Manager и веб-интерфейс доступны.',
+        complete: {
+          label: 'RouteGate установлен',
+          description: 'Manager и веб-интерфейс доступны.',
+        },
+        current: {
+          label: 'Проверить RouteGate',
+          description: 'Проверяем доступность Manager и веб-интерфейса.',
+        },
+        pending: {
+          label: 'Проверить RouteGate',
+          description: 'Сначала RouteGate должен подтвердить готовность Manager.',
+        },
       },
       server: {
-        label: 'Сервер подключён',
-        description: 'Локальный сервер и Agent должны быть онлайн.',
+        complete: {
+          label: 'Сервер подключён',
+          description: 'Локальный сервер и Agent находятся онлайн.',
+        },
+        current: {
+          label: 'Подключить сервер',
+          description: 'Подключите локальный сервер и дождитесь, когда Agent станет онлайн.',
+        },
+        pending: {
+          label: 'Подключить сервер',
+          description: 'Этот шаг станет доступен после проверки RouteGate.',
+        },
       },
       core: {
-        label: 'VPN Core работает',
-        description: 'sing-box установлен и запущен через RouteGate.',
+        complete: {
+          label: 'VPN Core работает',
+          description: 'sing-box установлен и запущен через RouteGate.',
+        },
+        current: {
+          label: 'Установить VPN Core',
+          description: 'Установите и запустите sing-box на подключённом сервере.',
+        },
+        pending: {
+          label: 'Установить VPN Core',
+          description: 'Этот шаг станет доступен после подключения сервера.',
+        },
+      },
+      coreInstalledCurrent: {
+        label: 'Запустить VPN Core',
+        description: 'sing-box уже установлен. Запустите его, чтобы продолжить настройку.',
       },
       protocol: {
-        label: 'VLESS / Reality настроен',
-        description: 'Протокол, Reality-ключ и SNI готовы.',
+        complete: {
+          label: 'VLESS / Reality настроен',
+          description: 'Протокол, Reality-ключ и SNI готовы.',
+        },
+        current: {
+          label: 'Настроить VLESS / Reality',
+          description: 'Задайте параметры VLESS, сгенерируйте Reality keypair и сохраните SNI.',
+        },
+        pending: {
+          label: 'Настроить VLESS / Reality',
+          description: 'Этот шаг станет доступен после запуска VPN Core.',
+        },
       },
       account: {
-        label: 'VPN-аккаунт создан',
-        description: 'Первый активный аккаунт привязан к этому серверу.',
+        complete: {
+          label: 'VPN-аккаунт создан',
+          description: 'Первый активный аккаунт привязан к этому серверу.',
+        },
+        current: {
+          label: 'Создать VPN-аккаунт',
+          description: 'Создайте первый активный аккаунт и привяжите его к этому серверу.',
+        },
+        pending: {
+          label: 'Создать VPN-аккаунт',
+          description: 'Этот шаг станет доступен после настройки VLESS / Reality.',
+        },
       },
       systemActionTitle: 'Проверить RouteGate',
       systemActionDescription: 'Manager пока не подтвердил готовность. Повторим проверку состояния.',
@@ -108,24 +168,78 @@ function getCopy() {
     nextAction: 'Next action',
     serverName: 'Server',
     installed: {
-      label: 'RouteGate installed',
-      description: 'Manager and the web interface are available.',
+      complete: {
+        label: 'RouteGate installed',
+        description: 'Manager and the web interface are available.',
+      },
+      current: {
+        label: 'Check RouteGate',
+        description: 'Checking that Manager and the web interface are available.',
+      },
+      pending: {
+        label: 'Check RouteGate',
+        description: 'RouteGate must confirm Manager readiness first.',
+      },
     },
     server: {
-      label: 'Server connected',
-      description: 'The local server and Agent must be online.',
+      complete: {
+        label: 'Server connected',
+        description: 'The local server and Agent are online.',
+      },
+      current: {
+        label: 'Connect the server',
+        description: 'Connect the local server and wait for its Agent to come online.',
+      },
+      pending: {
+        label: 'Connect the server',
+        description: 'This step becomes available after RouteGate is ready.',
+      },
     },
     core: {
-      label: 'VPN Core running',
-      description: 'sing-box is installed and running through RouteGate.',
+      complete: {
+        label: 'VPN Core running',
+        description: 'sing-box is installed and running through RouteGate.',
+      },
+      current: {
+        label: 'Install VPN Core',
+        description: 'Install and start sing-box on the connected server.',
+      },
+      pending: {
+        label: 'Install VPN Core',
+        description: 'This step becomes available after the server is connected.',
+      },
+    },
+    coreInstalledCurrent: {
+      label: 'Start VPN Core',
+      description: 'sing-box is already installed. Start it to continue setup.',
     },
     protocol: {
-      label: 'VLESS / Reality configured',
-      description: 'Protocol settings, Reality key, and SNI are ready.',
+      complete: {
+        label: 'VLESS / Reality configured',
+        description: 'Protocol settings, Reality key, and SNI are ready.',
+      },
+      current: {
+        label: 'Configure VLESS / Reality',
+        description: 'Set the VLESS parameters, generate the Reality keypair, and save the SNI.',
+      },
+      pending: {
+        label: 'Configure VLESS / Reality',
+        description: 'This step becomes available after VPN Core is running.',
+      },
     },
     account: {
-      label: 'VPN account created',
-      description: 'The first active account is assigned to this server.',
+      complete: {
+        label: 'VPN account created',
+        description: 'The first active account is assigned to this server.',
+      },
+      current: {
+        label: 'Create VPN account',
+        description: 'Create the first active account and assign it to this server.',
+      },
+      pending: {
+        label: 'Create VPN account',
+        description: 'This step becomes available after VLESS / Reality is configured.',
+      },
     },
     systemActionTitle: 'Check RouteGate',
     systemActionDescription: 'Manager has not confirmed readiness yet. Check the setup state again.',
@@ -191,12 +305,16 @@ export function GettingStartedWidget() {
   ) ?? null;
   const accountReady = protocolReady && firstReadyAccount !== null;
 
+  const coreCopy = vpnCoreStatus?.installed === true && !vpnCoreReady
+    ? { ...copy.core, current: copy.coreInstalledCurrent }
+    : copy.core;
+
   const steps: SetupStep[] = [
-    { key: 'installed', ...copy.installed, complete: managerReady },
-    { key: 'server', ...copy.server, complete: managerReady && serverConnected },
-    { key: 'core', ...copy.core, complete: managerReady && serverConnected && vpnCoreReady },
-    { key: 'protocol', ...copy.protocol, complete: managerReady && serverConnected && vpnCoreReady && protocolReady },
-    { key: 'account', ...copy.account, complete: managerReady && serverConnected && vpnCoreReady && protocolReady && accountReady },
+    { key: 'installed', copy: copy.installed, complete: managerReady },
+    { key: 'server', copy: copy.server, complete: managerReady && serverConnected },
+    { key: 'core', copy: coreCopy, complete: managerReady && serverConnected && vpnCoreReady },
+    { key: 'protocol', copy: copy.protocol, complete: managerReady && serverConnected && vpnCoreReady && protocolReady },
+    { key: 'account', copy: copy.account, complete: managerReady && serverConnected && vpnCoreReady && protocolReady && accountReady },
   ];
 
   const completedCount = steps.filter((step) => step.complete).length;
@@ -279,8 +397,9 @@ export function GettingStartedWidget() {
           <ol className="getting-started-steps">
             {steps.map((step, index) => {
               const isCurrent = index === currentStepIndex;
-              const state = step.complete ? 'complete' : isCurrent ? 'current' : 'pending';
+              const state: SetupStepState = step.complete ? 'complete' : isCurrent ? 'current' : 'pending';
               const stateLabel = step.complete ? copy.complete : isCurrent ? copy.current : copy.pending;
+              const stepText = step.copy[state];
 
               return (
                 <li
@@ -293,10 +412,10 @@ export function GettingStartedWidget() {
                   </span>
                   <div>
                     <div className="getting-started-step-heading">
-                      <strong>{step.label}</strong>
+                      <strong>{stepText.label}</strong>
                       <small>{stateLabel}</small>
                     </div>
-                    <p>{step.description}</p>
+                    <p>{stepText.description}</p>
                   </div>
                 </li>
               );
