@@ -148,15 +148,14 @@ Built-in roles seeded by the backend:
 
 ## Manager resources
 
-Legacy frontend-facing foundation routes remain public so the existing v0.1 panel can render without a forced login gate:
+Legacy server compatibility routes remain available for older Manager surfaces:
 
 ```http
 GET  /api/admin/servers
 POST /api/admin/servers
-GET  /api/admin/agents
 ```
 
-Permission-protected v1 equivalents are available for authenticated Manager API use:
+Permission-protected v1 endpoints are the canonical Manager API:
 
 ```http
 GET  /api/v1/servers # servers:read
@@ -196,14 +195,15 @@ Example response:
 }
 ```
 
-Agent list responses include `agentVersion`, `protocolVersion`, and `compatibility`. Legacy Agents that have not reported protocol metadata are classified as `unknown`.
+Agent list responses include `agentVersion`, `protocolVersion`, and `compatibility`. Agents that have not reported protocol metadata are classified as `unknown`.
 
-Health endpoints remain public:
+The Manager health endpoint remains public:
 
 ```http
 GET /api/admin/health
-GET /api/agent/health
 ```
+
+The Agent runtime API is documented separately in `agent-api.md` and uses only `/api/v1/agent/*` endpoints.
 
 ## Example curl flow
 
