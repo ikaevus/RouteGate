@@ -216,9 +216,9 @@ export function GettingStartedWidget() {
     }
   };
 
-  let actionTitle = copy.systemActionTitle;
-  let actionDescription = copy.systemActionDescription;
-  let actionLabel = copy.retry;
+  let actionTitle: string = copy.systemActionTitle;
+  let actionDescription: string = copy.systemActionDescription;
+  let actionLabel: string = copy.retry;
   let actionTo: string | null = null;
 
   if (managerReady && !serverConnected) {
