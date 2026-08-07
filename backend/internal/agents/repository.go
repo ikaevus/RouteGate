@@ -6,13 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-var ErrLegacyRegistrationDisabled = errors.New("legacy direct agent registration is disabled; use the registration-token flow")
 
 type Repository struct {
 	pool *pgxpool.Pool
@@ -325,7 +322,6 @@ func (r *Repository) ActivateServer(ctx context.Context, serverID string) error 
 	return err
 }
 
-// List is retained for the existing service until the HTTP layer is migrated.
 func (r *Repository) List(ctx context.Context) ([]Agent, error) {
 	rows, err := r.pool.Query(ctx, agentSelect+` ORDER BY created_at DESC`)
 	if err != nil {
@@ -342,35 +338,6 @@ func (r *Repository) List(ctx context.Context) ([]Agent, error) {
 		items = append(items, item)
 	}
 	return items, rows.Err()
-}
-
-// Register is retained for API compatibility, but direct registration cannot
-// safely persist an agent without a caller-provided token hash.
-func (r *Repository) Register(_ context.Context, _ RegisterAgentRequest) (Agent, error) {
-	return Agent{}, ErrLegacyRegistrationDisabled
-}
-
-// Heartbeat adapts the legacy API request to UpdateAgentHeartbeat.
-func (r *Repository) Heartbeat(ctx context.Context, request HeartbeatRequest) (time.Time, bool, error) {
-	version := strings.TrimSpace(request.Version)
-	agent, err := r.UpdateAgentHeartbeat(ctx, UpdateAgentHeartbeatInput{
-		AgentID:      request.AgentID,
-		AgentVersion: &version,
-	})
-	if err == pgx.ErrNoRows {
-		return time.Now().UTC(), false, nil
-	}
-	if err != nil {
-		return time.Time{}, false, err
-	}
-	if agent.LastSeenAt == nil {
-		return time.Now().UTC(), true, nil
-	}
-	return *agent.LastSeenAt, true, nil
-}
-
-func (r *Repository) SeedDemo(context.Context) error {
-	return nil
 }
 
 const agentSelect = `

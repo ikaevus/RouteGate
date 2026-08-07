@@ -48,7 +48,6 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	}
 
 	mux.HandleFunc("GET /api/admin/health", healthHandler.Get)
-	mux.HandleFunc("GET /api/agent/health", healthHandler.Get)
 
 	mux.HandleFunc("POST /api/admin/auth/login", authHandler.Login)
 	mux.Handle("POST /api/admin/auth/logout", adminAuth(authHandler.Logout))
@@ -108,7 +107,6 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateRule))))
 	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteRule))))
 
-	mux.Handle("GET /api/admin/agents", adminAuth(agentsHandler.List))
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
 
 	mux.Handle("GET /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.List))))

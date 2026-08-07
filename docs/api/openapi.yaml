@@ -31,18 +31,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
-  /api/agent/health:
-    get:
-      tags: [Health]
-      summary: Get Agent API health
-      responses:
-        "200":
-          description: Agent API health response
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthResponse"
-
   /api/admin/auth/login:
     post:
       tags: [Auth]
@@ -184,20 +172,6 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /api/admin/agents:
-    get:
-      tags: [Agents]
-      summary: List registered agents for legacy frontend compatibility
-      responses:
-        "200":
-          description: Agent list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListAgentsResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-
   /api/v1/servers:
     get:
       tags: [Servers]
@@ -249,6 +223,56 @@ paths:
                 $ref: "#/components/schemas/ListAgentsResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/agent/register:
+    post:
+      tags: [Agents]
+      summary: Register an Agent with a server registration token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRegistrationRequest"
+      responses:
+        "201":
+          description: Agent registered and persistent Agent credential issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRegistrationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/v1/agent/heartbeat:
+    post:
+      tags: [Agents]
+      summary: Report Agent heartbeat and compatibility metadata
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentHeartbeatRequest"
+      responses:
+        "200":
+          description: Heartbeat accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHeartbeatResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 
   /api/v1/system/version:
     get:
@@ -412,52 +436,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListPermissionsResponse"
 
-  /api/agent/register:
-    post:
-      tags: [Agents]
-      summary: Register development agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterAgentRequest"
-      responses:
-        "201":
-          description: Agent registered
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RegisterAgentResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-
-  /api/agent/heartbeat:
-    post:
-      tags: [Agents]
-      summary: Send agent heartbeat
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/HeartbeatRequest"
-      responses:
-        "200":
-          description: Heartbeat accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HeartbeatResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-
 components:
   securitySchemes:
     bearerAuth:
@@ -597,7 +575,6 @@ components:
       properties:
         user:
           $ref: "#/components/schemas/AuthUser"
-
 
     User:
       allOf:
@@ -741,13 +718,12 @@ components:
           nullable: true
         name:
           type: string
-          example: Demo Agent
         version:
           type: string
           example: 0.1.0
         agentVersion:
           type: string
-          example: dev
+          example: 0.1.0
         protocolVersion:
           type: integer
           nullable: true
@@ -756,7 +732,7 @@ components:
           $ref: "#/components/schemas/AgentCompatibility"
         hostname:
           type: string
-          example: fi-demo-routegate
+          example: vpn.example.com
         status:
           type: string
           example: online
@@ -785,6 +761,77 @@ components:
           enum: [compatible, upgrade_recommended, upgrade_required, unsupported, unknown]
         message:
           type: string
+
+    AgentRegistrationRequest:
+      type: object
+      required: [registrationToken, hostname, agentVersion, os, arch, capabilities]
+      properties:
+        registrationToken:
+          type: string
+        hostname:
+          type: string
+          example: vpn.example.com
+        agentVersion:
+          type: string
+          example: 0.1.0
+        protocolVersion:
+          type: integer
+          nullable: true
+          example: 1
+        os:
+          type: string
+          example: linux
+        arch:
+          type: string
+          example: amd64
+        capabilities:
+          type: object
+          additionalProperties: true
+
+    AgentRegistrationResponse:
+      type: object
+      required: [agentId, serverId, agentToken, agentTokenPreview]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        agentToken:
+          type: string
+        agentTokenPreview:
+          type: string
+
+    AgentHeartbeatRequest:
+      type: object
+      properties:
+        agentVersion:
+          type: string
+          example: 0.1.0
+        protocolVersion:
+          type: integer
+          nullable: true
+          example: 1
+        capabilities:
+          type: object
+          additionalProperties: true
+
+    AgentHeartbeatResponse:
+      type: object
+      required: [ok, agentId, serverId, serverStatus]
+      properties:
+        ok:
+          type: boolean
+        agentId:
+          type: string
+          format: uuid
+        serverId:
+          type: string
+          format: uuid
+        serverStatus:
+          type: string
+          example: active
 
     SystemVersionResponse:
       type: object
@@ -816,58 +863,3 @@ components:
             status: { type: string, example: manual }
             channel: { type: string, example: development }
             automaticUpdatesSupported: { type: boolean, example: false }
-
-    RegisterAgentRequest:
-      type: object
-      required: [name]
-      properties:
-        serverId:
-          type: string
-          example: srv-dev-001
-        name:
-          type: string
-          example: Local Test Agent
-        version:
-          type: string
-          example: 0.1.0
-        hostname:
-          type: string
-          example: codespace-agent
-
-    RegisterAgentResponse:
-      type: object
-      required: [agent, token]
-      properties:
-        agent:
-          $ref: "#/components/schemas/Agent"
-        token:
-          type: string
-          example: routegate-agent-dev-token
-
-    HeartbeatRequest:
-      type: object
-      required: [agentId]
-      properties:
-        agentId:
-          type: string
-          format: uuid
-        version:
-          type: string
-          example: 0.1.0
-        hostname:
-          type: string
-          example: codespace-agent
-        status:
-          type: string
-          example: online
-
-    HeartbeatResponse:
-      type: object
-      required: [status, timestamp]
-      properties:
-        status:
-          type: string
-          example: ok
-        timestamp:
-          type: string
-          format: date-time
