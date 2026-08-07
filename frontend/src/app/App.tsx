@@ -4,7 +4,6 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { ServersPage } from '../pages/servers/ServersPage';
 import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
-import { AgentsPage } from '../pages/agents/AgentsPage';
 import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSettingsPage';
 import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPage';
@@ -23,7 +22,6 @@ const routeGateSymbolUrl = new URL('../shared/assets/routegate-symbol.svg', impo
 type IconName =
   | 'overview'
   | 'servers'
-  | 'agents'
   | 'accounts'
   | 'deploy'
   | 'routing'
@@ -44,7 +42,6 @@ function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     overview: <><path d="M3.5 11.5 12 4l8.5 7.5" /><path d="M5.5 10.5V20h13v-9.5" /><path d="M9.5 20v-5.5h5V20" /></>,
     servers: <><rect x="4" y="5" width="16" height="5" rx="1.4" /><rect x="4" y="14" width="16" height="5" rx="1.4" /><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6" /></>,
-    agents: <><circle cx="12" cy="7" r="3" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /><path d="M4 12.5h3M17 12.5h3" /></>,
     accounts: <><circle cx="8.5" cy="10" r="3" /><circle cx="15.5" cy="8" r="2.5" /><path d="M3.5 20a5 5 0 0 1 10 0" /><path d="M13.5 14.5A4.5 4.5 0 0 1 20.5 18" /></>,
     deploy: <><path d="M6 5h12v14H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
     routing: <><circle cx="5" cy="12" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="19" cy="18" r="2" /><path d="M7 12h4c3 0 4-6 6-6M7 12h4c3 0 4 6 6 6" /></>,
@@ -345,7 +342,6 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/servers" element={<ServersPage />} />
             <Route path="/servers/:serverId" element={<ServerDetailsPage />} />
-            <Route path="/agents" element={<AgentsPage />} />
             <Route path="/protocol-settings" element={<ProtocolSettingsPage />} />
             <Route path="/protocol-settings/:serverId" element={<ProtocolSettingsPage />} />
             <Route path="/vpn-accounts" element={<VpnAccountsPage />} />
