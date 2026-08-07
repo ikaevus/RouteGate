@@ -29,17 +29,20 @@ EXECUTE FUNCTION routegate_mark_config_version_applied();
 
 -- Repair successful applies recorded before this invariant existed. Prefer the
 -- Agent-confirmed completion timestamp so historical state remains truthful.
+WITH latest_success AS (
+  SELECT DISTINCT ON (config_version_id)
+    config_version_id,
+    completed_at,
+    updated_at
+  FROM config_apply_jobs
+  WHERE action = 'apply'
+    AND status = 'succeeded'
+  ORDER BY config_version_id, COALESCE(completed_at, updated_at) DESC
+)
 UPDATE config_versions cv
 SET
   status = 'applied',
-  applied_at = COALESCE(cv.applied_at, j.completed_at, j.updated_at, now())
-FROM LATERAL (
-  SELECT completed_at, updated_at
-  FROM config_apply_jobs j
-  WHERE j.config_version_id = cv.id
-    AND j.action = 'apply'
-    AND j.status = 'succeeded'
-  ORDER BY COALESCE(j.completed_at, j.updated_at) DESC
-  LIMIT 1
-) j
-WHERE cv.status <> 'applied' OR cv.applied_at IS NULL;
+  applied_at = COALESCE(cv.applied_at, latest_success.completed_at, latest_success.updated_at, now())
+FROM latest_success
+WHERE cv.id = latest_success.config_version_id
+  AND (cv.status <> 'applied' OR cv.applied_at IS NULL);
