@@ -69,6 +69,12 @@ func TestInstallerAlreadyInstalledIsIdempotent(t *testing.T) {
 	if err := os.WriteFile(installer.packageBinaryPath, []byte("test"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Dir(installer.configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installer.configPath, []byte("operator-config"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	report, err := installer.Execute(context.Background(), OperationInstall)
 	if err != nil {
@@ -84,9 +90,13 @@ func TestInstallerAlreadyInstalledIsIdempotent(t *testing.T) {
 		t.Fatalf("commands = %#v", *calls)
 	}
 	for _, call := range *calls {
-		if strings.Contains(call, "apt-get") {
-			t.Fatalf("idempotent path executed package manager: %q", call)
+		if strings.Contains(call, "apt-get") || strings.Contains(call, "disable") {
+			t.Fatalf("idempotent path changed installed service: %q", call)
 		}
+	}
+	content, err := os.ReadFile(installer.configPath)
+	if err != nil || string(content) != "operator-config" {
+		t.Fatalf("operator config was not preserved: %q, %v", content, err)
 	}
 }
 
@@ -128,8 +138,14 @@ func TestInstallerExecutesOnlyExactAllowListedCommands(t *testing.T) {
 		installer.systemctlPath + "\x00mask\x00--runtime\x00--quiet\x00sing-box.service",
 		installer.aptGetPath + "\x00install\x00--yes\x00--no-install-recommends\x00-o\x00Dpkg::Options::=--force-confold\x00sing-box",
 		installer.systemctlPath + "\x00unmask\x00--runtime\x00--quiet\x00sing-box.service",
+		installer.systemctlPath + "\x00disable\x00--now\x00--quiet\x00sing-box.service",
+		installer.systemctlPath + "\x00reset-failed\x00sing-box.service",
+		installer.systemctlPath + "\x00show\x00--property\x00ActiveState\x00--value\x00sing-box.service",
+		installer.systemctlPath + "\x00show\x00--property\x00UnitFileState\x00--value\x00sing-box.service",
 		installer.packageBinaryPath + "\x00version",
 		installer.systemctlPath + "\x00show\x00--property\x00LoadState\x00--value\x00sing-box.service",
+		installer.systemctlPath + "\x00show\x00--property\x00ActiveState\x00--value\x00sing-box.service",
+		installer.systemctlPath + "\x00show\x00--property\x00UnitFileState\x00--value\x00sing-box.service",
 	}
 	if !reflect.DeepEqual(*calls, want) {
 		t.Fatalf("commands = %#v, want %#v", *calls, want)
@@ -142,6 +158,9 @@ func TestInstallerExecutesOnlyExactAllowListedCommands(t *testing.T) {
 	}
 	if report.Status != "succeeded" || len(report.Stages) != 8 {
 		t.Fatalf("unexpected report: %#v", report)
+	}
+	if _, err := os.Stat(installer.configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("package-created default config was not removed: %v", err)
 	}
 }
 
@@ -383,6 +402,7 @@ func testInstaller(t *testing.T) (Installer, *[]string) {
 		}
 	}
 	packageBinaryPath := filepath.Join(root, "sing-box")
+	configPath := filepath.Join(root, "etc", "sing-box", "config.json")
 	systemdRunPath := filepath.Join(root, "systemd")
 	if err := os.Mkdir(systemdRunPath, 0o755); err != nil {
 		t.Fatal(err)
@@ -395,6 +415,7 @@ func testInstaller(t *testing.T) (Installer, *[]string) {
 		systemctlPath:     filepath.Join(root, "systemctl"),
 		systemdRunPath:    systemdRunPath,
 		packageBinaryPath: packageBinaryPath,
+		configPath:        configPath,
 		keyPath:           filepath.Join(root, "keyrings", "sagernet.asc"),
 		sourcePath:        filepath.Join(root, "sources", "sagernet.sources"),
 		serviceName:       DefaultServiceName,
@@ -411,9 +432,19 @@ func testInstaller(t *testing.T) (Installer, *[]string) {
 				if err := os.WriteFile(packageBinaryPath, []byte("test"), 0o755); err != nil {
 					return nil, err
 				}
+				if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+					return nil, err
+				}
+				if err := os.WriteFile(configPath, []byte("package-default"), 0o644); err != nil {
+					return nil, err
+				}
 				return nil, nil
 			case strings.HasSuffix(name, "sing-box"):
 				return []byte("sing-box version 1.12.0\n"), nil
+			case strings.HasSuffix(name, "systemctl") && len(args) > 2 && args[0] == "show" && args[2] == "ActiveState":
+				return []byte("inactive\n"), nil
+			case strings.HasSuffix(name, "systemctl") && len(args) > 2 && args[0] == "show" && args[2] == "UnitFileState":
+				return []byte("disabled\n"), nil
 			case strings.HasSuffix(name, "systemctl"):
 				return []byte("loaded\n"), nil
 			default:

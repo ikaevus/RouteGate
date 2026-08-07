@@ -294,27 +294,77 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
+	persistenceResult, err := service.IsEnabled(ctx)
+	if err != nil {
+		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "succeeded",
+			"apply":           "succeeded",
+			"restart":         "succeeded",
+			"healthcheck":     "failed",
+			"rollback":        rollbackStatus,
+			"stagedPath":      stageResult.StagedPath,
+			"activePath":      applyResult.ActivePath,
+			"backupPath":      applyResult.BackupPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"command":         persistenceResult.Command,
+			"output":          persistenceResult.Output,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("sing-box persistence check failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
+	listenerResult, err := tasks.CheckVLESSListener(ctx, applyResult.ActivePath)
+	if err != nil {
+		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		report := map[string]any{
+			"stage":           "succeeded",
+			"validate":        "succeeded",
+			"apply":           "succeeded",
+			"restart":         "succeeded",
+			"healthcheck":     "failed",
+			"rollback":        rollbackStatus,
+			"stagedPath":      stageResult.StagedPath,
+			"activePath":      applyResult.ActivePath,
+			"backupPath":      applyResult.BackupPath,
+			"configVersionId": stageResult.ConfigVersionID,
+			"configHash":      stageResult.ConfigHash,
+			"listenerPort":    listenerResult.Port,
+		}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("sing-box listener healthcheck failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+
 	report := map[string]any{
-		"stage":           "succeeded",
-		"validate":        "succeeded",
-		"apply":           "succeeded",
-		"restart":         "succeeded",
-		"healthcheck":     "succeeded",
-		"rollback":        "skipped",
-		"stagedPath":      stageResult.StagedPath,
-		"activePath":      applyResult.ActivePath,
-		"backupPath":      applyResult.BackupPath,
-		"configVersionId": stageResult.ConfigVersionID,
-		"configHash":      stageResult.ConfigHash,
-		"command":         validationResult.Command,
-		"output":          validationResult.Output,
-		"restartCommand":  restartResult.Command,
-		"healthCommand":   healthResult.Command,
+		"stage":              "succeeded",
+		"validate":           "succeeded",
+		"apply":              "succeeded",
+		"restart":            "succeeded",
+		"healthcheck":        "succeeded",
+		"rollback":           "skipped",
+		"stagedPath":         stageResult.StagedPath,
+		"activePath":         applyResult.ActivePath,
+		"backupPath":         applyResult.BackupPath,
+		"configVersionId":    stageResult.ConfigVersionID,
+		"configHash":         stageResult.ConfigHash,
+		"command":            validationResult.Command,
+		"output":             validationResult.Output,
+		"restartCommand":     restartResult.Command,
+		"healthCommand":      healthResult.Command,
+		"persistenceCommand": persistenceResult.Command,
+		"listenerAddress":    listenerResult.Address,
+		"listenerPort":       listenerResult.Port,
 	}
 	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
 		return err
 	}
-	r.logger.Info("config task staged, validated and applied", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath)
+	r.logger.Info("config task staged, validated and applied", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath, "listener_port", listenerResult.Port)
 	return nil
 }
 

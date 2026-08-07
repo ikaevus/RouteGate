@@ -1,0 +1,55 @@
+.rg101-setup-card input[readonly] {
+  color: var(--text-primary, #f4f7fb);
+  background: rgba(255, 255, 255, 0.035);
+  cursor: default;
+}
+
+.rg101-password-hint {
+  margin: -4px 0 2px;
+  color: var(--text-secondary, #9caec4);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.rg101-security-page {
+  display: grid;
+  gap: 22px;
+  max-width: 860px;
+  padding: 4px 0 40px;
+}
+
+.rg101-security-header span {
+  color: #65a7ff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rg101-security-header h1 {
+  margin: 8px 0 6px;
+}
+
+.rg101-security-header p,
+.rg101-security-card > div > p {
+  color: var(--text-secondary, #9caec4);
+}
+
+.rg101-security-card {
+  display: grid;
+  gap: 18px;
+  max-width: 620px;
+  padding: 26px;
+}
+
+.rg101-security-card h2,
+.rg101-security-card p {
+  margin: 0;
+}
+
+.admin-profile-menu-item.rg101-profile-link {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-decoration: none;
+}

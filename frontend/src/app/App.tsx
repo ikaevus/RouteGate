@@ -9,6 +9,8 @@ import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSetting
 import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPage';
 import { LoginPage } from '../pages/login/LoginPage';
+import { SetupPage } from '../pages/setup/SetupPage';
+import { SecurityPage } from '../pages/settings/SecurityPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 import { getMe, logout, type AuthUser } from '../entities/auth/api/authApi';
 import { clearAuthToken, getAuthToken } from '../shared/api/client';
@@ -138,6 +140,7 @@ function AuthShell({ children, onLogin }: AuthShellProps) {
         {children ?? (
           <Routes>
             <Route path="/login" element={<LoginPage onLogin={onLogin} />} />
+            <Route path="/setup" element={<SetupPage onLogin={onLogin} />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         )}
@@ -228,6 +231,14 @@ function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
 
       {isOpen && (
         <div className="admin-profile-dropdown" role="menu">
+          <Link
+            className="admin-profile-menu-item rg101-profile-link"
+            onClick={() => setIsOpen(false)}
+            role="menuitem"
+            to="/settings/security"
+          >
+            {t('security.profileMenu')}
+          </Link>
           <button
             className="admin-profile-menu-item"
             disabled={isLoggingOut}
@@ -341,6 +352,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <Route path="/vpn-accounts/:accountId" element={<VpnAccountsPage />} />
             <Route path="/routing-profiles" element={<RoutingProfilesPage />} />
             <Route path="/routing-profiles/:profileId" element={<RoutingProfilesPage />} />
+            <Route path="/settings/security" element={<SecurityPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -365,11 +377,12 @@ export function App() {
 
   const isPortalRoute = location.pathname.startsWith('/portal');
   const isLoginRoute = location.pathname.startsWith('/login');
+  const isSetupRoute = location.pathname.startsWith('/setup');
 
   const sessionQuery = useQuery({
     queryKey: ['admin-session', authToken],
     queryFn: getMe,
-    enabled: Boolean(authToken) && !isPortalRoute,
+    enabled: Boolean(authToken) && !isPortalRoute && !isSetupRoute,
     retry: false,
   });
 
@@ -401,6 +414,14 @@ export function App() {
 
   if (location.pathname.startsWith('/portal')) {
     return <PortalShell />;
+  }
+
+  if (isSetupRoute) {
+    return (
+      <AuthShell>
+        <SetupPage onLogin={handleLogin} />
+      </AuthShell>
+    );
   }
 
   if (isLoginRoute) {

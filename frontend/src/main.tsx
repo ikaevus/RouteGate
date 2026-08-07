@@ -15,6 +15,7 @@ import './shared/rg80-feature-reference.css';
 import './shared/rg80-auth.css';
 import './shared/rg80-locale.css';
 import './shared/rg-spacing-audit.css';
+import './shared/rg101-security.css';
 
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');

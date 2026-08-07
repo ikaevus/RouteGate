@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/ikaevus/routegate/backend/internal/traffic"
 )
 
 type fakeApplySafetyRepository struct {
@@ -166,14 +168,22 @@ func TestApplyCreatesJobAfterSafetyChecks(t *testing.T) {
 func validApplyRenderedConfig(t *testing.T) RenderedConfig {
 	t.Helper()
 	return buildRenderedConfig(ServerConfigInfo{
-		ID:     "server-id",
-		Name:   "fi-01",
-		Status: "active",
+		ID:        "server-id",
+		Name:      "fi-01",
+		Status:    "active",
+		VLESSPort: 8443,
 		Agent: &AgentConfigInfo{
 			ID:           "agent-id",
 			AgentVersion: "0.1.0",
 			Status:       "online",
 		},
+		VPNAccounts: []VPNAccountConfigInfo{{
+			ID:                       "account-id",
+			DisplayName:              "Test User",
+			Status:                   "active",
+			VLESSUUID:                "11111111-1111-1111-1111-111111111111",
+			TrafficEnforcementStatus: traffic.TrafficLimitEnforcementNotEnforced,
+		}},
 	}, time.Date(2026, time.June, 26, 12, 0, 0, 0, time.UTC))
 }
 

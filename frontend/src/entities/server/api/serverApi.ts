@@ -29,7 +29,7 @@ export interface ConfigVersion {
   version: number;
   configHash: string;
   status: string;
-  renderedConfig: Record<string, unknown>;
+  renderedConfig?: Record<string, unknown>;
   createdAt: string;
   appliedAt?: string | null;
 }
@@ -93,7 +93,7 @@ export interface UpdateProtocolSettingsRequest {
   vlessPort: number;
   vlessFlow: string;
   vlessNetwork: string;
-  realityPublicKey: string;
+  realityPublicKey?: string;
   realityShortId: string;
   realityServerName: string;
 }

@@ -4,20 +4,15 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { getServers } from '../../entities/server/api/serverApi';
 import {
   createVpnAccount,
-  createVpnAccountSubscriptionToken,
-  getPublicSubscription,
   getVpnAccountCredentials,
-  getVpnAccountSubscriptionQRCode,
   getVpnAccounts,
-  rotateVpnAccountSubscriptionToken,
-  type SubscriptionTokenResponse,
   type VpnAccount,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
-import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
+import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -69,18 +64,10 @@ export function VpnAccountsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
-  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(searchParams.get('create') === '1');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [serverId, setServerId] = useState('');
-  const [isQrOpen, setIsQrOpen] = useState(false);
-
-  useEffect(() => {
-    setSubscriptionToken(null);
-    setCopiedTarget(null);
-  }, [accountId]);
 
   useEffect(() => {
     if (searchParams.get('create') === '1') {
@@ -104,40 +91,6 @@ export function VpnAccountsPage() {
     enabled: Boolean(accountId),
   });
 
-  const qrQuery = useQuery({
-    queryKey: ['vpn-account-subscription-qr', accountId, subscriptionToken?.subscriptionToken],
-    queryFn: () => getVpnAccountSubscriptionQRCode(accountId ?? '', subscriptionToken?.subscriptionToken ?? ''),
-    enabled: Boolean(accountId && subscriptionToken?.subscriptionToken),
-  });
-
-  const publicSubscriptionQuery = useQuery({
-    queryKey: ['public-subscription-preview', subscriptionToken?.subscriptionToken],
-    queryFn: () => getPublicSubscription(subscriptionToken?.subscriptionToken ?? ''),
-    enabled: Boolean(subscriptionToken?.subscriptionToken),
-  });
-
-  const createSubscriptionTokenMutation = useMutation({
-    mutationFn: () => createVpnAccountSubscriptionToken(accountId ?? ''),
-    onMutate: () => {
-      setSubscriptionToken(null);
-      setCopiedTarget(null);
-    },
-    onSuccess: (response) => {
-      setSubscriptionToken(response);
-    },
-  });
-
-  const rotateSubscriptionTokenMutation = useMutation({
-    mutationFn: () => rotateVpnAccountSubscriptionToken(accountId ?? ''),
-    onMutate: () => {
-      setSubscriptionToken(null);
-      setCopiedTarget(null);
-    },
-    onSuccess: (response) => {
-      setSubscriptionToken(response);
-    },
-  });
-
   const createAccountMutation = useMutation({
     mutationFn: () => createVpnAccount({
       displayName: displayName.trim(),
@@ -158,27 +111,9 @@ export function VpnAccountsPage() {
     },
   });
 
-  const copyToClipboard = async (target: string, value: string) => {
-    if (!navigator.clipboard) {
-      return;
-    }
-
-    await navigator.clipboard.writeText(value);
-    setCopiedTarget(target);
-    window.setTimeout(() => setCopiedTarget(null), 1800);
-  };
-
   const accounts = accountsQuery.data?.items ?? [];
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const credentials = credentialsQuery.data;
-  const qr = qrQuery.data;
-  const publicSubscription = publicSubscriptionQuery.data;
-  const renderedConfig = publicSubscription?.config.rendered;
-  const renderedConfigText = renderedConfig
-    ? JSON.stringify(renderedConfig.content, null, 2)
-    : '';
-  const isSubscriptionBusy =
-    createSubscriptionTokenMutation.isPending || rotateSubscriptionTokenMutation.isPending;
   const canCreateAccount = displayName.trim() !== '';
 
   function openCreateForm() {
@@ -378,160 +313,7 @@ export function VpnAccountsPage() {
 
         {accountId && selectedAccount && <TrafficStatsPanel accountId={accountId} />}
 
-        {accountId && selectedAccount && (
-          <div className="panel subscription-panel feature-detail-panel">
-            <div className="panel-header">
-              <div>
-                <div className="panel-title">{t('vpnAccounts.subscriptionTitle')}</div>
-                <p className="panel-subtitle">{t('vpnAccounts.subscriptionSubtitle')}</p>
-              </div>
-              <div className="table-actions">
-                <button
-                  className="small-button"
-                  type="button"
-                  disabled={isSubscriptionBusy}
-                  onClick={() => createSubscriptionTokenMutation.mutate()}
-                >
-                  {createSubscriptionTokenMutation.isPending ? t('vpnAccounts.generating') : t('vpnAccounts.generateSubscription')}
-                </button>
-                <button
-                  className="small-button"
-                  type="button"
-                  disabled={isSubscriptionBusy}
-                  onClick={() => rotateSubscriptionTokenMutation.mutate()}
-                >
-                  {rotateSubscriptionTokenMutation.isPending ? t('vpnAccounts.rotating') : t('vpnAccounts.rotateToken')}
-                </button>
-              </div>
-            </div>
-
-            {(createSubscriptionTokenMutation.isError || rotateSubscriptionTokenMutation.isError) && (
-              <div className="form-message form-message-error">{t('vpnAccounts.subscriptionCreateError')}</div>
-            )}
-
-            {!subscriptionToken && (
-            <EmptyState
-                title={t('vpnAccounts.noSubscriptionTitle')}
-                description={t('vpnAccounts.noSubscriptionDescription')}
-              />
-            )}
-
-            {subscriptionToken && (
-              <div className="subscription-result subscription-self-service-card" style={{ minWidth: 0 }}>
-                <div className="form-message form-message-warning">
-                  {t('vpnAccounts.subscriptionWarning')}
-                </div>
-
-                <div className="subscription-url-stack">
-                  <div className="subscription-url-header">
-                    <div className="subscription-url-meta">
-                      <div className="subscription-url-label">{t('vpnAccounts.subscriptionUrl')}</div>
-                      <p className="subscription-url-helper">{t('vpnAccounts.subscriptionUrlHelper')}</p>
-                    </div>
-                    <div className="table-actions">
-                      <button
-                        className="small-button"
-                        type="button"
-                        onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}
-                      >
-                        {copiedTarget === 'subscription-url' ? t('vpnAccounts.copied') : t('vpnAccounts.copy')}
-                      </button>
-                      <button
-                        className="small-button"
-                        type="button"
-                        onClick={() => setIsQrOpen(true)}
-                        disabled={!qr?.qrText}
-                      >
-                        {t('vpnAccounts.showQr')}
-                      </button>
-                    </div>
-                  </div>
-                  <code className="subscription-url-value">{subscriptionToken.subscriptionUrl}</code>
-                </div>
-
-                <div className="subscription-secondary-meta">
-                  <div className="subscription-meta-chip">
-                    <span>{t('vpnAccounts.expiresAt')}</span>
-                    <strong>{formatDate(subscriptionToken.expiresAt)}</strong>
-                  </div>
-                  <div className="subscription-meta-chip">
-                    <span>{t('vpnAccounts.subscriptionToken')}</span>
-                    <strong>{formatValue(subscriptionToken.subscriptionToken)}</strong>
-                  </div>
-                </div>
-
-                {qrQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingQrPayload')}</p>}
-                {qrQuery.isError && (
-                  <div className="form-message form-message-error">{t('vpnAccounts.qrPayloadLoadError')}</div>
-                )}
-
-                <div className="client-config-preview feature-subpanel">
-                  <div className="panel-header client-config-header">
-                    <div>
-                      <div className="panel-title token-snippet-title">{t('vpnAccounts.clientConfigPreview')}</div>
-                      <p className="panel-subtitle">{t('vpnAccounts.clientConfigSubtitle')}</p>
-                    </div>
-                    {renderedConfig && (
-                      <button
-                        className="small-button"
-                        type="button"
-                        onClick={() => void copyToClipboard('client-config', renderedConfigText)}
-                      >
-                        {copiedTarget === 'client-config' ? t('vpnAccounts.copied') : t('vpnAccounts.copyConfig')}
-                      </button>
-                    )}
-                  </div>
-
-                  {publicSubscriptionQuery.isLoading && (
-                    <p className="empty-state">{t('vpnAccounts.loadingClientConfig')}</p>
-                  )}
-
-                  {publicSubscriptionQuery.isError && (
-                    <div className="form-message form-message-error">{t('vpnAccounts.publicSubscriptionLoadError')}</div>
-                  )}
-
-                  {publicSubscription && (
-                    <div className="subscription-meta-grid">
-                      <DetailRow label={t('vpnAccounts.subscriptionFormat')}>{formatValue(publicSubscription.format)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.configStatus')}><StatusBadge status={publicSubscription.config.status} /></DetailRow>
-                      <DetailRow label={t('vpnAccounts.configFormat')}>{formatValue(renderedConfig?.format ?? publicSubscription.config.format)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.generatedAt')}>{formatDate(publicSubscription.generatedAt)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.serverEndpoint')}>{formatValue(publicSubscription.server?.endpoint)}</DetailRow>
-                    </div>
-                  )}
-
-                  {publicSubscription?.config.message && (
-                    <div className="form-message form-message-warning">{publicSubscription.config.message}</div>
-                  )}
-
-                  {renderedConfig ? (
-                    <pre className="code-block client-config-code" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' }}>{renderedConfigText}</pre>
-                  ) : publicSubscription && (
-                    <p className="empty-state">{t('vpnAccounts.noRenderedConfig')}</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <SubscriptionQrDialog
-              isOpen={isQrOpen}
-              title={t('vpnAccounts.subscriptionQrCode')}
-              onClose={() => setIsQrOpen(false)}
-              qrText={qr?.qrText}
-              qrTitle={t('vpnAccounts.subscriptionQrCode')}
-              qrSubtitle={t('vpnAccounts.format', { format: formatValue(qr?.format) })}
-              url={subscriptionToken?.subscriptionUrl}
-              urlLabel={t('vpnAccounts.subscriptionUrl')}
-              onCopyQrText={() => void copyToClipboard('qr-text', qr?.qrText ?? '')}
-              copyQrLabel={t('vpnAccounts.copyQrText')}
-              copyCopiedLabel={t('vpnAccounts.copied')}
-              copied={copiedTarget === 'qr-text'}
-              closeLabel={t('common.close')}
-              loadingLabel={t('vpnAccounts.qrPayloadLoadError')}
-              unavailableLabel={t('vpnAccounts.qrPayloadLoadError')}
-            />
-          </div>
-        )}
+        {accountId && selectedAccount && <VpnClientConnectionPanel accountId={accountId} />}
       </div>
     </section>
   );

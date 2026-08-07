@@ -102,6 +102,73 @@ export interface SubscriptionQRCodeResponse {
   format: string;
 }
 
+export type ClientFingerprintMode = 'auto' | 'manual';
+
+export interface VpnClientProfile {
+  id: string;
+  vpnAccountId: string;
+  name: string;
+  clientType: string;
+  deviceType: string;
+  fingerprintMode: ClientFingerprintMode;
+  fingerprint: string;
+  resolvedFingerprint: string;
+  serverNameOverride?: string;
+  spiderX: string;
+  mtu?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VpnClientConnectionResponse {
+  vpnAccountId: string;
+  format: string;
+  vlessLink: string;
+  profile: VpnClientProfile;
+  endpoint: string;
+  serverName: string;
+  network: string;
+  flow?: string;
+}
+
+export interface UpdateVpnClientProfileRequest {
+  name: string;
+  clientType: string;
+  deviceType: string;
+  fingerprintMode: ClientFingerprintMode;
+  fingerprint: string;
+  serverNameOverride: string;
+  spiderX: string;
+  mtu?: number | null;
+}
+
+interface SingBoxClientReality {
+  enabled?: boolean;
+  public_key?: string;
+  short_id?: string;
+}
+
+interface SingBoxClientTLS {
+  enabled?: boolean;
+  server_name?: string;
+  reality?: SingBoxClientReality;
+}
+
+interface SingBoxClientOutbound {
+  type?: string;
+  server?: string;
+  server_port?: number;
+  uuid?: string;
+  flow?: string;
+  network?: string;
+  tls?: SingBoxClientTLS;
+}
+
+interface SingBoxClientConfig {
+  outbounds?: SingBoxClientOutbound[];
+  [key: string]: unknown;
+}
+
 export interface PublicSubscriptionResponse {
   status: string;
   format: string;
@@ -130,17 +197,83 @@ export interface PublicSubscriptionResponse {
     message?: string;
     rendered?: {
       format: string;
-      content: Record<string, unknown>;
+      content: SingBoxClientConfig;
     } | null;
   };
+}
+
+function requiredText(value: string | undefined, field: string): string {
+  const normalized = value?.trim() ?? '';
+  if (normalized === '') {
+    throw new Error(`${field} is required to create a VLESS connection link.`);
+  }
+  return normalized;
+}
+
+function formatVlessHost(server: string): string {
+  if (server.includes(':') && !server.startsWith('[')) {
+    return `[${server}]`;
+  }
+  return server;
+}
+
+export function buildVlessRealityShareLink(
+  subscription: PublicSubscriptionResponse,
+  fingerprint = 'firefox',
+): string {
+  const outbound = subscription.config.rendered?.content.outbounds?.find(
+    (candidate) => candidate.type?.trim().toLowerCase() === 'vless',
+  );
+  if (!outbound) {
+    throw new Error('Rendered client config does not contain a VLESS outbound.');
+  }
+
+  const server = requiredText(outbound.server, 'VLESS server');
+  const uuid = requiredText(outbound.uuid, 'VLESS UUID');
+  const serverName = requiredText(outbound.tls?.server_name, 'Reality server name');
+  const publicKey = requiredText(outbound.tls?.reality?.public_key, 'Reality public key');
+  const serverPort = outbound.server_port;
+  if (typeof serverPort !== 'number' || !Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
+    throw new Error('VLESS server port is invalid.');
+  }
+  if (!outbound.tls?.enabled || !outbound.tls.reality?.enabled) {
+    throw new Error('Rendered client config does not enable Reality.');
+  }
+
+  const parameters = new URLSearchParams();
+  parameters.set('encryption', 'none');
+  parameters.set('security', 'reality');
+  parameters.set('type', outbound.network?.trim() || 'tcp');
+  parameters.set('sni', serverName);
+  parameters.set('fp', fingerprint);
+  parameters.set('pbk', publicKey);
+  if (typeof outbound.tls.reality.short_id === 'string') {
+    parameters.set('sid', outbound.tls.reality.short_id.trim());
+  }
+  if (outbound.flow?.trim()) {
+    parameters.set('flow', outbound.flow.trim());
+  }
+
+  const label = subscription.account.displayName.trim()
+    || subscription.server?.name?.trim()
+    || 'RouteGate';
+
+  return `vless://${encodeURIComponent(uuid)}@${formatVlessHost(server)}:${serverPort}?${parameters.toString()}#${encodeURIComponent(label)}`;
 }
 
 export function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
   return apiGet<ListVpnAccountsResponse>('/api/v1/vpn-accounts');
 }
 
-export function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {
-  return apiPost<CreateVpnAccountRequest, VpnAccount>('/api/v1/vpn-accounts', request);
+export async function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {
+  const account = await apiPost<CreateVpnAccountRequest, VpnAccount>('/api/v1/vpn-accounts', request);
+  return activateVpnAccount(account.id);
+}
+
+export function activateVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
+  return apiPost<undefined, VpnAccount>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/activate`,
+  );
 }
 
 export function getVpnAccountCredentials(
@@ -148,6 +281,24 @@ export function getVpnAccountCredentials(
 ): Promise<VpnAccountCredentialsResponse> {
   return apiGet<VpnAccountCredentialsResponse>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/credentials`,
+  );
+}
+
+export function getVpnAccountClientConnection(
+  vpnAccountId: string,
+): Promise<VpnClientConnectionResponse> {
+  return apiGet<VpnClientConnectionResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/client-connection`,
+  );
+}
+
+export function updateVpnAccountClientProfile(
+  vpnAccountId: string,
+  request: UpdateVpnClientProfileRequest,
+): Promise<VpnClientConnectionResponse> {
+  return apiPatch<UpdateVpnClientProfileRequest, VpnClientConnectionResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/client-profile`,
+    request,
   );
 }
 
@@ -185,15 +336,24 @@ export function rotateVpnAccountSubscriptionToken(
   );
 }
 
-export function getVpnAccountSubscriptionQRCode(
+export async function getVpnAccountSubscriptionQRCode(
   vpnAccountId: string,
   subscriptionToken: string,
 ): Promise<SubscriptionQRCodeResponse> {
-  const params = new URLSearchParams({ token: subscriptionToken });
+  const subscription = await getPublicSubscription(subscriptionToken);
+  if (subscription.vpnAccountId !== vpnAccountId) {
+    throw new Error('Subscription belongs to a different VPN account.');
+  }
 
-  return apiGet<SubscriptionQRCodeResponse>(
-    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/qr?${params.toString()}`,
-  );
+  return {
+    vpnAccountId,
+    subscriptionUrl: new URL(
+      `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
+      globalThis.location.origin,
+    ).toString(),
+    qrText: buildVlessRealityShareLink(subscription),
+    format: 'vless-reality-uri',
+  };
 }
 
 export function getPublicSubscription(

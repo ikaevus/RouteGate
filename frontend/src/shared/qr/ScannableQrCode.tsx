@@ -24,6 +24,9 @@ const LOW_ERROR_CORRECTION_FORMAT_BITS = 1;
 const MASK_PATTERN = 0;
 const QUIET_ZONE_MODULES = 4;
 
+// QR Model 2, low error correction. Versions through 20 comfortably cover
+// RouteGate VLESS Reality sharing links while keeping the generated symbol
+// practical to scan from the client-connection dialog.
 const VERSION_SPECS: QrVersionSpec[] = [
   { version: 1, dataCodewords: 19, errorCorrectionCodewords: 7, blocks: 1, alignmentPatterns: [] },
   { version: 2, dataCodewords: 34, errorCorrectionCodewords: 10, blocks: 1, alignmentPatterns: [6, 18] },
@@ -34,6 +37,17 @@ const VERSION_SPECS: QrVersionSpec[] = [
   { version: 7, dataCodewords: 156, errorCorrectionCodewords: 20, blocks: 2, alignmentPatterns: [6, 22, 38] },
   { version: 8, dataCodewords: 194, errorCorrectionCodewords: 24, blocks: 2, alignmentPatterns: [6, 24, 42] },
   { version: 9, dataCodewords: 232, errorCorrectionCodewords: 30, blocks: 2, alignmentPatterns: [6, 26, 46] },
+  { version: 10, dataCodewords: 274, errorCorrectionCodewords: 18, blocks: 4, alignmentPatterns: [6, 28, 50] },
+  { version: 11, dataCodewords: 324, errorCorrectionCodewords: 20, blocks: 4, alignmentPatterns: [6, 30, 54] },
+  { version: 12, dataCodewords: 370, errorCorrectionCodewords: 24, blocks: 4, alignmentPatterns: [6, 32, 58] },
+  { version: 13, dataCodewords: 428, errorCorrectionCodewords: 26, blocks: 4, alignmentPatterns: [6, 34, 62] },
+  { version: 14, dataCodewords: 461, errorCorrectionCodewords: 30, blocks: 4, alignmentPatterns: [6, 26, 46, 66] },
+  { version: 15, dataCodewords: 523, errorCorrectionCodewords: 22, blocks: 6, alignmentPatterns: [6, 26, 48, 70] },
+  { version: 16, dataCodewords: 589, errorCorrectionCodewords: 24, blocks: 6, alignmentPatterns: [6, 26, 50, 74] },
+  { version: 17, dataCodewords: 647, errorCorrectionCodewords: 28, blocks: 6, alignmentPatterns: [6, 30, 54, 78] },
+  { version: 18, dataCodewords: 721, errorCorrectionCodewords: 30, blocks: 6, alignmentPatterns: [6, 30, 56, 82] },
+  { version: 19, dataCodewords: 795, errorCorrectionCodewords: 28, blocks: 7, alignmentPatterns: [6, 30, 58, 86] },
+  { version: 20, dataCodewords: 861, errorCorrectionCodewords: 28, blocks: 8, alignmentPatterns: [6, 34, 62, 90] },
 ];
 
 const GF_EXP = new Array<number>(512).fill(0);
@@ -109,11 +123,15 @@ function createErrorCorrectionCodewords(data: number[], degree: number): number[
   return message.slice(message.length - degree);
 }
 
+function characterCountBits(version: number): number {
+  return version < 10 ? 8 : 16;
+}
+
 function buildDataCodewords(payloadBytes: Uint8Array, spec: QrVersionSpec): number[] {
   const bits: number[] = [];
 
   appendBits(bits, 0b0100, 4);
-  appendBits(bits, payloadBytes.length, 8);
+  appendBits(bits, payloadBytes.length, characterCountBits(spec.version));
 
   payloadBytes.forEach((byte) => appendBits(bits, byte, 8));
 
@@ -144,11 +162,17 @@ function buildDataCodewords(payloadBytes: Uint8Array, spec: QrVersionSpec): numb
 }
 
 function splitIntoBlocks(codewords: number[], blockCount: number): number[][] {
-  const blockLength = codewords.length / blockCount;
+  const shortBlockLength = Math.floor(codewords.length / blockCount);
+  const longBlockCount = codewords.length % blockCount;
+  const shortBlockCount = blockCount - longBlockCount;
+  let offset = 0;
 
-  return Array.from({ length: blockCount }, (_, index) =>
-    codewords.slice(index * blockLength, (index + 1) * blockLength),
-  );
+  return Array.from({ length: blockCount }, (_, index) => {
+    const blockLength = index < shortBlockCount ? shortBlockLength : shortBlockLength + 1;
+    const block = codewords.slice(offset, offset + blockLength);
+    offset += blockLength;
+    return block;
+  });
 }
 
 function interleaveBlocks(blocks: number[][]): number[] {
@@ -169,11 +193,13 @@ function interleaveBlocks(blocks: number[][]): number[] {
 }
 
 function selectVersionSpec(payloadBytes: Uint8Array): QrVersionSpec {
-  const requiredBits = 4 + 8 + payloadBytes.length * 8;
-  const spec = VERSION_SPECS.find((candidate) => candidate.dataCodewords * 8 >= requiredBits);
+  const spec = VERSION_SPECS.find((candidate) => {
+    const requiredBits = 4 + characterCountBits(candidate.version) + payloadBytes.length * 8;
+    return candidate.dataCodewords * 8 >= requiredBits;
+  });
 
   if (!spec) {
-    throw new Error('QR payload is too long for the built-in renderer.');
+    throw new Error(t('qr.renderError'));
   }
 
   return spec;
@@ -187,7 +213,7 @@ function isFinderPatternArea(size: number, centerX: number, centerY: number): bo
   return nearTop && (nearLeft || nearRight) || nearLeft && centerY >= size - 11;
 }
 
-function encodeQrPayload(payload: string): EncodedQrCode {
+export function encodeQrPayload(payload: string): EncodedQrCode {
   const payloadBytes = new TextEncoder().encode(payload);
   const spec = selectVersionSpec(payloadBytes);
   const size = spec.version * 4 + 17;
@@ -358,10 +384,10 @@ function createSvgPath(modules: boolean[][]): string {
 }
 
 export function ScannableQrCode({ value: rawValue, title, subtitle, showHeader = true }: ScannableQrCodeProps) {
-  const value = rawValue?.trim() ?? '';
+  const valueToEncode = rawValue?.trim() ?? '';
   const displayTitle = title ?? t('qr.code');
 
-  if (value === '') {
+  if (valueToEncode === '') {
     return (
       <div className="qr-code-card qr-code-card-empty">
         <div className="panel-title token-snippet-title">{displayTitle}</div>
@@ -371,7 +397,7 @@ export function ScannableQrCode({ value: rawValue, title, subtitle, showHeader =
   }
 
   try {
-    const qrCode = encodeQrPayload(value);
+    const qrCode = encodeQrPayload(valueToEncode);
     const viewBoxSize = qrCode.size + QUIET_ZONE_MODULES * 2;
     const path = createSvgPath(qrCode.modules);
 
@@ -397,13 +423,11 @@ export function ScannableQrCode({ value: rawValue, title, subtitle, showHeader =
         </div>
       </div>
     );
-  } catch (error) {
+  } catch {
     return (
       <div className="qr-code-card qr-code-card-empty">
         <div className="panel-title token-snippet-title">{displayTitle}</div>
-        <div className="form-message form-message-error">
-          {error instanceof Error ? error.message : t('qr.renderError')}
-        </div>
+        <div className="form-message form-message-error">{t('qr.renderError')}</div>
       </div>
     );
   }

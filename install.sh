@@ -32,6 +32,8 @@ ROUTEGATE_DB_PASSWORD=""
 ROUTEGATE_ADMIN_PASSWORD=""
 ROUTEGATE_SECRETS_FILE="/var/lib/routegate-installer/secrets.env"
 ROUTEGATE_RESUME_INSTALL=0
+ROUTEGATE_SETUP_URL=""
+ROUTEGATE_SETUP_EXPIRES_AT=""
 ROUTEGATE_LOCK_FILE="/run/lock/routegate-installer.lock"
 
 usage() {
@@ -326,7 +328,7 @@ validate_platform() {
   [[ "$arch" == "amd64" ]] || die "Unsupported architecture: ${arch:-unknown}. The installer MVP currently accepts amd64 only."
   [[ -d /run/systemd/system ]] || die "systemd is required and does not appear to be running."
   command -v systemctl >/dev/null 2>&1 || die "systemctl is required."
-  command -v apt-get >/dev/null 2>&1 || die "apt-get is required."
+  command -v apt-get >/dev/null 2>&1 || die "apt-get is required to run the installer."
   command -v curl >/dev/null 2>&1 || die "curl is required to run the installer."
   command -v getent >/dev/null 2>&1 || die "getent is required."
   command -v ip >/dev/null 2>&1 || die "the ip command is required."
@@ -645,13 +647,23 @@ confirm_installation() {
   log "  TLS: Let's Encrypt"
 
   [[ "$ROUTEGATE_ASSUME_YES" == "1" ]] && return 0
+  interactive_tty_available || die "Non-interactive installation requires --yes."
+
   local answer=""
-  if [[ -r /dev/tty ]]; then
-    read -r -p "Continue with RouteGate installation? [y/N] " answer </dev/tty
-  else
-    die "Non-interactive installation requires --yes."
-  fi
-  [[ "$answer" =~ ^[Yy]$ ]] || die "Installation cancelled."
+  while true; do
+    read -r -p "Proceed with RouteGate installation? [Y/n] " answer </dev/tty
+    case "$answer" in
+      ""|Y|y)
+        return 0
+        ;;
+      N|n)
+        die "Installation cancelled."
+        ;;
+      *)
+        printf '[RouteGate] Enter Y to continue or N to cancel.\n' >/dev/tty
+        ;;
+    esac
+  done
 }
 
 install_dependencies() {
@@ -1075,6 +1087,29 @@ wait_for_agent_registration() {
   return 1
 }
 
+create_initial_setup_link() {
+  local admin_password=$1
+  local session_token auth_config response token
+  log "Creating the one-time administrator activation link."
+
+  session_token=$(manager_login_token "$admin_password")
+  auth_config="$ROUTEGATE_WORK_DIR/setup-auth.curl"
+  write_auth_curl_config "$session_token" "$auth_config"
+
+  response=$(curl -fsS --max-time 15 \
+    --config "$auth_config" \
+    -H 'Content-Type: application/json' \
+    -X POST \
+    "${ROUTEGATE_LOCAL_API}/api/v1/auth/initial-setup-token") \
+    || die "Failed to create the initial administrator activation link."
+
+  token=$(jq -er '.token' <<<"$response") \
+    || die "Initial setup response did not contain a token."
+  ROUTEGATE_SETUP_EXPIRES_AT=$(jq -er '.expires_at' <<<"$response") \
+    || die "Initial setup response did not contain an expiration time."
+  ROUTEGATE_SETUP_URL="https://${ROUTEGATE_DOMAIN}/setup#token=${token}"
+}
+
 remove_bootstrap_environment() {
   log "Removing first-user bootstrap secrets from the Manager environment."
   sed -i '/^ROUTEGATE_BOOTSTRAP_ADMIN_/d' "$ROUTEGATE_MANAGER_ENV"
@@ -1093,15 +1128,20 @@ write_initial_credentials() {
   local admin_password=$1
   install -m 0600 /dev/null "$ROUTEGATE_CREDENTIALS_FILE"
   cat >"$ROUTEGATE_CREDENTIALS_FILE" <<EOF_CREDENTIALS
-RouteGate initial access
+RouteGate first access
 
-URL: https://${ROUTEGATE_DOMAIN}/
-Login: ${ROUTEGATE_ADMIN_EMAIL}
-Username: admin
-Password: ${admin_password}
+Setup URL: ${ROUTEGATE_SETUP_URL}
+Administrator email: ${ROUTEGATE_ADMIN_EMAIL}
+Setup link expires at: ${ROUTEGATE_SETUP_EXPIRES_AT}
 
-This password was generated uniquely for this installation.
-Store it in a password manager and remove this file afterwards:
+Open the setup URL and choose your own password. The link is single-use.
+
+Recovery only:
+A unique bootstrap password is retained below so the server owner can recover
+if the setup link expires before activation. Do not send this password by email.
+Bootstrap password: ${admin_password}
+
+Remove this file after activation and password verification:
   sudo rm -f ${ROUTEGATE_CREDENTIALS_FILE}
 EOF_CREDENTIALS
   chmod 0600 "$ROUTEGATE_CREDENTIALS_FILE"
@@ -1125,26 +1165,32 @@ verify_final_state() {
 }
 
 print_success() {
+  printf '\nRouteGate installation completed successfully.\n\n'
+  printf 'NEXT ACTION — Complete administrator setup\n\n'
+  printf 'Ctrl+click the link below, or copy the complete URL and paste it into your browser:\n\n'
+  printf '  \033]8;;%s\033\\Open RouteGate first-time setup\033]8;;\033\\\n\n' "$ROUTEGATE_SETUP_URL"
+  printf '  %s\n\n' "$ROUTEGATE_SETUP_URL"
+
   cat <<EOF_SUCCESS
+Administrator:
+  ${ROUTEGATE_ADMIN_EMAIL}
 
-RouteGate installation completed successfully.
+The setup link is single-use and expires at ${ROUTEGATE_SETUP_EXPIRES_AT}.
+After activation, RouteGate signs the administrator in automatically.
 
-Open:
-  https://${ROUTEGATE_DOMAIN}/
+Lost the setup link? Recovery details are stored root-only in:
+  ${ROUTEGATE_CREDENTIALS_FILE}
 
-Initial administrator:
-  Login:    ${ROUTEGATE_ADMIN_EMAIL}
-  Username: admin
-  Password: stored in ${ROUTEGATE_CREDENTIALS_FILE}
-
-Show the generated password:
+Read them with:
   sudo cat ${ROUTEGATE_CREDENTIALS_FILE}
+
+SMTP delivery is not configured by default. RouteGate does not email passwords.
 
 Services:
   PostgreSQL, nginx, RouteGate Manager, and RouteGate Agent are active and enabled.
 
-Next action:
-  Sign in, open the local server, and use the guided Install sing-box action.
+After administrator activation:
+  Open the local server and use the guided Install sing-box action.
 
 Installer log:
   ${ROUTEGATE_LOG_FILE}
@@ -1177,6 +1223,7 @@ main() {
   start_manager
   configure_nginx_and_tls
   bootstrap_local_agent "$ROUTEGATE_ADMIN_PASSWORD"
+  create_initial_setup_link "$ROUTEGATE_ADMIN_PASSWORD"
   remove_bootstrap_environment
   write_initial_credentials "$ROUTEGATE_ADMIN_PASSWORD"
   verify_final_state
