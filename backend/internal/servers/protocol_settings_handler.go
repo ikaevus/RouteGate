@@ -2,6 +2,8 @@ package servers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,6 +12,13 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+)
+
+const (
+	recommendedVLESSPort    = 8443
+	recommendedVLESSFlow    = "xtls-rprx-vision"
+	recommendedVLESSNetwork = "tcp"
+	realityShortIDBytes     = 8
 )
 
 type protocolSettingsRepository interface {
@@ -86,6 +95,78 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
 }
 
+func (h *Handler) ConfigureRecommendedProtocolSettings(w http.ResponseWriter, r *http.Request) {
+	repository, ok := h.protocolSettingsRepository()
+	if !ok {
+		h.databaseError(w, "get protocol settings repository", errors.New("protocol settings repository is unavailable"))
+		return
+	}
+
+	serverID := r.PathValue("server_id")
+	server, err := h.servers.GetServerByID(r.Context(), serverID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get server for recommended protocol settings", err)
+		return
+	}
+
+	serverName := recommendedRealityServerName(server)
+	if serverName == "" {
+		writeInvalidRequest(w, "A valid server hostname is required for recommended Reality setup.")
+		return
+	}
+
+	keypair, err := h.generateRealityKeypair()
+	if err != nil {
+		h.logger.Error("generate Reality keypair failed", "server_id", serverID, "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("keypair_generation_failed", "Failed to generate Reality keypair."))
+		return
+	}
+
+	shortID, err := generateRealityShortID()
+	if err != nil {
+		h.logger.Error("generate Reality short ID failed", "server_id", serverID, "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("short_id_generation_failed", "Failed to generate Reality short ID."))
+		return
+	}
+
+	if _, err := repository.UpdateRealityKeypair(r.Context(), serverID, UpdateRealityKeypairInput{
+		PrivateKey: keypair.PrivateKey,
+		PublicKey:  keypair.PublicKey,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeServerNotFound(w)
+			return
+		}
+		h.databaseError(w, "store recommended Reality keypair", err)
+		return
+	}
+
+	port := recommendedVLESSPort
+	flow := recommendedVLESSFlow
+	network := recommendedVLESSNetwork
+	settings, err := repository.UpdateProtocolSettings(r.Context(), serverID, UpdateProtocolSettingsInput{
+		VLESSPort:         &port,
+		VLESSFlow:         &flow,
+		VLESSNetwork:      &network,
+		RealityShortID:    &shortID,
+		RealityServerName: &serverName,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "apply recommended protocol settings", err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
+}
+
 func (h *Handler) GenerateRealityKeypair(w http.ResponseWriter, r *http.Request) {
 	repository, ok := h.protocolSettingsRepository()
 	if !ok {
@@ -150,4 +231,26 @@ func validVLESSFlow(flow string) bool {
 	default:
 		return false
 	}
+}
+
+func generateRealityShortID() (string, error) {
+	value := make([]byte, realityShortIDBytes)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value), nil
+}
+
+func recommendedRealityServerName(server Server) string {
+	for _, candidate := range []string{server.Hostname, server.Name} {
+		candidate = strings.ToLower(strings.TrimSpace(candidate))
+		if validRecommendedRealityServerName(candidate) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func validRecommendedRealityServerName(value string) bool {
+	return strings.Contains(value, ".") && !strings.ContainsAny(value, " \t\r\n/:\\")
 }
