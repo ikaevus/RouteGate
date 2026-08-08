@@ -98,7 +98,7 @@ jobs:
       - name: Commit source and remove one-shot files
         shell: bash
         run: |
-          git rm .github/rg109_patch.py .github/workflows/rg109-patch.yml
+          git rm -f .github/rg109_patch.py .github/workflows/rg109-patch.yml
           git add backend frontend
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
