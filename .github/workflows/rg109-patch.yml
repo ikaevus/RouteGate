@@ -92,7 +92,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          npm run check:i18n
+          npm run i18n:check
           npm run build
 
       - name: Commit source and remove one-shot files
