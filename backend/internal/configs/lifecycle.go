@@ -1,36 +1,79 @@
 package configs
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 )
 
-var ErrConfigVersionInUse = errors.New("config version is immutable because it has deployment history")
+var ErrConfigVersionCurrent = errors.New("current config version cannot be deleted")
+var ErrConfigVersionPinned = errors.New("pinned config version cannot be deleted")
+var ErrConfigVersionDeploymentActive = errors.New("config version has an active deployment")
 var ErrConfigVersionNeverApplied = errors.New("config version has never been applied")
 
-type configVersionDeletionRepository interface {
-	DeleteUnusedConfigVersion(context.Context, string, string) (bool, error)
+type configVersionLifecycleRepository interface {
+	DeleteConfigVersion(context.Context, string, string) (bool, error)
+	HasActiveConfigApplyJob(context.Context, string, string) (bool, error)
+	SetConfigVersionPinned(context.Context, string, string, bool) (ConfigVersion, error)
+	GetCurrentConfigVersionID(context.Context, string) (string, error)
 }
 
-func (s *Service) DeleteUnused(ctx context.Context, serverID, versionID string) error {
-	repository, ok := s.repository.(configVersionDeletionRepository)
+func (s *Service) CurrentVersionID(ctx context.Context, serverID string) (string, error) {
+	repository, ok := s.repository.(interface {
+		GetCurrentConfigVersionID(context.Context, string) (string, error)
+	})
 	if !ok {
-		return errors.New("config repository does not support version deletion")
+		return "", errors.New("config repository does not support current version state")
+	}
+	return repository.GetCurrentConfigVersionID(ctx, serverID)
+}
+
+func (s *Service) DeleteVersion(ctx context.Context, serverID, versionID string) error {
+	repository, ok := s.repository.(configVersionLifecycleRepository)
+	if !ok {
+		return errors.New("config repository does not support version lifecycle management")
 	}
 
-	deleted, err := repository.DeleteUnusedConfigVersion(ctx, serverID, versionID)
+	version, err := s.repository.GetConfigVersion(ctx, serverID, versionID)
 	if err != nil {
 		return err
 	}
-	if deleted {
-		return nil
-	}
-
-	if _, err := s.repository.GetConfigVersion(ctx, serverID, versionID); err != nil {
+	currentID, err := repository.GetCurrentConfigVersionID(ctx, serverID)
+	if err != nil {
 		return err
 	}
-	return ErrConfigVersionInUse
+	if currentID == version.ID {
+		return ErrConfigVersionCurrent
+	}
+	if version.Pinned {
+		return ErrConfigVersionPinned
+	}
+	active, err := repository.HasActiveConfigApplyJob(ctx, serverID, versionID)
+	if err != nil {
+		return err
+	}
+	if active {
+		return ErrConfigVersionDeploymentActive
+	}
+
+	deleted, err := repository.DeleteConfigVersion(ctx, serverID, versionID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrConfigVersionDeploymentActive
+	}
+	return nil
+}
+
+func (s *Service) SetVersionPinned(ctx context.Context, serverID, versionID string, pinned bool) (ConfigVersion, error) {
+	repository, ok := s.repository.(configVersionLifecycleRepository)
+	if !ok {
+		return ConfigVersion{}, errors.New("config repository does not support version lifecycle management")
+	}
+	return repository.SetConfigVersionPinned(ctx, serverID, versionID, pinned)
 }
 
 func (s *Service) Reapply(ctx context.Context, serverID, versionID string, request ApplyConfigRequest) (ApplyConfigResponse, error) {
@@ -68,4 +111,27 @@ func (s *Service) Reapply(ctx context.Context, serverID, versionID string, reque
 		return ApplyConfigResponse{}, err
 	}
 	return ApplyConfigResponse{Job: job}, nil
+}
+
+func renderedConfigsEquivalentForVersioning(left, right []byte) (bool, error) {
+	leftNormalized, err := normalizeRenderedConfigForVersioning(left)
+	if err != nil {
+		return false, err
+	}
+	rightNormalized, err := normalizeRenderedConfigForVersioning(right)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(leftNormalized, rightNormalized), nil
+}
+
+func normalizeRenderedConfigForVersioning(payload []byte) ([]byte, error) {
+	var config map[string]any
+	if err := json.Unmarshal(payload, &config); err != nil {
+		return nil, err
+	}
+	if metadata, ok := config["metadata"].(map[string]any); ok {
+		delete(metadata, "renderedAt")
+	}
+	return json.Marshal(config)
 }

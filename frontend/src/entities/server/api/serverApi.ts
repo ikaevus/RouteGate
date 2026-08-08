@@ -32,6 +32,7 @@ export interface ConfigVersion {
   renderedConfig?: Record<string, unknown>;
   createdAt: string;
   appliedAt?: string | null;
+  pinned: boolean;
 }
 
 export interface ConfigApplyJob {
@@ -66,6 +67,7 @@ export interface ApplyConfigResponse {
 
 export interface ListConfigVersionsResponse {
   items: ConfigVersion[];
+  currentConfigVersionId?: string | null;
 }
 
 export interface ListConfigApplyJobsResponse {
@@ -280,6 +282,18 @@ export function reapplyConfigVersion(
 export function deleteConfigVersion(serverId: string, versionId: string): Promise<void> {
   return apiDelete(
     `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}`,
+  );
+}
+
+export function pinConfigVersion(serverId: string, versionId: string): Promise<ConfigVersion> {
+  return apiPost<undefined, ConfigVersion>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}/pin`,
+  );
+}
+
+export function unpinConfigVersion(serverId: string, versionId: string): Promise<void> {
+  return apiDelete(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}/pin`,
   );
 }
 

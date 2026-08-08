@@ -187,6 +187,34 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 		return ConfigVersion{}, err
 	}
 
+	latest, latestErr := scanConfigVersion(tx.QueryRow(ctx, `
+		SELECT
+			id::text,
+			server_id::text,
+			version,
+			config_hash,
+			status,
+			rendered_config,
+			created_at,
+			applied_at,
+			pinned
+		FROM config_versions
+		WHERE server_id = $1::uuid
+		ORDER BY version DESC
+		LIMIT 1
+	`, input.ServerID))
+	if latestErr == nil {
+		equivalent, err := renderedConfigsEquivalentForVersioning(latest.RenderedConfig, configBytes)
+		if err != nil {
+			return ConfigVersion{}, err
+		}
+		if equivalent {
+			return latest, nil
+		}
+	} else if !errors.Is(latestErr, pgx.ErrNoRows) {
+		return ConfigVersion{}, latestErr
+	}
+
 	var nextVersion int
 	if err := tx.QueryRow(ctx, `
 		SELECT COALESCE(MAX(version), 0) + 1
@@ -213,7 +241,8 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes))
 	if err != nil {
 		return ConfigVersion{}, err
@@ -235,7 +264,8 @@ func (r *Repository) ListConfigVersions(ctx context.Context, serverID string) ([
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 		FROM config_versions
 		WHERE server_id = $1::uuid
 		ORDER BY version DESC
@@ -266,7 +296,8 @@ func (r *Repository) GetConfigVersion(ctx context.Context, serverID, versionID s
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 		FROM config_versions
 		WHERE server_id = $1::uuid
 		  AND id = $2::uuid
@@ -287,7 +318,8 @@ func (r *Repository) MarkConfigVersionValidated(ctx context.Context, serverID, v
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 	`, serverID, versionID, StatusValidated))
 }
 
@@ -347,6 +379,7 @@ func (r *Repository) ListConfigApplyJobs(ctx context.Context, serverID string) (
 		FROM config_apply_jobs
 		WHERE server_id = $1::uuid
 		ORDER BY created_at DESC
+		LIMIT 100
 	`, serverID)
 	if err != nil {
 		return nil, err
@@ -384,6 +417,16 @@ func (r *Repository) GetConfigApplyJob(ctx context.Context, serverID, jobID stri
 		WHERE server_id = $1::uuid
 		  AND id = $2::uuid
 	`, serverID, jobID))
+}
+
+func (r *Repository) GetCurrentConfigVersionID(ctx context.Context, serverID string) (string, error) {
+	var versionID string
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(active_config_version_id::text, '')
+		FROM servers
+		WHERE id = $1::uuid
+	`, serverID).Scan(&versionID)
+	return versionID, err
 }
 
 func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
@@ -522,6 +565,7 @@ func scanConfigVersion(row scanner) (ConfigVersion, error) {
 		&renderedConfig,
 		&version.CreatedAt,
 		&version.AppliedAt,
+		&version.Pinned,
 	)
 	if err != nil {
 		return ConfigVersion{}, err

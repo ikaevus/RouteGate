@@ -65,17 +65,23 @@ func (h *Handler) DeleteVersion(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("server_id")
 	versionID := r.PathValue("version_id")
 
-	err := h.service.DeleteUnused(r.Context(), serverID, versionID)
+	err := h.service.DeleteVersion(r.Context(), serverID, versionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeConfigVersionNotFound(w)
 		return
 	}
-	if errors.Is(err, ErrConfigVersionInUse) {
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_version_in_use", "Applied config versions and versions with deployment history are immutable."))
+	switch {
+	case errors.Is(err, ErrConfigVersionCurrent):
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_version_current", "The current server configuration cannot be deleted."))
 		return
-	}
-	if err != nil {
-		h.databaseError(w, "delete unused config version", err)
+	case errors.Is(err, ErrConfigVersionPinned):
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_version_pinned", "Unpin this configuration version before deleting it."))
+		return
+	case errors.Is(err, ErrConfigVersionDeploymentActive):
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("config_version_deployment_active", "A pending or in-progress deployment is using this configuration version."))
+		return
+	case err != nil:
+		h.databaseError(w, "delete config version", err)
 		return
 	}
 
@@ -84,9 +90,45 @@ func (h *Handler) DeleteVersion(w http.ResponseWriter, r *http.Request) {
 		ResourceType: "config_version",
 		ResourceID:   versionID,
 		Result:       audit.ResultSuccess,
-		Metadata: map[string]any{
-			"server_id": serverID,
-		},
+		Metadata:     map[string]any{"server_id": serverID},
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) PinVersion(w http.ResponseWriter, r *http.Request) {
+	h.setVersionPinned(w, r, true)
+}
+
+func (h *Handler) UnpinVersion(w http.ResponseWriter, r *http.Request) {
+	h.setVersionPinned(w, r, false)
+}
+
+func (h *Handler) setVersionPinned(w http.ResponseWriter, r *http.Request, pinned bool) {
+	serverID := r.PathValue("server_id")
+	versionID := r.PathValue("version_id")
+	version, err := h.service.SetVersionPinned(r.Context(), serverID, versionID, pinned)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeConfigVersionNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "update config version pin", err)
+		return
+	}
+
+	action := "config.version.pinned"
+	if !pinned {
+		action = "config.version.unpinned"
+	}
+	h.recordAudit(r, audit.EventInput{
+		Action:       action,
+		ResourceType: "config_version",
+		ResourceID:   version.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"server_id": serverID,
+			"version":   version.Version,
+		},
+	})
+	httpx.WriteJSON(w, http.StatusOK, version)
 }
