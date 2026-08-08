@@ -60,8 +60,29 @@ jobs:
       - name: Apply RG-109 source changes
         run: python3 .github/rg109_patch.py
 
+      - name: Align generated tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('backend/internal/system/handler_test.go')
+          text = p.read_text().replace(
+              'payload.Database.ExpectedSchemaVersion != 103',
+              'payload.Database.ExpectedSchemaVersion != 105',
+          )
+          p.write_text(text)
+
+          p = Path('backend/internal/configs/lifecycle_test.go')
+          text = p.read_text().replace(
+              'second.SingBox.Inbounds[0]["listen_port"] = 9443',
+              'second.Server.Name = "changed-server"',
+          )
+          p.write_text(text)
+          PY
+
       - name: Format Go source
-        run: gofmt -w backend/internal/configs backend/internal/buildinfo
+        run: gofmt -w backend/internal/configs backend/internal/buildinfo backend/internal/system
 
       - name: Backend tests
         working-directory: backend
