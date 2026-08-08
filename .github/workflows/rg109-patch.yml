@@ -1,0 +1,85 @@
+name: RG-109 one-shot patch
+
+on:
+  push:
+    branches:
+      - agent/rg-109-config-lifecycle-retention
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: agent/rg-109-config-lifecycle-retention
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Fix one-shot patch assumptions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/rg109_patch.py')
+          text = p.read_text()
+          text = text.replace(
+              'export function unpinConfigVersion(serverId: string, versionId: string): Promise<ConfigVersion> {',
+              'export function unpinConfigVersion(serverId: string, versionId: string): Promise<void> {',
+          )
+          text = text.replace(
+              "    'ExpectedDatabaseSchemaVersion != 103',",
+              "    'info.ExpectedDatabaseSchemaVersion != 103',",
+          )
+          text = text.replace(
+              "    'expected database schema version = %d, want 103',",
+              "    'schema version = %d, want 103',",
+          )
+          text = text.replace(
+              "    'expected database schema version = %d, want 105',",
+              "    'schema version = %d, want 105',",
+          )
+          p.write_text(text)
+          PY
+
+      - name: Apply RG-109 source changes
+        run: python3 .github/rg109_patch.py
+
+      - name: Format Go source
+        run: gofmt -w backend/internal/configs backend/internal/buildinfo
+
+      - name: Backend tests
+        working-directory: backend
+        run: go test ./...
+
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run check:i18n
+          npm run build
+
+      - name: Commit source and remove one-shot files
+        shell: bash
+        run: |
+          git rm .github/rg109_patch.py .github/workflows/rg109-patch.yml
+          git add backend frontend
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "RG-109 bound Config Deploy lifecycle retention"
+          git push origin HEAD:agent/rg-109-config-lifecycle-retention
