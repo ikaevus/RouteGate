@@ -1,0 +1,247 @@
+name: RG-109 monotonic numbering
+
+on:
+  push:
+    branches:
+      - agent/rg-109-config-lifecycle-retention
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: routegate
+          POSTGRES_PASSWORD: routegate
+          POSTGRES_DB: routegate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U routegate -d routegate"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: agent/rg-109-config-lifecycle-retention
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend/go.sum
+
+      - name: Make config version numbers monotonic
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('backend/internal/configs/repository.go')
+          text = p.read_text()
+          old = '''\tvar lockedID string
+\tif err := tx.QueryRow(ctx, `SELECT id::text FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&lockedID); err != nil {
+\t\treturn ConfigVersion{}, err
+\t}
+'''
+          new = '''\tvar nextVersion int
+\tif err := tx.QueryRow(ctx, `SELECT next_config_version FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&nextVersion); err != nil {
+\t\treturn ConfigVersion{}, err
+\t}
+'''
+          if old not in text:
+              raise SystemExit('server version lock block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''\tvar nextVersion int
+\tif err := tx.QueryRow(ctx, `
+\t\tSELECT COALESCE(MAX(version), 0) + 1
+\t\tFROM config_versions
+\t\tWHERE server_id = $1::uuid
+\t`, input.ServerID).Scan(&nextVersion); err != nil {
+\t\treturn ConfigVersion{}, err
+\t}
+
+'''
+          if old not in text:
+              raise SystemExit('MAX(version) allocator block not found')
+          text = text.replace(old, '', 1)
+
+          old = '''\tif err := tx.Commit(ctx); err != nil {
+\t\treturn ConfigVersion{}, err
+\t}
+\treturn version, nil
+}
+
+func (r *Repository) ListConfigVersions'''
+          new = '''\tif _, err := tx.Exec(ctx, `
+\t\tUPDATE servers
+\t\tSET next_config_version = $2
+\t\tWHERE id = $1::uuid
+\t`, input.ServerID, nextVersion+1); err != nil {
+\t\treturn ConfigVersion{}, err
+\t}
+
+\tif err := tx.Commit(ctx); err != nil {
+\t\treturn ConfigVersion{}, err
+\t}
+\treturn version, nil
+}
+
+func (r *Repository) ListConfigVersions'''
+          if old not in text:
+              raise SystemExit('create-version commit block not found')
+          text = text.replace(old, new, 1)
+          p.write_text(text)
+
+          p = Path('backend/migrations/000105_config_lifecycle_retention.up.sql')
+          text = p.read_text()
+          old = '''ALTER TABLE servers
+    ADD COLUMN IF NOT EXISTS active_config_version_id UUID;
+'''
+          new = '''ALTER TABLE servers
+    ADD COLUMN IF NOT EXISTS active_config_version_id UUID;
+
+ALTER TABLE servers
+    ADD COLUMN IF NOT EXISTS next_config_version INTEGER NOT NULL DEFAULT 1;
+'''
+          if old not in text:
+              raise SystemExit('servers migration block not found')
+          text = text.replace(old, new, 1)
+
+          marker = '''CREATE INDEX IF NOT EXISTS idx_config_versions_server_pinned_applied
+    ON config_versions(server_id, pinned, applied_at DESC, version DESC);
+'''
+          addition = marker + '''
+-- Version labels remain monotonic even when old snapshots are deleted.
+UPDATE servers s
+SET next_config_version = COALESCE((
+    SELECT MAX(cv.version) + 1
+    FROM config_versions cv
+    WHERE cv.server_id = s.id
+), 1);
+'''
+          if marker not in text:
+              raise SystemExit('migration index marker not found')
+          text = text.replace(marker, addition, 1)
+          p.write_text(text)
+
+          p = Path('backend/migrations/000105_config_lifecycle_retention.down.sql')
+          text = p.read_text()
+          old = '''ALTER TABLE servers
+    DROP COLUMN IF EXISTS active_config_version_id;
+'''
+          new = '''ALTER TABLE servers
+    DROP COLUMN IF EXISTS next_config_version;
+
+ALTER TABLE servers
+    DROP COLUMN IF EXISTS active_config_version_id;
+'''
+          if old not in text:
+              raise SystemExit('down migration servers block not found')
+          p.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Format and test backend
+        shell: bash
+        run: |
+          gofmt -w backend/internal/configs/repository.go
+          cd backend
+          go test ./...
+
+      - name: Apply all migrations on clean PostgreSQL
+        env:
+          PGPASSWORD: routegate
+        shell: bash
+        run: |
+          for migration in $(find backend/migrations -maxdepth 1 -name '*.up.sql' | sort); do
+            echo "Applying $migration"
+            psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U routegate -d routegate -f "$migration" >/dev/null
+          done
+
+      - name: Smoke-test RG-109 database lifecycle
+        env:
+          PGPASSWORD: routegate
+        shell: bash
+        run: |
+          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U routegate -d routegate <<'SQL'
+          DO $$
+          DECLARE
+            sid UUID;
+            current_vid UUID;
+            i INTEGER;
+            kept INTEGER;
+            terminal_jobs INTEGER;
+          BEGIN
+            INSERT INTO servers(name, status) VALUES ('rg109-smoke', 'active') RETURNING id INTO sid;
+
+            -- Simulate eight successfully applied snapshots. The trigger must keep
+            -- current + five previous unpinned applied versions.
+            FOR i IN 1..8 LOOP
+              INSERT INTO config_versions(server_id, version, config_hash, status, rendered_config)
+              VALUES (sid, i, 'hash-' || i, 'validated', '{}'::jsonb)
+              RETURNING id INTO current_vid;
+
+              UPDATE servers SET next_config_version = i + 1 WHERE id = sid;
+
+              INSERT INTO config_apply_jobs(server_id, config_version_id, action, status)
+              VALUES (sid, current_vid, 'apply', 'in_progress');
+
+              UPDATE config_apply_jobs
+              SET status = 'succeeded', completed_at = now(), updated_at = now()
+              WHERE server_id = sid AND config_version_id = current_vid;
+            END LOOP;
+
+            IF (SELECT active_config_version_id FROM servers WHERE id = sid) IS DISTINCT FROM current_vid THEN
+              RAISE EXCEPTION 'active_config_version_id was not updated';
+            END IF;
+
+            SELECT COUNT(*) INTO kept FROM config_versions WHERE server_id = sid;
+            IF kept <> 6 THEN
+              RAISE EXCEPTION 'expected current + five historical versions, got %', kept;
+            END IF;
+
+            IF (SELECT next_config_version FROM servers WHERE id = sid) <> 9 THEN
+              RAISE EXCEPTION 'next_config_version is not monotonic';
+            END IF;
+
+            -- Create enough failed terminal jobs to exercise the 100-job cap.
+            FOR i IN 1..105 LOOP
+              INSERT INTO config_apply_jobs(server_id, config_version_id, action, status)
+              VALUES (sid, current_vid, 'apply', 'in_progress');
+              UPDATE config_apply_jobs
+              SET status = 'failed', completed_at = now(), updated_at = now()
+              WHERE id = (
+                SELECT id FROM config_apply_jobs
+                WHERE server_id = sid AND config_version_id = current_vid AND status = 'in_progress'
+                ORDER BY created_at DESC LIMIT 1
+              );
+            END LOOP;
+
+            SELECT COUNT(*) INTO terminal_jobs
+            FROM config_apply_jobs
+            WHERE server_id = sid AND status IN ('succeeded', 'failed');
+            IF terminal_jobs > 100 THEN
+              RAISE EXCEPTION 'terminal job retention exceeded: %', terminal_jobs;
+            END IF;
+          END $$;
+          SQL
+
+      - name: Commit and self-remove
+        shell: bash
+        run: |
+          git rm -f .github/workflows/rg109-monotonic.yml
+          git add backend/internal/configs/repository.go backend/migrations/000105_config_lifecycle_retention.up.sql backend/migrations/000105_config_lifecycle_retention.down.sql
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "RG-109 keep config version numbers monotonic"
+          git push origin HEAD:agent/rg-109-config-lifecycle-retention
