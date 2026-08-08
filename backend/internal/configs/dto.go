@@ -23,7 +23,8 @@ type ApplyConfigResponse struct {
 }
 
 type ListConfigVersionsResponse struct {
-	Items []ConfigVersion `json:"items"`
+	Items                  []ConfigVersion `json:"items"`
+	CurrentConfigVersionID string          `json:"currentConfigVersionId,omitempty"`
 }
 
 type ListConfigApplyJobsResponse struct {

@@ -13,8 +13,10 @@ import {
   getConfigVersions,
   getServer,
   getServerRoutingProfile,
+  pinConfigVersion,
   reapplyConfigVersion,
   renderConfig,
+  unpinConfigVersion,
   updateServer,
   validateConfigVersion,
   type ConfigApplyJob,
@@ -464,6 +466,16 @@ export function ServerDetailsPage() {
     onSuccess: refreshConfigQueries,
   });
 
+  const pinConfigVersionMutation = useMutation({
+    mutationFn: (versionId: string) => pinConfigVersion(serverId ?? '', versionId),
+    onSuccess: refreshConfigQueries,
+  });
+
+  const unpinConfigVersionMutation = useMutation({
+    mutationFn: (versionId: string) => unpinConfigVersion(serverId ?? '', versionId),
+    onSuccess: refreshConfigQueries,
+  });
+
   const updateServerMutation = useMutation({
     mutationFn: () => {
       const currentServer = serverQuery.data;
@@ -575,18 +587,7 @@ export function ServerDetailsPage() {
   const configVersions = configVersionsQuery.data?.items ?? [];
   const applyJobs = applyJobsQuery.data?.items ?? [];
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
-  const latestSuccessfulApplyJob = applyJobs
-    .filter((job) => job.action === 'apply' && job.status === 'succeeded')
-    .sort((left, right) => {
-      const leftTime = new Date(left.completedAt ?? left.updatedAt).getTime();
-      const rightTime = new Date(right.completedAt ?? right.updatedAt).getTime();
-      return rightTime - leftTime;
-    })[0];
-  const currentConfigVersionId = latestSuccessfulApplyJob?.configVersionId
-    ?? configVersions
-      .filter((version) => Boolean(version.appliedAt))
-      .sort((left, right) => new Date(right.appliedAt ?? 0).getTime() - new Date(left.appliedAt ?? 0).getTime())[0]?.id
-    ?? null;
+  const currentConfigVersionId = configVersionsQuery.data?.currentConfigVersionId ?? null;
   const managerBaseUrl = getManagerBaseUrl();
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
@@ -930,6 +931,7 @@ export function ServerDetailsPage() {
         </div>
 
         <p className="muted-text">{t('serverDetails.configVersionsImmutableHint')}</p>
+        <p className="muted-text">{t('serverDetails.configRetentionHint')}</p>
 
         {configVersionsQuery.isError && (
           <div className="form-message form-message-error">{t('serverDetails.configVersionsLoadError')}</div>
@@ -939,7 +941,7 @@ export function ServerDetailsPage() {
           <div className="form-message form-message-error">{t('serverDetails.renderConfigError')}</div>
         )}
 
-        {(validateConfigMutation.isError || applyConfigMutation.isError || reapplyConfigMutation.isError || deleteConfigVersionMutation.isError) && (
+        {(validateConfigMutation.isError || applyConfigMutation.isError || reapplyConfigMutation.isError || deleteConfigVersionMutation.isError || pinConfigVersionMutation.isError || unpinConfigVersionMutation.isError) && (
           <div className="form-message form-message-error">
             {t('serverDetails.configActionError')}
           </div>
@@ -968,9 +970,15 @@ export function ServerDetailsPage() {
                 reapplyConfigMutation.isPending && reapplyConfigMutation.variables === version.id;
               const isDeleting =
                 deleteConfigVersionMutation.isPending && deleteConfigVersionMutation.variables === version.id;
-              const hasApplyHistory = applyJobs.some((job) => job.configVersionId === version.id);
-              const canDeleteConfigVersion = !version.appliedAt && !hasApplyHistory;
+              const isPinning =
+                pinConfigVersionMutation.isPending && pinConfigVersionMutation.variables === version.id;
+              const isUnpinning =
+                unpinConfigVersionMutation.isPending && unpinConfigVersionMutation.variables === version.id;
               const isCurrentConfig = currentConfigVersionId === version.id;
+              const hasActiveDeployment = applyJobs.some(
+                (job) => job.configVersionId === version.id && (job.status === 'pending' || job.status === 'in_progress'),
+              );
+              const canDeleteConfigVersion = !isCurrentConfig && !version.pinned && !hasActiveDeployment;
 
               return (
                 <div className="admin-table-row config-versions-table-row" key={version.id}>
@@ -978,6 +986,7 @@ export function ServerDetailsPage() {
                   <div className="timestamp-stack">
                     <StatusBadge status={version.status} />
                     {isCurrentConfig && <span className="badge badge-online">{t('serverDetails.currentConfig')}</span>}
+                    {version.pinned && <span className="badge">{t('serverDetails.pinnedConfig')}</span>}
                   </div>
                   <code>{shortHash(version.configHash)}</code>
                   <span>{formatDate(version.createdAt)}</span>
@@ -1013,6 +1022,26 @@ export function ServerDetailsPage() {
                           : isCurrentConfig
                             ? t('serverDetails.applyAgain')
                             : t('serverDetails.restoreVersion', { version: version.version })}
+                      </button>
+                    )}
+                    {!isCurrentConfig && (
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={isPinning || isUnpinning}
+                        onClick={() => {
+                          if (version.pinned) {
+                            unpinConfigVersionMutation.mutate(version.id);
+                          } else {
+                            pinConfigVersionMutation.mutate(version.id);
+                          }
+                        }}
+                      >
+                        {isPinning || isUnpinning
+                          ? t('serverDetails.updatingPin')
+                          : version.pinned
+                            ? t('serverDetails.unpinConfig')
+                            : t('serverDetails.pinConfig')}
                       </button>
                     )}
                     {canDeleteConfigVersion && (

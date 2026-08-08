@@ -53,12 +53,25 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	items, err := h.service.List(r.Context(), r.PathValue("server_id"))
+	serverID := r.PathValue("server_id")
+	items, err := h.service.List(r.Context(), serverID)
 	if err != nil {
 		h.databaseError(w, "list config versions", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, ListConfigVersionsResponse{Items: items})
+	currentVersionID, err := h.service.CurrentVersionID(r.Context(), serverID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "read current config version", err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, ListConfigVersionsResponse{
+		Items:                  items,
+		CurrentConfigVersionID: currentVersionID,
+	})
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {

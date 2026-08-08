@@ -38,6 +38,7 @@ type ConfigVersion struct {
 	RenderedConfig json.RawMessage `json:"-"`
 	CreatedAt      time.Time       `json:"createdAt"`
 	AppliedAt      *time.Time      `json:"appliedAt,omitempty"`
+	Pinned         bool            `json:"pinned"`
 }
 
 type ConfigApplyJob struct {

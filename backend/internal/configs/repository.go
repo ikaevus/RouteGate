@@ -182,18 +182,37 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 	}
 	defer tx.Rollback(ctx)
 
-	var lockedID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&lockedID); err != nil {
+	var nextVersion int
+	if err := tx.QueryRow(ctx, `SELECT next_config_version FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&nextVersion); err != nil {
 		return ConfigVersion{}, err
 	}
 
-	var nextVersion int
-	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(MAX(version), 0) + 1
+	latest, latestErr := scanConfigVersion(tx.QueryRow(ctx, `
+		SELECT
+			id::text,
+			server_id::text,
+			version,
+			config_hash,
+			status,
+			rendered_config,
+			created_at,
+			applied_at,
+			pinned
 		FROM config_versions
 		WHERE server_id = $1::uuid
-	`, input.ServerID).Scan(&nextVersion); err != nil {
-		return ConfigVersion{}, err
+		ORDER BY version DESC
+		LIMIT 1
+	`, input.ServerID))
+	if latestErr == nil {
+		equivalent, err := renderedConfigsEquivalentForVersioning(latest.RenderedConfig, configBytes)
+		if err != nil {
+			return ConfigVersion{}, err
+		}
+		if equivalent {
+			return latest, nil
+		}
+	} else if !errors.Is(latestErr, pgx.ErrNoRows) {
+		return ConfigVersion{}, latestErr
 	}
 
 	version, err := scanConfigVersion(tx.QueryRow(ctx, `
@@ -213,9 +232,18 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes))
 	if err != nil {
+		return ConfigVersion{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE servers
+		SET next_config_version = $2
+		WHERE id = $1::uuid
+	`, input.ServerID, nextVersion+1); err != nil {
 		return ConfigVersion{}, err
 	}
 
@@ -235,7 +263,8 @@ func (r *Repository) ListConfigVersions(ctx context.Context, serverID string) ([
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 		FROM config_versions
 		WHERE server_id = $1::uuid
 		ORDER BY version DESC
@@ -266,7 +295,8 @@ func (r *Repository) GetConfigVersion(ctx context.Context, serverID, versionID s
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 		FROM config_versions
 		WHERE server_id = $1::uuid
 		  AND id = $2::uuid
@@ -287,7 +317,8 @@ func (r *Repository) MarkConfigVersionValidated(ctx context.Context, serverID, v
 			status,
 			rendered_config,
 			created_at,
-			applied_at
+			applied_at,
+			pinned
 	`, serverID, versionID, StatusValidated))
 }
 
@@ -384,6 +415,16 @@ func (r *Repository) GetConfigApplyJob(ctx context.Context, serverID, jobID stri
 		WHERE server_id = $1::uuid
 		  AND id = $2::uuid
 	`, serverID, jobID))
+}
+
+func (r *Repository) GetCurrentConfigVersionID(ctx context.Context, serverID string) (string, error) {
+	var versionID string
+	err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(active_config_version_id::text, '')
+		FROM servers
+		WHERE id = $1::uuid
+	`, serverID).Scan(&versionID)
+	return versionID, err
 }
 
 func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
@@ -522,6 +563,7 @@ func scanConfigVersion(row scanner) (ConfigVersion, error) {
 		&renderedConfig,
 		&version.CreatedAt,
 		&version.AppliedAt,
+		&version.Pinned,
 	)
 	if err != nil {
 		return ConfigVersion{}, err
