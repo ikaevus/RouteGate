@@ -1,0 +1,88 @@
+name: RG-109 monotonic patch
+
+on:
+  push:
+    branches:
+      - agent/rg-109-config-lifecycle-retention
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/rg-109-config-lifecycle-retention
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: backend/go.sum
+
+      - name: Patch monotonic version allocation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('backend/internal/configs/repository.go')
+          text = p.read_text()
+          old = "\tvar lockedID string\n\tif err := tx.QueryRow(ctx, `SELECT id::text FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&lockedID); err != nil {\n\t\treturn ConfigVersion{}, err\n\t}\n"
+          new = "\tvar nextVersion int\n\tif err := tx.QueryRow(ctx, `SELECT next_config_version FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&nextVersion); err != nil {\n\t\treturn ConfigVersion{}, err\n\t}\n"
+          if old not in text:
+              raise SystemExit('server lock block not found')
+          text = text.replace(old, new, 1)
+
+          old = "\tvar nextVersion int\n\tif err := tx.QueryRow(ctx, `\n\t\tSELECT COALESCE(MAX(version), 0) + 1\n\t\tFROM config_versions\n\t\tWHERE server_id = $1::uuid\n\t`, input.ServerID).Scan(&nextVersion); err != nil {\n\t\treturn ConfigVersion{}, err\n\t}\n\n"
+          if old not in text:
+              raise SystemExit('MAX allocator block not found')
+          text = text.replace(old, '', 1)
+
+          marker = "\tif err := tx.Commit(ctx); err != nil {\n\t\treturn ConfigVersion{}, err\n\t}\n\treturn version, nil\n}\n\nfunc (r *Repository) ListConfigVersions"
+          replacement = "\tif _, err := tx.Exec(ctx, `\n\t\tUPDATE servers\n\t\tSET next_config_version = $2\n\t\tWHERE id = $1::uuid\n\t`, input.ServerID, nextVersion+1); err != nil {\n\t\treturn ConfigVersion{}, err\n\t}\n\n\tif err := tx.Commit(ctx); err != nil {\n\t\treturn ConfigVersion{}, err\n\t}\n\treturn version, nil\n}\n\nfunc (r *Repository) ListConfigVersions"
+          if marker not in text:
+              raise SystemExit('create commit block not found')
+          p.write_text(text.replace(marker, replacement, 1))
+
+          p = Path('backend/migrations/000105_config_lifecycle_retention.up.sql')
+          text = p.read_text()
+          marker = "ALTER TABLE servers\n    ADD COLUMN IF NOT EXISTS active_config_version_id UUID;\n"
+          replacement = marker + "\nALTER TABLE servers\n    ADD COLUMN IF NOT EXISTS next_config_version INTEGER NOT NULL DEFAULT 1;\n"
+          if marker not in text:
+              raise SystemExit('up migration server block not found')
+          text = text.replace(marker, replacement, 1)
+          marker = "CREATE INDEX IF NOT EXISTS idx_config_versions_server_pinned_applied\n    ON config_versions(server_id, pinned, applied_at DESC, version DESC);\n"
+          replacement = marker + "\n-- Keep version labels monotonic even when snapshots are deleted.\nUPDATE servers s\nSET next_config_version = COALESCE((\n    SELECT MAX(cv.version) + 1\n    FROM config_versions cv\n    WHERE cv.server_id = s.id\n), 1);\n"
+          if marker not in text:
+              raise SystemExit('up migration index block not found')
+          p.write_text(text.replace(marker, replacement, 1))
+
+          p = Path('backend/migrations/000105_config_lifecycle_retention.down.sql')
+          text = p.read_text()
+          marker = "ALTER TABLE servers\n    DROP COLUMN IF EXISTS active_config_version_id;\n"
+          replacement = "ALTER TABLE servers\n    DROP COLUMN IF EXISTS next_config_version;\n\n" + marker
+          if marker not in text:
+              raise SystemExit('down migration server block not found')
+          p.write_text(text.replace(marker, replacement, 1))
+          PY
+
+      - name: Test backend
+        shell: bash
+        run: |
+          gofmt -w backend/internal/configs/repository.go
+          cd backend
+          go test ./...
+
+      - name: Commit source
+        shell: bash
+        run: |
+          git rm -f .github/workflows/rg109-monotonic-patch.yml
+          git add backend/internal/configs/repository.go backend/migrations/000105_config_lifecycle_retention.up.sql backend/migrations/000105_config_lifecycle_retention.down.sql
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "RG-109 keep config version numbers monotonic"
+          git push origin HEAD:agent/rg-109-config-lifecycle-retention
