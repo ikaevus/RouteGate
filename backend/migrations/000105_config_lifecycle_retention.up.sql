@@ -1,11 +1,22 @@
 ALTER TABLE servers
     ADD COLUMN IF NOT EXISTS active_config_version_id UUID;
 
+ALTER TABLE servers
+    ADD COLUMN IF NOT EXISTS next_config_version INTEGER NOT NULL DEFAULT 1;
+
 ALTER TABLE config_versions
     ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_config_versions_server_pinned_applied
     ON config_versions(server_id, pinned, applied_at DESC, version DESC);
+
+-- Keep version labels monotonic even when snapshots are deleted.
+UPDATE servers s
+SET next_config_version = COALESCE((
+    SELECT MAX(cv.version) + 1
+    FROM config_versions cv
+    WHERE cv.server_id = s.id
+), 1);
 
 -- Backfill explicit current state from the latest Agent-confirmed successful apply.
 WITH latest_success AS (

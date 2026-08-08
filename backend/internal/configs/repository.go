@@ -182,8 +182,8 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 	}
 	defer tx.Rollback(ctx)
 
-	var lockedID string
-	if err := tx.QueryRow(ctx, `SELECT id::text FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&lockedID); err != nil {
+	var nextVersion int
+	if err := tx.QueryRow(ctx, `SELECT next_config_version FROM servers WHERE id = $1::uuid FOR UPDATE`, input.ServerID).Scan(&nextVersion); err != nil {
 		return ConfigVersion{}, err
 	}
 
@@ -215,15 +215,6 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 		return ConfigVersion{}, latestErr
 	}
 
-	var nextVersion int
-	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(MAX(version), 0) + 1
-		FROM config_versions
-		WHERE server_id = $1::uuid
-	`, input.ServerID).Scan(&nextVersion); err != nil {
-		return ConfigVersion{}, err
-	}
-
 	version, err := scanConfigVersion(tx.QueryRow(ctx, `
 		INSERT INTO config_versions (
 			server_id,
@@ -245,6 +236,14 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			pinned
 	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes))
 	if err != nil {
+		return ConfigVersion{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE servers
+		SET next_config_version = $2
+		WHERE id = $1::uuid
+	`, input.ServerID, nextVersion+1); err != nil {
 		return ConfigVersion{}, err
 	}
 

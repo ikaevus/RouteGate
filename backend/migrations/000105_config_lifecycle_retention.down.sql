@@ -9,6 +9,9 @@ ALTER TABLE config_versions
     DROP COLUMN IF EXISTS pinned;
 
 ALTER TABLE servers
+    DROP COLUMN IF EXISTS next_config_version;
+
+ALTER TABLE servers
     DROP COLUMN IF EXISTS active_config_version_id;
 
 -- Restore the pre-RG-109 invariant from migration 000102.
