@@ -379,7 +379,6 @@ func (r *Repository) ListConfigApplyJobs(ctx context.Context, serverID string) (
 		FROM config_apply_jobs
 		WHERE server_id = $1::uuid
 		ORDER BY created_at DESC
-		LIMIT 100
 	`, serverID)
 	if err != nil {
 		return nil, err
