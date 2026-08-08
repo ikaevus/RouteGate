@@ -261,7 +261,6 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
     { to: '/portal', label: t('navigation.userPortal'), icon: 'portal' as const },
   ];
   const secondaryNavigationItems = [
-    { label: t('navigation.security'), icon: 'security' as const },
     { label: t('navigation.licensing'), icon: 'licensing' as const },
     { label: t('navigation.appliance'), icon: 'appliance' as const },
   ];
@@ -292,6 +291,13 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
         </nav>
 
         <nav className="nav routegate-nav routegate-nav-secondary" aria-label={t('navigation.secondary')}>
+          <NavLink
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            to="/settings/security"
+          >
+            <span className="nav-icon" aria-hidden="true"><Icon name="security" /></span>
+            <span>{t('navigation.security')}</span>
+          </NavLink>
           {secondaryNavigationItems.map((item) => (
             <span className="nav-link nav-link-muted" key={item.label}>
               <span className="nav-icon" aria-hidden="true"><Icon name={item.icon} /></span>

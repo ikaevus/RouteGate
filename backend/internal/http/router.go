@@ -59,6 +59,10 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/auth/change-password", authn(stdhttp.HandlerFunc(setupHandler.ChangePassword)))
 	mux.Handle("POST /api/v1/auth/login", stdhttp.HandlerFunc(authHandler.Login))
 	mux.Handle("POST /api/v1/auth/logout", authn(stdhttp.HandlerFunc(authHandler.Logout)))
+	mux.Handle("GET /api/v1/auth/sessions", authn(stdhttp.HandlerFunc(authHandler.ListSecuritySessions)))
+	mux.Handle("DELETE /api/v1/auth/sessions/{session_id}", authn(stdhttp.HandlerFunc(authHandler.RevokeSecuritySession)))
+	mux.Handle("POST /api/v1/auth/sessions/revoke-others", authn(stdhttp.HandlerFunc(authHandler.RevokeOtherSecuritySessions)))
+	mux.Handle("GET /api/v1/auth/security-events", authn(stdhttp.HandlerFunc(authHandler.ListSecurityEvents)))
 
 	mux.Handle("GET /api/portal/me", portalAuth(portalHandler.Me))
 	mux.Handle("GET /api/portal/dashboard", portalAuth(portalHandler.Dashboard))
