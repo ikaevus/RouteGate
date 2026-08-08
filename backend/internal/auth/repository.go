@@ -46,6 +46,7 @@ var BuiltInPermissions = []string{
 	"configs:render",
 	"configs:validate",
 	"configs:apply",
+	"configs:delete",
 	"configs:rollback",
 
 	"routing_profiles:read",

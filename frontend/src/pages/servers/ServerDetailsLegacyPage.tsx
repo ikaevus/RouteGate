@@ -7,11 +7,13 @@ import {
   assignServerRoutingProfile,
   clearServerRoutingProfile,
   createServerRegistrationToken,
+  deleteConfigVersion,
   deleteServer,
   getConfigApplyJobs,
   getConfigVersions,
   getServer,
   getServerRoutingProfile,
+  reapplyConfigVersion,
   renderConfig,
   updateServer,
   validateConfigVersion,
@@ -452,6 +454,16 @@ export function ServerDetailsPage() {
     onSuccess: refreshConfigQueries,
   });
 
+  const reapplyConfigMutation = useMutation({
+    mutationFn: (versionId: string) => reapplyConfigVersion(serverId ?? '', versionId),
+    onSuccess: refreshConfigQueries,
+  });
+
+  const deleteConfigVersionMutation = useMutation({
+    mutationFn: (versionId: string) => deleteConfigVersion(serverId ?? '', versionId),
+    onSuccess: refreshConfigQueries,
+  });
+
   const updateServerMutation = useMutation({
     mutationFn: () => {
       const currentServer = serverQuery.data;
@@ -563,6 +575,18 @@ export function ServerDetailsPage() {
   const configVersions = configVersionsQuery.data?.items ?? [];
   const applyJobs = applyJobsQuery.data?.items ?? [];
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
+  const latestSuccessfulApplyJob = applyJobs
+    .filter((job) => job.action === 'apply' && job.status === 'succeeded')
+    .sort((left, right) => {
+      const leftTime = new Date(left.completedAt ?? left.updatedAt).getTime();
+      const rightTime = new Date(right.completedAt ?? right.updatedAt).getTime();
+      return rightTime - leftTime;
+    })[0];
+  const currentConfigVersionId = latestSuccessfulApplyJob?.configVersionId
+    ?? configVersions
+      .filter((version) => Boolean(version.appliedAt))
+      .sort((left, right) => new Date(right.appliedAt ?? 0).getTime() - new Date(left.appliedAt ?? 0).getTime())[0]?.id
+    ?? null;
   const managerBaseUrl = getManagerBaseUrl();
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
@@ -905,6 +929,8 @@ export function ServerDetailsPage() {
           </button>
         </div>
 
+        <p className="muted-text">{t('serverDetails.configVersionsImmutableHint')}</p>
+
         {configVersionsQuery.isError && (
           <div className="form-message form-message-error">{t('serverDetails.configVersionsLoadError')}</div>
         )}
@@ -913,7 +939,7 @@ export function ServerDetailsPage() {
           <div className="form-message form-message-error">{t('serverDetails.renderConfigError')}</div>
         )}
 
-        {(validateConfigMutation.isError || applyConfigMutation.isError) && (
+        {(validateConfigMutation.isError || applyConfigMutation.isError || reapplyConfigMutation.isError || deleteConfigVersionMutation.isError) && (
           <div className="form-message form-message-error">
             {t('serverDetails.configActionError')}
           </div>
@@ -938,11 +964,21 @@ export function ServerDetailsPage() {
                 validateConfigMutation.isPending && validateConfigMutation.variables === version.id;
               const isApplying =
                 applyConfigMutation.isPending && applyConfigMutation.variables === version.id;
+              const isReapplying =
+                reapplyConfigMutation.isPending && reapplyConfigMutation.variables === version.id;
+              const isDeleting =
+                deleteConfigVersionMutation.isPending && deleteConfigVersionMutation.variables === version.id;
+              const hasApplyHistory = applyJobs.some((job) => job.configVersionId === version.id);
+              const canDeleteConfigVersion = !version.appliedAt && !hasApplyHistory;
+              const isCurrentConfig = currentConfigVersionId === version.id;
 
               return (
                 <div className="admin-table-row config-versions-table-row" key={version.id}>
                   <strong>v{version.version}</strong>
-                  <StatusBadge status={version.status} />
+                  <div className="timestamp-stack">
+                    <StatusBadge status={version.status} />
+                    {isCurrentConfig && <span className="badge badge-online">{t('serverDetails.currentConfig')}</span>}
+                  </div>
                   <code>{shortHash(version.configHash)}</code>
                   <span>{formatDate(version.createdAt)}</span>
                   <span>{formatDate(version.appliedAt)}</span>
@@ -950,19 +986,49 @@ export function ServerDetailsPage() {
                     <button
                       className="small-button"
                       type="button"
-                      disabled={isValidating}
+                      disabled={Boolean(version.appliedAt) || isValidating}
                       onClick={() => validateConfigMutation.mutate(version.id)}
                     >
                       {isValidating ? t('serverDetails.validating') : t('serverDetails.validate')}
                     </button>
-                    <button
-                      className="small-button"
-                      type="button"
-                      disabled={version.status !== 'validated' || isApplying}
-                      onClick={() => applyConfigMutation.mutate(version.id)}
-                    >
-                      {isApplying ? t('serverDetails.applying') : t('serverDetails.apply')}
-                    </button>
+                    {!version.appliedAt && (
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={version.status !== 'validated' || isApplying}
+                        onClick={() => applyConfigMutation.mutate(version.id)}
+                      >
+                        {isApplying ? t('serverDetails.applying') : t('serverDetails.apply')}
+                      </button>
+                    )}
+                    {version.appliedAt && (
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={isReapplying}
+                        onClick={() => reapplyConfigMutation.mutate(version.id)}
+                      >
+                        {isReapplying
+                          ? t('serverDetails.reapplying')
+                          : isCurrentConfig
+                            ? t('serverDetails.applyAgain')
+                            : t('serverDetails.restoreVersion', { version: version.version })}
+                      </button>
+                    )}
+                    {canDeleteConfigVersion && (
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={isDeleting}
+                        onClick={() => {
+                          if (window.confirm(t('serverDetails.deleteConfigConfirm', { version: version.version }))) {
+                            deleteConfigVersionMutation.mutate(version.id);
+                          }
+                        }}
+                      >
+                        {isDeleting ? t('serverDetails.deletingConfig') : t('serverDetails.deleteConfig')}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -978,6 +1044,8 @@ export function ServerDetailsPage() {
             <p className="panel-subtitle">{t('serverDetails.applyJobsSubtitle')}</p>
           </div>
         </div>
+
+        <p className="muted-text">{t('serverDetails.deploymentHistoryImmutableHint')}</p>
 
         {applyJobsQuery.isError && (
           <div className="form-message form-message-error">{t('serverDetails.applyJobsLoadError')}</div>

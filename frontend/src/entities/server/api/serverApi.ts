@@ -268,6 +268,21 @@ export function applyConfigVersion(
   );
 }
 
+export function reapplyConfigVersion(
+  serverId: string,
+  versionId: string,
+): Promise<ApplyConfigResponse> {
+  return apiPost<undefined, ApplyConfigResponse>(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}/reapply`,
+  );
+}
+
+export function deleteConfigVersion(serverId: string, versionId: string): Promise<void> {
+  return apiDelete(
+    `/api/v1/servers/${encodeURIComponent(serverId)}/config/versions/${encodeURIComponent(versionId)}`,
+  );
+}
+
 export function getConfigApplyJobs(serverId: string): Promise<ListConfigApplyJobsResponse> {
   return apiGet<ListConfigApplyJobsResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/config/apply-jobs`,

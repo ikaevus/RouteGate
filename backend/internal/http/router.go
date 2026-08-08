@@ -95,6 +95,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions/{version_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.Get))))
 	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/validate", authn(auth.RequirePermission("configs:validate")(stdhttp.HandlerFunc(configsHandler.Validate))))
 	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/apply", authn(auth.RequirePermission("configs:apply")(stdhttp.HandlerFunc(configsHandler.Apply))))
+	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/reapply", authn(auth.RequirePermission("configs:rollback")(stdhttp.HandlerFunc(configsHandler.Reapply))))
+	mux.Handle("DELETE /api/v1/servers/{server_id}/config/versions/{version_id}", authn(auth.RequirePermission("configs:delete")(stdhttp.HandlerFunc(configsHandler.DeleteVersion))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.ListApplyJobs))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs/{job_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.GetApplyJob))))
 
