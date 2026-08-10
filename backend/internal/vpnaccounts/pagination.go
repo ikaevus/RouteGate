@@ -11,6 +11,7 @@ import (
 const (
 	defaultAccountPageSize = 50
 	maxAccountPageSize     = 100
+	nilSearchUUID          = "00000000-0000-0000-0000-000000000000"
 )
 
 var uuidSearchPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -37,7 +38,7 @@ func parseAccountListFilter(r *http.Request) (AccountFilter, int, int, error) {
 	}
 
 	search := strings.TrimSpace(query.Get("search"))
-	searchUUID := ""
+	searchUUID := nilSearchUUID
 	if uuidSearchPattern.MatchString(search) {
 		searchUUID = search
 	}
