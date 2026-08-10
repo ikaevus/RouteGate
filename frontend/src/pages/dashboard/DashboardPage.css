@@ -1,3 +1,65 @@
+.node-distribution-content {
+  display: grid;
+  gap: 12px;
+}
+
+.node-distribution-list {
+  display: grid;
+  gap: 9px;
+}
+
+.node-distribution-row {
+  display: grid;
+  gap: 5px;
+}
+
+.node-distribution-label {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.node-distribution-label span {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-distribution-label strong {
+  color: var(--rg-text-primary);
+  font-size: 11px;
+}
+
+.node-distribution-track {
+  background: rgba(148, 163, 184, 0.1);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.node-distribution-track span {
+  background: linear-gradient(90deg, var(--rg-primary), rgba(6, 182, 212, 0.72));
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.node-distribution-total {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  padding-top: 10px;
+}
+
+.node-distribution-total strong {
+  color: var(--rg-text-primary);
+}
+
 .traffic-overview-content {
   display: grid;
   gap: 12px;
