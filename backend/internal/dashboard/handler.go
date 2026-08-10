@@ -70,7 +70,7 @@ func (h *Handler) Traffic(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Nodes(w http.ResponseWriter, r *http.Request) {
-	distribution, err := h.nodes.GetNodeDistribution(r.Context(), nodeLocationLimit)
+	distribution, err := h.nodes.GetNodeDistribution(r.Context(), nodeLocationLimit, dashboardServerLimit)
 	if err != nil {
 		h.writeDatabaseError(w, err, "Failed to load dashboard node distribution.")
 		return
