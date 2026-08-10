@@ -22,16 +22,17 @@ const (
 )
 
 type Account struct {
-	ID          string     `json:"id"`
-	DisplayName string     `json:"displayName"`
-	Email       string     `json:"email,omitempty"`
-	Status      string     `json:"status"`
-	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
-	MaxDevices  *int       `json:"maxDevices,omitempty"`
-	ServerID    string     `json:"serverId,omitempty"`
-	VLESSUUID   string     `json:"vlessUuid,omitempty"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID              string     `json:"id"`
+	DisplayName     string     `json:"displayName"`
+	Email           string     `json:"email,omitempty"`
+	Status          string     `json:"status"`
+	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
+	MaxDevices      *int       `json:"maxDevices,omitempty"`
+	ServerID        string     `json:"serverId,omitempty"`
+	VLESSUUID       string     `json:"vlessUuid,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	ConfigUpdatedAt time.Time  `json:"configUpdatedAt"`
 }
 
 type SubscriptionToken struct {
@@ -131,11 +132,12 @@ type CreateSubscriptionTokenInput struct {
 }
 
 type AccountFilter struct {
-	Status   string
-	ServerID string
-	Search   string
-	Limit    int
-	Offset   int
+	Status     string
+	ServerID   string
+	Search     string
+	SearchUUID string
+	Limit      int
+	Offset     int
 }
 
 func ValidStatus(status string) bool {
