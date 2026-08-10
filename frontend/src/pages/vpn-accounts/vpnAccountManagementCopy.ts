@@ -63,6 +63,7 @@ export function getVpnAccountManagementCopy() {
       statusExpired: 'Истёк',
       statusRevoked: 'Отозван',
       configNotice: 'Изменения затронули конфигурацию VPN-сервера и требуют нового развёртывания.',
+      unassignedConfigNotice: 'Аккаунт не назначен серверу; изменения доступа не требуют развёртывания конфигурации.',
       openDeploy: 'Открыть развёртывание конфигов →',
     } as const;
   }
@@ -128,6 +129,7 @@ export function getVpnAccountManagementCopy() {
     statusExpired: 'Expired',
     statusRevoked: 'Revoked',
     configNotice: 'The changes affected a VPN server configuration and require a new deployment.',
+    unassignedConfigNotice: 'This account is not assigned to a server; access changes do not require a configuration deployment.',
     openDeploy: 'Open Config Deploy →',
   } as const;
 }
