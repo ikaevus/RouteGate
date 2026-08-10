@@ -52,7 +52,7 @@ func TestHeartbeatSendsVersionProtocolAndRuntimeMetrics(t *testing.T) {
 		var request struct {
 			AgentVersion    string                     `json:"agentVersion"`
 			ProtocolVersion int                        `json:"protocolVersion"`
-			RuntimeMetrics  *systeminfo.RuntimeMetrics `json:"runtimeMetrics"`
+			Capabilities    map[string]json.RawMessage `json:"capabilities"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
@@ -60,8 +60,12 @@ func TestHeartbeatSendsVersionProtocolAndRuntimeMetrics(t *testing.T) {
 		if request.AgentVersion != "dev" || request.ProtocolVersion != 1 {
 			t.Fatalf("unexpected version payload: %+v", request)
 		}
-		if request.RuntimeMetrics == nil || request.RuntimeMetrics.Load1 != 0.42 || request.RuntimeMetrics.LogicalCPUs != 4 || !request.RuntimeMetrics.CollectedAt.Equal(collectedAt) {
-			t.Fatalf("unexpected runtime metrics: %+v", request.RuntimeMetrics)
+		var metrics systeminfo.RuntimeMetrics
+		if err := json.Unmarshal(request.Capabilities["runtimeMetrics"], &metrics); err != nil {
+			t.Fatalf("decode runtime metrics: %v", err)
+		}
+		if metrics.Load1 != 0.42 || metrics.LogicalCPUs != 4 || !metrics.CollectedAt.Equal(collectedAt) {
+			t.Fatalf("unexpected runtime metrics: %+v", metrics)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"agentId":"agent-1","serverId":"server-1","serverStatus":"active"}`))
@@ -72,6 +76,7 @@ func TestHeartbeatSendsVersionProtocolAndRuntimeMetrics(t *testing.T) {
 	_, err := client.Heartbeat(context.Background(), "rg_agent_secret", systeminfo.Info{
 		AgentVersion:    "dev",
 		ProtocolVersion: 1,
+		Capabilities:    map[string]any{"systemctl": true},
 		RuntimeMetrics: &systeminfo.RuntimeMetrics{
 			Load1: 0.42, Load5: 0.25, Load15: 0.17, LogicalCPUs: 4, CollectedAt: collectedAt,
 		},
