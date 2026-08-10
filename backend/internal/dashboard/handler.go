@@ -13,12 +13,14 @@ import (
 const (
 	recentActivityLimit = 5
 	dashboardServerLimit = 5
+	nodeLocationLimit    = 8
 )
 
 type Handler struct {
 	logger   *slog.Logger
 	activity activityReader
 	traffic  trafficReader
+	nodes    nodeReader
 	now      func() time.Time
 }
 
@@ -33,6 +35,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 		logger:   logger,
 		activity: repository,
 		traffic:  repository,
+		nodes:    repository,
 		now:      time.Now,
 	}
 }
@@ -64,6 +67,16 @@ func (h *Handler) Traffic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, snapshot)
+}
+
+func (h *Handler) Nodes(w http.ResponseWriter, r *http.Request) {
+	distribution, err := h.nodes.GetNodeDistribution(r.Context(), nodeLocationLimit)
+	if err != nil {
+		h.writeDatabaseError(w, err, "Failed to load dashboard node distribution.")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, distribution)
 }
 
 func (h *Handler) writeDatabaseError(w http.ResponseWriter, err error, message string) {
