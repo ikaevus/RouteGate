@@ -4,6 +4,10 @@ import type { VpnAccount } from './vpnAccountApi';
 export type VpnAccountStatus = 'created' | 'active' | 'suspended' | 'expired' | 'revoked';
 export type BulkVpnAccountAction = 'activate' | 'suspend' | 'revoke' | 'delete' | 'assign_server';
 
+export interface ManagedVpnAccount extends VpnAccount {
+  configUpdatedAt?: string;
+}
+
 export interface VpnAccountListParams {
   search?: string;
   status?: string;
@@ -13,7 +17,7 @@ export interface VpnAccountListParams {
 }
 
 export interface PagedVpnAccountsResponse {
-  items: VpnAccount[];
+  items: ManagedVpnAccount[];
   total: number;
   page: number;
   pageSize: number;
@@ -65,15 +69,15 @@ export function getPagedVpnAccounts(params: VpnAccountListParams): Promise<Paged
   return apiGet<PagedVpnAccountsResponse>(`/api/v1/vpn-accounts?${listQuery(params)}`);
 }
 
-export function getVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
-  return apiGet<VpnAccount>(`/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}`);
+export function getVpnAccount(vpnAccountId: string): Promise<ManagedVpnAccount> {
+  return apiGet<ManagedVpnAccount>(`/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}`);
 }
 
 export function updateVpnAccount(
   vpnAccountId: string,
   request: UpdateVpnAccountRequest,
-): Promise<VpnAccount> {
-  return apiPatch<UpdateVpnAccountRequest, VpnAccount>(
+): Promise<ManagedVpnAccount> {
+  return apiPatch<UpdateVpnAccountRequest, ManagedVpnAccount>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}`,
     request,
   );
@@ -83,20 +87,20 @@ export function deleteVpnAccount(vpnAccountId: string): Promise<void> {
   return apiDelete(`/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}`);
 }
 
-export function activateVpnAccountManagement(vpnAccountId: string): Promise<VpnAccount> {
-  return apiPost<undefined, VpnAccount>(
+export function activateVpnAccountManagement(vpnAccountId: string): Promise<ManagedVpnAccount> {
+  return apiPost<undefined, ManagedVpnAccount>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/activate`,
   );
 }
 
-export function suspendVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
-  return apiPost<undefined, VpnAccount>(
+export function suspendVpnAccount(vpnAccountId: string): Promise<ManagedVpnAccount> {
+  return apiPost<undefined, ManagedVpnAccount>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/suspend`,
   );
 }
 
-export function revokeVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
-  return apiPost<undefined, VpnAccount>(
+export function revokeVpnAccount(vpnAccountId: string): Promise<ManagedVpnAccount> {
+  return apiPost<undefined, ManagedVpnAccount>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/revoke`,
   );
 }
