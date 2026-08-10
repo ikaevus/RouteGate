@@ -117,12 +117,14 @@ type CreateAccountInput struct {
 }
 
 type UpdateAccountInput struct {
-	DisplayName *string
-	Email       *string
-	Status      *string
-	ExpiresAt   *time.Time
-	MaxDevices  *int
-	ServerID    *string
+	DisplayName     *string
+	Email           *string
+	Status          *string
+	ExpiresAt       *time.Time
+	ClearExpiresAt  bool
+	MaxDevices      *int
+	ClearMaxDevices bool
+	ServerID        *string
 }
 
 type CreateSubscriptionTokenInput struct {
