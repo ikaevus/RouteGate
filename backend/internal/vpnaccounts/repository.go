@@ -40,19 +40,17 @@ func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput
 			COALESCE(server_id::text, ''),
 			COALESCE(vless_uuid::text, ''),
 			created_at,
-			updated_at
+			updated_at,
+			config_updated_at
 	`, input.DisplayName, input.Email, status, input.ExpiresAt, input.MaxDevices, input.ServerID))
 }
 
 func (r *Repository) ListAccounts(ctx context.Context, filter AccountFilter) ([]Account, error) {
-	rows, err := r.pool.Query(ctx, accountSelect+`
-		WHERE ($1 = '' OR status = $1)
-		  AND ($2 = '' OR server_id = $2::uuid)
-		  AND ($3 = '' OR display_name ILIKE '%' || $3 || '%' OR COALESCE(email, '') ILIKE '%' || $3 || '%')
-		ORDER BY created_at DESC
-		LIMIT CASE WHEN $4 > 0 THEN $4 ELSE 100 END
-		OFFSET CASE WHEN $5 > 0 THEN $5 ELSE 0 END
-	`, filter.Status, filter.ServerID, filter.Search, filter.Limit, filter.Offset)
+	rows, err := r.pool.Query(ctx, accountSelect+accountFilterSQL+`
+		ORDER BY created_at DESC, id DESC
+		LIMIT CASE WHEN $5 > 0 THEN $5 ELSE 50 END
+		OFFSET CASE WHEN $6 > 0 THEN $6 ELSE 0 END
+	`, filter.Status, filter.ServerID, filter.Search, filter.SearchUUID, filter.Limit, filter.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +65,15 @@ func (r *Repository) ListAccounts(ctx context.Context, filter AccountFilter) ([]
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *Repository) CountAccounts(ctx context.Context, filter AccountFilter) (int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM vpn_accounts
+	`+accountFilterSQL, filter.Status, filter.ServerID, filter.Search, filter.SearchUUID).Scan(&total)
+	return total, err
 }
 
 func (r *Repository) GetAccountByID(ctx context.Context, id string) (Account, error) {
@@ -84,7 +91,11 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 			expires_at = CASE WHEN $8 THEN $9 ELSE expires_at END,
 			max_devices = CASE WHEN $10 THEN $11 ELSE max_devices END,
 			server_id = CASE WHEN $12 THEN NULLIF($13, '')::uuid ELSE server_id END,
-			updated_at = now()
+			updated_at = now(),
+			config_updated_at = CASE
+				WHEN $2 OR $6 OR $12 THEN now()
+				ELSE config_updated_at
+			END
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
@@ -96,7 +107,8 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 			COALESCE(server_id::text, ''),
 			COALESCE(vless_uuid::text, ''),
 			created_at,
-			updated_at
+			updated_at,
+			config_updated_at
 	`,
 		id,
 		input.DisplayName != nil, stringValue(input.DisplayName),
@@ -111,7 +123,7 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 func (r *Repository) SetAccountStatus(ctx context.Context, id string, status string) (Account, error) {
 	return scanAccount(r.pool.QueryRow(ctx, `
 		UPDATE vpn_accounts
-		SET status = $2, updated_at = now()
+		SET status = $2, updated_at = now(), config_updated_at = now()
 		WHERE id = $1::uuid
 		RETURNING
 			id::text,
@@ -123,7 +135,8 @@ func (r *Repository) SetAccountStatus(ctx context.Context, id string, status str
 			COALESCE(server_id::text, ''),
 			COALESCE(vless_uuid::text, ''),
 			created_at,
-			updated_at
+			updated_at,
+			config_updated_at
 	`, id, status))
 }
 
@@ -221,6 +234,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(a.vless_uuid::text, ''),
 			a.created_at,
 			a.updated_at,
+			a.config_updated_at,
 			s.id::text,
 			COALESCE(s.name, ''),
 			COALESCE(s.hostname, ''),
@@ -333,6 +347,17 @@ func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID stri
 	return rules, rows.Err()
 }
 
+const accountFilterSQL = `
+		WHERE ($1 = '' OR status = $1)
+		  AND ($2 = '' OR server_id = $2::uuid)
+		  AND (
+			$3 = ''
+			OR display_name ILIKE '%' || $3 || '%'
+			OR email ILIKE '%' || $3 || '%'
+			OR ($4 <> '' AND (id = $4::uuid OR vless_uuid = $4::uuid))
+		  )
+`
+
 const accountSelect = `
 	SELECT
 		id::text,
@@ -344,7 +369,8 @@ const accountSelect = `
 		COALESCE(server_id::text, ''),
 		COALESCE(vless_uuid::text, ''),
 		created_at,
-		updated_at
+		updated_at,
+		config_updated_at
 	FROM vpn_accounts`
 
 const subscriptionTokenSelect = `
@@ -379,6 +405,7 @@ func scanAccount(row scanner) (Account, error) {
 		&account.VLESSUUID,
 		&account.CreatedAt,
 		&account.UpdatedAt,
+		&account.ConfigUpdatedAt,
 	)
 	if err != nil {
 		return Account{}, err
@@ -441,6 +468,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&profile.Account.VLESSUUID,
 		&profile.Account.CreatedAt,
 		&profile.Account.UpdatedAt,
+		&profile.Account.ConfigUpdatedAt,
 		&serverID,
 		&serverName,
 		&serverHostname,
