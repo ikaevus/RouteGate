@@ -94,7 +94,6 @@ func (r *Repository) ListRecentAuditEvents(ctx context.Context, limit int) ([]Re
 			COALESCE(
 				NULLIF(u.display_name, ''),
 				NULLIF(u.username, ''),
-				NULLIF(u.email, ''),
 				e.actor_type
 			) AS actor,
 			e.actor_type,
