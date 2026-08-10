@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { getServers } from '../../entities/server/api/serverApi';
+import { getServers, type Server } from '../../entities/server/api/serverApi';
 import {
   getPagedVpnAccounts,
   runBulkVpnAccountAction,
@@ -16,6 +16,38 @@ interface BulkRunInput {
   action: BulkVpnAccountAction;
   targetServerId?: string;
 }
+
+const cssCountryFlags = new Set(['de', 'nl', 'sg', 'us']);
+const hostnameCountryHints = new Set([
+  'at', 'au', 'ca', 'ch', 'cz', 'de', 'dk', 'ee', 'fi', 'fr', 'gb', 'jp', 'kr',
+  'kz', 'lt', 'lv', 'nl', 'no', 'pl', 'ru', 'se', 'sg', 'us',
+]);
+
+const countryNameCodes: Record<string, string> = {
+  australia: 'au',
+  austria: 'at',
+  canada: 'ca',
+  czechia: 'cz',
+  denmark: 'dk',
+  estonia: 'ee',
+  finland: 'fi',
+  france: 'fr',
+  germany: 'de',
+  japan: 'jp',
+  kazakhstan: 'kz',
+  latvia: 'lv',
+  lithuania: 'lt',
+  netherlands: 'nl',
+  norway: 'no',
+  poland: 'pl',
+  russia: 'ru',
+  singapore: 'sg',
+  sweden: 'se',
+  switzerland: 'ch',
+  'united kingdom': 'gb',
+  'united states': 'us',
+  usa: 'us',
+};
 
 function positiveNumber(value: string | null, fallback: number): number {
   const parsed = Number(value);
@@ -34,6 +66,35 @@ function pageNumbers(page: number, totalPages: number): number[] {
 function displayServerName(serverId: string | null | undefined, servers: Array<{ id: string; name: string }>): string {
   if (!serverId) return t('common.notAvailable');
   return servers.find((server) => server.id === serverId)?.name || serverId;
+}
+
+function serverCountryCode(server?: Pick<Server, 'location' | 'name'> | null): string | null {
+  const location = server?.location?.trim() ?? '';
+  if (location) {
+    const explicitCode = location.match(/(?:^|,\s*)([A-Za-z]{2})$/)?.[1];
+    if (explicitCode) return explicitCode.toLowerCase();
+
+    const normalizedLocation = location.toLowerCase();
+    const namedCountry = Object.entries(countryNameCodes).find(([name]) => normalizedLocation.includes(name));
+    if (namedCountry) return namedCountry[1];
+  }
+
+  const nameHint = server?.name?.trim().toLowerCase().match(/^([a-z]{2})[.-]/)?.[1];
+  return nameHint && hostnameCountryHints.has(nameHint) ? nameHint : null;
+}
+
+function countryFlagEmoji(countryCode: string): string {
+  return countryCode
+    .toUpperCase()
+    .split('')
+    .map((character) => String.fromCodePoint(127397 + character.charCodeAt(0)))
+    .join('');
+}
+
+function serverOptionLabel(server: Server): string {
+  const name = server.name || server.id;
+  const countryCode = serverCountryCode(server);
+  return countryCode ? `${countryFlagEmoji(countryCode)} ${name}` : name;
 }
 
 export function VpnAccountManagementList({ onCreate }: { onCreate: () => void }) {
@@ -221,7 +282,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
           </select>
           <select value={serverId} onChange={(event) => updateListParams({ server: event.target.value })}>
             <option value="">{copy.allServers}</option>
-            {servers.map((server) => <option key={server.id} value={server.id}>{server.name || server.id}</option>)}
+            {servers.map((server) => <option key={server.id} value={server.id}>{serverOptionLabel(server)}</option>)}
           </select>
         </div>
       </form>
@@ -244,7 +305,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
             <div className="vpn-account-bulk-assign">
               <select value={assignmentServerId} onChange={(event) => setAssignmentServerId(event.target.value)}>
                 <option value="">{copy.assignServer}</option>
-                {servers.map((server) => <option key={server.id} value={server.id}>{server.name || server.id}</option>)}
+                {servers.map((server) => <option key={server.id} value={server.id}>{serverOptionLabel(server)}</option>)}
               </select>
               <button
                 className="small-button"
@@ -288,25 +349,41 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
             <span>{t('vpnAccounts.server')}</span>
             <span>{t('vpnAccounts.expires')}</span>
           </div>
-          {accounts.map((account) => (
-            <div className={`vpn-account-management-row${account.id === accountId ? ' is-selected' : ''}`} role="row" key={account.id}>
-              <input
-                type="checkbox"
-                checked={allMatching || selectedIds.has(account.id)}
-                onChange={() => toggleAccount(account.id)}
-                aria-label={account.displayName}
-              />
-              <Link className="vpn-account-management-row-link" to={rowHref(account.id)}>
-                <div className="portal-profile-cell">
-                  <strong className="portal-profile-name">{account.displayName}</strong>
-                  <span className="portal-profile-meta">{account.email || account.vlessUuid || account.id}</span>
-                </div>
-                <StatusBadge status={account.status} />
-                <span title={account.serverId ?? ''}>{displayServerName(account.serverId, servers)}</span>
-                <span>{account.expiresAt ? new Date(account.expiresAt).toLocaleDateString() : t('common.notAvailable')}</span>
-              </Link>
-            </div>
-          ))}
+          {accounts.map((account) => {
+            const server = servers.find((candidate) => candidate.id === account.serverId);
+            const countryCode = serverCountryCode(server);
+            const useCssFlag = Boolean(countryCode && cssCountryFlags.has(countryCode));
+
+            return (
+              <div className={`vpn-account-management-row${account.id === accountId ? ' is-selected' : ''}`} role="row" key={account.id}>
+                <input
+                  type="checkbox"
+                  checked={allMatching || selectedIds.has(account.id)}
+                  onChange={() => toggleAccount(account.id)}
+                  aria-label={account.displayName}
+                />
+                <Link className="vpn-account-management-row-link" to={rowHref(account.id)}>
+                  <div className="portal-profile-cell">
+                    <strong className="portal-profile-name">{account.displayName}</strong>
+                    <span className="portal-profile-meta">{account.email || account.vlessUuid || account.id}</span>
+                  </div>
+                  <StatusBadge status={account.status} />
+                  <span className="vpn-account-server-cell" title={server?.location || server?.name || account.serverId || ''}>
+                    {countryCode && (
+                      <span
+                        className={`server-country-flag${useCssFlag ? ` server-country-${countryCode}` : ' server-country-emoji'}`}
+                        aria-label={countryCode.toUpperCase()}
+                      >
+                        {useCssFlag ? '' : countryFlagEmoji(countryCode)}
+                      </span>
+                    )}
+                    <span className="vpn-account-server-name">{displayServerName(account.serverId, servers)}</span>
+                  </span>
+                  <span>{account.expiresAt ? new Date(account.expiresAt).toLocaleDateString() : t('common.notAvailable')}</span>
+                </Link>
+              </div>
+            );
+          })}
         </div>
       )}
 
