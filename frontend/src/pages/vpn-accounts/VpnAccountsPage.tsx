@@ -14,6 +14,7 @@ import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 import './vpnAccountManagement.css';
+import './vpnAccountNotes.css';
 
 function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : t('common.notAvailable');
