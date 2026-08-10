@@ -1,0 +1,2 @@
+DROP TRIGGER IF EXISTS trg_vpn_accounts_config_timestamp_invariant ON vpn_accounts;
+DROP FUNCTION IF EXISTS routegate_vpn_account_config_timestamp_invariant();
