@@ -5,6 +5,7 @@ import "time"
 type CreateAccountRequest struct {
 	DisplayName string     `json:"displayName"`
 	Email       string     `json:"email"`
+	Notes       string     `json:"notes"`
 	Status      string     `json:"status"`
 	ExpiresAt   *time.Time `json:"expiresAt"`
 	MaxDevices  *int       `json:"maxDevices"`
