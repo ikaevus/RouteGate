@@ -34,7 +34,7 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			COALESCE(reality_public_key, ''),
 			COALESCE(reality_short_id, ''),
 			COALESCE(reality_server_name, ''),
-			protocol_updated_at
+			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`,
 		serverID,
 		input.VLESSPort != nil, input.VLESSPort,
@@ -63,7 +63,7 @@ func (r *Repository) UpdateRealityKeypair(ctx context.Context, serverID string, 
 			COALESCE(reality_public_key, ''),
 			COALESCE(reality_short_id, ''),
 			COALESCE(reality_server_name, ''),
-			protocol_updated_at
+			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
 
@@ -76,7 +76,7 @@ const protocolSettingsSelect = `
 		COALESCE(reality_public_key, ''),
 		COALESCE(reality_short_id, ''),
 		COALESCE(reality_server_name, ''),
-		protocol_updated_at
+		GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	FROM servers`
 
 func scanProtocolSettings(row scanner) (ProtocolSettings, error) {
