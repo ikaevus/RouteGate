@@ -6,9 +6,11 @@ import {
   activateVpnAccountManagement,
   deleteVpnAccount,
   getVpnAccount,
+  getVpnAccountNotes,
   revokeVpnAccount,
   suspendVpnAccount,
   updateVpnAccount,
+  updateVpnAccountNotes,
   type VpnAccountStatus,
 } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
@@ -26,6 +28,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<VpnAccountStatus>('active');
   const [serverId, setServerId] = useState('');
+  const [notes, setNotes] = useState('');
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [configurationChanged, setConfigurationChanged] = useState(false);
@@ -33,6 +36,12 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
     queryFn: () => getVpnAccount(accountId ?? ''),
+    enabled: Boolean(accountId),
+  });
+
+  const notesQuery = useQuery({
+    queryKey: ['vpn-account-notes', accountId],
+    queryFn: () => getVpnAccountNotes(accountId ?? ''),
     enabled: Boolean(accountId),
   });
 
@@ -50,22 +59,34 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     setConfigurationChanged(false);
   }, [accountQuery.data]);
 
+  useEffect(() => {
+    if (!notesQuery.data) return;
+    setNotes(notesQuery.data.notes ?? '');
+  }, [notesQuery.data]);
+
   async function refreshAccountData() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
+      queryClient.invalidateQueries({ queryKey: ['vpn-account-notes', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
     ]);
   }
 
   const updateMutation = useMutation({
-    mutationFn: () => updateVpnAccount(accountId ?? '', {
-      displayName: displayName.trim(),
-      email: email.trim(),
-      status,
-      serverId,
-    }),
+    mutationFn: async () => {
+      const [updated] = await Promise.all([
+        updateVpnAccount(accountId ?? '', {
+          displayName: displayName.trim(),
+          email: email.trim(),
+          status,
+          serverId,
+        }),
+        updateVpnAccountNotes(accountId ?? '', notes),
+      ]);
+      return updated;
+    },
     onSuccess: async (updated) => {
       const previous = accountQuery.data;
       const affectsConfig = previous
@@ -159,6 +180,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
           <label className="field">
             <span>{t('vpnAccounts.displayName')}</span>
             <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+            <small>{t('vpnAccounts.displayNameHint')}</small>
           </label>
           <label className="field">
             <span>{t('vpnAccounts.email')}</span>
@@ -183,10 +205,23 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
               ))}
             </select>
           </label>
+          <label className="field vpn-account-notes-field">
+            <span>{copy.notes}</span>
+            <textarea
+              value={notes}
+              maxLength={4000}
+              rows={4}
+              placeholder={copy.notesPlaceholder}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+            <small>{copy.notesHint}</small>
+          </label>
         </div>
 
+        {notesQuery.isError && <div className="form-message form-message-error">{copy.notesLoadError}</div>}
+
         <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!displayName.trim() || updateMutation.isPending}>
+          <button className="primary-button" type="submit" disabled={!displayName.trim() || updateMutation.isPending || notesQuery.isLoading}>
             {updateMutation.isPending ? copy.saving : copy.save}
           </button>
         </div>
