@@ -3,17 +3,23 @@ package dashboard
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
-const recentActivityLimit = 5
+const (
+	recentActivityLimit = 5
+	dashboardServerLimit = 5
+)
 
 type Handler struct {
-	logger *slog.Logger
-	reader activityReader
+	logger   *slog.Logger
+	activity activityReader
+	traffic  trafficReader
+	now      func() time.Time
 }
 
 type ActivityResponse struct {
@@ -22,22 +28,25 @@ type ActivityResponse struct {
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
+	repository := NewRepository(pool)
 	return &Handler{
-		logger: logger,
-		reader: NewRepository(pool),
+		logger:   logger,
+		activity: repository,
+		traffic:  repository,
+		now:      time.Now,
 	}
 }
 
 func (h *Handler) Activity(w http.ResponseWriter, r *http.Request) {
-	deployments, err := h.reader.ListRecentDeployments(r.Context(), recentActivityLimit)
+	deployments, err := h.activity.ListRecentDeployments(r.Context(), recentActivityLimit)
 	if err != nil {
-		h.writeDatabaseError(w, err)
+		h.writeDatabaseError(w, err, "Failed to load dashboard activity.")
 		return
 	}
 
-	auditEvents, err := h.reader.ListRecentAuditEvents(r.Context(), recentActivityLimit)
+	auditEvents, err := h.activity.ListRecentAuditEvents(r.Context(), recentActivityLimit)
 	if err != nil {
-		h.writeDatabaseError(w, err)
+		h.writeDatabaseError(w, err, "Failed to load dashboard activity.")
 		return
 	}
 
@@ -47,7 +56,17 @@ func (h *Handler) Activity(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) writeDatabaseError(w http.ResponseWriter, err error) {
-	h.logger.Error("dashboard activity request failed", "error", err)
-	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to load dashboard activity."))
+func (h *Handler) Traffic(w http.ResponseWriter, r *http.Request) {
+	snapshot, err := h.traffic.GetTrafficSnapshot(r.Context(), h.now(), dashboardServerLimit)
+	if err != nil {
+		h.writeDatabaseError(w, err, "Failed to load dashboard traffic.")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, snapshot)
+}
+
+func (h *Handler) writeDatabaseError(w http.ResponseWriter, err error, message string) {
+	h.logger.Error("dashboard request failed", "error", err)
+	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", message))
 }
