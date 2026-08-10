@@ -178,9 +178,9 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       <form className="vpn-account-edit-form" onSubmit={handleSubmit}>
         <div className="vpn-account-edit-grid">
           <label className="field">
-            <span>{t('vpnAccounts.displayName')}</span>
+            <span>{copy.accountName}</span>
             <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-            <small>{t('vpnAccounts.displayNameHint')}</small>
+            <small>{copy.accountNameHint}</small>
           </label>
           <label className="field">
             <span>{t('vpnAccounts.email')}</span>
