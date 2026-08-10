@@ -30,9 +30,42 @@ type RecentAuditEvent struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+type TrafficTotals struct {
+	RxBytes    int64 `json:"rxBytes"`
+	TxBytes    int64 `json:"txBytes"`
+	TotalBytes int64 `json:"totalBytes"`
+}
+
+type DailyTrafficUsage struct {
+	Date string `json:"date"`
+	TrafficTotals
+}
+
+type ServerTrafficUsage struct {
+	ServerID   string `json:"serverId"`
+	ServerName string `json:"serverName"`
+	TrafficTotals
+}
+
+type TrafficSnapshot struct {
+	GeneratedAt     time.Time            `json:"generatedAt"`
+	MonthStart      string               `json:"monthStart"`
+	Last30DaysStart string               `json:"last30DaysStart"`
+	Last30DaysEnd   string               `json:"last30DaysEnd"`
+	Server24hFrom   time.Time            `json:"server24hFrom"`
+	Server24hTo     time.Time            `json:"server24hTo"`
+	Monthly         TrafficTotals        `json:"monthly"`
+	Daily           []DailyTrafficUsage  `json:"daily"`
+	Servers         []ServerTrafficUsage `json:"servers"`
+}
+
 type activityReader interface {
 	ListRecentDeployments(context.Context, int) ([]RecentDeployment, error)
 	ListRecentAuditEvents(context.Context, int) ([]RecentAuditEvent, error)
+}
+
+type trafficReader interface {
+	GetTrafficSnapshot(context.Context, time.Time, int) (TrafficSnapshot, error)
 }
 
 type Repository struct {
@@ -130,4 +163,101 @@ func (r *Repository) ListRecentAuditEvents(ctx context.Context, limit int) ([]Re
 	}
 
 	return items, rows.Err()
+}
+
+func (r *Repository) GetTrafficSnapshot(ctx context.Context, currentTime time.Time, serverLimit int) (TrafficSnapshot, error) {
+	now := currentTime.UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	last30DaysStart := today.AddDate(0, 0, -29)
+	server24hFrom := now.Add(-24 * time.Hour)
+
+	snapshot := TrafficSnapshot{
+		GeneratedAt:     now,
+		MonthStart:      monthStart.Format("2006-01-02"),
+		Last30DaysStart: last30DaysStart.Format("2006-01-02"),
+		Last30DaysEnd:   today.Format("2006-01-02"),
+		Server24hFrom:   server24hFrom,
+		Server24hTo:     now,
+	}
+
+	if err := r.pool.QueryRow(ctx, `
+		SELECT
+			COALESCE(SUM(rx_bytes), 0)::bigint,
+			COALESCE(SUM(tx_bytes), 0)::bigint
+		FROM traffic_usage_daily
+		WHERE usage_date >= $1::date
+		  AND usage_date <= $2::date
+	`, monthStart, today).Scan(&snapshot.Monthly.RxBytes, &snapshot.Monthly.TxBytes); err != nil {
+		return TrafficSnapshot{}, err
+	}
+	snapshot.Monthly.TotalBytes = snapshot.Monthly.RxBytes + snapshot.Monthly.TxBytes
+
+	dailyRows, err := r.pool.Query(ctx, `
+		SELECT
+			to_char(days.day::date, 'YYYY-MM-DD'),
+			COALESCE(SUM(d.rx_bytes), 0)::bigint,
+			COALESCE(SUM(d.tx_bytes), 0)::bigint
+		FROM generate_series($1::date, $2::date, interval '1 day') AS days(day)
+		LEFT JOIN traffic_usage_daily d ON d.usage_date = days.day::date
+		GROUP BY days.day
+		ORDER BY days.day
+	`, last30DaysStart, today)
+	if err != nil {
+		return TrafficSnapshot{}, err
+	}
+	defer dailyRows.Close()
+
+	snapshot.Daily = make([]DailyTrafficUsage, 0, 30)
+	for dailyRows.Next() {
+		var item DailyTrafficUsage
+		if err := dailyRows.Scan(&item.Date, &item.RxBytes, &item.TxBytes); err != nil {
+			return TrafficSnapshot{}, err
+		}
+		item.TotalBytes = item.RxBytes + item.TxBytes
+		snapshot.Daily = append(snapshot.Daily, item)
+	}
+	if err := dailyRows.Err(); err != nil {
+		return TrafficSnapshot{}, err
+	}
+
+	serverRows, err := r.pool.Query(ctx, `
+		WITH recent_servers AS (
+			SELECT id, name, created_at
+			FROM servers
+			ORDER BY created_at DESC
+			LIMIT $3
+		)
+		SELECT
+			s.id::text,
+			s.name,
+			COALESCE(SUM(e.rx_bytes), 0)::bigint,
+			COALESCE(SUM(e.tx_bytes), 0)::bigint
+		FROM recent_servers s
+		LEFT JOIN traffic_usage_events e
+		  ON e.server_id = s.id
+		 AND e.observed_at >= $1
+		 AND e.observed_at < $2
+		GROUP BY s.id, s.name, s.created_at
+		ORDER BY s.created_at DESC
+	`, server24hFrom, now, serverLimit)
+	if err != nil {
+		return TrafficSnapshot{}, err
+	}
+	defer serverRows.Close()
+
+	snapshot.Servers = make([]ServerTrafficUsage, 0, serverLimit)
+	for serverRows.Next() {
+		var item ServerTrafficUsage
+		if err := serverRows.Scan(&item.ServerID, &item.ServerName, &item.RxBytes, &item.TxBytes); err != nil {
+			return TrafficSnapshot{}, err
+		}
+		item.TotalBytes = item.RxBytes + item.TxBytes
+		snapshot.Servers = append(snapshot.Servers, item)
+	}
+	if err := serverRows.Err(); err != nil {
+		return TrafficSnapshot{}, err
+	}
+
+	return snapshot, nil
 }
