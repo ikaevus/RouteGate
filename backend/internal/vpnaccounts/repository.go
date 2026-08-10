@@ -88,12 +88,20 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 			display_name = CASE WHEN $2 THEN $3 ELSE display_name END,
 			email = CASE WHEN $4 THEN NULLIF($5, '') ELSE email END,
 			status = CASE WHEN $6 THEN $7 ELSE status END,
-			expires_at = CASE WHEN $8 THEN $9 ELSE expires_at END,
-			max_devices = CASE WHEN $10 THEN $11 ELSE max_devices END,
-			server_id = CASE WHEN $12 THEN NULLIF($13, '')::uuid ELSE server_id END,
+			expires_at = CASE
+				WHEN $8 THEN NULL
+				WHEN $9 THEN $10
+				ELSE expires_at
+			END,
+			max_devices = CASE
+				WHEN $11 THEN NULL
+				WHEN $12 THEN $13
+				ELSE max_devices
+			END,
+			server_id = CASE WHEN $14 THEN NULLIF($15, '')::uuid ELSE server_id END,
 			updated_at = now(),
 			config_updated_at = CASE
-				WHEN $2 OR $6 OR $12 THEN now()
+				WHEN $2 OR $6 OR $14 THEN now()
 				ELSE config_updated_at
 			END
 		WHERE id = $1::uuid
@@ -114,8 +122,8 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 		input.DisplayName != nil, stringValue(input.DisplayName),
 		input.Email != nil, stringValue(input.Email),
 		input.Status != nil, stringValue(input.Status),
-		input.ExpiresAt != nil, input.ExpiresAt,
-		input.MaxDevices != nil, input.MaxDevices,
+		input.ClearExpiresAt, input.ExpiresAt != nil, input.ExpiresAt,
+		input.ClearMaxDevices, input.MaxDevices != nil, input.MaxDevices,
 		input.ServerID != nil, stringValue(input.ServerID),
 	))
 }
@@ -349,12 +357,13 @@ func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID stri
 
 const accountFilterSQL = `
 		WHERE ($1 = '' OR status = $1)
-		  AND ($2 = '' OR server_id = $2::uuid)
+		  AND ($2 = '' OR server_id = NULLIF($2, '')::uuid)
 		  AND (
 			$3 = ''
 			OR display_name ILIKE '%' || $3 || '%'
 			OR email ILIKE '%' || $3 || '%'
-			OR ($4 <> '' AND (id = $4::uuid OR vless_uuid = $4::uuid))
+			OR id = $4::uuid
+			OR vless_uuid = $4::uuid
 		  )
 `
 
