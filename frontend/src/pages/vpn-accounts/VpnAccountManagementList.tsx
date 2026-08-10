@@ -117,6 +117,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
   const [allMatching, setAllMatching] = useState(false);
   const [assignmentServerId, setAssignmentServerId] = useState('');
   const [operationMessage, setOperationMessage] = useState('');
+  const [operationNeedsDeploy, setOperationNeedsDeploy] = useState(false);
   const [operationError, setOperationError] = useState('');
 
   useEffect(() => setSearchInput(search), [search]);
@@ -126,6 +127,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
     setSelectedIds(new Set());
     setAllMatching(false);
     setOperationMessage('');
+    setOperationNeedsDeploy(false);
     setOperationError('');
   }, [selectionKey]);
 
@@ -223,6 +225,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
       clearSelection();
       setOperationError('');
       setOperationMessage(copy.bulkDone(result.affectedCount));
+      setOperationNeedsDeploy(result.configurationChanged && result.affectedServerIds.length > 0);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account'] }),
@@ -234,6 +237,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
     },
     onError: () => {
       setOperationMessage('');
+      setOperationNeedsDeploy(false);
       setOperationError(copy.bulkError);
     },
   });
@@ -323,9 +327,14 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
       )}
 
       {operationMessage && (
-        <div className="form-message form-message-success vpn-account-config-notice">
+        <div className={`form-message form-message-success${operationNeedsDeploy ? ' vpn-account-config-notice' : ''}`}>
           <span>{operationMessage}</span>
-          <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
+          {operationNeedsDeploy && (
+            <>
+              <span>{copy.configNotice}</span>
+              <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
+            </>
+          )}
         </div>
       )}
       {operationError && <div className="form-message form-message-error">{operationError}</div>}
