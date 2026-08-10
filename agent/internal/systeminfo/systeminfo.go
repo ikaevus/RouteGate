@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,19 +15,81 @@ import (
 
 const vpnCoreCheckTimeout = 3 * time.Second
 
+type RuntimeMetrics struct {
+	Load1        float64   `json:"load1"`
+	Load5        float64   `json:"load5"`
+	Load15       float64   `json:"load15"`
+	LogicalCPUs  int       `json:"logicalCpus"`
+	CollectedAt  time.Time `json:"collectedAt"`
+}
+
 type Info struct {
-	Hostname        string         `json:"hostname"`
-	AgentVersion    string         `json:"agentVersion"`
-	ProtocolVersion int            `json:"protocolVersion"`
-	OS              string         `json:"os"`
-	Arch            string         `json:"arch"`
-	Capabilities    map[string]any `json:"capabilities"`
+	Hostname        string          `json:"hostname"`
+	AgentVersion    string          `json:"agentVersion"`
+	ProtocolVersion int             `json:"protocolVersion"`
+	OS              string          `json:"os"`
+	Arch            string          `json:"arch"`
+	Capabilities    map[string]any  `json:"capabilities"`
+	RuntimeMetrics  *RuntimeMetrics `json:"runtimeMetrics,omitempty"`
 }
 
 func Collect() Info {
 	hostname, _ := os.Hostname()
 	info := buildinfo.Current()
-	return Info{Hostname: hostname, AgentVersion: info.Version, ProtocolVersion: info.ProtocolVersion, OS: runtime.GOOS, Arch: runtime.GOARCH, Capabilities: DetectCapabilities()}
+	return Info{
+		Hostname:        hostname,
+		AgentVersion:    info.Version,
+		ProtocolVersion: info.ProtocolVersion,
+		OS:              runtime.GOOS,
+		Arch:            runtime.GOARCH,
+		Capabilities:    DetectCapabilities(),
+		RuntimeMetrics:  collectRuntimeMetrics(),
+	}
+}
+
+func collectRuntimeMetrics() *RuntimeMetrics {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	payload, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return nil
+	}
+	load1, load5, load15, ok := parseLoadAverage(payload)
+	if !ok {
+		return nil
+	}
+	logicalCPUs := runtime.NumCPU()
+	if logicalCPUs <= 0 {
+		return nil
+	}
+
+	return &RuntimeMetrics{
+		Load1:       load1,
+		Load5:       load5,
+		Load15:      load15,
+		LogicalCPUs: logicalCPUs,
+		CollectedAt: time.Now().UTC(),
+	}
+}
+
+func parseLoadAverage(payload []byte) (float64, float64, float64, bool) {
+	fields := strings.Fields(string(payload))
+	if len(fields) < 3 {
+		return 0, 0, 0, false
+	}
+
+	values := make([]float64, 3)
+	for index := 0; index < 3; index++ {
+		value, err := strconv.ParseFloat(fields[index], 64)
+		if err != nil || value < 0 {
+			return 0, 0, 0, false
+		}
+		values[index] = value
+	}
+
+	return values[0], values[1], values[2], true
 }
 
 func DetectCapabilities() map[string]any {
