@@ -140,7 +140,6 @@ type AccountFilter struct {
 	SearchUUID string
 	Limit      int
 	Offset     int
-	Readiness  bool
 }
 
 func ValidStatus(status string) bool {
