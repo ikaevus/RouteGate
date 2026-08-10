@@ -2,6 +2,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/client
 import type { VpnAccount } from './vpnAccountApi';
 
 export type VpnAccountStatus = 'created' | 'active' | 'suspended' | 'expired' | 'revoked';
+export type BulkVpnAccountAction = 'activate' | 'suspend' | 'revoke' | 'delete' | 'assign_server';
 
 export interface VpnAccountListParams {
   search?: string;
@@ -23,9 +24,31 @@ export interface UpdateVpnAccountRequest {
   displayName?: string;
   email?: string;
   status?: VpnAccountStatus;
-  expiresAt?: string | null;
-  maxDevices?: number | null;
+  expiresAt?: string;
+  clearExpiresAt?: boolean;
+  maxDevices?: number;
+  clearMaxDevices?: boolean;
   serverId?: string;
+}
+
+export interface BulkVpnAccountSelection {
+  ids?: string[];
+  allMatching?: boolean;
+  search?: string;
+  status?: string;
+  serverId?: string;
+}
+
+export interface BulkVpnAccountActionRequest {
+  action: BulkVpnAccountAction;
+  selection: BulkVpnAccountSelection;
+  targetServerId?: string;
+}
+
+export interface BulkVpnAccountActionResponse {
+  affectedCount: number;
+  affectedServerIds: string[];
+  configurationChanged: boolean;
 }
 
 function listQuery(params: VpnAccountListParams): string {
@@ -76,4 +99,13 @@ export function revokeVpnAccount(vpnAccountId: string): Promise<VpnAccount> {
   return apiPost<undefined, VpnAccount>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/revoke`,
   );
+}
+
+export function runBulkVpnAccountAction(
+  request: BulkVpnAccountActionRequest,
+): Promise<BulkVpnAccountActionResponse> {
+  const endpoint = request.action === 'activate' || request.action === 'assign_server'
+    ? '/api/v1/vpn-accounts/bulk-update'
+    : '/api/v1/vpn-accounts/bulk-disable';
+  return apiPost<BulkVpnAccountActionRequest, BulkVpnAccountActionResponse>(endpoint, request);
 }
