@@ -3,7 +3,7 @@ import { getCurrentLocale } from '../../shared/i18n/i18n';
 export function getVpnAccountManagementCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
-      searchPlaceholder: 'Поиск по имени, email, ID или VLESS UUID…',
+      searchPlaceholder: 'Поиск по имени, email, заметкам, ID или VLESS UUID…',
       search: 'Найти',
       clear: 'Сбросить',
       allStatuses: 'Все статусы',
@@ -40,6 +40,9 @@ export function getVpnAccountManagementCopy() {
       editSuccess: 'VPN-аккаунт обновлён.',
       editError: 'Не удалось обновить VPN-аккаунт.',
       loadAccountError: 'Не удалось загрузить выбранный VPN-аккаунт.',
+      notes: 'Заметки',
+      notesPlaceholder: 'Например: ноутбук директора, временный подрядчик, офис Москва…',
+      notesHint: 'Внутренняя заметка администратора. Не попадает в VPN-профиль, QR-код или подписку.',
       maxDevices: 'Максимум устройств',
       unlimited: 'Без ограничения',
       expiration: 'Срок действия',
@@ -61,7 +64,7 @@ export function getVpnAccountManagementCopy() {
   }
 
   return {
-    searchPlaceholder: 'Search by name, email, ID, or VLESS UUID…',
+    searchPlaceholder: 'Search by account name, email, notes, ID, or VLESS UUID…',
     search: 'Search',
     clear: 'Reset',
     allStatuses: 'All statuses',
@@ -98,6 +101,9 @@ export function getVpnAccountManagementCopy() {
     editSuccess: 'VPN account updated.',
     editError: 'Failed to update VPN account.',
     loadAccountError: 'Failed to load the selected VPN account.',
+    notes: 'Notes',
+    notesPlaceholder: 'For example: director laptop, temporary contractor, Moscow office…',
+    notesHint: 'Internal administrator note. It is never included in VPN profiles, QR codes, or subscriptions.',
     maxDevices: 'Maximum devices',
     unlimited: 'Unlimited',
     expiration: 'Expiration',
