@@ -76,24 +76,40 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const [updated] = await Promise.all([
-        updateVpnAccount(accountId ?? '', {
-          displayName: displayName.trim(),
-          email: email.trim(),
-          status,
-          serverId,
-        }),
-        updateVpnAccountNotes(accountId ?? '', notes),
-      ]);
-      return updated;
-    },
-    onSuccess: async (updated) => {
       const previous = accountQuery.data;
-      const affectsConfig = previous
-        ? previous.displayName !== updated.displayName
-          || previous.status !== updated.status
-          || (previous.serverId ?? '') !== (updated.serverId ?? '')
-        : true;
+      if (!previous) throw new Error('VPN account is not loaded');
+
+      const nextDisplayName = displayName.trim();
+      const nextEmail = email.trim();
+      const nextServerId = serverId;
+      const previousNotes = notesQuery.data?.notes ?? '';
+
+      const accountChanged = previous.displayName !== nextDisplayName
+        || (previous.email ?? '') !== nextEmail
+        || previous.status !== status
+        || (previous.serverId ?? '') !== nextServerId;
+      const affectsConfig = previous.displayName !== nextDisplayName
+        || previous.status !== status
+        || (previous.serverId ?? '') !== nextServerId;
+      const notesChanged = previousNotes !== notes;
+
+      const accountPromise = accountChanged
+        ? updateVpnAccount(accountId ?? '', {
+            displayName: nextDisplayName,
+            email: nextEmail,
+            status,
+            serverId: nextServerId,
+          })
+        : Promise.resolve(previous);
+      const notesPromise = notesChanged
+        ? updateVpnAccountNotes(accountId ?? '', notes)
+        : Promise.resolve(notesQuery.data);
+
+      const [updated] = await Promise.all([accountPromise, notesPromise]);
+      return { updated, affectsConfig };
+    },
+    onSuccess: async ({ updated, affectsConfig }) => {
+      setStatus(updated.status as VpnAccountStatus);
       setMessage(copy.editSuccess);
       setErrorMessage('');
       setConfigurationChanged(affectsConfig);
