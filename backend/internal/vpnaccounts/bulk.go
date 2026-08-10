@@ -43,56 +43,62 @@ func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInpu
 	defer tx.Rollback(ctx)
 
 	whereSQL, args := bulkSelectionSQL(input.Selection)
-	serverRows, err := tx.Query(ctx, `
-		SELECT DISTINCT server_id::text
-		FROM vpn_accounts
-		`+whereSQL+`
-		  AND server_id IS NOT NULL
-	`, args...)
-	if err != nil {
-		return BulkAccountActionResult{}, err
-	}
 	serverIDs := make([]string, 0)
-	for serverRows.Next() {
-		var serverID string
-		if err := serverRows.Scan(&serverID); err != nil {
-			serverRows.Close()
-			return BulkAccountActionResult{}, err
-		}
-		serverIDs = append(serverIDs, serverID)
-	}
-	if err := serverRows.Err(); err != nil {
-		serverRows.Close()
-		return BulkAccountActionResult{}, err
-	}
-	serverRows.Close()
-
 	var commandTag commandTagResult
+
 	switch input.Action {
 	case BulkActionActivate:
-		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusActive)
+		serverIDs, err = selectBulkStatusServerIDs(ctx, tx, whereSQL, args, StatusActive)
+		if err == nil {
+			commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusActive)
+		}
 	case BulkActionSuspend:
-		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusSuspended)
+		serverIDs, err = selectBulkStatusServerIDs(ctx, tx, whereSQL, args, StatusSuspended)
+		if err == nil {
+			commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusSuspended)
+		}
 	case BulkActionRevoke:
-		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusRevoked)
+		serverIDs, err = selectBulkStatusServerIDs(ctx, tx, whereSQL, args, StatusRevoked)
+		if err == nil {
+			commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusRevoked)
+		}
 	case BulkActionDelete:
-		commandTag, err = tx.Exec(ctx, `DELETE FROM vpn_accounts `+whereSQL, args...)
+		serverIDs, err = selectBulkServerIDs(ctx, tx, `
+			SELECT DISTINCT server_id::text
+			FROM vpn_accounts
+			`+whereSQL+`
+			  AND server_id IS NOT NULL
+		`, args)
+		if err == nil {
+			commandTag, err = tx.Exec(ctx, `DELETE FROM vpn_accounts `+whereSQL, args...)
+		}
 	case BulkActionAssignServer:
 		if input.TargetServerID == "" {
 			return BulkAccountActionResult{}, errors.New("target server is required")
 		}
 		targetPosition := len(args) + 1
 		argsWithTarget := append(append([]any{}, args...), input.TargetServerID)
-		commandTag, err = tx.Exec(ctx, `
-			UPDATE vpn_accounts
-			SET server_id = $`+itoa(targetPosition)+`::uuid,
-			    updated_at = now(),
-			    config_updated_at = now()
+		serverIDs, err = selectBulkServerIDs(ctx, tx, `
+			SELECT DISTINCT server_id::text
+			FROM vpn_accounts
 			`+whereSQL+`
-			  AND server_id IS DISTINCT FROM $`+itoa(targetPosition)+`::uuid`,
-			argsWithTarget...,
-		)
-		serverIDs = append(serverIDs, input.TargetServerID)
+			  AND server_id IS NOT NULL
+			  AND server_id IS DISTINCT FROM $`+itoa(targetPosition)+`::uuid
+		`, argsWithTarget)
+		if err == nil {
+			commandTag, err = tx.Exec(ctx, `
+				UPDATE vpn_accounts
+				SET server_id = $`+itoa(targetPosition)+`::uuid,
+				    updated_at = now(),
+				    config_updated_at = now()
+				`+whereSQL+`
+				  AND server_id IS DISTINCT FROM $`+itoa(targetPosition)+`::uuid`,
+				argsWithTarget...,
+			)
+			if err == nil && commandTag.RowsAffected() > 0 {
+				serverIDs = append(serverIDs, input.TargetServerID)
+			}
+		}
 	default:
 		return BulkAccountActionResult{}, errors.New("unsupported bulk action")
 	}
@@ -104,10 +110,11 @@ func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInpu
 		return BulkAccountActionResult{}, err
 	}
 
+	affectedServerIDs := uniqueSortedStrings(serverIDs)
 	return BulkAccountActionResult{
 		AffectedCount:        commandTag.RowsAffected(),
-		AffectedServerIDs:    uniqueSortedStrings(serverIDs),
-		ConfigurationChanged: commandTag.RowsAffected() > 0,
+		AffectedServerIDs:    affectedServerIDs,
+		ConfigurationChanged: commandTag.RowsAffected() > 0 && len(affectedServerIDs) > 0,
 	}, nil
 }
 
@@ -127,6 +134,39 @@ func execBulkStatus(ctx context.Context, tx pgx.Tx, whereSQL string, args []any,
 		  AND status IS DISTINCT FROM $`+itoa(statusPosition),
 		argsWithStatus...,
 	)
+}
+
+func selectBulkStatusServerIDs(ctx context.Context, tx pgx.Tx, whereSQL string, args []any, status string) ([]string, error) {
+	statusPosition := len(args) + 1
+	argsWithStatus := append(append([]any{}, args...), status)
+	return selectBulkServerIDs(ctx, tx, `
+		SELECT DISTINCT server_id::text
+		FROM vpn_accounts
+		`+whereSQL+`
+		  AND server_id IS NOT NULL
+		  AND status IS DISTINCT FROM $`+itoa(statusPosition)+`
+	`, argsWithStatus)
+}
+
+func selectBulkServerIDs(ctx context.Context, tx pgx.Tx, query string, args []any) ([]string, error) {
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	serverIDs := make([]string, 0)
+	for rows.Next() {
+		var serverID string
+		if err := rows.Scan(&serverID); err != nil {
+			return nil, err
+		}
+		serverIDs = append(serverIDs, serverID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return serverIDs, nil
 }
 
 func bulkSelectionSQL(selection BulkAccountSelection) (string, []any) {
