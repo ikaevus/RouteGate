@@ -12,12 +12,14 @@ type CreateAccountRequest struct {
 }
 
 type UpdateAccountRequest struct {
-	DisplayName *string    `json:"displayName"`
-	Email       *string    `json:"email"`
-	Status      *string    `json:"status"`
-	ExpiresAt   *time.Time `json:"expiresAt"`
-	MaxDevices  *int       `json:"maxDevices"`
-	ServerID    *string    `json:"serverId"`
+	DisplayName     *string    `json:"displayName"`
+	Email           *string    `json:"email"`
+	Status          *string    `json:"status"`
+	ExpiresAt       *time.Time `json:"expiresAt"`
+	ClearExpiresAt  bool       `json:"clearExpiresAt"`
+	MaxDevices      *int       `json:"maxDevices"`
+	ClearMaxDevices bool       `json:"clearMaxDevices"`
+	ServerID        *string    `json:"serverId"`
 }
 
 type CreateSubscriptionTokenRequest struct {
