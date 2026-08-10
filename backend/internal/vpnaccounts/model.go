@@ -110,7 +110,6 @@ type RoutingProfileRule struct {
 type CreateAccountInput struct {
 	DisplayName string
 	Email       string
-	Notes       string
 	Status      string
 	ExpiresAt   *time.Time
 	MaxDevices  *int
