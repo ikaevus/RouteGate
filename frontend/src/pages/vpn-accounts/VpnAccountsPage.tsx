@@ -12,6 +12,7 @@ import { TrafficStatsPanel } from './TrafficStatsPanel';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
+import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 import './vpnAccountManagement.css';
 
 function formatValue(value?: string | null): string {
@@ -32,6 +33,7 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
 }
 
 export function VpnAccountsPage() {
+  const copy = getVpnAccountManagementCopy();
   const { accountId } = useParams<{ accountId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -129,13 +131,13 @@ export function VpnAccountsPage() {
           <form className="vpn-account-create-form" onSubmit={handleCreateAccount}>
             <div className="vpn-account-create-grid">
               <label className="field">
-                <span>{t('vpnAccounts.displayName')}</span>
+                <span>{copy.accountName}</span>
                 <input
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder={t('vpnAccounts.displayNamePlaceholder')}
+                  placeholder={copy.accountNamePlaceholder}
                 />
-                <small>{t('vpnAccounts.displayNameHint')}</small>
+                <small>{copy.accountNameHint}</small>
               </label>
               <label className="field">
                 <span>{t('vpnAccounts.email')}</span>
@@ -156,15 +158,15 @@ export function VpnAccountsPage() {
                 </select>
               </label>
               <label className="field vpn-account-notes-field">
-                <span>{t('vpnAccounts.notes')}</span>
+                <span>{copy.notes}</span>
                 <textarea
                   value={notes}
                   maxLength={4000}
                   rows={4}
-                  placeholder={t('vpnAccounts.notesPlaceholder')}
+                  placeholder={copy.notesPlaceholder}
                   onChange={(event) => setNotes(event.target.value)}
                 />
-                <small>{t('vpnAccounts.notesHint')}</small>
+                <small>{copy.notesHint}</small>
               </label>
             </div>
             {createAccountMutation.isError && (
