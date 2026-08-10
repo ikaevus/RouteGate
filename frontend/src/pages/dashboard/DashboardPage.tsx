@@ -3,10 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
+import { getDashboardActivity, type DashboardRecentAuditEvent, type DashboardRecentDeployment } from '../../entities/dashboard/api/dashboardApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { getPagedVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
-import { t } from '../../shared/i18n/i18n';
+import { t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { GettingStartedWidget } from './GettingStartedWidget';
 
@@ -21,6 +22,15 @@ function formatDate(value?: string | null): string {
 
 function getRegionCountryCode(region: string): string | null {
   return region.match(/,\s*([A-Z]{2})$/)?.[1] ?? null;
+}
+
+function getActorInitial(actor: string): string {
+  const normalized = actor.trim();
+  return normalized === '' ? '?' : normalized.slice(0, 1).toUpperCase();
+}
+
+function formatAuditResource(event: DashboardRecentAuditEvent): string {
+  return event.resourceId ? `${event.resourceType} · ${event.resourceId}` : event.resourceType;
 }
 
 function KpiWidget({ title, value, meta, tone, icon }: { title: string; value: string; meta: string; tone: string; icon: string }) {
@@ -148,6 +158,63 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
   );
 }
 
+function RecentDeploymentsWidget({ deployments, available }: { deployments: DashboardRecentDeployment[]; available: boolean }) {
+  return (
+    <WidgetPanel title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : deployments.length === 0 ? (
+        <p className="empty-state">0</p>
+      ) : (
+        <div className="dashboard-table deployments-table">
+          <div className="dashboard-table-row dashboard-table-head">
+            <span>{t('dashboard.configurationColumn')}</span>
+            <span>{t('dashboard.target')}</span>
+            <span>{t('agents.action')}</span>
+            <span>{t('servers.status')}</span>
+            <span>{t('dashboard.time')}</span>
+          </div>
+          {deployments.map((deployment) => (
+            <div className="dashboard-table-row" key={deployment.id}>
+              <strong title={deployment.configVersionId}>v{deployment.configVersion}</strong>
+              <span title={deployment.serverName}>{deployment.serverName}</span>
+              <span>{deployment.action}</span>
+              <StatusBadge status={deployment.status} />
+              <span title={formatDate(deployment.completedAt ?? deployment.createdAt)}>{formatDate(deployment.completedAt ?? deployment.createdAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
+function RecentAuditEventsWidget({ events, available }: { events: DashboardRecentAuditEvent[]; available: boolean }) {
+  return (
+    <WidgetPanel title={t('dashboard.recentAuditEvents')} className="audit-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : events.length === 0 ? (
+        <p className="empty-state">0</p>
+      ) : (
+        <div className="audit-list">
+          {events.map((event) => (
+            <div className="audit-row" key={event.id}>
+              <span className="audit-avatar" aria-hidden="true">{getActorInitial(event.actor)}</span>
+              <div>
+                <strong title={event.actor}>{event.actor}</strong>
+                <p title={`${event.action} · ${formatAuditResource(event)}`}>{event.action} · {formatAuditResource(event)}</p>
+              </div>
+              <small title={formatDate(event.createdAt)}>{formatDate(event.createdAt)}</small>
+              <span className="audit-area-badge">{translateStatus(event.result)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
 export function DashboardPage() {
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
@@ -164,6 +231,12 @@ export function DashboardPage() {
   const agentsQuery = useQuery({
     queryKey: ['agents'],
     queryFn: getAgents,
+    refetchInterval: 10_000,
+  });
+
+  const dashboardActivityQuery = useQuery({
+    queryKey: ['dashboard', 'activity'],
+    queryFn: getDashboardActivity,
     refetchInterval: 10_000,
   });
 
@@ -254,9 +327,15 @@ export function DashboardPage() {
         <UnavailableWidget title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget" />
         <QuickActionsWidget />
         <ServersSummaryWidget servers={displayServers} />
-        <UnavailableWidget title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget" />
+        <RecentDeploymentsWidget
+          deployments={dashboardActivityQuery.data?.recentDeployments ?? []}
+          available={dashboardActivityQuery.isSuccess}
+        />
         <UnavailableWidget title={t('dashboard.trafficTypes')} subtitle={`(${t('dashboard.month')})`} className="traffic-types-widget" />
-        <UnavailableWidget title={t('dashboard.recentAuditEvents')} className="audit-widget" />
+        <RecentAuditEventsWidget
+          events={dashboardActivityQuery.data?.recentAuditEvents ?? []}
+          available={dashboardActivityQuery.isSuccess}
+        />
       </div>
       <div className="dashboard-server-time">{t('dashboard.serverTime', { time: formatDate(managerHealthQuery.data?.timestamp) })}</div>
     </section>
