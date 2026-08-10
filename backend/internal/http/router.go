@@ -10,6 +10,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/configs"
+	"github.com/ikaevus/routegate/backend/internal/dashboard"
 	"github.com/ikaevus/routegate/backend/internal/health"
 	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
@@ -31,6 +32,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	serversHandler := servers.NewHandler(logger, pool)
 	agentsHandler := agents.NewHandler(logger, pool)
 	configsHandler := configs.NewHandler(logger, pool)
+	dashboardHandler := dashboard.NewHandler(logger, pool)
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
 	systemHandler := system.NewHandler(logger, pool)
@@ -117,6 +119,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteRule))))
 
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
+	mux.Handle("GET /api/v1/dashboard/activity", adminAuth(dashboardHandler.Activity))
 
 	mux.Handle("GET /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.List))))
 	mux.Handle("POST /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:create")(stdhttp.HandlerFunc(vpnAccountsHandler.Create))))
