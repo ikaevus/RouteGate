@@ -1,0 +1,67 @@
+package vpnaccounts
+
+import (
+	"errors"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+const (
+	defaultAccountPageSize = 50
+	maxAccountPageSize     = 100
+)
+
+var uuidSearchPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+func parseAccountListFilter(r *http.Request) (AccountFilter, int, int, error) {
+	query := r.URL.Query()
+	page, err := positiveQueryInt(query.Get("page"), 1)
+	if err != nil {
+		return AccountFilter{}, 0, 0, errors.New("page must be a positive integer")
+	}
+	pageSize, err := positiveQueryInt(query.Get("pageSize"), defaultAccountPageSize)
+	if err != nil || pageSize > maxAccountPageSize {
+		return AccountFilter{}, 0, 0, errors.New("pageSize must be an integer between 1 and 100")
+	}
+
+	status := strings.TrimSpace(query.Get("status"))
+	if status != "" && !ValidStatus(status) {
+		return AccountFilter{}, 0, 0, errors.New("status must be one of: created, active, suspended, expired, revoked")
+	}
+
+	search := strings.TrimSpace(query.Get("search"))
+	searchUUID := ""
+	if uuidSearchPattern.MatchString(search) {
+		searchUUID = search
+	}
+
+	return AccountFilter{
+		Status:     status,
+		ServerID:   strings.TrimSpace(query.Get("serverId")),
+		Search:     search,
+		SearchUUID: searchUUID,
+		Limit:      pageSize,
+		Offset:     (page - 1) * pageSize,
+	}, page, pageSize, nil
+}
+
+func positiveQueryInt(raw string, fallback int) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		return 0, errors.New("value must be a positive integer")
+	}
+	return value, nil
+}
+
+func totalPages(total, pageSize int) int {
+	if total <= 0 || pageSize <= 0 {
+		return 0
+	}
+	return (total + pageSize - 1) / pageSize
+}
