@@ -13,7 +13,7 @@ const (
 	maxAccountPageSize     = 100
 )
 
-var uuidSearchPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+var uuidSearchPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 func parseAccountListFilter(r *http.Request) (AccountFilter, int, int, error) {
 	query := r.URL.Query()
@@ -31,6 +31,11 @@ func parseAccountListFilter(r *http.Request) (AccountFilter, int, int, error) {
 		return AccountFilter{}, 0, 0, errors.New("status must be one of: created, active, suspended, expired, revoked")
 	}
 
+	serverID := strings.TrimSpace(query.Get("serverId"))
+	if serverID != "" && !uuidSearchPattern.MatchString(serverID) {
+		return AccountFilter{}, 0, 0, errors.New("serverId must be a UUID")
+	}
+
 	search := strings.TrimSpace(query.Get("search"))
 	searchUUID := ""
 	if uuidSearchPattern.MatchString(search) {
@@ -39,7 +44,7 @@ func parseAccountListFilter(r *http.Request) (AccountFilter, int, int, error) {
 
 	return AccountFilter{
 		Status:     status,
-		ServerID:   strings.TrimSpace(query.Get("serverId")),
+		ServerID:   serverID,
 		Search:     search,
 		SearchUUID: searchUUID,
 		Limit:      pageSize,
