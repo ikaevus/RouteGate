@@ -35,6 +35,16 @@ export interface UpdateVpnAccountRequest {
   serverId?: string;
 }
 
+export interface VpnAccountNotesResponse {
+  vpnAccountId: string;
+  notes: string;
+  updatedAt: string;
+}
+
+export interface UpdateVpnAccountNotesRequest {
+  notes: string;
+}
+
 export interface BulkVpnAccountSelection {
   ids?: string[];
   allMatching?: boolean;
@@ -80,6 +90,22 @@ export function updateVpnAccount(
   return apiPatch<UpdateVpnAccountRequest, ManagedVpnAccount>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}`,
     request,
+  );
+}
+
+export function getVpnAccountNotes(vpnAccountId: string): Promise<VpnAccountNotesResponse> {
+  return apiGet<VpnAccountNotesResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/notes`,
+  );
+}
+
+export function updateVpnAccountNotes(
+  vpnAccountId: string,
+  notes: string,
+): Promise<VpnAccountNotesResponse> {
+  return apiPatch<UpdateVpnAccountNotesRequest, VpnAccountNotesResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/notes`,
+    { notes },
   );
 }
 
