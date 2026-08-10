@@ -43,20 +43,25 @@ func TestRegisterSendsVersionAndProtocol(t *testing.T) {
 	}
 }
 
-func TestHeartbeatSendsVersionAndProtocol(t *testing.T) {
+func TestHeartbeatSendsVersionProtocolAndRuntimeMetrics(t *testing.T) {
+	collectedAt := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/agent/heartbeat" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		var request struct {
-			AgentVersion    string `json:"agentVersion"`
-			ProtocolVersion int    `json:"protocolVersion"`
+			AgentVersion    string                     `json:"agentVersion"`
+			ProtocolVersion int                        `json:"protocolVersion"`
+			RuntimeMetrics  *systeminfo.RuntimeMetrics `json:"runtimeMetrics"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		if request.AgentVersion != "dev" || request.ProtocolVersion != 1 {
 			t.Fatalf("unexpected version payload: %+v", request)
+		}
+		if request.RuntimeMetrics == nil || request.RuntimeMetrics.Load1 != 0.42 || request.RuntimeMetrics.LogicalCPUs != 4 || !request.RuntimeMetrics.CollectedAt.Equal(collectedAt) {
+			t.Fatalf("unexpected runtime metrics: %+v", request.RuntimeMetrics)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"agentId":"agent-1","serverId":"server-1","serverStatus":"active"}`))
@@ -67,6 +72,9 @@ func TestHeartbeatSendsVersionAndProtocol(t *testing.T) {
 	_, err := client.Heartbeat(context.Background(), "rg_agent_secret", systeminfo.Info{
 		AgentVersion:    "dev",
 		ProtocolVersion: 1,
+		RuntimeMetrics: &systeminfo.RuntimeMetrics{
+			Load1: 0.42, Load5: 0.25, Load15: 0.17, LogicalCPUs: 4, CollectedAt: collectedAt,
+		},
 	})
 	if err != nil {
 		t.Fatalf("heartbeat: %v", err)
