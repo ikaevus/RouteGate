@@ -10,6 +10,14 @@ func (f *fakeAccountRepository) CountAccounts(context.Context, AccountFilter) (i
 	return 0, nil
 }
 
+func (r *publicSubscriptionSplitTunnelE2ERepository) CountAccounts(context.Context, AccountFilter) (int, error) {
+	return 0, nil
+}
+
+func (r *vpnClientE2ERepository) CountAccounts(context.Context, AccountFilter) (int, error) {
+	return 0, nil
+}
+
 func TestParseAccountListFilterDefaults(t *testing.T) {
 	request := httptest.NewRequest("GET", "/api/v1/vpn-accounts", nil)
 	filter, page, pageSize, err := parseAccountListFilter(request)
@@ -21,6 +29,9 @@ func TestParseAccountListFilterDefaults(t *testing.T) {
 	}
 	if filter.Limit != 50 || filter.Offset != 0 {
 		t.Fatalf("expected limit=50 offset=0, got limit=%d offset=%d", filter.Limit, filter.Offset)
+	}
+	if filter.SearchUUID != nilSearchUUID {
+		t.Fatalf("expected safe nil UUID sentinel, got %q", filter.SearchUUID)
 	}
 }
 
@@ -37,8 +48,8 @@ func TestParseAccountListFilterUsesPageOffsetAndUUIDSearch(t *testing.T) {
 	if page != 3 || pageSize != 25 || filter.Limit != 25 || filter.Offset != 50 {
 		t.Fatalf("unexpected pagination: page=%d pageSize=%d limit=%d offset=%d", page, pageSize, filter.Limit, filter.Offset)
 	}
-	if filter.SearchUUID == "" {
-		t.Fatal("expected UUID search to use exact UUID path")
+	if filter.SearchUUID != "523446e8-0351-4c0a-a9ec-19a269a8848f" {
+		t.Fatalf("expected exact UUID search path, got %q", filter.SearchUUID)
 	}
 }
 
