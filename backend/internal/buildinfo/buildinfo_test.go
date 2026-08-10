@@ -11,8 +11,8 @@ func TestCurrentUsesDevelopmentDefaults(t *testing.T) {
 	if info.AgentProtocolVersion != 1 || info.MinimumAgentProtocolVersion != 1 {
 		t.Fatalf("unexpected protocol defaults: %+v", info)
 	}
-	if ExpectedDatabaseSchemaVersion != 106 {
-		t.Fatalf("schema version = %d, want 106", info.ExpectedDatabaseSchemaVersion)
+	if ExpectedDatabaseSchemaVersion != 107 {
+		t.Fatalf("schema version = %d, want 107", info.ExpectedDatabaseSchemaVersion)
 	}
 	if info.AutomaticUpdatesSupported {
 		t.Fatal("automatic updates must remain disabled for the MVP")
