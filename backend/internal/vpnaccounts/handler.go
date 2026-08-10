@@ -22,6 +22,7 @@ import (
 type accountRepository interface {
 	CreateAccount(context.Context, CreateAccountInput) (Account, error)
 	ListAccounts(context.Context, AccountFilter) ([]Account, error)
+	CountAccounts(context.Context, AccountFilter) (int, error)
 	GetAccountByID(context.Context, string) (Account, error)
 	UpdateAccount(context.Context, string, UpdateAccountInput) (Account, error)
 	SetAccountStatus(context.Context, string, string) (Account, error)
@@ -51,17 +52,30 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	items, err := h.accounts.ListAccounts(r.Context(), AccountFilter{
-		Status:   strings.TrimSpace(r.URL.Query().Get("status")),
-		ServerID: strings.TrimSpace(r.URL.Query().Get("serverId")),
-		Search:   strings.TrimSpace(r.URL.Query().Get("search")),
-	})
+	filter, page, pageSize, err := parseAccountListFilter(r)
+	if err != nil {
+		writeInvalidRequest(w, err.Error())
+		return
+	}
+
+	items, err := h.accounts.ListAccounts(r.Context(), filter)
 	if err != nil {
 		h.databaseError(w, "list vpn accounts", err)
 		return
 	}
+	total, err := h.accounts.CountAccounts(r.Context(), filter)
+	if err != nil {
+		h.databaseError(w, "count vpn accounts", err)
+		return
+	}
 
-	httpx.WriteJSON(w, http.StatusOK, ListAccountsResponse{Items: items})
+	httpx.WriteJSON(w, http.StatusOK, ListAccountsResponse{
+		Items:      items,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: totalPages(total, pageSize),
+	})
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -172,6 +186,18 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordAudit(r, audit.EventInput{
+		Action:       "vpn_account.updated",
+		ResourceType: "vpn_account",
+		ResourceID:   account.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"display_name": account.DisplayName,
+			"email":        account.Email,
+			"server_id":    account.ServerID,
+			"status":       account.Status,
+		},
+	})
 	httpx.WriteJSON(w, http.StatusOK, account)
 }
 

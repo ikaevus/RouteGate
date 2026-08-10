@@ -1,0 +1,398 @@
+.vpn-account-management-page {
+  max-width: 1760px;
+}
+
+.vpn-account-create-panel {
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.vpn-account-management-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(560px, 0.95fr) minmax(620px, 1.35fr);
+  align-items: start;
+}
+
+.vpn-account-management-detail-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vpn-account-management-list,
+.vpn-account-management-panel {
+  min-width: 0;
+  padding: 16px;
+}
+
+.vpn-account-management-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.vpn-account-search-row,
+.vpn-account-filter-row,
+.vpn-account-bulk-actions,
+.vpn-account-pagination,
+.vpn-account-page-buttons,
+.vpn-account-bulk-summary,
+.vpn-account-bulk-assign {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vpn-account-management-toolbar input,
+.vpn-account-management-toolbar select,
+.vpn-account-bulk-assign select,
+.vpn-account-page-size select {
+  border: 1px solid rgba(38, 52, 73, 0.98);
+  border-radius: 12px;
+  background-color: rgba(2, 6, 23, 0.62);
+  color: var(--rg-text-primary);
+  font: inherit;
+  font-size: 13px;
+  min-height: 40px;
+  outline: none;
+  padding: 9px 12px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vpn-account-management-toolbar input:hover,
+.vpn-account-management-toolbar select:hover,
+.vpn-account-bulk-assign select:hover,
+.vpn-account-page-size select:hover {
+  background-color: rgba(15, 23, 42, 0.78);
+  border-color: rgba(71, 85, 105, 0.98);
+}
+
+.vpn-account-management-toolbar input:focus,
+.vpn-account-management-toolbar select:focus,
+.vpn-account-bulk-assign select:focus,
+.vpn-account-page-size select:focus {
+  border-color: rgba(96, 165, 250, 0.86);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22);
+}
+
+.vpn-account-management-toolbar input::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+}
+
+.vpn-account-management-toolbar select,
+.vpn-account-bulk-assign select,
+.vpn-account-page-size select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 11px center;
+  background-repeat: no-repeat;
+  background-size: 15px 15px;
+  color-scheme: dark;
+  cursor: pointer;
+  padding-right: 36px;
+}
+
+.vpn-account-management-toolbar select option,
+.vpn-account-bulk-assign select option,
+.vpn-account-page-size select option {
+  background: #0b1220;
+  color: var(--rg-text-primary);
+}
+
+.vpn-account-management-toolbar input:disabled,
+.vpn-account-management-toolbar select:disabled,
+.vpn-account-bulk-assign select:disabled,
+.vpn-account-page-size select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.vpn-account-search-input {
+  flex: 1 1 300px;
+  min-width: 180px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+  background-position: 12px center;
+  background-repeat: no-repeat;
+  background-size: 15px 15px;
+  padding-left: 38px !important;
+}
+
+.vpn-account-filter-row select {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.vpn-account-bulk-toolbar {
+  background: rgba(37, 99, 235, 0.09);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.vpn-account-bulk-summary {
+  justify-content: space-between;
+}
+
+.vpn-account-bulk-actions {
+  align-items: stretch;
+}
+
+.vpn-account-bulk-assign {
+  flex: 1 1 260px;
+}
+
+.vpn-account-bulk-assign select {
+  flex: 1 1 170px;
+}
+
+.text-button {
+  background: transparent;
+  border: 0;
+  color: #60a5fa;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 0;
+}
+
+.text-button:hover {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+.danger-button {
+  background: rgba(127, 29, 29, 0.32);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: 10px;
+  color: #fecaca;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 9px 12px;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: rgba(153, 27, 27, 0.46);
+}
+
+.danger-button:disabled,
+.text-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.vpn-account-management-table {
+  border: 1px solid rgba(51, 65, 85, 0.85);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.vpn-account-management-head,
+.vpn-account-management-row {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.vpn-account-management-head {
+  background: rgba(15, 23, 42, 0.62);
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 10px 12px;
+  text-transform: uppercase;
+}
+
+.vpn-account-management-head > span:nth-of-type(n) {
+  display: none;
+}
+
+.vpn-account-management-row {
+  border-top: 1px solid rgba(51, 65, 85, 0.55);
+  padding: 0 12px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.vpn-account-management-row:first-of-type {
+  border-top: 0;
+}
+
+.vpn-account-management-row:hover,
+.vpn-account-management-row.is-selected {
+  background: rgba(37, 99, 235, 0.09);
+}
+
+.vpn-account-management-row.is-selected {
+  box-shadow: inset 3px 0 rgba(59, 130, 246, 0.8);
+}
+
+.vpn-account-management-row-link {
+  align-items: center;
+  color: inherit;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(170px, 1.35fr) minmax(92px, 0.6fr) minmax(110px, 0.8fr) minmax(92px, 0.65fr);
+  min-width: 0;
+  padding: 11px 0;
+  text-decoration: none;
+}
+
+.vpn-account-management-row-link > * {
+  min-width: 0;
+}
+
+.vpn-account-management-row-link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vpn-account-server-cell {
+  align-items: center;
+  display: inline-flex !important;
+  gap: 7px;
+  min-width: 0;
+}
+
+.vpn-account-server-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-country-flag.server-country-emoji {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: 14px;
+  height: auto;
+  line-height: 1;
+  overflow: visible;
+  width: auto;
+}
+
+.vpn-account-management-head {
+  grid-template-columns: 32px minmax(170px, 1.35fr) minmax(92px, 0.6fr) minmax(110px, 0.8fr) minmax(92px, 0.65fr);
+  gap: 12px;
+}
+
+.vpn-account-management-head > span:nth-of-type(n) {
+  display: block;
+}
+
+.vpn-account-management-row input[type='checkbox'],
+.vpn-account-management-head input[type='checkbox'] {
+  accent-color: #3b82f6;
+  height: 16px;
+  width: 16px;
+}
+
+.vpn-account-pagination {
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.vpn-account-page-number-wrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.vpn-account-page-ellipsis {
+  color: var(--rg-text-secondary);
+}
+
+.vpn-account-page-buttons .small-button.is-active {
+  background: rgba(37, 99, 235, 0.9);
+  border-color: rgba(96, 165, 250, 0.8);
+  color: white;
+}
+
+.vpn-account-page-size {
+  align-items: center;
+  color: var(--rg-text-secondary);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.vpn-account-page-size select {
+  min-width: 82px;
+}
+
+.vpn-account-config-notice {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.vpn-account-edit-form {
+  display: grid;
+  gap: 14px;
+}
+
+.vpn-account-edit-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vpn-account-edit-grid .field small {
+  color: var(--rg-text-secondary);
+  min-height: 16px;
+}
+
+.vpn-account-access-actions,
+.vpn-account-danger-zone {
+  align-items: center;
+  border-top: 1px solid rgba(51, 65, 85, 0.65);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.vpn-account-danger-zone {
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 14px;
+  background: rgba(127, 29, 29, 0.08);
+  padding: 14px;
+}
+
+@media (max-width: 1280px) {
+  .vpn-account-management-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .vpn-account-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vpn-account-management-row-link {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .vpn-account-management-row-link > span:nth-last-child(-n + 2),
+  .vpn-account-management-head > span:nth-last-child(-n + 2) {
+    display: none;
+  }
+
+  .vpn-account-management-head {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+}

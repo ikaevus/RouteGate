@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ScannableQrCode } from '../qr/ScannableQrCode';
 
 type SubscriptionQrDialogProps = {
@@ -49,12 +50,13 @@ export function SubscriptionQrDialog({
       }
     };
 
+    const previousBodyOverflow = document.body.style.overflow;
     document.addEventListener('keydown', handleKeyDown);
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousBodyOverflow;
     };
   }, [isOpen, onClose]);
 
@@ -62,7 +64,7 @@ export function SubscriptionQrDialog({
     return null;
   }
 
-  return (
+  const dialog = (
     <div className="subscription-qr-modal-backdrop" onClick={onClose}>
       <div
         className="subscription-qr-modal"
@@ -111,4 +113,6 @@ export function SubscriptionQrDialog({
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }

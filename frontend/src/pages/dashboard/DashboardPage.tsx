@@ -5,7 +5,7 @@ import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
-import { getVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getPagedVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { GettingStartedWidget } from './GettingStartedWidget';
@@ -167,9 +167,15 @@ export function DashboardPage() {
     refetchInterval: 10_000,
   });
 
-  const vpnAccountsQuery = useQuery({
-    queryKey: ['vpn-accounts'],
-    queryFn: getVpnAccounts,
+  const vpnAccountsCountQuery = useQuery({
+    queryKey: ['vpn-accounts', 'dashboard-count', 'all'],
+    queryFn: () => getPagedVpnAccounts({ page: 1, pageSize: 1 }),
+    refetchInterval: 10_000,
+  });
+
+  const activeVpnAccountsCountQuery = useQuery({
+    queryKey: ['vpn-accounts', 'dashboard-count', 'active'],
+    queryFn: () => getPagedVpnAccounts({ status: 'active', page: 1, pageSize: 1 }),
     refetchInterval: 10_000,
   });
 
@@ -182,7 +188,6 @@ export function DashboardPage() {
   const managerHealthy = managerHealthQuery.isSuccess;
   const servers = serversQuery.data?.items ?? [];
   const agents = agentsQuery.data?.items ?? [];
-  const vpnAccounts = vpnAccountsQuery.data?.items ?? [];
 
   const serversCount = servers.length;
   const activeServersCount = servers.filter((server) => server.status === 'active').length;
@@ -193,8 +198,8 @@ export function DashboardPage() {
   const onlineAgentsCount = agents.filter((agent) => agent.status === 'online').length;
   const offlineAgentsCount = Math.max(agentsCount - onlineAgentsCount, 0);
 
-  const activeVpnUsers = vpnAccounts.filter((account) => account.status === 'active').length;
-  const vpnAccountsCount = vpnAccounts.length;
+  const activeVpnUsers = activeVpnAccountsCountQuery.data?.total ?? 0;
+  const vpnAccountsCount = vpnAccountsCountQuery.data?.total ?? 0;
 
   const displayServers = servers.slice(0, 5).map((server, index) => ({
     name: server.name || `server-${index + 1}`,

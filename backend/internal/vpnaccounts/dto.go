@@ -12,12 +12,14 @@ type CreateAccountRequest struct {
 }
 
 type UpdateAccountRequest struct {
-	DisplayName *string    `json:"displayName"`
-	Email       *string    `json:"email"`
-	Status      *string    `json:"status"`
-	ExpiresAt   *time.Time `json:"expiresAt"`
-	MaxDevices  *int       `json:"maxDevices"`
-	ServerID    *string    `json:"serverId"`
+	DisplayName     *string    `json:"displayName"`
+	Email           *string    `json:"email"`
+	Status          *string    `json:"status"`
+	ExpiresAt       *time.Time `json:"expiresAt"`
+	ClearExpiresAt  bool       `json:"clearExpiresAt"`
+	MaxDevices      *int       `json:"maxDevices"`
+	ClearMaxDevices bool       `json:"clearMaxDevices"`
+	ServerID        *string    `json:"serverId"`
 }
 
 type CreateSubscriptionTokenRequest struct {
@@ -25,7 +27,11 @@ type CreateSubscriptionTokenRequest struct {
 }
 
 type ListAccountsResponse struct {
-	Items []Account `json:"items"`
+	Items      []Account `json:"items"`
+	Total      int       `json:"total"`
+	Page       int       `json:"page"`
+	PageSize   int       `json:"pageSize"`
+	TotalPages int       `json:"totalPages"`
 }
 
 type VLESSRealityCredentialsResponse struct {
@@ -94,10 +100,10 @@ type PublicSubscriptionServer struct {
 }
 
 type PublicSubscriptionConfig struct {
-	Type     string                            `json:"type"`
-	Format   string                            `json:"format"`
-	Status   string                            `json:"status"`
-	Message  string                            `json:"message,omitempty"`
+	Type     string                             `json:"type"`
+	Format   string                             `json:"format"`
+	Status   string                             `json:"status"`
+	Message  string                             `json:"message,omitempty"`
 	Rendered *PublicSubscriptionRenderedConfig `json:"rendered,omitempty"`
 }
 
