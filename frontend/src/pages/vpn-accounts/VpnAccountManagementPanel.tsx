@@ -82,15 +82,17 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       const nextDisplayName = displayName.trim();
       const nextEmail = email.trim();
       const nextServerId = serverId;
+      const previousServerId = previous.serverId ?? '';
       const previousNotes = notesQuery.data?.notes ?? '';
 
       const accountChanged = previous.displayName !== nextDisplayName
         || (previous.email ?? '') !== nextEmail
         || previous.status !== status
-        || (previous.serverId ?? '') !== nextServerId;
-      const affectsConfig = previous.displayName !== nextDisplayName
+        || previousServerId !== nextServerId;
+      const configFieldsChanged = previous.displayName !== nextDisplayName
         || previous.status !== status
-        || (previous.serverId ?? '') !== nextServerId;
+        || previousServerId !== nextServerId;
+      const affectsConfig = configFieldsChanged && Boolean(previousServerId || nextServerId);
       const notesChanged = previousNotes !== notes;
 
       const accountPromise = accountChanged
@@ -132,7 +134,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       setStatus(updated.status as VpnAccountStatus);
       setMessage(copy.editSuccess);
       setErrorMessage('');
-      setConfigurationChanged(true);
+      setConfigurationChanged(Boolean(updated.serverId));
       await refreshAccountData();
     },
     onError: () => {
@@ -255,7 +257,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       <div className="vpn-account-access-actions">
         <div>
           <strong>{copy.accessActions}</strong>
-          <p className="panel-subtitle">{copy.configNotice}</p>
+          <p className="panel-subtitle">{account.serverId ? copy.configNotice : copy.unassignedConfigNotice}</p>
         </div>
         <div className="form-actions">
           <button className="small-button" type="button" disabled={actionPending || account.status === 'active'} onClick={() => statusMutation.mutate('active')}>{copy.activate}</button>
