@@ -28,6 +28,37 @@ export interface DashboardActivityResponse {
   recentAuditEvents: DashboardRecentAuditEvent[];
 }
 
+export interface DashboardTrafficTotals {
+  rxBytes: number;
+  txBytes: number;
+  totalBytes: number;
+}
+
+export interface DashboardDailyTraffic extends DashboardTrafficTotals {
+  date: string;
+}
+
+export interface DashboardServerTraffic extends DashboardTrafficTotals {
+  serverId: string;
+  serverName: string;
+}
+
+export interface DashboardTrafficResponse {
+  generatedAt: string;
+  monthStart: string;
+  last30DaysStart: string;
+  last30DaysEnd: string;
+  server24hFrom: string;
+  server24hTo: string;
+  monthly: DashboardTrafficTotals;
+  daily: DashboardDailyTraffic[];
+  servers: DashboardServerTraffic[];
+}
+
 export function getDashboardActivity(): Promise<DashboardActivityResponse> {
   return apiGet<DashboardActivityResponse>('/api/v1/dashboard/activity');
+}
+
+export function getDashboardTraffic(): Promise<DashboardTrafficResponse> {
+  return apiGet<DashboardTrafficResponse>('/api/v1/dashboard/traffic');
 }
