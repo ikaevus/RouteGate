@@ -50,6 +50,7 @@ func parseAccountListFilter(r *http.Request) (AccountFilter, int, int, error) {
 		SearchUUID: searchUUID,
 		Limit:      pageSize,
 		Offset:     (page - 1) * pageSize,
+		Readiness:  query.Get("readiness") == "1",
 	}, page, pageSize, nil
 }
 
