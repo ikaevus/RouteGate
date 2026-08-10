@@ -5,8 +5,10 @@ import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
 import {
   getDashboardActivity,
+  getDashboardNodes,
   getDashboardTraffic,
   type DashboardDailyTraffic,
+  type DashboardNodeDistribution,
   type DashboardRecentAuditEvent,
   type DashboardRecentDeployment,
 } from '../../entities/dashboard/api/dashboardApi';
@@ -127,6 +129,37 @@ function InfrastructureHealthWidget({
           </div>
         ))}
       </div>
+    </WidgetPanel>
+  );
+}
+
+function NodeDistributionWidget({ distribution, available }: { distribution?: DashboardNodeDistribution; available: boolean }) {
+  const locations = distribution?.locations ?? [];
+  const totalServers = distribution?.totalServers ?? 0;
+
+  return (
+    <WidgetPanel title={t('dashboard.nodeDistribution')} className="node-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : totalServers === 0 ? (
+        <p className="empty-state">{t('servers.emptyTitle')}</p>
+      ) : (
+        <div className="node-distribution-content">
+          <div className="node-distribution-list">
+            {locations.map((item, index) => {
+              const label = item.location || t('common.notAvailable');
+              const percentage = totalServers > 0 ? (item.count / totalServers) * 100 : 0;
+              return (
+                <div className="node-distribution-row" key={`${item.location}-${index}`}>
+                  <div className="node-distribution-label"><span title={label}>{label}</span><strong>{item.count}</strong></div>
+                  <div className="node-distribution-track"><span style={{ width: `${percentage}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="node-distribution-total">{t('dashboard.nodes')}: <strong>{totalServers}</strong></div>
+        </div>
+      )}
     </WidgetPanel>
   );
 }
@@ -308,6 +341,12 @@ export function DashboardPage() {
     refetchInterval: 60_000,
   });
 
+  const dashboardNodesQuery = useQuery({
+    queryKey: ['dashboard', 'nodes'],
+    queryFn: getDashboardNodes,
+    refetchInterval: 60_000,
+  });
+
   const vpnAccountsCountQuery = useQuery({
     queryKey: ['vpn-accounts', 'dashboard-count', 'all'],
     queryFn: () => getPagedVpnAccounts({ page: 1, pageSize: 1 }),
@@ -397,7 +436,7 @@ export function DashboardPage() {
           serversAvailable={serversQuery.isSuccess}
           agentsAvailable={agentsQuery.isSuccess}
         />
-        <UnavailableWidget title={t('dashboard.nodeDistribution')} className="node-widget" />
+        <NodeDistributionWidget distribution={dashboardNodesQuery.data} available={dashboardNodesQuery.isSuccess} />
         <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={trafficAvailable} />
         <QuickActionsWidget />
         <ServersSummaryWidget servers={displayServers} />
