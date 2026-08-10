@@ -30,8 +30,8 @@ type BulkAccountActionInput struct {
 }
 
 type BulkAccountActionResult struct {
-	AffectedCount     int64
-	AffectedServerIDs []string
+	AffectedCount        int64
+	AffectedServerIDs    []string
 	ConfigurationChanged bool
 }
 
@@ -67,7 +67,7 @@ func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInpu
 	}
 	serverRows.Close()
 
-	var commandTag pgconnCommandTag
+	var commandTag commandTagResult
 	switch input.Action {
 	case BulkActionActivate:
 		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusActive)
@@ -104,19 +104,17 @@ func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInpu
 	}
 
 	return BulkAccountActionResult{
-		AffectedCount:         commandTag.RowsAffected(),
-		AffectedServerIDs:     uniqueSortedStrings(serverIDs),
-		ConfigurationChanged: true,
+		AffectedCount:        commandTag.RowsAffected(),
+		AffectedServerIDs:    uniqueSortedStrings(serverIDs),
+		ConfigurationChanged: commandTag.RowsAffected() > 0,
 	}, nil
 }
 
-// pgx.Tx.Exec returns pgconn.CommandTag. This small interface keeps the helper
-// independent from a concrete pgconn import while preserving RowsAffected.
-type pgconnCommandTag interface {
+type commandTagResult interface {
 	RowsAffected() int64
 }
 
-func execBulkStatus(ctx context.Context, tx pgx.Tx, whereSQL string, args []any, status string) (pgconnCommandTag, error) {
+func execBulkStatus(ctx context.Context, tx pgx.Tx, whereSQL string, args []any, status string) (commandTagResult, error) {
 	statusPosition := len(args) + 1
 	argsWithStatus := append(append([]any{}, args...), status)
 	return tx.Exec(ctx, `
@@ -134,7 +132,7 @@ func bulkSelectionSQL(selection BulkAccountSelection) (string, []any) {
 		return "WHERE id = ANY($1::uuid[])", []any{selection.IDs}
 	}
 	return `WHERE ($1 = '' OR status = $1)
-		AND ($2 = '' OR server_id = $2::uuid)
+		AND ($2 = '' OR server_id = NULLIF($2, '')::uuid)
 		AND (
 			$3 = ''
 			OR display_name ILIKE '%' || $3 || '%'
