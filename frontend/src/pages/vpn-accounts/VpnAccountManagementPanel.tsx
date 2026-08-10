@@ -16,17 +16,6 @@ import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 
-function dateInputValue(value?: string | null): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toISOString().slice(0, 10);
-}
-
-function expirationISO(value: string): string {
-  return new Date(`${value}T23:59:59.999Z`).toISOString();
-}
-
 export function VpnAccountManagementPanel({ accountId }: { accountId?: string }) {
   const copy = getVpnAccountManagementCopy();
   const navigate = useNavigate();
@@ -37,8 +26,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<VpnAccountStatus>('active');
   const [serverId, setServerId] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
-  const [maxDevices, setMaxDevices] = useState('');
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [configurationChanged, setConfigurationChanged] = useState(false);
@@ -58,8 +45,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     setEmail(account.email ?? '');
     setStatus(account.status as VpnAccountStatus);
     setServerId(account.serverId ?? '');
-    setExpiresAt(dateInputValue(account.expiresAt));
-    setMaxDevices(account.maxDevices ? String(account.maxDevices) : '');
     setMessage('');
     setErrorMessage('');
     setConfigurationChanged(false);
@@ -80,8 +65,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       email: email.trim(),
       status,
       serverId,
-      ...(expiresAt ? { expiresAt: expirationISO(expiresAt) } : { clearExpiresAt: true }),
-      ...(maxDevices ? { maxDevices: Number(maxDevices) } : { clearMaxDevices: true }),
     }),
     onSuccess: async (updated) => {
       const previous = accountQuery.data;
@@ -199,15 +182,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
                 <option key={server.id} value={server.id}>{server.name || server.id}</option>
               ))}
             </select>
-          </label>
-          <label className="field">
-            <span>{copy.expiration}</span>
-            <input type="date" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
-            <small>{expiresAt ? '' : copy.noExpiration}</small>
-          </label>
-          <label className="field">
-            <span>{copy.maxDevices}</span>
-            <input min="1" step="1" type="number" value={maxDevices} onChange={(event) => setMaxDevices(event.target.value)} placeholder={copy.unlimited} />
           </label>
         </div>
 
