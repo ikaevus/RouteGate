@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
 // UpdateManaged is the admin-management PATCH path. It preserves the existing
@@ -76,11 +77,5 @@ func (h *Handler) UpdateManaged(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
-	writeAccountJSON(w, account)
-}
-
-func writeAccountJSON(w http.ResponseWriter, account Account) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(account)
+	httpx.WriteJSON(w, http.StatusOK, account)
 }
