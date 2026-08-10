@@ -30,12 +30,27 @@ type BulkAccountActionRequest struct {
 }
 
 type BulkAccountActionResponse struct {
-	AffectedCount         int64    `json:"affectedCount"`
-	AffectedServerIDs     []string `json:"affectedServerIds"`
-	ConfigurationChanged  bool     `json:"configurationChanged"`
+	AffectedCount        int64    `json:"affectedCount"`
+	AffectedServerIDs    []string `json:"affectedServerIds"`
+	ConfigurationChanged bool     `json:"configurationChanged"`
 }
 
-func (h *Handler) BulkAction(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) BulkUpdate(w http.ResponseWriter, r *http.Request) {
+	h.bulkAction(w, r, map[string]struct{}{
+		BulkActionActivate:     {},
+		BulkActionAssignServer: {},
+	})
+}
+
+func (h *Handler) BulkDisable(w http.ResponseWriter, r *http.Request) {
+	h.bulkAction(w, r, map[string]struct{}{
+		BulkActionSuspend: {},
+		BulkActionRevoke:  {},
+		BulkActionDelete:  {},
+	})
+}
+
+func (h *Handler) bulkAction(w http.ResponseWriter, r *http.Request, allowedActions map[string]struct{}) {
 	repository, ok := h.accounts.(bulkAccountRepository)
 	if !ok {
 		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("bulk_actions_unavailable", "Bulk VPN account actions are unavailable."))
@@ -50,6 +65,10 @@ func (h *Handler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	input, err := validateBulkActionRequest(request)
 	if err != nil {
 		writeInvalidRequest(w, err.Error())
+		return
+	}
+	if _, allowed := allowedActions[input.Action]; !allowed {
+		httpx.WriteJSON(w, http.StatusForbidden, httpx.Error("bulk_action_forbidden", "This bulk action requires a different permission."))
 		return
 	}
 
