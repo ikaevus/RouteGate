@@ -362,6 +362,12 @@ const accountFilterSQL = `
 			$3 = ''
 			OR display_name ILIKE '%' || $3 || '%'
 			OR email ILIKE '%' || $3 || '%'
+			OR EXISTS (
+				SELECT 1
+				FROM vpn_account_notes n
+				WHERE n.vpn_account_id = vpn_accounts.id
+				  AND n.notes ILIKE '%' || $3 || '%'
+			)
 			OR id = $4::uuid
 			OR vless_uuid = $4::uuid
 		  )
