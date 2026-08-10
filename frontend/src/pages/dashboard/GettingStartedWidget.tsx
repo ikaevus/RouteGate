@@ -492,7 +492,7 @@ export function GettingStartedWidget() {
     || (Boolean(primaryServer?.id && accountReady) && (configVersionsQuery.isError || applyJobsQuery.isError));
 
   useEffect(() => {
-    if (!allReady && dismissed) {
+    if (!loading && !failed && !allReady && dismissed) {
       setDismissed(false);
       try {
         window.localStorage.removeItem(dismissedStorageKey);
@@ -500,7 +500,7 @@ export function GettingStartedWidget() {
         // Local persistence is optional; state-aware restoration still wins in-memory.
       }
     }
-  }, [allReady, dismissed]);
+  }, [loading, failed, allReady, dismissed]);
 
   const dismiss = () => {
     if (!allReady) return;
