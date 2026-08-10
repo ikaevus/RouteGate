@@ -43,6 +43,17 @@ func (f *fakeTrafficReader) GetTrafficSnapshot(_ context.Context, currentTime ti
 	return f.snapshot, f.err
 }
 
+type fakeNodeReader struct {
+	distribution NodeDistribution
+	err          error
+	limit        int
+}
+
+func (f *fakeNodeReader) GetNodeDistribution(_ context.Context, limit int) (NodeDistribution, error) {
+	f.limit = limit
+	return f.distribution, f.err
+}
+
 func TestActivityReturnsBoundedSanitizedData(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 1, 30, 0, 0, time.UTC)
 	reader := &fakeActivityReader{
@@ -132,5 +143,31 @@ func TestTrafficReturnsDatabaseError(t *testing.T) {
 
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestNodesReturnsBoundedDistribution(t *testing.T) {
+	reader := &fakeNodeReader{distribution: NodeDistribution{
+		TotalServers: 3,
+		Locations: []NodeLocationCount{{Location: "Helsinki, FI", Count: 2}, {Location: "", Count: 1}},
+	}}
+	handler := &Handler{logger: slog.Default(), nodes: reader}
+
+	response := httptest.NewRecorder()
+	handler.Nodes(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/nodes", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if reader.limit != nodeLocationLimit {
+		t.Fatalf("node limit = %d, want %d", reader.limit, nodeLocationLimit)
+	}
+
+	var payload NodeDistribution
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.TotalServers != 3 || len(payload.Locations) != 2 || payload.Locations[0].Count != 2 {
+		t.Fatalf("unexpected node distribution: %+v", payload)
 	}
 }
