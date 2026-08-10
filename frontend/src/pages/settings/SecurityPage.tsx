@@ -153,7 +153,7 @@ function SessionRow({
         <span>{c.expires}: {formatDate(session.expires_at)}</span>
       </div>
       {!session.current && (
-        <button className="secondary-button" type="button" disabled={isRevoking} onClick={() => onRevoke(session.id)}>
+        <button className="small-button" type="button" disabled={isRevoking} onClick={() => onRevoke(session.id)}>
           {isRevoking ? c.revoking : c.revoke}
         </button>
       )}
@@ -282,7 +282,7 @@ export function SecurityPage() {
         {sessionsQuery.isSuccess && otherSessionCount === 0 && <p className="rg101-password-hint">{c.noOtherSessions}</p>}
         {otherSessionCount > 0 && (
           <button
-            className="secondary-button"
+            className="small-button"
             type="button"
             disabled={revokeOthersMutation.isPending}
             onClick={() => revokeOthersMutation.mutate()}
