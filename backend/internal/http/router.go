@@ -121,6 +121,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
 	mux.Handle("GET /api/v1/dashboard/activity", adminAuth(dashboardHandler.Activity))
 	mux.Handle("GET /api/v1/dashboard/traffic", adminAuth(dashboardHandler.Traffic))
+	mux.Handle("GET /api/v1/dashboard/nodes", adminAuth(dashboardHandler.Nodes))
 
 	mux.Handle("GET /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.List))))
 	mux.Handle("POST /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:create")(stdhttp.HandlerFunc(vpnAccountsHandler.Create))))
