@@ -3,7 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
-import { getDashboardActivity, type DashboardRecentAuditEvent, type DashboardRecentDeployment } from '../../entities/dashboard/api/dashboardApi';
+import {
+  getDashboardActivity,
+  getDashboardTraffic,
+  type DashboardDailyTraffic,
+  type DashboardRecentAuditEvent,
+  type DashboardRecentDeployment,
+} from '../../entities/dashboard/api/dashboardApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { getPagedVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
@@ -18,6 +24,27 @@ function formatDate(value?: string | null): string {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatTrafficDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return t('common.notAvailable');
+  }
+  if (bytes === 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** unitIndex);
+  const maximumFractionDigits = unitIndex === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
+
+  return `${value.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
 }
 
 function getRegionCountryCode(region: string): string | null {
@@ -122,7 +149,41 @@ function QuickActionsWidget() {
   );
 }
 
-function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
+function TrafficOverviewWidget({ daily, available }: { daily: DashboardDailyTraffic[]; available: boolean }) {
+  const maximum = daily.reduce((value, item) => Math.max(value, item.totalBytes), 0);
+  const total = daily.reduce((value, item) => value + item.totalBytes, 0);
+
+  return (
+    <WidgetPanel title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : (
+        <div className="traffic-overview-content">
+          <div className="traffic-overview-total">
+            <strong>{formatBytes(total)}</strong>
+            <span>{t('dashboard.total')}</span>
+          </div>
+          <div className="traffic-overview-bars">
+            {daily.map((item, index) => {
+              const percentage = maximum > 0 ? (item.totalBytes / maximum) * 100 : 0;
+              const showLabel = index === 0 || index === daily.length - 1 || index % 7 === 0;
+              return (
+                <div className="traffic-overview-column" key={item.date} title={`${formatTrafficDate(item.date)} · ${formatBytes(item.totalBytes)}`}>
+                  <div className="traffic-overview-bar-track">
+                    <span className="traffic-overview-bar" style={{ height: `${percentage}%` }} />
+                  </div>
+                  <small>{showLabel ? formatTrafficDate(item.date) : ''}</small>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
+function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
   return (
     <WidgetPanel title={t('servers.title')} className="servers-summary-widget dashboard-table-widget">
       {servers.length === 0 ? (
@@ -136,7 +197,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
             const countryCode = getRegionCountryCode(server.region);
 
             return (
-              <div className="dashboard-table-row" key={server.name}>
+              <div className="dashboard-table-row" key={server.id}>
                 <strong title={server.name}>{server.name}</strong>
                 <span className="server-region-cell">
                   {countryCode && (
@@ -240,6 +301,12 @@ export function DashboardPage() {
     refetchInterval: 10_000,
   });
 
+  const dashboardTrafficQuery = useQuery({
+    queryKey: ['dashboard', 'traffic'],
+    queryFn: getDashboardTraffic,
+    refetchInterval: 60_000,
+  });
+
   const vpnAccountsCountQuery = useQuery({
     queryKey: ['vpn-accounts', 'dashboard-count', 'all'],
     queryFn: () => getPagedVpnAccounts({ page: 1, pageSize: 1 }),
@@ -273,13 +340,17 @@ export function DashboardPage() {
 
   const activeVpnUsers = activeVpnAccountsCountQuery.data?.total ?? 0;
   const vpnAccountsCount = vpnAccountsCountQuery.data?.total ?? 0;
+  const trafficAvailable = dashboardTrafficQuery.isSuccess;
+  const monthlyTraffic = dashboardTrafficQuery.data?.monthly;
+  const serverTrafficById = new Map((dashboardTrafficQuery.data?.servers ?? []).map((item) => [item.serverId, item]));
 
   const displayServers = servers.slice(0, 5).map((server, index) => ({
+    id: server.id,
     name: server.name || `server-${index + 1}`,
     region: server.location || server.provider || t('common.notAvailable'),
     online: server.agent?.status === 'online',
     load: t('common.notAvailable'),
-    traffic: t('common.notAvailable'),
+    traffic: trafficAvailable ? formatBytes(serverTrafficById.get(server.id)?.totalBytes ?? 0) : t('common.notAvailable'),
     status: server.status || 'unknown',
   }));
 
@@ -310,8 +381,10 @@ export function DashboardPage() {
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
-          value={t('common.notAvailable')}
-          meta={t('common.notAvailable')}
+          value={trafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : t('common.notAvailable')}
+          meta={trafficAvailable && monthlyTraffic
+            ? `${t('dashboard.inboundTraffic')}: ${formatBytes(monthlyTraffic.rxBytes)} · ${t('dashboard.outboundTraffic')}: ${formatBytes(monthlyTraffic.txBytes)}`
+            : t('common.notAvailable')}
           tone="amber"
           icon="☁"
         />
@@ -324,7 +397,7 @@ export function DashboardPage() {
           agentsAvailable={agentsQuery.isSuccess}
         />
         <UnavailableWidget title={t('dashboard.nodeDistribution')} className="node-widget" />
-        <UnavailableWidget title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget" />
+        <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={trafficAvailable} />
         <QuickActionsWidget />
         <ServersSummaryWidget servers={displayServers} />
         <RecentDeploymentsWidget
