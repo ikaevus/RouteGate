@@ -16,6 +16,7 @@ import { getPagedVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountMan
 import { t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { GettingStartedWidget } from './GettingStartedWidget';
+import './DashboardPage.css';
 
 function formatDate(value?: string | null): string {
   if (!value) {
