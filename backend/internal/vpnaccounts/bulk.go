@@ -1,0 +1,181 @@
+package vpnaccounts
+
+import (
+	"context"
+	"errors"
+	"sort"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+)
+
+const (
+	BulkActionActivate     = "activate"
+	BulkActionSuspend      = "suspend"
+	BulkActionRevoke       = "revoke"
+	BulkActionDelete       = "delete"
+	BulkActionAssignServer = "assign_server"
+)
+
+type BulkAccountSelection struct {
+	IDs         []string
+	AllMatching bool
+	Filter      AccountFilter
+}
+
+type BulkAccountActionInput struct {
+	Action         string
+	Selection      BulkAccountSelection
+	TargetServerID string
+}
+
+type BulkAccountActionResult struct {
+	AffectedCount     int64
+	AffectedServerIDs []string
+	ConfigurationChanged bool
+}
+
+func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInput) (BulkAccountActionResult, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return BulkAccountActionResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	whereSQL, args := bulkSelectionSQL(input.Selection)
+	serverRows, err := tx.Query(ctx, `
+		SELECT DISTINCT server_id::text
+		FROM vpn_accounts
+		`+whereSQL+`
+		  AND server_id IS NOT NULL
+	`, args...)
+	if err != nil {
+		return BulkAccountActionResult{}, err
+	}
+	serverIDs := make([]string, 0)
+	for serverRows.Next() {
+		var serverID string
+		if err := serverRows.Scan(&serverID); err != nil {
+			serverRows.Close()
+			return BulkAccountActionResult{}, err
+		}
+		serverIDs = append(serverIDs, serverID)
+	}
+	if err := serverRows.Err(); err != nil {
+		serverRows.Close()
+		return BulkAccountActionResult{}, err
+	}
+	serverRows.Close()
+
+	var commandTag pgconnCommandTag
+	switch input.Action {
+	case BulkActionActivate:
+		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusActive)
+	case BulkActionSuspend:
+		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusSuspended)
+	case BulkActionRevoke:
+		commandTag, err = execBulkStatus(ctx, tx, whereSQL, args, StatusRevoked)
+	case BulkActionDelete:
+		commandTag, err = tx.Exec(ctx, `DELETE FROM vpn_accounts `+whereSQL, args...)
+	case BulkActionAssignServer:
+		if input.TargetServerID == "" {
+			return BulkAccountActionResult{}, errors.New("target server is required")
+		}
+		targetPosition := len(args) + 1
+		argsWithTarget := append(append([]any{}, args...), input.TargetServerID)
+		commandTag, err = tx.Exec(ctx, `
+			UPDATE vpn_accounts
+			SET server_id = $`+itoa(targetPosition)+`::uuid,
+			    updated_at = now(),
+			    config_updated_at = now()
+			`+whereSQL,
+			argsWithTarget...,
+		)
+		serverIDs = append(serverIDs, input.TargetServerID)
+	default:
+		return BulkAccountActionResult{}, errors.New("unsupported bulk action")
+	}
+	if err != nil {
+		return BulkAccountActionResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return BulkAccountActionResult{}, err
+	}
+
+	return BulkAccountActionResult{
+		AffectedCount:         commandTag.RowsAffected(),
+		AffectedServerIDs:     uniqueSortedStrings(serverIDs),
+		ConfigurationChanged: true,
+	}, nil
+}
+
+// pgx.Tx.Exec returns pgconn.CommandTag. This small interface keeps the helper
+// independent from a concrete pgconn import while preserving RowsAffected.
+type pgconnCommandTag interface {
+	RowsAffected() int64
+}
+
+func execBulkStatus(ctx context.Context, tx pgx.Tx, whereSQL string, args []any, status string) (pgconnCommandTag, error) {
+	statusPosition := len(args) + 1
+	argsWithStatus := append(append([]any{}, args...), status)
+	return tx.Exec(ctx, `
+		UPDATE vpn_accounts
+		SET status = $`+itoa(statusPosition)+`,
+		    updated_at = now(),
+		    config_updated_at = now()
+		`+whereSQL,
+		argsWithStatus...,
+	)
+}
+
+func bulkSelectionSQL(selection BulkAccountSelection) (string, []any) {
+	if !selection.AllMatching {
+		return "WHERE id = ANY($1::uuid[])", []any{selection.IDs}
+	}
+	return `WHERE ($1 = '' OR status = $1)
+		AND ($2 = '' OR server_id = $2::uuid)
+		AND (
+			$3 = ''
+			OR display_name ILIKE '%' || $3 || '%'
+			OR email ILIKE '%' || $3 || '%'
+			OR id = $4::uuid
+			OR vless_uuid = $4::uuid
+		)`, []any{
+		selection.Filter.Status,
+		selection.Filter.ServerID,
+		selection.Filter.Search,
+		selection.Filter.SearchUUID,
+	}
+}
+
+func uniqueSortedStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		seen[value] = struct{}{}
+	}
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func itoa(value int) string {
+	if value == 0 {
+		return "0"
+	}
+	var digits [20]byte
+	position := len(digits)
+	for value > 0 {
+		position--
+		digits[position] = byte('0' + value%10)
+		value /= 10
+	}
+	return string(digits[position:])
+}
