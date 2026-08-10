@@ -1,3 +1,6 @@
+DROP TRIGGER IF EXISTS agents_extract_runtime_metrics ON agents;
+DROP FUNCTION IF EXISTS routegate_extract_agent_runtime_metrics();
+
 ALTER TABLE agents
     DROP CONSTRAINT IF EXISTS agents_runtime_load_1_check,
     DROP CONSTRAINT IF EXISTS agents_runtime_load_5_check,
