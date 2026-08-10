@@ -9,6 +9,29 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/vpncoreinstall"
 )
 
+func TestParseLoadAverage(t *testing.T) {
+	load1, load5, load15, ok := parseLoadAverage([]byte("0.42 0.25 0.17 1/281 12345\n"))
+	if !ok {
+		t.Fatal("expected load average to parse")
+	}
+	if load1 != 0.42 || load5 != 0.25 || load15 != 0.17 {
+		t.Fatalf("unexpected load average: %v %v %v", load1, load5, load15)
+	}
+}
+
+func TestParseLoadAverageRejectsInvalidPayload(t *testing.T) {
+	testCases := [][]byte{
+		[]byte("0.42 0.25"),
+		[]byte("invalid 0.25 0.17"),
+		[]byte("-1 0.25 0.17"),
+	}
+	for _, payload := range testCases {
+		if _, _, _, ok := parseLoadAverage(payload); ok {
+			t.Fatalf("expected invalid payload to be rejected: %q", payload)
+		}
+	}
+}
+
 func TestDetectVPNCoreNotInstalled(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
