@@ -11,6 +11,7 @@ export interface VpnAccount {
   vlessUuid?: string | null;
   createdAt: string;
   updatedAt: string;
+  configUpdatedAt?: string;
 }
 
 export interface ListVpnAccountsResponse {
@@ -261,8 +262,22 @@ export function buildVlessRealityShareLink(
   return `vless://${encodeURIComponent(uuid)}@${formatVlessHost(server)}:${serverPort}?${parameters.toString()}#${encodeURIComponent(label)}`;
 }
 
-export function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
-  return apiGet<ListVpnAccountsResponse>('/api/v1/vpn-accounts');
+export async function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
+  const servers = await apiGet<{ items: Array<{ id: string }> }>('/api/v1/servers');
+  if (servers.items.length === 0) return { items: [] };
+
+  const results = await Promise.all(servers.items.map((server) => apiGet<{ items: VpnAccount[] }>(
+    `/api/v1/vpn-accounts?status=active&serverId=${encodeURIComponent(server.id)}&page=1&pageSize=1`,
+  )));
+
+  return {
+    items: results.flatMap((result) => result.items).map((account) => ({
+      ...account,
+      // Getting Started historically reads updatedAt for config freshness.
+      // Preserve that contract while separating generic metadata edits in the API.
+      updatedAt: account.configUpdatedAt ?? account.updatedAt,
+    })),
+  };
 }
 
 export async function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {
