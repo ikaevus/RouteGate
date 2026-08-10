@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	defaultAccountPageSize = 50
+	defaultAccountPageSize = 100
 	maxAccountPageSize     = 100
 	nilSearchUUID          = "00000000-0000-0000-0000-000000000000"
 )
