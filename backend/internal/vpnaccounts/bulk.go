@@ -88,7 +88,8 @@ func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInpu
 			SET server_id = $`+itoa(targetPosition)+`::uuid,
 			    updated_at = now(),
 			    config_updated_at = now()
-			`+whereSQL,
+			`+whereSQL+`
+			  AND server_id IS DISTINCT FROM $`+itoa(targetPosition)+`::uuid`,
 			argsWithTarget...,
 		)
 		serverIDs = append(serverIDs, input.TargetServerID)
@@ -122,7 +123,8 @@ func execBulkStatus(ctx context.Context, tx pgx.Tx, whereSQL string, args []any,
 		SET status = $`+itoa(statusPosition)+`,
 		    updated_at = now(),
 		    config_updated_at = now()
-		`+whereSQL,
+		`+whereSQL+`
+		  AND status IS DISTINCT FROM $`+itoa(statusPosition),
 		argsWithStatus...,
 	)
 }
@@ -137,6 +139,12 @@ func bulkSelectionSQL(selection BulkAccountSelection) (string, []any) {
 			$3 = ''
 			OR display_name ILIKE '%' || $3 || '%'
 			OR email ILIKE '%' || $3 || '%'
+			OR EXISTS (
+				SELECT 1
+				FROM vpn_account_notes n
+				WHERE n.vpn_account_id = vpn_accounts.id
+				  AND n.notes ILIKE '%' || $3 || '%'
+			)
 			OR id = $4::uuid
 			OR vless_uuid = $4::uuid
 		)`, []any{
