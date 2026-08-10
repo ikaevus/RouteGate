@@ -6,6 +6,7 @@ import {
   createVpnAccount,
   getVpnAccountCredentials,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { updateVpnAccountNotes } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
@@ -39,6 +40,7 @@ export function VpnAccountsPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [serverId, setServerId] = useState('');
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (searchParams.get('create') === '1') setIsCreateOpen(true);
@@ -53,15 +55,22 @@ export function VpnAccountsPage() {
   });
 
   const createAccountMutation = useMutation({
-    mutationFn: () => createVpnAccount({
-      displayName: displayName.trim(),
-      email: email.trim() || undefined,
-      serverId: serverId || undefined,
-    }),
+    mutationFn: async () => {
+      const account = await createVpnAccount({
+        displayName: displayName.trim(),
+        email: email.trim() || undefined,
+        serverId: serverId || undefined,
+      });
+      if (notes.trim()) {
+        await updateVpnAccountNotes(account.id, notes);
+      }
+      return account;
+    },
     onSuccess: async (account) => {
       setDisplayName('');
       setEmail('');
       setServerId('');
+      setNotes('');
       setIsCreateOpen(false);
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('create');
@@ -126,6 +135,7 @@ export function VpnAccountsPage() {
                   onChange={(event) => setDisplayName(event.target.value)}
                   placeholder={t('vpnAccounts.displayNamePlaceholder')}
                 />
+                <small>{t('vpnAccounts.displayNameHint')}</small>
               </label>
               <label className="field">
                 <span>{t('vpnAccounts.email')}</span>
@@ -144,6 +154,17 @@ export function VpnAccountsPage() {
                     <option value={server.id} key={server.id}>{server.name || server.id}</option>
                   ))}
                 </select>
+              </label>
+              <label className="field vpn-account-notes-field">
+                <span>{t('vpnAccounts.notes')}</span>
+                <textarea
+                  value={notes}
+                  maxLength={4000}
+                  rows={4}
+                  placeholder={t('vpnAccounts.notesPlaceholder')}
+                  onChange={(event) => setNotes(event.target.value)}
+                />
+                <small>{t('vpnAccounts.notesHint')}</small>
               </label>
             </div>
             {createAccountMutation.isError && (
