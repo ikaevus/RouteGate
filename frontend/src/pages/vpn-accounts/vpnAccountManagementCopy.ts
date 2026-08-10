@@ -27,7 +27,7 @@ export function getVpnAccountManagementCopy() {
       bulkWorking: 'Выполняем…',
       bulkConfirmDelete: (count: number) => `Безвозвратно удалить ${count} VPN-аккаунт(ов)?\n\nЭто действие нельзя отменить.`,
       bulkConfirmRevoke: (count: number) => `Отозвать доступ у ${count} VPN-аккаунт(ов)?`,
-      bulkDone: (count: number) => `Операция выполнена для ${count} VPN-аккаунт(ов). Изменения доступа требуют нового развёртывания конфигурации затронутых серверов.`,
+      bulkDone: (count: number) => `Операция выполнена для ${count} VPN-аккаунт(ов).`,
       bulkError: 'Не удалось выполнить массовую операцию для всех выбранных аккаунтов.',
       noMatchesTitle: 'VPN-аккаунты не найдены',
       noMatchesDescription: 'Измените поисковый запрос или фильтры.',
@@ -62,7 +62,7 @@ export function getVpnAccountManagementCopy() {
       statusSuspended: 'Приостановлен',
       statusExpired: 'Истёк',
       statusRevoked: 'Отозван',
-      configNotice: 'Изменения, влияющие на VPN-доступ, необходимо применить через новое развёртывание конфигурации сервера.',
+      configNotice: 'Изменения затронули конфигурацию VPN-сервера и требуют нового развёртывания.',
       openDeploy: 'Открыть развёртывание конфигов →',
     } as const;
   }
@@ -92,7 +92,7 @@ export function getVpnAccountManagementCopy() {
     bulkWorking: 'Working…',
     bulkConfirmDelete: (count: number) => `Permanently delete ${count} VPN account(s)?\n\nThis cannot be undone.`,
     bulkConfirmRevoke: (count: number) => `Revoke access for ${count} VPN account(s)?`,
-    bulkDone: (count: number) => `Operation completed for ${count} VPN account(s). Access changes require a new configuration deployment on affected servers.`,
+    bulkDone: (count: number) => `Operation completed for ${count} VPN account(s).`,
     bulkError: 'The bulk operation could not be completed for every selected account.',
     noMatchesTitle: 'No VPN accounts found',
     noMatchesDescription: 'Change the search query or filters.',
@@ -127,7 +127,7 @@ export function getVpnAccountManagementCopy() {
     statusSuspended: 'Suspended',
     statusExpired: 'Expired',
     statusRevoked: 'Revoked',
-    configNotice: 'Changes that affect VPN access must be applied through a new server configuration deployment.',
+    configNotice: 'The changes affected a VPN server configuration and require a new deployment.',
     openDeploy: 'Open Config Deploy →',
   } as const;
 }
