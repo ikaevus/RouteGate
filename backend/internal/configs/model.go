@@ -98,7 +98,6 @@ type VPNAccountConfigInfo struct {
 	ID                       string
 	DisplayName              string
 	Status                   string
-	ExpiresAt                *time.Time
 	VLESSUUID                string
 	VLESSFlow                string
 	VLESSNetwork             string
