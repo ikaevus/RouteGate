@@ -55,10 +55,24 @@ export interface DashboardTrafficResponse {
   servers: DashboardServerTraffic[];
 }
 
+export interface DashboardNodeLocation {
+  location: string;
+  count: number;
+}
+
+export interface DashboardNodeDistribution {
+  totalServers: number;
+  locations: DashboardNodeLocation[];
+}
+
 export function getDashboardActivity(): Promise<DashboardActivityResponse> {
   return apiGet<DashboardActivityResponse>('/api/v1/dashboard/activity');
 }
 
 export function getDashboardTraffic(): Promise<DashboardTrafficResponse> {
   return apiGet<DashboardTrafficResponse>('/api/v1/dashboard/traffic');
+}
+
+export function getDashboardNodes(): Promise<DashboardNodeDistribution> {
+  return apiGet<DashboardNodeDistribution>('/api/v1/dashboard/nodes');
 }
