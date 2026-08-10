@@ -24,11 +24,11 @@ func TestParseAccountListFilterDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if page != 1 || pageSize != 50 {
-		t.Fatalf("expected page=1 pageSize=50, got page=%d pageSize=%d", page, pageSize)
+	if page != 1 || pageSize != 100 {
+		t.Fatalf("expected page=1 pageSize=100, got page=%d pageSize=%d", page, pageSize)
 	}
-	if filter.Limit != 50 || filter.Offset != 0 {
-		t.Fatalf("expected limit=50 offset=0, got limit=%d offset=%d", filter.Limit, filter.Offset)
+	if filter.Limit != 100 || filter.Offset != 0 {
+		t.Fatalf("expected limit=100 offset=0, got limit=%d offset=%d", filter.Limit, filter.Offset)
 	}
 	if filter.SearchUUID != nilSearchUUID {
 		t.Fatalf("expected safe nil UUID sentinel, got %q", filter.SearchUUID)
