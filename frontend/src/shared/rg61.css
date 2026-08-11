@@ -33,6 +33,36 @@
   grid-template-columns: 1.6fr 0.6fr 0.9fr;
 }
 
+/* The profile list lives in the narrow master column of the split layout.
+ * Unlike dense data tables, its descriptive copy is useful content and must
+ * remain readable instead of being truncated by the generic table ellipsis. */
+.routing-profiles-table-row > div {
+  min-width: 0;
+}
+
+.routing-profiles-table-row > div > span {
+  display: block;
+  line-height: 1.35;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.routing-profiles-table-row > .badge {
+  justify-self: start;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@media (min-width: 981px) {
+  .routing-profiles-table-row {
+    align-items: start;
+    grid-template-columns: minmax(0, 1.45fr) auto minmax(132px, 0.75fr) !important;
+  }
+}
+
 .routing-rules-table {
   min-width: 1180px;
 }
