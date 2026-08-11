@@ -8,6 +8,7 @@ import {
   previewVpnAccountDelivery,
   retryDelivery,
   type CreateDeliveryRequest,
+  type DeliveryChannel,
   type DeliveryLocale,
   type DeliveryRecord,
   type DeliveryStatus,
@@ -18,14 +19,8 @@ import { ApiError } from '../../shared/api/client';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import './vpn-access-delivery.css';
 
-type VpnAccessDeliveryPanelProps = {
-  accountId: string;
-};
-
-type SendVariables = {
-  request: CreateDeliveryRequest;
-  idempotencyKey: string;
-};
+type VpnAccessDeliveryPanelProps = { accountId: string };
+type SendVariables = { request: CreateDeliveryRequest; idempotencyKey: string };
 
 const activeStatuses: DeliveryStatus[] = ['queued', 'sending', 'retrying'];
 
@@ -48,23 +43,31 @@ function deliveryStatusLabel(status: DeliveryStatus): string {
   }
 }
 
-function providerGuidance(code?: string): string {
-  switch (code) {
-    case 'smtp_not_configured': return t('delivery.configureSmtp');
-    case 'smtp_configuration_invalid': return t('delivery.configureSmtp');
-    case 'public_url_missing': return t('delivery.configurePublicUrl');
-    case 'public_url_invalid': return t('delivery.configurePublicUrl');
-    default: return t('delivery.provider.default');
-  }
+function providerReadyLabel(channel: DeliveryChannel): string {
+  return channel === 'telegram' ? t('delivery.telegramProviderReady') : t('delivery.emailProviderReady');
 }
 
 function providerReason(code?: string): string {
   switch (code) {
     case 'smtp_not_configured': return t('delivery.provider.smtp_not_configured');
     case 'smtp_configuration_invalid': return t('delivery.provider.smtp_configuration_invalid');
+    case 'telegram_not_configured': return t('delivery.provider.telegram_not_configured');
+    case 'telegram_configuration_invalid': return t('delivery.provider.telegram_configuration_invalid');
     case 'public_url_missing': return t('delivery.provider.public_url_missing');
     case 'public_url_invalid': return t('delivery.provider.public_url_invalid');
     default: return t('delivery.provider.default');
+  }
+}
+
+function providerGuidance(code: string | undefined, channel: DeliveryChannel): string {
+  switch (code) {
+    case 'smtp_not_configured':
+    case 'smtp_configuration_invalid': return t('delivery.configureSmtp');
+    case 'telegram_not_configured':
+    case 'telegram_configuration_invalid': return t('delivery.configureTelegram');
+    case 'public_url_missing':
+    case 'public_url_invalid': return t('delivery.configurePublicUrl');
+    default: return channel === 'telegram' ? t('delivery.configureTelegram') : t('delivery.provider.default');
   }
 }
 
@@ -75,16 +78,19 @@ function errorMessage(error: unknown, fallback: string): string {
       case 'vpn_endpoint_missing':
       case 'vpn_reality_incomplete':
       case 'vpn_access_incomplete':
-      case 'vpn_access_unavailable':
-        return t('delivery.fixVpnAccess');
+      case 'vpn_access_unavailable': return t('delivery.fixVpnAccess');
       case 'smtp_not_configured':
-      case 'smtp_configuration_invalid':
-        return t('delivery.configureSmtp');
+      case 'smtp_configuration_invalid': return t('delivery.configureSmtp');
+      case 'telegram_not_configured':
+      case 'telegram_configuration_invalid':
+      case 'telegram_unauthorized': return t('delivery.configureTelegram');
+      case 'telegram_invalid_chat_id':
+      case 'telegram_forbidden':
+      case 'telegram_bad_request':
+      case 'telegram_not_found': return t('delivery.telegramRelationship');
       case 'public_url_missing':
-      case 'public_url_invalid':
-        return t('delivery.configurePublicUrl');
-      default:
-        break;
+      case 'public_url_invalid': return t('delivery.configurePublicUrl');
+      default: break;
     }
   }
   return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
@@ -101,6 +107,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isComposerOpen, setIsComposerOpen] = useState(searchParams.get('sendAccess') === '1');
+  const [channel, setChannel] = useState<DeliveryChannel>('email');
   const [recipient, setRecipient] = useState('');
   const [recipientSeededFor, setRecipientSeededFor] = useState('');
   const [locale, setLocale] = useState<DeliveryLocale>(getCurrentLocale());
@@ -114,19 +121,13 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     queryFn: () => getVpnAccount(accountId),
     enabled: accountId !== '',
   });
-
-  const providersQuery = useQuery({
-    queryKey: ['delivery-providers'],
-    queryFn: getDeliveryProviders,
-  });
-
+  const providersQuery = useQuery({ queryKey: ['delivery-providers'], queryFn: getDeliveryProviders });
   const historyQuery = useQuery({
     queryKey: ['vpn-account-deliveries', accountId],
     queryFn: () => getVpnAccountDeliveries(accountId),
     enabled: accountId !== '',
     refetchInterval: (query) => query.state.data?.items.some((item) => activeStatuses.includes(item.status)) ? 2000 : false,
   });
-
   const previewQuery = useQuery({
     queryKey: ['vpn-account-delivery-preview', accountId, locale, template],
     queryFn: () => previewVpnAccountDelivery(accountId, { locale, template }),
@@ -134,12 +135,13 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     retry: false,
   });
 
-  const emailProvider = useMemo(
-    () => providersQuery.data?.items.find((item) => item.channel === 'email' && item.name === 'smtp'),
-    [providersQuery.data],
+  const selectedProvider = useMemo(
+    () => providersQuery.data?.items.find((item) => item.channel === channel),
+    [channel, providersQuery.data],
   );
 
   useEffect(() => {
+    setChannel('email');
     setRecipient('');
     setRecipientSeededFor('');
     setLocale(getCurrentLocale());
@@ -150,22 +152,18 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   }, [accountId]);
 
   useEffect(() => {
-    if (searchParams.get('sendAccess') === '1') {
-      setIsComposerOpen(true);
-    }
+    if (searchParams.get('sendAccess') === '1') setIsComposerOpen(true);
   }, [searchParams]);
 
   useEffect(() => {
-    if (recipientSeededFor !== accountId && accountQuery.data) {
+    if (channel === 'email' && recipientSeededFor !== accountId && accountQuery.data) {
       setRecipient(accountQuery.data.email?.trim() ?? '');
       setRecipientSeededFor(accountId);
     }
-  }, [accountId, accountQuery.data, recipientSeededFor]);
+  }, [accountId, accountQuery.data, channel, recipientSeededFor]);
 
   const sendMutation = useMutation({
-    mutationFn: ({ request, idempotencyKey: requestKey }: SendVariables) => (
-      createVpnAccountDelivery(accountId, request, requestKey)
-    ),
+    mutationFn: ({ request, idempotencyKey: requestKey }: SendVariables) => createVpnAccountDelivery(accountId, request, requestKey),
     onSuccess: async () => {
       setQueuedNotice(true);
       setIdempotencyKey(null);
@@ -174,12 +172,9 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
       await queryClient.invalidateQueries({ queryKey: ['vpn-account-deliveries', accountId] });
     },
   });
-
   const retryMutation = useMutation({
     mutationFn: (deliveryId: string) => retryDelivery(deliveryId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['vpn-account-deliveries', accountId] });
-    },
+    onSuccess: async () => queryClient.invalidateQueries({ queryKey: ['vpn-account-deliveries', accountId] }),
   });
 
   function clearSendAccessParam() {
@@ -206,53 +201,36 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     clearSendAccessParam();
   }
 
-  function updateRecipient(value: string) {
-    setRecipient(value);
+  function updateChannel(value: DeliveryChannel) {
+    setChannel(value);
+    setAttachQr(false);
     setIdempotencyKey(null);
+    if (value === 'telegram') {
+      setRecipient('');
+      return;
+    }
+    setRecipient(accountQuery.data?.email?.trim() ?? '');
+    setRecipientSeededFor(accountId);
   }
 
-  function updateLocale(value: DeliveryLocale) {
-    setLocale(value);
-    setIdempotencyKey(null);
-  }
-
-  function updateTemplate(value: DeliveryTemplate) {
-    setTemplate(value);
-    setIdempotencyKey(null);
-  }
-
-  function updateAttachQr(value: boolean) {
-    setAttachQr(value);
-    setIdempotencyKey(null);
-  }
+  function updateRecipient(value: string) { setRecipient(value); setIdempotencyKey(null); }
+  function updateLocale(value: DeliveryLocale) { setLocale(value); setIdempotencyKey(null); }
+  function updateTemplate(value: DeliveryTemplate) { setTemplate(value); setIdempotencyKey(null); }
+  function updateAttachQr(value: boolean) { setAttachQr(value); setIdempotencyKey(null); }
 
   function queueDelivery() {
     const normalizedRecipient = recipient.trim();
-    if (!emailProvider?.ready || normalizedRecipient === '' || previewQuery.isError || !previewQuery.data) {
-      return;
-    }
+    if (!selectedProvider?.ready || normalizedRecipient === '' || previewQuery.isError || !previewQuery.data) return;
     const requestKey = idempotencyKey ?? newIdempotencyKey();
     if (!idempotencyKey) setIdempotencyKey(requestKey);
     sendMutation.mutate({
       idempotencyKey: requestKey,
-      request: {
-        channel: 'email',
-        recipient: normalizedRecipient,
-        locale,
-        template,
-        attachQr,
-      },
+      request: { channel, recipient: normalizedRecipient, locale, template, attachQr },
     });
   }
 
   const history = historyQuery.data?.items ?? [];
-  const canSend = Boolean(
-    emailProvider?.ready
-      && recipient.trim() !== ''
-      && previewQuery.data
-      && !previewQuery.isError
-      && !sendMutation.isPending,
-  );
+  const canSend = Boolean(selectedProvider?.ready && recipient.trim() !== '' && previewQuery.data && !previewQuery.isError && !sendMutation.isPending);
 
   return (
     <div className="panel feature-detail-panel vpn-access-delivery-panel">
@@ -269,13 +247,13 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
       </div>
 
       {providersQuery.isLoading && <p className="empty-state">{t('delivery.providerLoading')}</p>}
-      {!providersQuery.isLoading && emailProvider?.ready && (
-        <div className="form-message form-message-success">{t('delivery.providerReady')}</div>
+      {!providersQuery.isLoading && selectedProvider?.ready && (
+        <div className="form-message form-message-success">{providerReadyLabel(channel)}</div>
       )}
-      {!providersQuery.isLoading && (!emailProvider || !emailProvider.ready) && (
+      {!providersQuery.isLoading && (!selectedProvider || !selectedProvider.ready) && (
         <div className="form-message form-message-warning">
           <strong>{t('delivery.providerNotReady')}</strong>{' '}
-          {providerReason(emailProvider?.configurationError)} {providerGuidance(emailProvider?.configurationError)}
+          {providerReason(selectedProvider?.configurationError)} {providerGuidance(selectedProvider?.configurationError, channel)}
         </div>
       )}
       {queuedNotice && <div className="form-message form-message-success">{t('delivery.queuedSuccess')}</div>}
@@ -286,18 +264,21 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
           <div className="vpn-access-delivery-fields">
             <label className="field">
               <span>{t('delivery.channel')}</span>
-              <select value="email" disabled>
+              <select value={channel} onChange={(event) => updateChannel(event.target.value as DeliveryChannel)}>
                 <option value="email">{t('delivery.email')}</option>
+                <option value="telegram">{t('delivery.telegram')}</option>
               </select>
             </label>
             <label className="field">
-              <span>{t('delivery.recipient')}</span>
+              <span>{channel === 'telegram' ? t('delivery.telegramChatId') : t('delivery.recipient')}</span>
               <input
-                type="email"
+                type={channel === 'email' ? 'email' : 'text'}
+                inputMode={channel === 'telegram' ? 'numeric' : undefined}
                 value={recipient}
-                placeholder={t('delivery.recipientPlaceholder')}
+                placeholder={channel === 'telegram' ? t('delivery.telegramChatIdPlaceholder') : t('delivery.recipientPlaceholder')}
                 onChange={(event) => updateRecipient(event.target.value)}
               />
+              {channel === 'telegram' && <small>{t('delivery.telegramPrerequisite')}</small>}
             </label>
             <label className="field">
               <span>{t('delivery.language')}</span>
@@ -315,7 +296,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
             </label>
           </div>
 
-          {emailProvider?.capabilities.Attachments && (
+          {selectedProvider?.capabilities.Attachments && (
             <label className="vpn-access-delivery-checkbox">
               <input type="checkbox" checked={attachQr} onChange={(event) => updateAttachQr(event.target.checked)} />
               <span>{t('delivery.attachQr')}</span>
@@ -325,11 +306,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
           <div className="vpn-access-delivery-preview">
             <strong>{t('delivery.preview')}</strong>
             {previewQuery.isLoading && <p>{t('delivery.previewLoading')}</p>}
-            {previewQuery.isError && (
-              <div className="form-message form-message-warning">
-                {errorMessage(previewQuery.error, t('delivery.previewUnavailable'))}
-              </div>
-            )}
+            {previewQuery.isError && <div className="form-message form-message-warning">{errorMessage(previewQuery.error, t('delivery.previewUnavailable'))}</div>}
             {previewQuery.data && (
               <div className="vpn-access-delivery-preview-body">
                 <strong>{previewQuery.data.subject}</strong>
@@ -338,12 +315,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
             )}
           </div>
 
-          {sendMutation.isError && (
-            <div className="form-message form-message-error">
-              {errorMessage(sendMutation.error, t('delivery.sendError'))}
-            </div>
-          )}
-
+          {sendMutation.isError && <div className="form-message form-message-error">{errorMessage(sendMutation.error, t('delivery.sendError'))}</div>}
           <div className="form-actions">
             <button className="primary-button" type="button" disabled={!canSend} onClick={queueDelivery}>
               {sendMutation.isPending ? t('delivery.sendingRequest') : t('delivery.send')}
@@ -357,9 +329,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
         <div className="panel-title">{t('delivery.historyTitle')}</div>
         {historyQuery.isLoading && <p className="empty-state">{t('delivery.historyLoading')}</p>}
         {historyQuery.isError && <div className="form-message form-message-error">{t('delivery.historyError')}</div>}
-        {!historyQuery.isLoading && !historyQuery.isError && history.length === 0 && (
-          <p className="empty-state">{t('delivery.historyEmpty')}</p>
-        )}
+        {!historyQuery.isLoading && !historyQuery.isError && history.length === 0 && <p className="empty-state">{t('delivery.historyEmpty')}</p>}
         {history.map((item) => (
           <DeliveryHistoryItem
             item={item}
@@ -374,16 +344,10 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   );
 }
 
-function DeliveryHistoryItem({
-  item,
-  retryPending,
-  onRetry,
-}: {
-  item: DeliveryRecord;
-  retryPending: boolean;
-  onRetry: () => void;
-}) {
+function DeliveryHistoryItem({ item, retryPending, onRetry }: { item: DeliveryRecord; retryPending: boolean; onRetry: () => void }) {
   const canRetry = item.status === 'failed' || item.status === 'uncertain';
+  const relationshipFailure = item.channel === 'telegram'
+    && ['telegram_forbidden', 'telegram_bad_request', 'telegram_not_found'].includes(item.lastErrorCode ?? '');
   return (
     <div className="vpn-access-delivery-history-item">
       <div className="vpn-access-delivery-history-main">
@@ -394,7 +358,11 @@ function DeliveryHistoryItem({
         <span>{t('delivery.attempt')}: {item.attemptCount}/{item.maxAttempts}</span>
       </div>
       {item.status === 'uncertain' && <p className="vpn-access-delivery-history-hint">{t('delivery.uncertainHint')}</p>}
-      {item.status === 'failed' && <p className="vpn-access-delivery-history-hint">{t('delivery.failedHint')}</p>}
+      {item.status === 'failed' && (
+        <p className="vpn-access-delivery-history-hint">
+          {relationshipFailure ? t('delivery.telegramRelationship') : t('delivery.failedHint')}
+        </p>
+      )}
       {canRetry && (
         <button className="small-button" type="button" disabled={retryPending} onClick={onRetry}>
           {retryPending ? t('delivery.retryingAction') : t('delivery.retry')}

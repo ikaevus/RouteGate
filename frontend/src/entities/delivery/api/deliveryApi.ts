@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '../../../shared/api/client';
 export type DeliveryStatus = 'queued' | 'sending' | 'retrying' | 'sent' | 'delivered' | 'failed' | 'uncertain';
 export type DeliveryLocale = 'en' | 'ru';
 export type DeliveryTemplate = 'vpn_access' | 'vpn_access_reissued';
+export type DeliveryChannel = 'email' | 'telegram';
 
 export interface DeliveryProviderCapabilities {
   HTML: boolean;
@@ -12,7 +13,7 @@ export interface DeliveryProviderCapabilities {
 
 export interface DeliveryProvider {
   name: string;
-  channel: string;
+  channel: DeliveryChannel | string;
   configured: boolean;
   ready: boolean;
   configurationError?: string;
@@ -49,7 +50,7 @@ export interface DeliveryListResponse {
 }
 
 export interface CreateDeliveryRequest {
-  channel: 'email';
+  channel: DeliveryChannel;
   recipient: string;
   locale: DeliveryLocale;
   template: DeliveryTemplate;

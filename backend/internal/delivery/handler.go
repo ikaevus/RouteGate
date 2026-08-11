@@ -64,10 +64,6 @@ type DeliveryListResponse struct {
 	Items []DeliveryResponse `json:"items"`
 }
 
-type accountReader interface {
-	GetAccountByID(rctx interface{ Done() <-chan struct{} }, id string) (vpnaccounts.Account, error)
-}
-
 type Handler struct {
 	logger     *slog.Logger
 	repository *Repository
@@ -83,7 +79,8 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) *Han
 	repository := NewRepository(pool)
 	recorder := audit.NewRecorder(logger, pool)
 	smtpProvider := NewSMTPProvider(cfg.SMTP)
-	registry, _ := NewRegistry(smtpProvider)
+	telegramProvider := NewTelegramProvider(cfg.Telegram)
+	registry, _ := NewRegistry(smtpProvider, telegramProvider)
 	accounts := vpnaccounts.NewRepository(pool)
 	return &Handler{
 		logger:     logger,
@@ -109,7 +106,7 @@ func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 			ConfigurationError: item.ConfigurationError,
 			Capabilities:       item.Capabilities,
 		}
-		if provider.Ready && item.Channel == "email" {
+		if provider.Ready {
 			if _, err := NormalizePublicURL(h.publicURL); err != nil {
 				provider.Ready = false
 				provider.ConfigurationError = failureFromError(err, ErrorClassPermanent, "public_url_invalid").Code
@@ -141,10 +138,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 	request.Locale = strings.ToLower(strings.TrimSpace(request.Locale))
 	request.Template = strings.ToLower(strings.TrimSpace(request.Template))
 	request.Recipient = strings.TrimSpace(request.Recipient)
-	if request.Channel != "email" {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("delivery_channel_unsupported", "This delivery channel is not supported yet."))
-		return
-	}
+
 	if request.Template != TemplateVPNAccess && request.Template != TemplateVPNAccessReissued {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("delivery_template_unsupported", "This VPN access template is not supported."))
 		return
@@ -153,9 +147,10 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("delivery_locale_unsupported", "Delivery locale must be en or ru."))
 		return
 	}
-	recipient, err := normalizeEmailAddress(request.Recipient)
-	if err != nil {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_recipient", "Recipient email address is invalid."))
+
+	providerName, recipient, recipientErr := normalizeChannelRecipient(request.Channel, request.Recipient)
+	if recipientErr != nil {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(recipientErr.Code, recipientErr.Message))
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
@@ -164,18 +159,25 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, ok := h.registry.Get("smtp")
+	provider, ok := h.registry.Get(providerName)
 	if !ok {
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("smtp_not_configured", "Email delivery is not configured."))
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("delivery_provider_unavailable", "This delivery provider is not available."))
 		return
 	}
 	if configured, ok := provider.(configurableProvider); !ok || !configured.Configured() {
-		code := "smtp_not_configured"
+		code := "delivery_provider_not_configured"
 		if ok {
 			code = normalizeSafeCode(configured.ConfigurationErrorCode())
 		}
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(code, "Email delivery is not ready."))
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(code, "This delivery provider is not ready."))
 		return
+	}
+	if request.AttachQR {
+		capable, ok := provider.(capableProvider)
+		if !ok || !capable.Capabilities().Attachments {
+			httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("delivery_attachment_unsupported", "This delivery channel does not support QR attachments."))
+			return
+		}
 	}
 	if _, err := NormalizePublicURL(h.publicURL); err != nil {
 		failure := failureFromError(err, ErrorClassPermanent, "public_url_invalid")
@@ -183,11 +185,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	preflight := Delivery{
-		VPNAccountID: accountID,
-		TemplateKey:  request.Template,
-		AttachQR:     false,
-	}
+	preflight := Delivery{VPNAccountID: accountID, TemplateKey: request.Template, AttachQR: false}
 	if _, err := h.resolver.Resolve(r.Context(), preflight); err != nil {
 		failure := failureFromError(err, ErrorClassPermanent, "vpn_access_unavailable")
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(failure.Code, "VPN access is not ready to send yet."))
@@ -198,10 +196,10 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 	if user, ok := auth.UserFromContext(r.Context()); ok {
 		createdBy = user.ID
 	}
-	delivery, _, err := h.service.Create(r.Context(), CreateInput{
+	delivery, _, createErr := h.service.Create(r.Context(), CreateInput{
 		VPNAccountID:    accountID,
-		Channel:         "email",
-		Provider:        "smtp",
+		Channel:         request.Channel,
+		Provider:        providerName,
 		Recipient:       recipient,
 		TemplateKey:     request.Template,
 		Locale:          request.Locale,
@@ -209,15 +207,41 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		IdempotencyKey:  idempotencyKey,
 		CreatedByUserID: createdBy,
 	})
-	if errors.Is(err, ErrIdempotencyConflict) {
+	if errors.Is(createErr, ErrIdempotencyConflict) {
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("idempotency_conflict", "Idempotency-Key was already used for a different delivery request."))
 		return
 	}
-	if err != nil {
+	if createErr != nil {
 		h.databaseError(w, "create_delivery")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, toDeliveryResponse(delivery))
+}
+
+type channelRecipientError struct {
+	Code    string
+	Message string
+}
+
+func (e *channelRecipientError) Error() string { return e.Code }
+
+func normalizeChannelRecipient(channel, recipient string) (string, string, *channelRecipientError) {
+	switch channel {
+	case "email":
+		normalized, err := normalizeEmailAddress(recipient)
+		if err != nil {
+			return "", "", &channelRecipientError{Code: "invalid_recipient", Message: "Recipient email address is invalid."}
+		}
+		return "smtp", normalized, nil
+	case "telegram":
+		normalized, err := normalizeTelegramChatID(recipient)
+		if err != nil {
+			return "", "", &channelRecipientError{Code: "telegram_invalid_chat_id", Message: "Telegram recipient must be a valid numeric chat ID."}
+		}
+		return "telegram", normalized, nil
+	default:
+		return "", "", &channelRecipientError{Code: "delivery_channel_unsupported", Message: "This delivery channel is not supported yet."}
+	}
 }
 
 func (h *Handler) ListForVPNAccount(w http.ResponseWriter, r *http.Request) {
