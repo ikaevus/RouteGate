@@ -80,7 +80,8 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) *Han
 	recorder := audit.NewRecorder(logger, pool)
 	smtpProvider := NewSMTPProvider(cfg.SMTP)
 	telegramProvider := NewTelegramProvider(cfg.Telegram)
-	registry, _ := NewRegistry(smtpProvider, telegramProvider)
+	whatsAppProvider := NewWhatsAppProvider(cfg.WhatsApp)
+	registry, _ := NewRegistry(smtpProvider, telegramProvider, whatsAppProvider)
 	accounts := vpnaccounts.NewRepository(pool)
 	return &Handler{
 		logger:     logger,
@@ -239,6 +240,12 @@ func normalizeChannelRecipient(channel, recipient string) (string, string, *chan
 			return "", "", &channelRecipientError{Code: "telegram_invalid_chat_id", Message: "Telegram recipient must be a valid numeric chat ID."}
 		}
 		return "telegram", normalized, nil
+	case "whatsapp":
+		normalized, err := normalizeWhatsAppRecipient(recipient)
+		if err != nil {
+			return "", "", &channelRecipientError{Code: "whatsapp_invalid_recipient", Message: "WhatsApp recipient must be an international phone number with country code."}
+		}
+		return "whatsapp", normalized, nil
 	default:
 		return "", "", &channelRecipientError{Code: "delivery_channel_unsupported", Message: "This delivery channel is not supported yet."}
 	}
