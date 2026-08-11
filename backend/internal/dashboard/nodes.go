@@ -76,15 +76,15 @@ func (r *Repository) GetNodeDistribution(ctx context.Context, locationLimit, ser
 		)
 		SELECT
 			s.id::text,
-			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_load_1 ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_load_5 ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_load_15 ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_logical_cpus ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_collected_at ELSE NULL END
+			CASE WHEN a.last_seen_at >= now() - ($2 * interval '1 second') THEN a.runtime_load_1 ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - ($2 * interval '1 second') THEN a.runtime_load_5 ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - ($2 * interval '1 second') THEN a.runtime_load_15 ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - ($2 * interval '1 second') THEN a.runtime_logical_cpus ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - ($2 * interval '1 second') THEN a.runtime_collected_at ELSE NULL END
 		FROM recent_servers s
 		LEFT JOIN agents a ON a.server_id = s.id
 		ORDER BY s.created_at DESC
-	`, serverLimit, serverLoadFreshnessWindow.String())
+	`, serverLimit, int(serverLoadFreshnessWindow/time.Second))
 	if err != nil {
 		return NodeDistribution{}, err
 	}
