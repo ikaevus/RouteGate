@@ -60,9 +60,19 @@ export interface DashboardNodeLocation {
   count: number;
 }
 
+export interface DashboardServerLoad {
+  serverId: string;
+  load1?: number;
+  load5?: number;
+  load15?: number;
+  logicalCpus?: number;
+  collectedAt?: string;
+}
+
 export interface DashboardNodeDistribution {
   totalServers: number;
   locations: DashboardNodeLocation[];
+  serverLoads: DashboardServerLoad[];
 }
 
 export function getDashboardActivity(): Promise<DashboardActivityResponse> {
