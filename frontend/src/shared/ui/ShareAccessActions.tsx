@@ -241,7 +241,7 @@ export function ShareAccessActions({
     '',
     copy.warning,
   ].join('\n');
-  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
+  const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   const canNativeShareQr = (() => {
@@ -334,7 +334,7 @@ export function ShareAccessActions({
         type="button"
         aria-label={copy.telegram}
         title={copy.telegram}
-        onClick={() => openExternalShare(telegramUrl)}
+        onClick={() => { window.location.href = telegramUrl; }}
       >
         <TelegramIcon />
       </button>
