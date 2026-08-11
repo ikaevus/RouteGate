@@ -114,6 +114,11 @@ type TemplateData struct {
 	Message       string
 }
 
+type ResolvedMaterial struct {
+	TemplateData TemplateData
+	Attachments  []Attachment
+}
+
 type Failure struct {
 	Class ErrorClass
 	Code  string

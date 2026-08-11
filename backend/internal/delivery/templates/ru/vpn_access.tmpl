@@ -7,3 +7,4 @@
 {{.ConnectURL}}
 
 Эта ссылка предоставляет доступ к VPN. Не передавайте её посторонним.{{end}}
+{{define "html"}}<p>Ваш доступ к RouteGate VPN готов.</p>{{if .ProfileName}}<p>Профиль: <strong>{{.ProfileName}}</strong></p>{{end}}<p><a href="{{.ConnectURL}}">Открыть VPN</a></p><p>Эта ссылка предоставляет доступ к VPN. Не передавайте её посторонним.</p>{{end}}

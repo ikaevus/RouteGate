@@ -20,7 +20,7 @@ type workerRepository interface {
 }
 
 type MaterialResolver interface {
-	Resolve(context.Context, Delivery) (TemplateData, error)
+	Resolve(context.Context, Delivery) (ResolvedMaterial, error)
 }
 
 type messageRenderer interface {
@@ -100,6 +100,9 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	}
 	w.recordLifecycle(ctx, *delivery, "delivery.sending", audit.ResultSuccess)
 
+	if w.providers == nil {
+		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "provider_unavailable"})
+	}
 	provider, ok := w.providers.Get(delivery.Provider)
 	if !ok {
 		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "provider_unavailable"})
@@ -110,7 +113,7 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	if w.resolver == nil {
 		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "material_resolver_unavailable"})
 	}
-	data, err := w.resolver.Resolve(ctx, *delivery)
+	material, err := w.resolver.Resolve(ctx, *delivery)
 	if err != nil {
 		failure := failureFromError(err, ErrorClassPermanent, "material_resolution_failed")
 		return true, w.failBeforeSend(ctx, *delivery, failure)
@@ -118,12 +121,13 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	if w.renderer == nil {
 		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "template_renderer_unavailable"})
 	}
-	message, err := w.renderer.Render(delivery.TemplateKey, delivery.Locale, data)
+	message, err := w.renderer.Render(delivery.TemplateKey, delivery.Locale, material.TemplateData)
 	if err != nil {
 		failure := failureFromError(err, ErrorClassPermanent, "template_render_failed")
 		return true, w.failBeforeSend(ctx, *delivery, failure)
 	}
 	message.Recipient = delivery.Recipient
+	message.Attachments = append(message.Attachments, material.Attachments...)
 
 	result := provider.Send(ctx, message)
 	return true, w.applyProviderResult(ctx, *delivery, result)

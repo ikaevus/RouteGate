@@ -9,6 +9,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/db"
+	"github.com/ikaevus/routegate/backend/internal/delivery"
 	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
 )
 
@@ -59,8 +60,21 @@ func (a *App) Start(ctx context.Context) error {
 	}
 
 	a.server = routegatehttp.NewServer(a.cfg, a.logger, pool)
+	deliveryWorker := delivery.NewConfiguredWorker(a.cfg, a.logger, pool)
+	runtimeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	return a.server.Start(ctx)
+	errCh := make(chan error, 2)
+	go func() { errCh <- a.server.Start(runtimeCtx) }()
+	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		cancel()
+		return err
+	}
 }
 
 func (a *App) Stop(ctx context.Context) error {
