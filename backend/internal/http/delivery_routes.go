@@ -20,6 +20,7 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	deliveryHandler := delivery.NewHandler(logger, pool, cfg)
 
 	mux.Handle("GET /api/v1/delivery/providers", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListProviders))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/deliveries/preview", authn(auth.RequirePermission("deliveries:send")(stdhttp.HandlerFunc(deliveryHandler.PreviewForVPNAccount))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/deliveries", authn(auth.RequirePermission("deliveries:send")(stdhttp.HandlerFunc(deliveryHandler.CreateForVPNAccount))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/deliveries", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListForVPNAccount))))
 	mux.Handle("GET /api/v1/deliveries/{delivery_id}", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.Get))))
