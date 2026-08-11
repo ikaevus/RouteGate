@@ -83,7 +83,7 @@
 /* The default routing-profile badge should belong to the blue theme, not look
  * like a white sticker pasted over it. */
 :root[data-theme='light'] .badge-default {
-  background: #a9c5ee !important;
+  background: #7fa6da !important;
   border: 1px solid #456f9f;
   color: #071b35 !important;
 }
@@ -137,6 +137,14 @@
   color: var(--rg-light-text-muted) !important;
 }
 
+/* Give portal table cells breathing room instead of pinning profile text to the
+ * table boundary. Apply the same inset to the header to keep columns aligned. */
+:root[data-theme='light'] .portal-profiles-table-row {
+  box-sizing: border-box;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
 /* Portal chrome also needs crisp foregrounds on the blue chrome surface. */
 :root[data-theme='light'] .portal-app-shell .brand-title,
 :root[data-theme='light'] .portal-app-shell .portal-topnav a {
@@ -155,4 +163,20 @@
  * focused on actual destinations (Admin UI / Login). */
 .portal-app-shell .portal-topnav a[href='/portal'] {
   display: none;
+}
+
+/* VPN client runtime facts are normal Light-theme information cards, not dark
+ * code blocks. Keep them slightly raised from the parent panel. */
+:root[data-theme='light'] .vpn-client-runtime-grid > div {
+  background: #9db9e2 !important;
+  border-color: var(--rg-light-line-strong) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme='light'] .vpn-client-runtime-grid span {
+  color: #16385f !important;
+}
+
+:root[data-theme='light'] .vpn-client-runtime-grid strong {
+  color: var(--rg-light-text-strong) !important;
 }
