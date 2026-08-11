@@ -1,8 +1,30 @@
-/* RG-111 visual trial: use the HSL-lightened canonical dark background as the full Light-theme surface family. */
+/* RG-111 visual trial: layered light-blue theme derived from the canonical RouteGate dark background. */
 :root[data-theme='light'] {
   --rg-light-canvas: #78a3e0;
-  --rg-light-chrome: #78a3e0;
-  --rg-light-sidebar: #78a3e0;
-  --rg-light-surface: #78a3e0;
-  --rg-light-surface-raised: #78a3e0;
+  --rg-light-chrome: #6e9cdc;
+  --rg-light-sidebar: #6897d7;
+  --rg-light-surface: #8eafe0;
+  --rg-light-surface-raised: #9db9e2;
+  --rg-light-line: #6288bb;
+  --rg-light-line-strong: #5278aa;
+  --rg-light-blue-tint: #a9c5ee;
+}
+
+/* Keep the world map in the same RouteGate Light blue family instead of a dark inset block. */
+:root[data-theme='light'] .node-distribution-map {
+  background-color: #82a9de;
+  background-image: url('./assets/world-map.svg');
+  background-blend-mode: screen;
+  border-color: #5b83b8;
+  box-shadow: inset 0 0 24px rgba(42, 79, 126, 0.16);
+}
+
+:root[data-theme='light'] .node-country-marker {
+  background: #4f7fbe;
+  border-color: rgba(216, 231, 250, 0.72);
+  box-shadow: 0 5px 14px rgba(42, 79, 126, 0.22);
+}
+
+:root[data-theme='light'] .node-country-marker strong {
+  color: #f8fafc;
 }
