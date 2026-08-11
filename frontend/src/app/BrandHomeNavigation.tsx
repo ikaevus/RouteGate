@@ -12,55 +12,73 @@ export function BrandHomeNavigation() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const brand = document.querySelector<HTMLElement>('.routegate-admin-shell .routegate-brand');
-    if (!brand) {
-      return;
-    }
+    let detachBrand: (() => void) | null = null;
 
-    const previousRole = brand.getAttribute('role');
-    const previousTabIndex = brand.getAttribute('tabindex');
-    const previousAriaLabel = brand.getAttribute('aria-label');
-    const previousCursor = brand.style.cursor;
-
-    brand.setAttribute('role', 'link');
-    brand.setAttribute('tabindex', '0');
-    brand.setAttribute('aria-label', t('navigation.overview'));
-    brand.style.cursor = 'pointer';
-
-    const goHome = () => navigate('/');
-
-    const handleClick = (event: MouseEvent) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    const enhanceAdminBrand = () => {
+      if (detachBrand) {
         return;
       }
-      goHome();
-    };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' && event.key !== ' ') {
+      const brand = document.querySelector<HTMLElement>('.routegate-admin-shell .routegate-brand');
+      if (!brand) {
         return;
       }
-      event.preventDefault();
-      goHome();
+
+      const previousRole = brand.getAttribute('role');
+      const previousTabIndex = brand.getAttribute('tabindex');
+      const previousAriaLabel = brand.getAttribute('aria-label');
+      const previousCursor = brand.style.cursor;
+
+      brand.setAttribute('role', 'link');
+      brand.setAttribute('tabindex', '0');
+      brand.setAttribute('aria-label', t('navigation.overview'));
+      brand.style.cursor = 'pointer';
+
+      const goHome = () => navigate('/');
+
+      const handleClick = (event: MouseEvent) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+        goHome();
+      };
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        event.preventDefault();
+        goHome();
+      };
+
+      brand.addEventListener('click', handleClick);
+      brand.addEventListener('keydown', handleKeyDown);
+
+      detachBrand = () => {
+        brand.removeEventListener('click', handleClick);
+        brand.removeEventListener('keydown', handleKeyDown);
+
+        if (previousRole === null) brand.removeAttribute('role');
+        else brand.setAttribute('role', previousRole);
+
+        if (previousTabIndex === null) brand.removeAttribute('tabindex');
+        else brand.setAttribute('tabindex', previousTabIndex);
+
+        if (previousAriaLabel === null) brand.removeAttribute('aria-label');
+        else brand.setAttribute('aria-label', previousAriaLabel);
+
+        brand.style.cursor = previousCursor;
+      };
     };
 
-    brand.addEventListener('click', handleClick);
-    brand.addEventListener('keydown', handleKeyDown);
+    enhanceAdminBrand();
+
+    const observer = new MutationObserver(enhanceAdminBrand);
+    observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
-      brand.removeEventListener('click', handleClick);
-      brand.removeEventListener('keydown', handleKeyDown);
-
-      if (previousRole === null) brand.removeAttribute('role');
-      else brand.setAttribute('role', previousRole);
-
-      if (previousTabIndex === null) brand.removeAttribute('tabindex');
-      else brand.setAttribute('tabindex', previousTabIndex);
-
-      if (previousAriaLabel === null) brand.removeAttribute('aria-label');
-      else brand.setAttribute('aria-label', previousAriaLabel);
-
-      brand.style.cursor = previousCursor;
+      observer.disconnect();
+      detachBrand?.();
     };
   }, [location.pathname, navigate]);
 
