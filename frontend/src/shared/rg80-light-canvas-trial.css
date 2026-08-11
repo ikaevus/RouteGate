@@ -28,3 +28,21 @@
 :root[data-theme='light'] .node-country-marker strong {
   color: #f8fafc;
 }
+
+/* Light-theme icon contrast: dark-theme secondary foregrounds become too faint on blue chrome. */
+:root[data-theme='light'] .nav-icon {
+  color: #315d8c;
+}
+
+:root[data-theme='light'] .nav-link-active .nav-icon,
+:root[data-theme='light'] .nav-link:hover .nav-icon {
+  color: #1d4ed8;
+}
+
+/* Audit actor initials need a real visual anchor on the light-blue surface. */
+:root[data-theme='light'] .audit-avatar {
+  background: rgba(169, 197, 238, 0.72);
+  border-color: rgba(49, 93, 140, 0.62);
+  color: #163b67;
+  font-weight: 800;
+}
