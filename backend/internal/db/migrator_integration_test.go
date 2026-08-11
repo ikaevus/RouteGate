@@ -83,7 +83,7 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	}
 }
 
-func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
+func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) {
 	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
@@ -155,8 +155,46 @@ func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
 		t.Fatal("fixture must contain legacy runtimeMetrics before migration 112")
 	}
 
+	// Apply through 113 so schema_migrations records 112/113 exactly as an
+	// already-upgraded host would. Migration 112 installs the canonical trigger,
+	// but it does not retroactively rewrite the legacy row created above.
+	preBackfillDir := copyMigrationsBefore(t, "../../migrations", "000114_agent_runtime_metrics_backfill.up.sql")
+	if err := Migrate(ctx, pool, preBackfillDir, logger); err != nil {
+		t.Fatalf("apply migrations through 113: %v", err)
+	}
+
+	var versionBeforeBackfill string
+	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1`).Scan(&versionBeforeBackfill); err != nil {
+		t.Fatalf("read schema version before backfill: %v", err)
+	}
+	if versionBeforeBackfill != "000113_delivery_foundation" {
+		t.Fatalf("schema version before backfill = %q, want 000113_delivery_foundation", versionBeforeBackfill)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT capabilities ? 'runtimeMetrics'
+		FROM agents
+		WHERE server_id = $1::uuid
+	`, serverID).Scan(&legacyRuntimeBlock); err != nil {
+		t.Fatalf("read capabilities after migration 113: %v", err)
+	}
+	if !legacyRuntimeBlock {
+		t.Fatal("legacy row must remain untouched before migration 114")
+	}
+
+	// Reproduce the production-like drift discovered by RG-112: migrations 112
+	// and 113 are recorded as applied, but the canonical runtime extractor is
+	// absent. The migrator therefore cannot repair this by replaying 112.
+	if _, err := pool.Exec(ctx, `
+		DROP TRIGGER IF EXISTS agents_extract_runtime_metrics ON agents;
+		DROP FUNCTION IF EXISTS routegate_extract_agent_runtime_metrics();
+	`); err != nil {
+		t.Fatalf("simulate applied-112 extractor drift: %v", err)
+	}
+
+	// Applying the full directory now executes only migration 114. It must
+	// restore the canonical trigger/function itself and backfill the legacy row.
 	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
-		t.Fatalf("apply runtime/delivery/backfill migrations: %v", err)
+		t.Fatalf("apply self-contained runtime backfill migration: %v", err)
 	}
 
 	var (
@@ -167,6 +205,7 @@ func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
 		load15          float64
 		logicalCPUs     int
 		runtimeTime     time.Time
+		triggerPresent  bool
 	)
 	if err := pool.QueryRow(ctx, `
 		SELECT
@@ -176,7 +215,14 @@ func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
 			runtime_load_5,
 			runtime_load_15,
 			runtime_logical_cpus,
-			runtime_collected_at
+			runtime_collected_at,
+			EXISTS (
+				SELECT 1
+				FROM pg_trigger
+				WHERE tgrelid = 'agents'::regclass
+				  AND tgname = 'agents_extract_runtime_metrics'
+				  AND NOT tgisinternal
+			)
 		FROM agents
 		WHERE server_id = $1::uuid
 	`, serverID).Scan(
@@ -187,8 +233,9 @@ func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
 		&load15,
 		&logicalCPUs,
 		&runtimeTime,
+		&triggerPresent,
 	); err != nil {
-		t.Fatalf("read backfilled runtime metrics: %v", err)
+		t.Fatalf("read repaired runtime metrics: %v", err)
 	}
 
 	if hasRuntimeBlock {
@@ -196,6 +243,9 @@ func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
 	}
 	if !staticVPNCore {
 		t.Fatal("static capabilities must survive runtime backfill")
+	}
+	if !triggerPresent {
+		t.Fatal("migration 114 must restore the canonical runtime extractor trigger")
 	}
 	if load1 != 1.25 || load5 != 0.75 || load15 != 0.5 || logicalCPUs != 4 {
 		t.Fatalf("unexpected backfilled runtime values: load1=%v load5=%v load15=%v cpus=%d", load1, load5, load15, logicalCPUs)
