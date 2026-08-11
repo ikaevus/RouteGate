@@ -18,6 +18,10 @@ type SMTPConfig struct {
 	TLSMode     string
 }
 
+type TelegramConfig struct {
+	BotToken string
+}
+
 type Config struct {
 	Env                       string
 	HTTPAddr                  string
@@ -30,6 +34,7 @@ type Config struct {
 	BootstrapAdminPassword    string
 	BootstrapAdminDisplayName string
 	SMTP                      SMTPConfig
+	Telegram                  TelegramConfig
 }
 
 func Load() Config {
@@ -52,6 +57,9 @@ func Load() Config {
 			FromAddress: env("ROUTEGATE_SMTP_FROM_ADDRESS", ""),
 			FromName:    env("ROUTEGATE_SMTP_FROM_NAME", "RouteGate"),
 			TLSMode:     strings.ToLower(env("ROUTEGATE_SMTP_TLS_MODE", "starttls")),
+		},
+		Telegram: TelegramConfig{
+			BotToken: env("ROUTEGATE_TELEGRAM_BOT_TOKEN", ""),
 		},
 	}
 }
