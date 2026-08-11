@@ -293,7 +293,7 @@ jobs:
           STAGE="agent_start"
           systemctl start routegate-agent
 
-          STAGE="agent_runtime"
+          STAGE="agent_runtime_wait"
           metrics_row=""
           for _ in $(seq 1 18); do
             metrics_row="$(psql "$DB_URL" -qAtc "
@@ -311,7 +311,9 @@ jobs:
           [[ -n "$metrics_row" ]]
           SERVER_ID="${metrics_row%%|*}"
 
+          STAGE="agent_runtime_persistence"
           persisted_runtime_block="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM agents WHERE capabilities ? 'runtimeMetrics'")"
+          echo "persisted_runtime_capability_rows=$persisted_runtime_block"
           [[ "$persisted_runtime_block" == "0" ]]
 
           STAGE="auth_session"
