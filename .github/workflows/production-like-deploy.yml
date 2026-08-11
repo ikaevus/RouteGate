@@ -415,7 +415,7 @@ jobs:
           done
           [[ "$recovery_state" == "uncertain|uncertain|manager_restart" ]]
 
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc \\
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc \
             "DELETE FROM deliveries WHERE id='${DELIVERY_FIXTURE_ID}'::uuid" >/dev/null
           DELIVERY_FIXTURE_ID=""
 
