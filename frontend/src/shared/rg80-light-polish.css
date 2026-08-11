@@ -207,9 +207,3 @@
 :root[data-theme='light'] .vpn-client-runtime-grid strong {
   color: var(--rg-light-text-strong) !important;
 }
-
-/* Notifications, Help and Settings are not implemented yet. Do not expose
- * dead controls or a fake notification count in the production-like UI. */
-.topbar-actions > .topbar-icon-button {
-  display: none;
-}
