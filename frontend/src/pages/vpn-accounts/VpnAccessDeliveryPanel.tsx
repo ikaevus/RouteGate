@@ -102,6 +102,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   const [searchParams, setSearchParams] = useSearchParams();
   const [isComposerOpen, setIsComposerOpen] = useState(searchParams.get('sendAccess') === '1');
   const [recipient, setRecipient] = useState('');
+  const [recipientSeededFor, setRecipientSeededFor] = useState('');
   const [locale, setLocale] = useState<DeliveryLocale>(getCurrentLocale());
   const [template, setTemplate] = useState<DeliveryTemplate>('vpn_access');
   const [attachQr, setAttachQr] = useState(false);
@@ -140,6 +141,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
 
   useEffect(() => {
     setRecipient('');
+    setRecipientSeededFor('');
     setLocale(getCurrentLocale());
     setTemplate('vpn_access');
     setAttachQr(false);
@@ -154,10 +156,11 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   }, [searchParams]);
 
   useEffect(() => {
-    if (recipient === '' && accountQuery.data?.email) {
-      setRecipient(accountQuery.data.email);
+    if (recipientSeededFor !== accountId && accountQuery.data) {
+      setRecipient(accountQuery.data.email?.trim() ?? '');
+      setRecipientSeededFor(accountId);
     }
-  }, [accountQuery.data?.email, recipient]);
+  }, [accountId, accountQuery.data, recipientSeededFor]);
 
   const sendMutation = useMutation({
     mutationFn: ({ request, idempotencyKey: requestKey }: SendVariables) => (
@@ -299,8 +302,8 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
             <label className="field">
               <span>{t('delivery.language')}</span>
               <select value={locale} onChange={(event) => updateLocale(event.target.value as DeliveryLocale)}>
-                <option value="en">English</option>
-                <option value="ru">Русский</option>
+                <option value="en">{t('delivery.languageEnglish')}</option>
+                <option value="ru">{t('delivery.languageRussian')}</option>
               </select>
             </label>
             <label className="field">
