@@ -66,6 +66,7 @@ export const en = {
   'dashboard.onlineAgents': 'Connected servers',
   'dashboard.activeVpnUsers': 'Active VPN users',
   'dashboard.monthlyTraffic': 'Monthly traffic',
+  'dashboard.noTrafficData': 'No traffic data yet',
   'dashboard.online': 'Online',
   'dashboard.offline': 'Offline',
   'dashboard.connected': 'Connected',

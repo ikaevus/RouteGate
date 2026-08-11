@@ -18,6 +18,7 @@ type SubscriptionQrDialogProps = {
   closeLabel?: string;
   loadingLabel?: string;
   unavailableLabel?: string;
+  footerActions?: ReactNode;
   children?: ReactNode;
 };
 
@@ -37,6 +38,7 @@ export function SubscriptionQrDialog({
   closeLabel,
   loadingLabel,
   unavailableLabel,
+  footerActions,
   children,
 }: SubscriptionQrDialogProps) {
   useEffect(() => {
@@ -103,9 +105,12 @@ export function SubscriptionQrDialog({
         </div>
 
         <div className="subscription-qr-modal-footer">
-          <button className="small-button" type="button" onClick={onCopyQrText} disabled={!qrText}>
-            {copied ? copyCopiedLabel : copyQrLabel}
-          </button>
+          <div className="subscription-qr-modal-footer-actions">
+            <button className="small-button" type="button" onClick={onCopyQrText} disabled={!qrText}>
+              {copied ? copyCopiedLabel : copyQrLabel}
+            </button>
+            {footerActions}
+          </div>
           <button className="primary-button" type="button" onClick={onClose}>
             {closeLabel ?? 'Close'}
           </button>

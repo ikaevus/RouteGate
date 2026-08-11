@@ -1,0 +1,253 @@
+/* RouteGate Light — dark-first companion theme derived only from the official brand palette. */
+:root[data-theme='light'] {
+  --rg-light-canvas: color-mix(in srgb, #f8fafc 80%, #94a3b8 20%);
+  --rg-light-chrome: color-mix(in srgb, #f8fafc 74%, #94a3b8 26%);
+  --rg-light-sidebar: color-mix(in srgb, #f8fafc 70%, #94a3b8 30%);
+  --rg-light-surface: color-mix(in srgb, #f8fafc 90%, #3b82f6 10%);
+  --rg-light-surface-raised: color-mix(in srgb, #f8fafc 94%, #3b82f6 6%);
+  --rg-light-line: color-mix(in srgb, #94a3b8 54%, #f8fafc 46%);
+  --rg-light-line-strong: color-mix(in srgb, #94a3b8 68%, #f8fafc 32%);
+  --rg-light-text: #07111f;
+  --rg-light-muted: color-mix(in srgb, #07111f 48%, #94a3b8 52%);
+  --rg-light-blue-tint: color-mix(in srgb, #f8fafc 84%, #2563eb 16%);
+
+  --rg-bg-deep: var(--rg-light-canvas);
+  --rg-bg-main: var(--rg-light-chrome);
+  --rg-bg-muted: var(--rg-light-sidebar);
+  --rg-surface-main: var(--rg-light-surface);
+  --rg-surface-raised: var(--rg-light-surface-raised);
+  --rg-text-primary: var(--rg-light-text);
+  --rg-text-secondary: var(--rg-light-muted);
+  --rg-border: var(--rg-light-line);
+}
+
+:root[data-theme='light'] body,
+:root[data-theme='light'] .app-shell,
+:root[data-theme='light'] .routegate-admin-shell {
+  background: var(--rg-light-canvas);
+  color: var(--rg-light-text);
+}
+
+:root[data-theme='light'] .sidebar,
+:root[data-theme='light'] .routegate-sidebar {
+  background: var(--rg-light-sidebar);
+  border-color: var(--rg-light-line-strong);
+}
+
+:root[data-theme='light'] .admin-main,
+:root[data-theme='light'] .main,
+:root[data-theme='light'] .portal-app-shell {
+  background: var(--rg-light-canvas);
+}
+
+:root[data-theme='light'] .admin-topbar,
+:root[data-theme='light'] .admin-statusbar,
+:root[data-theme='light'] .portal-topbar {
+  background: var(--rg-light-chrome);
+  border-color: var(--rg-light-line-strong);
+}
+
+:root[data-theme='light'] .topbar-search,
+:root[data-theme='light'] .topbar-menu-button,
+:root[data-theme='light'] .topbar-icon-button,
+:root[data-theme='light'] .admin-profile-chip,
+:root[data-theme='light'] .sidebar-license-card,
+:root[data-theme='light'] .sidebar-control,
+:root[data-theme='light'] .status-pill {
+  background: var(--rg-light-surface-raised);
+  border-color: var(--rg-light-line);
+  color: var(--rg-light-text);
+  box-shadow: none;
+}
+
+:root[data-theme='light'] .topbar-search {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #f8fafc 78%, transparent);
+}
+
+:root[data-theme='light'] .topbar-search input,
+:root[data-theme='light'] .admin-profile-menu-item {
+  color: var(--rg-light-text);
+}
+
+:root[data-theme='light'] .topbar-search kbd,
+:root[data-theme='light'] .admin-profile-chip small,
+:root[data-theme='light'] .admin-statusbar,
+:root[data-theme='light'] .sidebar-license-header span,
+:root[data-theme='light'] .sidebar-license-card p {
+  color: var(--rg-light-muted);
+}
+
+:root[data-theme='light'] .nav a,
+:root[data-theme='light'] .nav-link {
+  color: color-mix(in srgb, #07111f 78%, #94a3b8 22%);
+}
+
+:root[data-theme='light'] .nav a:hover,
+:root[data-theme='light'] .nav-link:hover {
+  background: color-mix(in srgb, #f8fafc 82%, #2563eb 18%);
+  border-color: color-mix(in srgb, #94a3b8 60%, #2563eb 40%);
+  color: #07111f;
+}
+
+:root[data-theme='light'] .nav-link-active,
+:root[data-theme='light'] .nav a.nav-link-active {
+  background: var(--rg-light-blue-tint);
+  border-color: color-mix(in srgb, #94a3b8 46%, #2563eb 54%);
+  color: #07111f;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+:root[data-theme='light'] .nav-icon {
+  color: color-mix(in srgb, #07111f 34%, #94a3b8 66%);
+}
+
+:root[data-theme='light'] .nav-link-active .nav-icon,
+:root[data-theme='light'] .nav-link:hover .nav-icon {
+  color: #2563eb;
+}
+
+:root[data-theme='light'] .card,
+:root[data-theme='light'] .panel,
+:root[data-theme='light'] .auth-card,
+:root[data-theme='light'] .dashboard-widget,
+:root[data-theme='light'] .portal-instruction-detail,
+:root[data-theme='light'] .portal-instruction-button {
+  background: var(--rg-light-surface);
+  border-color: var(--rg-light-line);
+  box-shadow: 0 10px 24px color-mix(in srgb, #07111f 8%, transparent);
+}
+
+:root[data-theme='light'] .dashboard-widget {
+  box-shadow:
+    0 8px 20px color-mix(in srgb, #07111f 7%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #f8fafc 82%, transparent);
+}
+
+:root[data-theme='light'] .kpi-title,
+:root[data-theme='light'] .health-row span,
+:root[data-theme='light'] .dashboard-table-row,
+:root[data-theme='light'] .quick-action-list a {
+  color: color-mix(in srgb, #07111f 80%, #94a3b8 20%);
+}
+
+:root[data-theme='light'] .dashboard-table-head span,
+:root[data-theme='light'] .table-head,
+:root[data-theme='light'] .admin-table-head {
+  color: color-mix(in srgb, #07111f 46%, #94a3b8 54%);
+}
+
+:root[data-theme='light'] .health-row,
+:root[data-theme='light'] .dashboard-table-row,
+:root[data-theme='light'] .node-distribution-total,
+:root[data-theme='light'] .traffic-chart-legend,
+:root[data-theme='light'] .traffic-total {
+  border-color: color-mix(in srgb, #94a3b8 30%, #f8fafc 70%);
+}
+
+:root[data-theme='light'] .quick-action-list a:hover {
+  background: var(--rg-light-blue-tint);
+  color: #07111f;
+}
+
+:root[data-theme='light'] .quick-action-list a strong,
+:root[data-theme='light'] .widget-link {
+  color: #2563eb;
+}
+
+/* Keep the map as the dark infrastructure focal point in both themes. */
+:root[data-theme='light'] .node-distribution-map {
+  background-color: #0b1220;
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, #07111f 12%, transparent), color-mix(in srgb, #07111f 36%, transparent)),
+    url('../assets/world-map.svg');
+  border-color: color-mix(in srgb, #3b82f6 32%, #1e293b 68%);
+  box-shadow: inset 0 0 28px color-mix(in srgb, #07111f 56%, transparent);
+}
+
+:root[data-theme='light'] .node-country-marker {
+  background: #07111f;
+  border-color: color-mix(in srgb, #f8fafc 20%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, #07111f 44%, transparent);
+}
+
+:root[data-theme='light'] .node-country-marker strong {
+  color: #f8fafc;
+}
+
+:root[data-theme='light'] .node-distribution-track {
+  background: color-mix(in srgb, #94a3b8 28%, #f8fafc 72%);
+}
+
+:root[data-theme='light'] .traffic-empty-state,
+:root[data-theme='light'] .traffic-area-chart {
+  background-color: var(--rg-light-surface-raised);
+  background-image:
+    linear-gradient(color-mix(in srgb, #94a3b8 16%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, #94a3b8 16%, transparent) 1px, transparent 1px);
+  border-color: var(--rg-light-line);
+  box-shadow: inset 0 0 22px color-mix(in srgb, #3b82f6 5%, transparent);
+}
+
+:root[data-theme='light'] .field input,
+:root[data-theme='light'] .field select,
+:root[data-theme='light'] .field textarea {
+  background: var(--rg-light-surface-raised);
+  border-color: var(--rg-light-line-strong);
+  color: var(--rg-light-text);
+}
+
+:root[data-theme='light'] .small-button {
+  background: var(--rg-light-blue-tint);
+  border-color: color-mix(in srgb, #94a3b8 48%, #2563eb 52%);
+  color: #07111f;
+}
+
+:root[data-theme='light'] .badge-disabled,
+:root[data-theme='light'] .badge-unassigned,
+:root[data-theme='light'] .badge-custom,
+:root[data-theme='light'] .badge-default {
+  background: color-mix(in srgb, #f8fafc 64%, #94a3b8 36%);
+  color: #07111f !important;
+}
+
+:root[data-theme='light'] .badge-direct,
+:root[data-theme='light'] .badge-vpn,
+:root[data-theme='light'] .badge-rendered,
+:root[data-theme='light'] .badge-staged,
+:root[data-theme='light'] .badge-pending,
+:root[data-theme='light'] .audit-area-badge {
+  background: color-mix(in srgb, #f8fafc 78%, #2563eb 22%);
+  color: #07111f !important;
+}
+
+:root[data-theme='light'] .admin-profile-dropdown {
+  background: var(--rg-light-surface-raised);
+  border-color: var(--rg-light-line-strong);
+  box-shadow: 0 18px 36px color-mix(in srgb, #07111f 14%, transparent);
+}
+
+:root[data-theme='light'] .admin-profile-chip:hover,
+:root[data-theme='light'] .admin-profile-chip:focus-visible,
+:root[data-theme='light'] .admin-profile-chip[aria-expanded='true'] {
+  background: var(--rg-light-blue-tint);
+  border-color: color-mix(in srgb, #94a3b8 48%, #2563eb 52%);
+}
+
+:root[data-theme='light'] .sidebar-theme-control i {
+  background: color-mix(in srgb, #f8fafc 58%, #94a3b8 42%);
+  border-color: var(--rg-light-line-strong);
+}
+
+:root[data-theme='light'] .sidebar-theme-control i::after {
+  background: #f8fafc;
+  box-shadow: 0 1px 4px color-mix(in srgb, #07111f 28%, transparent);
+}
+
+:root[data-theme='light'] .sidebar-theme-control[aria-pressed='true'] i {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+:root[data-theme='light'] .server-country-flag {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #07111f 22%, transparent), 0 2px 5px color-mix(in srgb, #07111f 16%, transparent);
+}

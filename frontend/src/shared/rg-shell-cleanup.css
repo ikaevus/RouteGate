@@ -1,0 +1,10 @@
+/* RouteGate shell cleanup: hide only surfaces that do not add real product value. */
+.sidebar-license-card,
+.routegate-nav-secondary .nav-link-muted,
+.admin-statusbar-time {
+  display: none !important;
+}
+
+.admin-topbar {
+  justify-content: space-between;
+}

@@ -1,0 +1,56 @@
+/* RouteGate semantic success badges — restrained glass treatment.
+ * Keep success immediately recognizable without turning every positive state
+ * into an opaque green block. Loaded last so legacy feature CSS cannot restore
+ * the older saturated fills.
+ */
+
+.badge-online,
+.badge-active,
+.badge-validated,
+.badge-applied,
+.badge-commit-confirmed,
+.badge-succeeded,
+.badge-success,
+.badge-compatible,
+.badge-ready,
+.badge-healthy {
+  display: inline-flex !important;
+  width: fit-content !important;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  align-self: start;
+  white-space: nowrap;
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.13), rgba(16, 185, 129, 0.07)) !important;
+  border: 1px solid rgba(74, 222, 128, 0.24) !important;
+  color: #9acdaf !important;
+  font-weight: 550 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 3px 10px rgba(2, 6, 23, 0.08);
+  -webkit-backdrop-filter: blur(8px) saturate(110%);
+  backdrop-filter: blur(8px) saturate(110%);
+}
+
+:root[data-theme='light'] .badge-online,
+:root[data-theme='light'] .badge-active,
+:root[data-theme='light'] .badge-validated,
+:root[data-theme='light'] .badge-applied,
+:root[data-theme='light'] .badge-commit-confirmed,
+:root[data-theme='light'] .badge-succeeded,
+:root[data-theme='light'] .badge-success,
+:root[data-theme='light'] .badge-compatible,
+:root[data-theme='light'] .badge-ready,
+:root[data-theme='light'] .badge-healthy {
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(16, 185, 129, 0.09)) !important;
+  border-color: rgba(15, 118, 78, 0.30) !important;
+  color: #2d6657 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 3px 10px rgba(31, 68, 111, 0.05);
+}

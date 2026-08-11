@@ -188,12 +188,36 @@
 }
 
 .sidebar-theme-control i {
-  background: #2563eb;
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 999px;
-  box-shadow: inset 16px 0 0 rgba(2, 6, 23, 0.35);
+  background: rgba(100, 116, 139, 0.28);
   height: 20px;
   margin-left: auto;
+  padding: 2px;
+  position: relative;
+  transition: background 0.16s ease, border-color 0.16s ease;
   width: 38px;
+}
+
+.sidebar-theme-control i::after {
+  background: #f8fafc;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(2, 6, 23, 0.35);
+  content: '';
+  display: block;
+  height: 14px;
+  transform: translateX(0);
+  transition: transform 0.16s ease;
+  width: 14px;
+}
+
+.sidebar-theme-control[aria-pressed="true"] i {
+  background: #2563eb;
+  border-color: rgba(96, 165, 250, 0.62);
+}
+
+.sidebar-theme-control[aria-pressed="true"] i::after {
+  transform: translateX(16px);
 }
 
 .admin-topbar {
@@ -436,6 +460,97 @@
   margin-left: auto;
 }
 
+
+.routegate-admin-shell.sidebar-collapsed {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.sidebar-collapsed .routegate-sidebar {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.sidebar-collapsed .routegate-brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-collapsed .routegate-brand > div,
+.sidebar-collapsed .routegate-nav .nav-link > span:last-child,
+.sidebar-collapsed .sidebar-license-card,
+.sidebar-collapsed .sidebar-theme-control > span,
+.sidebar-collapsed .sidebar-theme-control > i,
+.sidebar-collapsed .sidebar-collapse-control > span {
+  display: none;
+}
+
+.sidebar-collapsed .routegate-nav .nav-link,
+.sidebar-collapsed .sidebar-control {
+  justify-content: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.sidebar-collapsed .routegate-nav .nav-link {
+  min-height: 42px;
+}
+
+.sidebar-collapsed .nav-icon {
+  flex-basis: 22px;
+}
+
+.sidebar-collapsed .sidebar-control .rg-icon {
+  flex: 0 0 auto;
+}
+
+:root[data-theme='light'] .routegate-sidebar {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.99), rgba(241, 245, 249, 0.98));
+  border-right-color: rgba(203, 213, 225, 0.95);
+}
+
+:root[data-theme='light'] .sidebar-license-card,
+:root[data-theme='light'] .sidebar-control,
+:root[data-theme='light'] .topbar-menu-button,
+:root[data-theme='light'] .topbar-icon-button,
+:root[data-theme='light'] .admin-profile-chip {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(203, 213, 225, 0.95);
+  color: #334155;
+}
+
+:root[data-theme='light'] .admin-topbar,
+:root[data-theme='light'] .admin-statusbar {
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(203, 213, 225, 0.95);
+}
+
+:root[data-theme='light'] .topbar-search {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(203, 213, 225, 0.95);
+}
+
+:root[data-theme='light'] .admin-main {
+  background:
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.05), transparent 26rem),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 34rem),
+    #edf2f7;
+}
+
+:root[data-theme='light'] .admin-profile-dropdown {
+  background: rgba(255, 255, 255, 0.99);
+  border-color: rgba(148, 163, 184, 0.48);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme='light'] .admin-profile-menu-item {
+  color: #0f172a;
+}
+
+:root[data-theme='light'] .admin-statusbar {
+  color: #64748b;
+}
+
 @media (max-width: 980px) {
   .routegate-admin-shell {
     grid-template-columns: 1fr;
@@ -457,4 +572,12 @@
     max-width: none;
     width: 100%;
   }
+}
+
+.sidebar-collapse-control .rg-icon {
+  transition: transform 0.16s ease;
+}
+
+.sidebar-collapsed .sidebar-collapse-control .rg-icon {
+  transform: rotate(180deg);
 }

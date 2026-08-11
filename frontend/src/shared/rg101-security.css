@@ -53,3 +53,41 @@
   width: 100%;
   text-decoration: none;
 }
+
+/* Light-theme compatibility for the legacy security screen. */
+:root[data-theme='light'] .rg101-security-page {
+  --text-primary: #071b35;
+  --text-secondary: #14365b;
+}
+
+:root[data-theme='light'] .rg101-security-header span {
+  color: #0b4ea2;
+}
+
+:root[data-theme='light'] .rg101-security-header p,
+:root[data-theme='light'] .rg101-security-card p,
+:root[data-theme='light'] .rg101-password-hint,
+:root[data-theme='light'] .rg110-security-meta,
+:root[data-theme='light'] .rg110-security-meta span {
+  color: #14365b !important;
+}
+
+:root[data-theme='light'] .rg101-security-card strong,
+:root[data-theme='light'] .rg101-security-card h2,
+:root[data-theme='light'] .rg101-security-card h3 {
+  color: #071b35 !important;
+}
+
+/* Success states need stronger presence on the blue Light surfaces. */
+:root[data-theme='light'] .badge-online,
+:root[data-theme='light'] .badge-active,
+:root[data-theme='light'] .badge-validated,
+:root[data-theme='light'] .badge-applied,
+:root[data-theme='light'] .badge-commit-confirmed,
+:root[data-theme='light'] .badge-succeeded,
+:root[data-theme='light'] .vpn-client-format-badge {
+  background: #54cf8b !important;
+  border: 1px solid #168653 !important;
+  color: #053a22 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}

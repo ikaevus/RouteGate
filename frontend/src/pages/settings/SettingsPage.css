@@ -1,0 +1,233 @@
+.system-settings-page {
+  display: grid;
+  gap: 16px;
+  max-width: 1640px;
+  width: 100%;
+}
+
+.system-settings-page .page-header {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--rg-surface-main) 92%, transparent);
+  border: 1px solid var(--rg-border);
+  border-radius: 20px;
+  margin: 0;
+  padding: 18px 20px;
+}
+
+.system-settings-page .page-header h1 {
+  letter-spacing: -0.04em;
+  margin: 0;
+}
+
+.system-settings-page .page-header p {
+  margin: 5px 0 0;
+}
+
+.settings-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(310px, 0.75fr);
+}
+
+.settings-main-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 0;
+  min-width: 0;
+}
+
+.settings-panel-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.settings-panel-heading .panel-subtitle {
+  margin: 5px 0 0;
+}
+
+.settings-component-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-component-card {
+  background: color-mix(in srgb, var(--rg-surface-raised) 88%, transparent);
+  border: 1px solid var(--rg-border);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.settings-component-card:first-child {
+  grid-column: 1 / -1;
+}
+
+.settings-component-card h2 {
+  color: var(--rg-text-primary);
+  font-size: 15px;
+  margin: 0;
+}
+
+.settings-fact-grid,
+.settings-agent-facts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.settings-fact {
+  align-content: start;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-fact > span {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.settings-fact > strong,
+.settings-fact > code {
+  color: var(--rg-text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.settings-fact > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.settings-agent-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-agent-card {
+  background: color-mix(in srgb, var(--rg-surface-raised) 88%, transparent);
+  border: 1px solid var(--rg-border);
+  border-radius: 14px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.settings-agent-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.settings-agent-card-header > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-agent-card-header strong {
+  color: var(--rg-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.settings-agent-card-header span {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-update-panel {
+  position: sticky;
+  top: 76px;
+}
+
+.settings-update-facts {
+  display: grid;
+  gap: 0;
+}
+
+.settings-update-facts .settings-fact {
+  border-bottom: 1px solid var(--rg-border);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 11px 0;
+}
+
+.settings-update-facts .settings-fact:first-child {
+  padding-top: 0;
+}
+
+.settings-update-facts .settings-fact:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.settings-update-facts .settings-fact > strong,
+.settings-update-facts .settings-fact > code {
+  text-align: right;
+}
+
+.settings-update-notice {
+  background: color-mix(in srgb, var(--rg-primary) 12%, var(--rg-surface-raised));
+  border: 1px solid color-mix(in srgb, var(--rg-primary) 42%, var(--rg-border));
+  border-radius: 12px;
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px;
+}
+
+@media (max-width: 1050px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-update-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .system-settings-page .page-header {
+    padding: 16px;
+  }
+
+  .settings-component-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-component-card:first-child {
+    grid-column: auto;
+  }
+
+  .settings-panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-update-facts .settings-fact {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-update-facts .settings-fact > strong,
+  .settings-update-facts .settings-fact > code {
+    text-align: left;
+  }
+}

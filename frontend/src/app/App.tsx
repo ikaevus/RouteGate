@@ -10,14 +10,66 @@ import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPa
 import { LoginPage } from '../pages/login/LoginPage';
 import { SetupPage } from '../pages/setup/SetupPage';
 import { SecurityPage } from '../pages/settings/SecurityPage';
+import { SettingsPage } from '../pages/settings/SettingsPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 import { getMe, logout, type AuthUser } from '../entities/auth/api/authApi';
+import { getManagerHealth } from '../entities/health/api/healthApi';
 import { clearAuthToken, getAuthToken } from '../shared/api/client';
 import { t } from '../shared/i18n/i18n';
 import { useLocale } from '../shared/i18n/useLocale';
 import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
 
 const routeGateSymbolUrl = new URL('../shared/assets/routegate-symbol.svg', import.meta.url).href;
+const ADMIN_THEME_STORAGE_KEY = 'routegate.admin.theme';
+const ADMIN_SIDEBAR_STORAGE_KEY = 'routegate.admin.sidebarCollapsed';
+
+type AdminTheme = 'dark' | 'light';
+
+function readStoredTheme(): AdminTheme {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+  return window.localStorage.getItem(ADMIN_THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+}
+
+function readStoredSidebarCollapsed(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return window.localStorage.getItem(ADMIN_SIDEBAR_STORAGE_KEY) === 'true';
+}
+
+function getTimestampOffsetMinutes(timestamp: string): number {
+  const match = timestamp.match(/(Z|([+-])(\d{2}):(\d{2}))$/);
+  if (!match || match[1] === 'Z') {
+    return 0;
+  }
+  const sign = match[2] === '-' ? -1 : 1;
+  return sign * ((Number(match[3]) * 60) + Number(match[4]));
+}
+
+function formatServerTime(timestamp?: string | null, elapsedMilliseconds = 0): string {
+  if (!timestamp) {
+    return t('common.notAvailable');
+  }
+
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return timestamp;
+  }
+
+  const offsetMinutes = getTimestampOffsetMinutes(timestamp);
+  const shifted = new Date(parsed.getTime() + elapsedMilliseconds + (offsetMinutes * 60_000));
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffset / 60);
+  const offsetRemainder = absoluteOffset % 60;
+  const offsetLabel = offsetMinutes === 0
+    ? 'UTC'
+    : `UTC${offsetMinutes > 0 ? '+' : '-'}${offsetHours}${offsetRemainder ? `:${pad(offsetRemainder)}` : ''}`;
+
+  return `${pad(shifted.getUTCDate())}.${pad(shifted.getUTCMonth() + 1)}.${shifted.getUTCFullYear()} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())} (${offsetLabel})`;
+}
 
 type IconName =
   | 'overview'
@@ -31,8 +83,6 @@ type IconName =
   | 'licensing'
   | 'appliance'
   | 'search'
-  | 'bell'
-  | 'help'
   | 'settings'
   | 'menu'
   | 'moon'
@@ -51,8 +101,6 @@ function Icon({ name }: { name: IconName }) {
     licensing: <><circle cx="12" cy="12" r="7" /><path d="M9.5 12.5 11 14l3.5-4" /></>,
     appliance: <><rect x="4" y="6" width="16" height="12" rx="2" /><path d="M8 10h8M8 14h3M15 14h1" /></>,
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
-    bell: <><path d="M18 16H6c1.2-1.3 1.8-2.9 1.8-4.7V9a4.2 4.2 0 0 1 8.4 0v2.3c0 1.8.6 3.4 1.8 4.7Z" /><path d="M10 19a2 2 0 0 0 4 0" /></>,
-    help: <><circle cx="12" cy="12" r="8" /><path d="M10 9a2.2 2.2 0 0 1 4.2 1c0 1.8-2.2 1.9-2.2 3.5" /><path d="M12 17h.01" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></>,
     menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
     moon: <><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5 7.6 7.6 0 1 0 19 14.5Z" /></>,
@@ -252,6 +300,33 @@ function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
 }
 
 function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
+  const [theme, setTheme] = useState<AdminTheme>(readStoredTheme);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+  const [clockTick, setClockTick] = useState(() => Date.now());
+  const managerHealthQuery = useQuery({
+    queryKey: ['manager-health'],
+    queryFn: getManagerHealth,
+    refetchInterval: 10_000,
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(ADMIN_THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setClockTick(Date.now()), 1_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const serverTimeElapsed = managerHealthQuery.dataUpdatedAt > 0
+    ? Math.max(0, clockTick - managerHealthQuery.dataUpdatedAt)
+    : 0;
+
   const adminNavigationItems = [
     { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
     { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
@@ -266,7 +341,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
   ];
 
   return (
-    <div className="app-shell routegate-admin-shell routegate-reference-shell">
+    <div className={`app-shell routegate-admin-shell routegate-reference-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar routegate-sidebar">
         <div className="brand routegate-brand">
           <BrandMark />
@@ -298,6 +373,14 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <span className="nav-icon" aria-hidden="true"><Icon name="security" /></span>
             <span>{t('navigation.security')}</span>
           </NavLink>
+          <NavLink
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            end
+            to="/settings"
+          >
+            <span className="nav-icon" aria-hidden="true"><Icon name="settings" /></span>
+            <span>{t('navigation.settings')}</span>
+          </NavLink>
           {secondaryNavigationItems.map((item) => (
             <span className="nav-link nav-link-muted" key={item.label}>
               <span className="nav-icon" aria-hidden="true"><Icon name={item.icon} /></span>
@@ -318,17 +401,36 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
           <div className="license-progress-track"><span /></div>
         </div>
 
-        <button className="sidebar-control sidebar-theme-control" type="button">
+        <button
+          aria-pressed={theme === 'dark'}
+          className="sidebar-control sidebar-theme-control"
+          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          type="button"
+        >
           <Icon name="moon" />
           <span>{t('dashboard.darkTheme')}</span>
-          <i />
+          <i aria-hidden="true" />
         </button>
-        <button className="sidebar-control" type="button"><Icon name="collapse" /> {t('navigation.collapse')}</button>
+        <button
+          aria-expanded={!isSidebarCollapsed}
+          className="sidebar-control sidebar-collapse-control"
+          onClick={() => setIsSidebarCollapsed((current) => !current)}
+          title={t('topbar.toggleSidebar')}
+          type="button"
+        >
+          <Icon name="collapse" />
+          <span>{t('navigation.collapse')}</span>
+        </button>
       </aside>
 
       <div className="admin-workspace">
         <header className="admin-topbar">
-          <button className="topbar-menu-button" type="button" aria-label={t('topbar.toggleSidebar')}><Icon name="menu" /></button>
+          <button
+            aria-label={t('topbar.toggleSidebar')}
+            className="topbar-menu-button"
+            onClick={() => setIsSidebarCollapsed((current) => !current)}
+            type="button"
+          ><Icon name="menu" /></button>
           <label className="topbar-search">
             <Icon name="search" />
             <input placeholder={t('topbar.searchPlaceholder')} />
@@ -336,9 +438,6 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
           </label>
           <div className="topbar-actions">
             <LocaleSwitcher />
-            <button className="topbar-icon-button topbar-notification" type="button" aria-label={t('topbar.notifications')}><Icon name="bell" /></button>
-            <button className="topbar-icon-button" type="button" aria-label={t('topbar.help')}><Icon name="help" /></button>
-            <button className="topbar-icon-button" type="button" aria-label={t('topbar.settings')}><Icon name="settings" /></button>
             <ProfileMenu isLoggingOut={isLoggingOut} onLogout={onLogout} user={user} />
           </div>
         </header>
@@ -355,6 +454,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <Route path="/routing-profiles" element={<RoutingProfilesPage />} />
             <Route path="/routing-profiles/:profileId" element={<RoutingProfilesPage />} />
             <Route path="/settings/security" element={<SecurityPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
@@ -363,7 +463,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
           <span>{t('app.footerProduct')}</span>
           <span>{t('app.version')}</span>
           <strong><span className="status-dot status-dot-ok" /> {t('dashboard.systemsOperational')}</strong>
-          <span className="admin-statusbar-time">{t('dashboard.serverTime', { time: '20.05.2026 14:32:11 (UTC+3)' })}</span>
+          <span className="admin-statusbar-time">{t('dashboard.serverTime', { time: formatServerTime(managerHealthQuery.data?.timestamp, serverTimeElapsed) })}</span>
         </footer>
       </div>
     </div>

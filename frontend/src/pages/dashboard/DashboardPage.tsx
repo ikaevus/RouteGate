@@ -3,12 +3,23 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
+import {
+  getDashboardActivity,
+  getDashboardNodes,
+  getDashboardTraffic,
+  type DashboardDailyTraffic,
+  type DashboardNodeDistribution,
+  type DashboardRecentAuditEvent,
+  type DashboardRecentDeployment,
+  type DashboardServerLoad,
+} from '../../entities/dashboard/api/dashboardApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { getPagedVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
-import { t } from '../../shared/i18n/i18n';
+import { t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { GettingStartedWidget } from './GettingStartedWidget';
+import './DashboardPage.css';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -19,8 +30,59 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function formatTrafficDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return t('common.notAvailable');
+  }
+  if (bytes === 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** unitIndex);
+  const maximumFractionDigits = unitIndex === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
+
+  return `${value.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+}
+
+function formatServerLoad(load?: DashboardServerLoad): string {
+  if (load?.load1 === undefined || load.logicalCpus === undefined) {
+    return t('common.notAvailable');
+  }
+  return `${load.load1.toFixed(2)} / ${load.logicalCpus} CPU`;
+}
+
 function getRegionCountryCode(region: string): string | null {
-  return region.match(/,\s*([A-Z]{2})$/)?.[1] ?? null;
+  const match = region.trim().match(/,\s*([A-Za-z]{2})$/);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+
+function getCountryMapRegion(countryCode: string): string | null {
+  const code = countryCode.toUpperCase();
+  if (['US', 'CA', 'MX'].includes(code)) return 'na';
+  if (['GB', 'IE', 'IS', 'NO', 'SE', 'FI', 'DK', 'DE', 'NL', 'BE', 'FR', 'ES', 'PT', 'IT', 'CH', 'AT', 'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'GR', 'EE', 'LV', 'LT', 'UA'].includes(code)) return 'eu';
+  if (code === 'RU') return 'eurasia';
+  if (['CN', 'JP', 'KR', 'KP', 'IN', 'SG', 'TH', 'VN', 'MY', 'ID', 'PH', 'KZ', 'UZ', 'AE', 'IL', 'TR'].includes(code)) return 'asia';
+  if (['BR', 'AR', 'CL', 'PE', 'CO', 'UY', 'PY', 'BO', 'EC', 'VE'].includes(code)) return 'sa';
+  if (['ZA', 'EG', 'MA', 'DZ', 'TN', 'NG', 'KE', 'ET', 'GH'].includes(code)) return 'af';
+  if (['AU', 'NZ'].includes(code)) return 'oc';
+  return null;
+}
+
+function getActorInitial(actor: string): string {
+  const normalized = actor.trim();
+  return normalized === '' ? '?' : normalized.slice(0, 1).toUpperCase();
+}
+
+function formatAuditResource(event: DashboardRecentAuditEvent): string {
+  return event.resourceId ? `${event.resourceType} · ${event.resourceId}` : event.resourceType;
 }
 
 function KpiWidget({ title, value, meta, tone, icon }: { title: string; value: string; meta: string; tone: string; icon: string }) {
@@ -93,6 +155,70 @@ function InfrastructureHealthWidget({
   );
 }
 
+function NodeDistributionWidget({ distribution, available }: { distribution?: DashboardNodeDistribution; available: boolean }) {
+  const locations = distribution?.locations ?? [];
+  const totalServers = distribution?.totalServers ?? 0;
+  const markers = locations.flatMap((item, index) => {
+    const countryCode = getRegionCountryCode(item.location);
+    const mapRegion = countryCode ? getCountryMapRegion(countryCode) : null;
+    if (!countryCode || !mapRegion) {
+      return [];
+    }
+    return [{
+      key: `${item.location}-${index}`,
+      countryCode,
+      mapRegion,
+      label: item.location,
+      count: item.count,
+    }];
+  });
+
+  return (
+    <WidgetPanel title={t('dashboard.nodeDistribution')} className="node-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : totalServers === 0 ? (
+        <p className="empty-state">{t('servers.emptyTitle')}</p>
+      ) : (
+        <div className="node-distribution-content">
+          <div className="node-distribution-map" aria-label={t('dashboard.nodeDistribution')}>
+            {markers.map((marker) => (
+              <span
+                className={`node-country-marker node-country-marker-${marker.mapRegion}`}
+                key={marker.key}
+                title={`${marker.label} · ${marker.count}`}
+              >
+                <span className={`server-country-flag server-country-${marker.countryCode.toLowerCase()}`} aria-hidden="true" />
+                <strong>{marker.count}</strong>
+              </span>
+            ))}
+          </div>
+          <div className="node-distribution-list">
+            {locations.map((item, index) => {
+              const label = item.location || t('common.notAvailable');
+              const countryCode = getRegionCountryCode(item.location);
+              const percentage = totalServers > 0 ? (item.count / totalServers) * 100 : 0;
+              return (
+                <div className="node-distribution-row" key={`${item.location}-${index}`}>
+                  <div className="node-distribution-label">
+                    <span className="node-distribution-location" title={label}>
+                      {countryCode && <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-hidden="true" />}
+                      <span>{label}</span>
+                    </span>
+                    <strong>{item.count}</strong>
+                  </div>
+                  <div className="node-distribution-track"><span style={{ width: `${percentage}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="node-distribution-total">{t('dashboard.nodes')}: <strong>{totalServers}</strong></div>
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
 function QuickActionsWidget() {
   const actions = [
     { label: t('dashboard.addServer'), to: '/servers' },
@@ -112,7 +238,44 @@ function QuickActionsWidget() {
   );
 }
 
-function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
+function TrafficOverviewWidget({ daily, available }: { daily: DashboardDailyTraffic[]; available: boolean }) {
+  const maximum = daily.reduce((value, item) => Math.max(value, item.totalBytes), 0);
+  const total = daily.reduce((value, item) => value + item.totalBytes, 0);
+
+  return (
+    <WidgetPanel title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget">
+      {!available ? (
+        <div className="traffic-empty-state">
+          <strong>N/A</strong>
+          <span>{t('dashboard.noTrafficData')}</span>
+        </div>
+      ) : (
+        <div className="traffic-overview-content">
+          <div className="traffic-overview-total">
+            <strong>{formatBytes(total)}</strong>
+            <span>{t('dashboard.total')}</span>
+          </div>
+          <div className="traffic-overview-bars">
+            {daily.map((item, index) => {
+              const percentage = maximum > 0 ? (item.totalBytes / maximum) * 100 : 0;
+              const showLabel = index === 0 || index === daily.length - 1 || index % 7 === 0;
+              return (
+                <div className="traffic-overview-column" key={item.date} title={`${formatTrafficDate(item.date)} · ${formatBytes(item.totalBytes)}`}>
+                  <div className="traffic-overview-bar-track">
+                    <span className="traffic-overview-bar" style={{ height: `${percentage}%` }} />
+                  </div>
+                  <small>{showLabel ? formatTrafficDate(item.date) : ''}</small>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
+function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
   return (
     <WidgetPanel title={t('servers.title')} className="servers-summary-widget dashboard-table-widget">
       {servers.length === 0 ? (
@@ -126,7 +289,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
             const countryCode = getRegionCountryCode(server.region);
 
             return (
-              <div className="dashboard-table-row" key={server.name}>
+              <div className="dashboard-table-row" key={server.id}>
                 <strong title={server.name}>{server.name}</strong>
                 <span className="server-region-cell">
                   {countryCode && (
@@ -148,6 +311,63 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ name: string; regi
   );
 }
 
+function RecentDeploymentsWidget({ deployments, available }: { deployments: DashboardRecentDeployment[]; available: boolean }) {
+  return (
+    <WidgetPanel title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : deployments.length === 0 ? (
+        <p className="empty-state">0</p>
+      ) : (
+        <div className="dashboard-table deployments-table">
+          <div className="dashboard-table-row dashboard-table-head">
+            <span>{t('dashboard.configurationColumn')}</span>
+            <span>{t('dashboard.target')}</span>
+            <span>{t('agents.action')}</span>
+            <span>{t('servers.status')}</span>
+            <span>{t('dashboard.time')}</span>
+          </div>
+          {deployments.map((deployment) => (
+            <div className="dashboard-table-row" key={deployment.id}>
+              <strong title={deployment.configVersionId}>v{deployment.configVersion}</strong>
+              <span title={deployment.serverName}>{deployment.serverName}</span>
+              <span>{deployment.action}</span>
+              <StatusBadge status={deployment.status} />
+              <span title={formatDate(deployment.completedAt ?? deployment.createdAt)}>{formatDate(deployment.completedAt ?? deployment.createdAt)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
+function RecentAuditEventsWidget({ events, available }: { events: DashboardRecentAuditEvent[]; available: boolean }) {
+  return (
+    <WidgetPanel title={t('dashboard.recentAuditEvents')} className="audit-widget">
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : events.length === 0 ? (
+        <p className="empty-state">0</p>
+      ) : (
+        <div className="audit-list">
+          {events.map((event) => (
+            <div className="audit-row" key={event.id}>
+              <span className="audit-avatar" aria-hidden="true">{getActorInitial(event.actor)}</span>
+              <div>
+                <strong title={event.actor}>{event.actor}</strong>
+                <p title={`${event.action} · ${formatAuditResource(event)}`}>{event.action} · {formatAuditResource(event)}</p>
+              </div>
+              <small title={formatDate(event.createdAt)}>{formatDate(event.createdAt)}</small>
+              <span className="audit-area-badge">{translateStatus(event.result)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
 export function DashboardPage() {
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
@@ -165,6 +385,24 @@ export function DashboardPage() {
     queryKey: ['agents'],
     queryFn: getAgents,
     refetchInterval: 10_000,
+  });
+
+  const dashboardActivityQuery = useQuery({
+    queryKey: ['dashboard', 'activity'],
+    queryFn: getDashboardActivity,
+    refetchInterval: 10_000,
+  });
+
+  const dashboardTrafficQuery = useQuery({
+    queryKey: ['dashboard', 'traffic'],
+    queryFn: getDashboardTraffic,
+    refetchInterval: 60_000,
+  });
+
+  const dashboardNodesQuery = useQuery({
+    queryKey: ['dashboard', 'nodes'],
+    queryFn: getDashboardNodes,
+    refetchInterval: 60_000,
   });
 
   const vpnAccountsCountQuery = useQuery({
@@ -200,15 +438,25 @@ export function DashboardPage() {
 
   const activeVpnUsers = activeVpnAccountsCountQuery.data?.total ?? 0;
   const vpnAccountsCount = vpnAccountsCountQuery.data?.total ?? 0;
+  const trafficApiAvailable = dashboardTrafficQuery.isSuccess;
+  const monthlyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.monthlyAvailable === true;
+  const dailyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.dailyAvailable === true;
+  const monthlyTraffic = dashboardTrafficQuery.data?.monthly;
+  const serverTrafficById = new Map((dashboardTrafficQuery.data?.servers ?? []).map((item) => [item.serverId, item]));
+  const serverLoadById = new Map((dashboardNodesQuery.data?.serverLoads ?? []).map((item) => [item.serverId, item]));
 
-  const displayServers = servers.slice(0, 5).map((server, index) => ({
-    name: server.name || `server-${index + 1}`,
-    region: server.location || server.provider || t('common.notAvailable'),
-    online: server.agent?.status === 'online',
-    load: t('common.notAvailable'),
-    traffic: t('common.notAvailable'),
-    status: server.status || 'unknown',
-  }));
+  const displayServers = servers.slice(0, 5).map((server, index) => {
+    const serverTraffic = serverTrafficById.get(server.id);
+    return {
+      id: server.id,
+      name: server.name || `server-${index + 1}`,
+      region: server.location || t('common.notAvailable'),
+      online: server.agent?.status === 'online',
+      load: dashboardNodesQuery.isSuccess ? formatServerLoad(serverLoadById.get(server.id)) : t('common.notAvailable'),
+      traffic: trafficApiAvailable && serverTraffic?.available ? formatBytes(serverTraffic.totalBytes) : 'N/A',
+      status: server.status || 'unknown',
+    };
+  });
 
   return (
     <section className="page dashboard-page dashboard-reference-page dashboard-fidelity-page">
@@ -237,8 +485,10 @@ export function DashboardPage() {
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
-          value={t('common.notAvailable')}
-          meta={t('common.notAvailable')}
+          value={monthlyTrafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : 'N/A'}
+          meta={monthlyTrafficAvailable && monthlyTraffic
+            ? `${t('dashboard.inboundTraffic')}: ${formatBytes(monthlyTraffic.rxBytes)} · ${t('dashboard.outboundTraffic')}: ${formatBytes(monthlyTraffic.txBytes)}`
+            : t('dashboard.noTrafficData')}
           tone="amber"
           icon="☁"
         />
@@ -250,13 +500,19 @@ export function DashboardPage() {
           serversAvailable={serversQuery.isSuccess}
           agentsAvailable={agentsQuery.isSuccess}
         />
-        <UnavailableWidget title={t('dashboard.nodeDistribution')} className="node-widget" />
-        <UnavailableWidget title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget" />
+        <NodeDistributionWidget distribution={dashboardNodesQuery.data} available={dashboardNodesQuery.isSuccess} />
+        <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={dailyTrafficAvailable} />
         <QuickActionsWidget />
         <ServersSummaryWidget servers={displayServers} />
-        <UnavailableWidget title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget" />
+        <RecentDeploymentsWidget
+          deployments={dashboardActivityQuery.data?.recentDeployments ?? []}
+          available={dashboardActivityQuery.isSuccess}
+        />
         <UnavailableWidget title={t('dashboard.trafficTypes')} subtitle={`(${t('dashboard.month')})`} className="traffic-types-widget" />
-        <UnavailableWidget title={t('dashboard.recentAuditEvents')} className="audit-widget" />
+        <RecentAuditEventsWidget
+          events={dashboardActivityQuery.data?.recentAuditEvents ?? []}
+          available={dashboardActivityQuery.isSuccess}
+        />
       </div>
       <div className="dashboard-server-time">{t('dashboard.serverTime', { time: formatDate(managerHealthQuery.data?.timestamp) })}</div>
     </section>

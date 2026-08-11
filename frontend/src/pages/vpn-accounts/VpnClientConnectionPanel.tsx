@@ -10,6 +10,7 @@ import {
   type UpdateVpnClientProfileRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
+import { ShareAccessActions } from '../../shared/ui/ShareAccessActions';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import './vpn-client-connection.css';
 
@@ -122,13 +123,13 @@ function getCopy() {
     save: 'Save profile',
     saving: 'Saving...',
     saved: 'Profile saved',
-    saveError: 'Could not save the client profile.',
+    saveError: 'Could not save client profile.',
     advancedSubscription: 'Advanced subscription URL',
     subscriptionDescription: 'A separate token for RouteGate’s internal subscription format. Direct QR does not require it.',
     createSubscription: 'Create subscription URL',
     rotateSubscription: 'Refresh subscription URL',
     subscriptionBusy: 'Preparing...',
-    subscriptionError: 'Could not create the subscription URL.',
+    subscriptionError: 'Could not create subscription URL.',
     subscriptionUrl: 'RouteGate subscription URL',
     expires: 'Expires',
     qrTitle: 'QR code for VPN client',
@@ -261,6 +262,12 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
               >
                 {copiedTarget === 'vless-link' ? copy.copied : copy.copyVless}
               </button>
+              <ShareAccessActions
+                vlessLink={connection.vlessLink}
+                profileName={connection.profile.name}
+                includeQrShare
+                compact
+              />
             </div>
 
             <div className="vpn-client-runtime-grid">
@@ -429,6 +436,14 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         closeLabel={copy.close}
         loadingLabel={copy.loading}
         unavailableLabel={copy.loadError}
+        footerActions={(
+          <ShareAccessActions
+            vlessLink={connection?.vlessLink}
+            profileName={connection?.profile.name}
+            includeQrShare
+            compact
+          />
+        )}
       />
     </div>
   );

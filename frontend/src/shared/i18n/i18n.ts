@@ -1,12 +1,14 @@
-import { en, type TranslationKey } from './locales/en';
+import { en, type TranslationKey as BaseTranslationKey } from './locales/en';
 import { ru } from './locales/ru';
+import { settingsEn, settingsRu, type SettingsTranslationKey } from './settingsTranslations';
 
 export type Locale = 'en' | 'ru';
+export type TranslationKey = BaseTranslationKey | SettingsTranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
-  en,
-  ru,
+  en: { ...en, ...settingsEn },
+  ru: { ...ru, ...settingsRu },
 };
 
 const DEFAULT_LOCALE: Locale = 'en';

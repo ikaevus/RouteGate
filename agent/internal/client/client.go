@@ -91,12 +91,27 @@ func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminf
 }
 
 func (c *Client) Heartbeat(ctx context.Context, agentToken string, info systeminfo.Info) (HeartbeatResponse, error) {
-	req := heartbeatRequest{AgentVersion: info.AgentVersion, ProtocolVersion: info.ProtocolVersion, Capabilities: info.Capabilities}
+	req := heartbeatRequest{
+		AgentVersion:    info.AgentVersion,
+		ProtocolVersion: info.ProtocolVersion,
+		Capabilities:    heartbeatCapabilities(info),
+	}
 	var res HeartbeatResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/heartbeat", agentToken, req, &res); err != nil {
 		return HeartbeatResponse{}, err
 	}
 	return res, nil
+}
+
+func heartbeatCapabilities(info systeminfo.Info) map[string]any {
+	capabilities := make(map[string]any, len(info.Capabilities)+1)
+	for key, value := range info.Capabilities {
+		capabilities[key] = value
+	}
+	if info.RuntimeMetrics != nil {
+		capabilities["runtimeMetrics"] = info.RuntimeMetrics
+	}
+	return capabilities
 }
 
 func (c *Client) NextTask(ctx context.Context, agentToken string) (*tasks.ConfigTask, error) {

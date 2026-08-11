@@ -1,0 +1,203 @@
+package dashboard
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+type fakeActivityReader struct {
+	deployments     []RecentDeployment
+	auditEvents     []RecentAuditEvent
+	deploymentErr   error
+	auditErr        error
+	deploymentLimit int
+	auditLimit      int
+}
+
+func (f *fakeActivityReader) ListRecentDeployments(_ context.Context, limit int) ([]RecentDeployment, error) {
+	f.deploymentLimit = limit
+	return f.deployments, f.deploymentErr
+}
+
+func (f *fakeActivityReader) ListRecentAuditEvents(_ context.Context, limit int) ([]RecentAuditEvent, error) {
+	f.auditLimit = limit
+	return f.auditEvents, f.auditErr
+}
+
+type fakeTrafficReader struct {
+	snapshot    TrafficSnapshot
+	err         error
+	currentTime time.Time
+	serverLimit int
+}
+
+func (f *fakeTrafficReader) GetTrafficSnapshot(_ context.Context, currentTime time.Time, serverLimit int) (TrafficSnapshot, error) {
+	f.currentTime = currentTime
+	f.serverLimit = serverLimit
+	return f.snapshot, f.err
+}
+
+type fakeNodeReader struct {
+	distribution  NodeDistribution
+	err           error
+	locationLimit int
+	serverLimit   int
+}
+
+func (f *fakeNodeReader) GetNodeDistribution(_ context.Context, locationLimit, serverLimit int) (NodeDistribution, error) {
+	f.locationLimit = locationLimit
+	f.serverLimit = serverLimit
+	return f.distribution, f.err
+}
+
+func TestActivityReturnsBoundedSanitizedData(t *testing.T) {
+	now := time.Date(2026, time.August, 11, 1, 30, 0, 0, time.UTC)
+	reader := &fakeActivityReader{
+		deployments: []RecentDeployment{{
+			ID: "job-1", ServerID: "server-1", ServerName: "US VPS", ConfigVersionID: "config-1",
+			ConfigVersion: 7, Action: "apply", Status: "succeeded", CreatedAt: now,
+		}},
+		auditEvents: []RecentAuditEvent{{
+			ID: "audit-1", Actor: "Felix", ActorType: "user", Action: "config.apply",
+			ResourceType: "server", ResourceID: "server-1", Result: "success", CreatedAt: now,
+		}},
+	}
+	handler := &Handler{logger: slog.Default(), activity: reader}
+
+	response := httptest.NewRecorder()
+	handler.Activity(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/activity", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if reader.deploymentLimit != recentActivityLimit || reader.auditLimit != recentActivityLimit {
+		t.Fatalf("unexpected limits: deployments=%d audit=%d", reader.deploymentLimit, reader.auditLimit)
+	}
+
+	var payload ActivityResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.RecentDeployments) != 1 || payload.RecentDeployments[0].ConfigVersion != 7 {
+		t.Fatalf("unexpected deployments: %+v", payload.RecentDeployments)
+	}
+	if len(payload.RecentAuditEvents) != 1 || payload.RecentAuditEvents[0].Actor != "Felix" {
+		t.Fatalf("unexpected audit events: %+v", payload.RecentAuditEvents)
+	}
+}
+
+func TestActivityStopsWhenDeploymentQueryFails(t *testing.T) {
+	reader := &fakeActivityReader{deploymentErr: errors.New("boom")}
+	handler := &Handler{logger: slog.Default(), activity: reader}
+
+	response := httptest.NewRecorder()
+	handler.Activity(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/activity", nil))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if reader.auditLimit != 0 {
+		t.Fatalf("audit query should not run after deployment failure; limit=%d", reader.auditLimit)
+	}
+}
+
+func TestTrafficReturnsBoundedSnapshot(t *testing.T) {
+	now := time.Date(2026, time.August, 11, 2, 0, 0, 0, time.UTC)
+	reader := &fakeTrafficReader{snapshot: TrafficSnapshot{
+		GeneratedAt: now,
+		MonthlyAvailable: true,
+		DailyAvailable: true,
+		Monthly: TrafficTotals{RxBytes: 100, TxBytes: 50, TotalBytes: 150},
+		Daily: []DailyTrafficUsage{{Date: "2026-08-11", TrafficTotals: TrafficTotals{RxBytes: 10, TxBytes: 5, TotalBytes: 15}}},
+		Servers: []ServerTrafficUsage{{ServerID: "server-1", ServerName: "US VPS", Available: true, TrafficTotals: TrafficTotals{RxBytes: 8, TxBytes: 2, TotalBytes: 10}}},
+	}}
+	handler := &Handler{logger: slog.Default(), traffic: reader, now: func() time.Time { return now }}
+
+	response := httptest.NewRecorder()
+	handler.Traffic(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/traffic", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if !reader.currentTime.Equal(now) || reader.serverLimit != dashboardServerLimit {
+		t.Fatalf("unexpected traffic request: time=%s limit=%d", reader.currentTime, reader.serverLimit)
+	}
+
+	var payload TrafficSnapshot
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload.MonthlyAvailable || !payload.DailyAvailable || payload.Monthly.TotalBytes != 150 || len(payload.Daily) != 1 || len(payload.Servers) != 1 || !payload.Servers[0].Available {
+		t.Fatalf("unexpected traffic payload: %+v", payload)
+	}
+}
+
+func TestTrafficPreservesUnavailableState(t *testing.T) {
+	reader := &fakeTrafficReader{snapshot: TrafficSnapshot{
+		Monthly: TrafficTotals{},
+		Daily: []DailyTrafficUsage{{Date: "2026-08-11"}},
+		Servers: []ServerTrafficUsage{{ServerID: "server-1", ServerName: "US VPS"}},
+	}}
+	handler := &Handler{logger: slog.Default(), traffic: reader, now: time.Now}
+
+	response := httptest.NewRecorder()
+	handler.Traffic(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/traffic", nil))
+
+	var payload TrafficSnapshot
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.MonthlyAvailable || payload.DailyAvailable || payload.Servers[0].Available {
+		t.Fatalf("unmeasured traffic must remain unavailable: %+v", payload)
+	}
+}
+
+func TestTrafficReturnsDatabaseError(t *testing.T) {
+	reader := &fakeTrafficReader{err: errors.New("boom")}
+	handler := &Handler{logger: slog.Default(), traffic: reader, now: time.Now}
+
+	response := httptest.NewRecorder()
+	handler.Traffic(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/traffic", nil))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestNodesReturnsBoundedDistributionAndServerLoads(t *testing.T) {
+	load1 := 0.42
+	logicalCPUs := 4
+	reader := &fakeNodeReader{distribution: NodeDistribution{
+		TotalServers: 3,
+		Locations: []NodeLocationCount{{Location: "Helsinki, FI", Count: 2}, {Location: "", Count: 1}},
+		ServerLoads: []ServerLoad{{ServerID: "server-1", Load1: &load1, LogicalCPUs: &logicalCPUs}},
+	}}
+	handler := &Handler{logger: slog.Default(), nodes: reader}
+
+	response := httptest.NewRecorder()
+	handler.Nodes(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/nodes", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if reader.locationLimit != nodeLocationLimit || reader.serverLimit != dashboardServerLimit {
+		t.Fatalf("unexpected node limits: locations=%d servers=%d", reader.locationLimit, reader.serverLimit)
+	}
+
+	var payload NodeDistribution
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.TotalServers != 3 || len(payload.Locations) != 2 || len(payload.ServerLoads) != 1 {
+		t.Fatalf("unexpected node distribution: %+v", payload)
+	}
+	if payload.ServerLoads[0].Load1 == nil || *payload.ServerLoads[0].Load1 != 0.42 {
+		t.Fatalf("unexpected server load: %+v", payload.ServerLoads[0])
+	}
+}

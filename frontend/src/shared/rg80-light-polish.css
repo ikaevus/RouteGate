@@ -1,0 +1,209 @@
+/* RouteGate Light — contrast and legacy feature polish.
+ * Loaded after the main Light theme while the legacy dark-first screens are
+ * being migrated to semantic theme tokens.
+ */
+
+/* Readability baseline: keep the blue palette, but do not let secondary copy
+ * dissolve into it. These values keep normal-sized secondary text around the
+ * WCAG AA contrast target on the current Light canvas/surfaces. */
+:root[data-theme='light'] {
+  --rg-light-muted: #14365b;
+  --rg-light-text-muted: #14365b;
+  --rg-light-line: #557faf;
+  --rg-light-line-strong: #3f6fa6;
+}
+
+/* Table headings and metadata must stay readable on blue surfaces. */
+:root[data-theme='light'] .admin-table-head > span,
+:root[data-theme='light'] .table-head > span,
+:root[data-theme='light'] .vpn-account-management-head > span {
+  color: #16385f !important;
+}
+
+:root[data-theme='light'] .admin-table-row > span:not(.badge),
+:root[data-theme='light'] .table-row > span:not(.badge),
+:root[data-theme='light'] .timestamp-stack > span,
+:root[data-theme='light'] .protocol-server-identity > span,
+:root[data-theme='light'] .routing-profiles-table-row > div > span,
+:root[data-theme='light'] .portal-profile-meta {
+  color: var(--rg-light-text-muted) !important;
+}
+
+:root[data-theme='light'] .admin-table-row > code,
+:root[data-theme='light'] .table-row > code,
+:root[data-theme='light'] .config-versions-table-row code,
+:root[data-theme='light'] .apply-jobs-table-row code {
+  color: #173a63 !important;
+}
+
+:root[data-theme='light'] .timestamp-stack > strong,
+:root[data-theme='light'] .protocol-server-identity > strong,
+:root[data-theme='light'] .routing-profiles-table-row > div > strong,
+:root[data-theme='light'] .routing-profiles-table-row strong,
+:root[data-theme='light'] .portal-profiles-table-row strong,
+:root[data-theme='light'] .protocol-server-table-row strong,
+:root[data-theme='light'] .apply-jobs-table-row strong,
+:root[data-theme='light'] .config-versions-table-row strong {
+  color: var(--rg-light-text-strong) !important;
+}
+
+/* Feature-screen supporting copy should be visibly secondary, not washed out. */
+:root[data-theme='light'] .admin-main .panel-subtitle,
+:root[data-theme='light'] .admin-main .card-meta,
+:root[data-theme='light'] .admin-main .field small,
+:root[data-theme='light'] .admin-main .protocol-settings-meta,
+:root[data-theme='light'] .admin-main .traffic-metric-label,
+:root[data-theme='light'] .admin-main .traffic-metric-meta,
+:root[data-theme='light'] .admin-main .traffic-limit-meta,
+:root[data-theme='light'] .portal-page .panel-subtitle,
+:root[data-theme='light'] .portal-page .portal-profile-meta,
+:root[data-theme='light'] .portal-page .empty-state {
+  color: var(--rg-light-text-muted) !important;
+}
+
+/* Form labels must read as labels in Light, not inherit the pale dark-theme
+ * foreground that disappears against the blue surfaces. */
+:root[data-theme='light'] .admin-main .field > span,
+:root[data-theme='light'] .admin-main .traffic-checkbox-field > label,
+:root[data-theme='light'] .admin-main .traffic-checkbox-field > p {
+  color: #16385f !important;
+}
+
+/* Config Deploy stage summaries were designed around dark foregrounds. */
+:root[data-theme='light'] .stage-pill {
+  background: rgba(169, 197, 238, 0.62);
+  border-color: #456f9f;
+}
+
+:root[data-theme='light'] .stage-pill > span {
+  color: #173a63 !important;
+}
+
+:root[data-theme='light'] .stage-pill > strong {
+  color: #071b35 !important;
+}
+
+/* Protocol Settings server metadata. */
+:root[data-theme='light'] .protocol-server-table-row > span:not(.badge) {
+  color: #173a63 !important;
+}
+
+/* Server descriptions are useful identity metadata. Let them wrap and keep
+ * enough contrast instead of fading into the row and ending in an ellipsis. */
+:root[data-theme='light'] .servers-table-row > div:first-child > span {
+  color: var(--rg-light-text-muted) !important;
+  line-height: 1.35;
+  overflow: visible !important;
+  overflow-wrap: anywhere;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+/* The routing-profile master list is narrow. Its heading and row content need
+ * a real inset after the generic admin-table rule resets horizontal padding. */
+:root[data-theme='light'] .routing-profiles-table-row {
+  box-sizing: border-box;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+/* The default routing-profile badge should belong to the blue theme, not look
+ * like a white sticker pasted over it. */
+:root[data-theme='light'] .badge-default {
+  background: #7fa6da !important;
+  border: 1px solid #456f9f;
+  color: #071b35 !important;
+}
+
+/* User Portal instructions are ordinary content, never a dark console in Light. */
+:root[data-theme='light'] .portal-app-shell .portal-instruction-button,
+:root[data-theme='light'] .portal-app-shell .portal-instruction-detail {
+  background: #9db9e2 !important;
+  background-image: none !important;
+  border-color: var(--rg-light-line-strong) !important;
+  color: var(--rg-light-text-strong) !important;
+  box-shadow: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme='light'] .portal-app-shell .portal-instruction-card {
+  background: transparent !important;
+  background-image: none !important;
+  color: var(--rg-light-text-strong) !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme='light'] .portal-instruction-button:hover,
+:root[data-theme='light'] .portal-instruction-button-selected {
+  background: var(--rg-light-blue-tint) !important;
+  border-color: #456f9f !important;
+}
+
+:root[data-theme='light'] .portal-instruction-button-selected {
+  box-shadow: inset 3px 0 0 #2563eb !important;
+}
+
+:root[data-theme='light'] .portal-instruction-button span,
+:root[data-theme='light'] .portal-instruction-detail p {
+  color: var(--rg-light-text-muted) !important;
+}
+
+:root[data-theme='light'] .portal-section-title,
+:root[data-theme='light'] .portal-step-list,
+:root[data-theme='light'] .portal-note-list,
+:root[data-theme='light'] .portal-instruction-detail strong,
+:root[data-theme='light'] .portal-instruction-detail .panel-title {
+  color: var(--rg-light-text-strong) !important;
+}
+
+/* Keep portal profile table metadata consistent with the admin console. */
+:root[data-theme='light'] .portal-profiles-table-row > span:not(.badge),
+:root[data-theme='light'] .portal-profiles-table-row code {
+  color: var(--rg-light-text-muted) !important;
+}
+
+/* Give portal table cells breathing room instead of pinning profile text to the
+ * table boundary. Apply the same inset to the header to keep columns aligned. */
+:root[data-theme='light'] .portal-profiles-table-row {
+  box-sizing: border-box;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* Portal chrome also needs crisp foregrounds on the blue chrome surface. */
+:root[data-theme='light'] .portal-app-shell .brand-title,
+:root[data-theme='light'] .portal-app-shell .portal-topnav a {
+  color: var(--rg-light-text-strong) !important;
+}
+
+:root[data-theme='light'] .portal-app-shell .brand-subtitle {
+  color: var(--rg-light-text-muted) !important;
+}
+
+:root[data-theme='light'] .portal-app-shell .portal-topnav a {
+  border-color: var(--rg-light-line-strong) !important;
+}
+
+/* A link from /portal back to /portal is a dead action. Keep the portal nav
+ * focused on actual destinations (Admin UI / Login). */
+.portal-app-shell .portal-topnav a[href='/portal'] {
+  display: none;
+}
+
+/* VPN client runtime facts are normal Light-theme information cards, not dark
+ * code blocks. Keep them slightly raised from the parent panel. */
+:root[data-theme='light'] .vpn-client-runtime-grid > div {
+  background: #9db9e2 !important;
+  border-color: var(--rg-light-line-strong) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme='light'] .vpn-client-runtime-grid span {
+  color: #16385f !important;
+}
+
+:root[data-theme='light'] .vpn-client-runtime-grid strong {
+  color: var(--rg-light-text-strong) !important;
+}
