@@ -18,14 +18,14 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) *Server {
-	router := NewRouter(cfg, logger, pool)
+	rootHandler := NewRootHandler(cfg, logger, pool)
 
 	return &Server{
 		cfg:    cfg,
 		logger: logger,
 		httpServer: &stdhttp.Server{
 			Addr:    cfg.HTTPAddr,
-			Handler: router,
+			Handler: rootHandler,
 		},
 	}
 }
