@@ -123,13 +123,13 @@ function getCopy() {
     save: 'Save profile',
     saving: 'Saving...',
     saved: 'Profile saved',
-    saveError: 'Could not save the client profile.',
+    saveError: 'Could not save client profile.',
     advancedSubscription: 'Advanced subscription URL',
     subscriptionDescription: 'A separate token for RouteGate’s internal subscription format. Direct QR does not require it.',
     createSubscription: 'Create subscription URL',
     rotateSubscription: 'Refresh subscription URL',
     subscriptionBusy: 'Preparing...',
-    subscriptionError: 'Could not create the subscription URL.',
+    subscriptionError: 'Could not create subscription URL.',
     subscriptionUrl: 'RouteGate subscription URL',
     expires: 'Expires',
     qrTitle: 'QR code for VPN client',
@@ -265,6 +265,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
               <ShareAccessActions
                 vlessLink={connection.vlessLink}
                 profileName={connection.profile.name}
+                includeQrShare
                 compact
               />
             </div>
