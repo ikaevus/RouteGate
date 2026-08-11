@@ -65,6 +65,54 @@
   white-space: nowrap;
 }
 
+.vpn-share-channel-button {
+  align-items: center;
+  border-radius: 12px;
+  display: inline-flex;
+  flex: 0 0 38px;
+  height: 38px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0;
+  width: 38px;
+}
+
+.vpn-share-channel-icon {
+  fill: none;
+  height: 19px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.65;
+  width: 19px;
+}
+
+.vpn-share-email {
+  color: #7dd3fc;
+}
+
+.vpn-share-telegram {
+  color: #38bdf8;
+}
+
+.vpn-share-whatsapp {
+  color: #4ade80;
+}
+
+.vpn-share-channel-button:hover {
+  background: rgba(96, 165, 250, 0.13);
+  border-color: rgba(125, 211, 252, 0.42);
+  transform: translateY(-1px);
+}
+
+.vpn-share-channel-button:active {
+  transform: translateY(0);
+}
+
+.vpn-share-qr-button {
+  width: auto;
+}
+
 .subscription-qr-modal-footer-actions {
   align-items: center;
   display: flex;
@@ -171,14 +219,22 @@
   }
 
   .vpn-client-primary-actions > button,
-  .vpn-client-primary-actions > .vpn-share-actions,
-  .vpn-client-primary-actions .vpn-share-button {
+  .vpn-client-primary-actions > .vpn-share-actions {
     width: 100%;
   }
 
   .vpn-share-actions {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .vpn-share-channel-button {
+    flex: 0 0 38px;
+    width: 38px;
+  }
+
+  .vpn-share-qr-button {
+    flex: 1 1 auto;
   }
 
   .subscription-qr-modal-footer {
@@ -187,12 +243,14 @@
   }
 
   .subscription-qr-modal-footer-actions {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
   }
 
-  .subscription-qr-modal-footer-actions > button,
-  .subscription-qr-modal-footer-actions .vpn-share-button,
+  .subscription-qr-modal-footer-actions .vpn-share-qr-button {
+    flex: 1 1 150px;
+  }
+
   .subscription-qr-modal-footer > .primary-button {
     width: 100%;
   }
