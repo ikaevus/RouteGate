@@ -257,9 +257,7 @@ jobs:
           if grep -q '^ROUTEGATE_PUBLIC_URL=' /etc/routegate/manager.env; then
             sed -i 's#^ROUTEGATE_PUBLIC_URL=.*#ROUTEGATE_PUBLIC_URL="https://us.routegate.org"#' /etc/routegate/manager.env
           else
-            printf '
-ROUTEGATE_PUBLIC_URL="https://us.routegate.org"
-' >> /etc/routegate/manager.env
+            printf '%s\n' 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' >> /etc/routegate/manager.env
           fi
           chmod 0600 /etc/routegate/manager.env
           grep -Fxq 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' /etc/routegate/manager.env
