@@ -3,11 +3,21 @@
  * being migrated to semantic theme tokens.
  */
 
+/* Readability baseline: keep the blue palette, but do not let secondary copy
+ * dissolve into it. These values keep normal-sized secondary text around the
+ * WCAG AA contrast target on the current Light canvas/surfaces. */
+:root[data-theme='light'] {
+  --rg-light-muted: #14365b;
+  --rg-light-text-muted: #14365b;
+  --rg-light-line: #557faf;
+  --rg-light-line-strong: #3f6fa6;
+}
+
 /* Table headings and metadata must stay readable on blue surfaces. */
 :root[data-theme='light'] .admin-table-head > span,
 :root[data-theme='light'] .table-head > span,
 :root[data-theme='light'] .vpn-account-management-head > span {
-  color: #315d8c !important;
+  color: #16385f !important;
 }
 
 :root[data-theme='light'] .admin-table-row > span:not(.badge),
@@ -23,55 +33,85 @@
 :root[data-theme='light'] .table-row > code,
 :root[data-theme='light'] .config-versions-table-row code,
 :root[data-theme='light'] .apply-jobs-table-row code {
-  color: #244c77 !important;
+  color: #173a63 !important;
 }
 
 :root[data-theme='light'] .timestamp-stack > strong,
 :root[data-theme='light'] .protocol-server-identity > strong,
-:root[data-theme='light'] .routing-profiles-table-row > div > strong {
+:root[data-theme='light'] .routing-profiles-table-row > div > strong,
+:root[data-theme='light'] .routing-profiles-table-row strong,
+:root[data-theme='light'] .portal-profiles-table-row strong,
+:root[data-theme='light'] .protocol-server-table-row strong,
+:root[data-theme='light'] .apply-jobs-table-row strong,
+:root[data-theme='light'] .config-versions-table-row strong {
   color: var(--rg-light-text-strong) !important;
+}
+
+/* Feature-screen supporting copy should be visibly secondary, not washed out. */
+:root[data-theme='light'] .admin-main .panel-subtitle,
+:root[data-theme='light'] .admin-main .card-meta,
+:root[data-theme='light'] .admin-main .field small,
+:root[data-theme='light'] .admin-main .protocol-settings-meta,
+:root[data-theme='light'] .admin-main .traffic-metric-label,
+:root[data-theme='light'] .admin-main .traffic-metric-meta,
+:root[data-theme='light'] .admin-main .traffic-limit-meta,
+:root[data-theme='light'] .portal-page .panel-subtitle,
+:root[data-theme='light'] .portal-page .portal-profile-meta,
+:root[data-theme='light'] .portal-page .empty-state {
+  color: var(--rg-light-text-muted) !important;
 }
 
 /* Config Deploy stage summaries were designed around dark foregrounds. */
 :root[data-theme='light'] .stage-pill {
-  background: rgba(169, 197, 238, 0.46);
-  border-color: #5278aa;
+  background: rgba(169, 197, 238, 0.62);
+  border-color: #456f9f;
 }
 
 :root[data-theme='light'] .stage-pill > span {
-  color: #355a80 !important;
+  color: #173a63 !important;
 }
 
 :root[data-theme='light'] .stage-pill > strong {
-  color: #163b67 !important;
+  color: #071b35 !important;
 }
 
 /* Protocol Settings server metadata. */
 :root[data-theme='light'] .protocol-server-table-row > span:not(.badge) {
-  color: #355a80 !important;
+  color: #173a63 !important;
 }
 
 /* The default routing-profile badge should belong to the blue theme, not look
  * like a white sticker pasted over it. */
 :root[data-theme='light'] .badge-default {
   background: #a9c5ee !important;
-  border: 1px solid #6288bb;
+  border: 1px solid #456f9f;
   color: #071b35 !important;
 }
 
-/* User Portal instructions are content, not a dark code console. */
-:root[data-theme='light'] .portal-instruction-button,
-:root[data-theme='light'] .portal-instruction-detail {
-  background: var(--rg-light-surface-raised) !important;
+/* User Portal instructions are ordinary content, never a dark console in Light. */
+:root[data-theme='light'] .portal-app-shell .portal-instruction-button,
+:root[data-theme='light'] .portal-app-shell .portal-instruction-detail {
+  background: #9db9e2 !important;
+  background-image: none !important;
   border-color: var(--rg-light-line-strong) !important;
   color: var(--rg-light-text-strong) !important;
   box-shadow: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+:root[data-theme='light'] .portal-app-shell .portal-instruction-card {
+  background: transparent !important;
+  background-image: none !important;
+  color: var(--rg-light-text-strong) !important;
+  filter: none !important;
+  opacity: 1 !important;
 }
 
 :root[data-theme='light'] .portal-instruction-button:hover,
 :root[data-theme='light'] .portal-instruction-button-selected {
   background: var(--rg-light-blue-tint) !important;
-  border-color: #5278aa !important;
+  border-color: #456f9f !important;
 }
 
 :root[data-theme='light'] .portal-instruction-button-selected {
@@ -86,7 +126,8 @@
 :root[data-theme='light'] .portal-section-title,
 :root[data-theme='light'] .portal-step-list,
 :root[data-theme='light'] .portal-note-list,
-:root[data-theme='light'] .portal-instruction-detail strong {
+:root[data-theme='light'] .portal-instruction-detail strong,
+:root[data-theme='light'] .portal-instruction-detail .panel-title {
   color: var(--rg-light-text-strong) !important;
 }
 
@@ -94,4 +135,24 @@
 :root[data-theme='light'] .portal-profiles-table-row > span:not(.badge),
 :root[data-theme='light'] .portal-profiles-table-row code {
   color: var(--rg-light-text-muted) !important;
+}
+
+/* Portal chrome also needs crisp foregrounds on the blue chrome surface. */
+:root[data-theme='light'] .portal-app-shell .brand-title,
+:root[data-theme='light'] .portal-app-shell .portal-topnav a {
+  color: var(--rg-light-text-strong) !important;
+}
+
+:root[data-theme='light'] .portal-app-shell .brand-subtitle {
+  color: var(--rg-light-text-muted) !important;
+}
+
+:root[data-theme='light'] .portal-app-shell .portal-topnav a {
+  border-color: var(--rg-light-line-strong) !important;
+}
+
+/* A link from /portal back to /portal is a dead action. Keep the portal nav
+ * focused on actual destinations (Admin UI / Login). */
+.portal-app-shell .portal-topnav a[href='/portal'] {
+  display: none;
 }
