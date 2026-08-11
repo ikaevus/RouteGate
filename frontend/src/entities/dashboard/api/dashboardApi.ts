@@ -41,6 +41,7 @@ export interface DashboardDailyTraffic extends DashboardTrafficTotals {
 export interface DashboardServerTraffic extends DashboardTrafficTotals {
   serverId: string;
   serverName: string;
+  available: boolean;
 }
 
 export interface DashboardTrafficResponse {
@@ -50,6 +51,8 @@ export interface DashboardTrafficResponse {
   last30DaysEnd: string;
   server24hFrom: string;
   server24hTo: string;
+  monthlyAvailable: boolean;
+  dailyAvailable: boolean;
   monthly: DashboardTrafficTotals;
   daily: DashboardDailyTraffic[];
   servers: DashboardServerTraffic[];
