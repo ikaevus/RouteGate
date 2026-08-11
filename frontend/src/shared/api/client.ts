@@ -102,11 +102,13 @@ export async function apiGet<TResponse>(path: string): Promise<TResponse> {
 export async function apiPost<TRequest, TResponse>(
   path: string,
   body?: TRequest,
+  extraHeaders?: HeadersInit,
 ): Promise<TResponse> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     headers: buildHeaders({
       'Content-Type': 'application/json',
+      ...extraHeaders,
     }),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
