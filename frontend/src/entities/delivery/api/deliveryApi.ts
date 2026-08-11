@@ -3,7 +3,7 @@ import { apiGet, apiPost } from '../../../shared/api/client';
 export type DeliveryStatus = 'queued' | 'sending' | 'retrying' | 'sent' | 'delivered' | 'failed' | 'uncertain';
 export type DeliveryLocale = 'en' | 'ru';
 export type DeliveryTemplate = 'vpn_access' | 'vpn_access_reissued';
-export type DeliveryChannel = 'email' | 'telegram';
+export type DeliveryChannel = 'email' | 'telegram' | 'whatsapp';
 
 export interface DeliveryProviderCapabilities {
   HTML: boolean;
