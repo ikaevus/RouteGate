@@ -11,6 +11,7 @@ import {
   type DashboardNodeDistribution,
   type DashboardRecentAuditEvent,
   type DashboardRecentDeployment,
+  type DashboardServerLoad,
 } from '../../entities/dashboard/api/dashboardApi';
 import { getServers } from '../../entities/server/api/serverApi';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
@@ -48,6 +49,13 @@ function formatBytes(bytes: number): string {
   const maximumFractionDigits = unitIndex === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
 
   return `${value.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+}
+
+function formatServerLoad(load?: DashboardServerLoad): string {
+  if (load?.load1 === undefined || load.logicalCpus === undefined) {
+    return t('common.notAvailable');
+  }
+  return `${load.load1.toFixed(2)} / ${load.logicalCpus} CPU`;
 }
 
 function getRegionCountryCode(region: string): string | null {
@@ -383,13 +391,14 @@ export function DashboardPage() {
   const trafficAvailable = dashboardTrafficQuery.isSuccess;
   const monthlyTraffic = dashboardTrafficQuery.data?.monthly;
   const serverTrafficById = new Map((dashboardTrafficQuery.data?.servers ?? []).map((item) => [item.serverId, item]));
+  const serverLoadById = new Map((dashboardNodesQuery.data?.serverLoads ?? []).map((item) => [item.serverId, item]));
 
   const displayServers = servers.slice(0, 5).map((server, index) => ({
     id: server.id,
     name: server.name || `server-${index + 1}`,
     region: server.location || server.provider || t('common.notAvailable'),
     online: server.agent?.status === 'online',
-    load: t('common.notAvailable'),
+    load: dashboardNodesQuery.isSuccess ? formatServerLoad(serverLoadById.get(server.id)) : t('common.notAvailable'),
     traffic: trafficAvailable ? formatBytes(serverTrafficById.get(server.id)?.totalBytes ?? 0) : t('common.notAvailable'),
     status: server.status || 'unknown',
   }));
