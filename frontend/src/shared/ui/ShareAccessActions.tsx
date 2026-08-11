@@ -330,14 +330,15 @@ export function ShareAccessActions({
       >
         <EmailIcon />
       </button>
-      <a
+      <button
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-telegram"
-        href={telegramUrl}
+        type="button"
         aria-label={copy.telegram}
         title={copy.telegram}
+        onClick={() => { window.location.href = telegramUrl; }}
       >
         <TelegramIcon />
-      </a>
+      </button>
       <button
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-whatsapp"
         type="button"
