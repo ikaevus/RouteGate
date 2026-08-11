@@ -1,0 +1,27 @@
+name: RG-112 Workflow Lint
+
+on:
+  push:
+    branches:
+      - rg-112-delivery-hardening-e2e
+    paths:
+      - .github/workflows/rg112-workflow-lint.yml
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: rg-112-delivery-hardening-e2e
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+      - name: Validate production-like workflow
+        run: |
+          set -euo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/production-like-deploy.yml
