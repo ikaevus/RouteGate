@@ -8,9 +8,20 @@ import (
 	"time"
 )
 
+type SMTPConfig struct {
+	Host        string
+	Port        int
+	Username    string
+	Password    string
+	FromAddress string
+	FromName    string
+	TLSMode     string
+}
+
 type Config struct {
 	Env                       string
 	HTTPAddr                  string
+	PublicURL                 string
 	DatabaseURL               string
 	LogLevel                  slog.Level
 	AuthSessionTTL            time.Duration
@@ -18,12 +29,14 @@ type Config struct {
 	BootstrapAdminUsername    string
 	BootstrapAdminPassword    string
 	BootstrapAdminDisplayName string
+	SMTP                      SMTPConfig
 }
 
 func Load() Config {
 	return Config{
 		Env:                       env("ROUTEGATE_ENV", "dev"),
 		HTTPAddr:                  env("ROUTEGATE_HTTP_ADDR", ":8080"),
+		PublicURL:                 env("ROUTEGATE_PUBLIC_URL", ""),
 		DatabaseURL:               env("ROUTEGATE_DATABASE_URL", "postgres://routegate:routegate_dev_password@localhost:5432/routegate?sslmode=disable"),
 		LogLevel:                  parseLogLevel(env("ROUTEGATE_LOG_LEVEL", "info")),
 		AuthSessionTTL:            time.Duration(envInt("ROUTEGATE_AUTH_SESSION_TTL_HOURS", 24)) * time.Hour,
@@ -31,6 +44,15 @@ func Load() Config {
 		BootstrapAdminUsername:    env("ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME", ""),
 		BootstrapAdminPassword:    env("ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD", ""),
 		BootstrapAdminDisplayName: env("ROUTEGATE_BOOTSTRAP_ADMIN_DISPLAY_NAME", ""),
+		SMTP: SMTPConfig{
+			Host:        env("ROUTEGATE_SMTP_HOST", ""),
+			Port:        envInt("ROUTEGATE_SMTP_PORT", 587),
+			Username:    env("ROUTEGATE_SMTP_USERNAME", ""),
+			Password:    env("ROUTEGATE_SMTP_PASSWORD", ""),
+			FromAddress: env("ROUTEGATE_SMTP_FROM_ADDRESS", ""),
+			FromName:    env("ROUTEGATE_SMTP_FROM_NAME", "RouteGate"),
+			TLSMode:     strings.ToLower(env("ROUTEGATE_SMTP_TLS_MODE", "starttls")),
+		},
 	}
 }
 
