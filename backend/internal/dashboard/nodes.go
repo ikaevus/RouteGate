@@ -6,18 +6,20 @@ import (
 	"time"
 )
 
+const serverLoadFreshnessWindow = 90 * time.Second
+
 type NodeLocationCount struct {
 	Location string `json:"location"`
 	Count    int    `json:"count"`
 }
 
 type ServerLoad struct {
-	ServerID     string     `json:"serverId"`
-	Load1        *float64   `json:"load1,omitempty"`
-	Load5        *float64   `json:"load5,omitempty"`
-	Load15       *float64   `json:"load15,omitempty"`
-	LogicalCPUs  *int       `json:"logicalCpus,omitempty"`
-	CollectedAt  *time.Time `json:"collectedAt,omitempty"`
+	ServerID    string     `json:"serverId"`
+	Load1       *float64   `json:"load1,omitempty"`
+	Load5       *float64   `json:"load5,omitempty"`
+	Load15      *float64   `json:"load15,omitempty"`
+	LogicalCPUs *int       `json:"logicalCpus,omitempty"`
+	CollectedAt *time.Time `json:"collectedAt,omitempty"`
 }
 
 type NodeDistribution struct {
@@ -74,15 +76,15 @@ func (r *Repository) GetNodeDistribution(ctx context.Context, locationLimit, ser
 		)
 		SELECT
 			s.id::text,
-			CASE WHEN a.last_seen_at >= now() - interval '90 seconds' THEN a.runtime_load_1 ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - interval '90 seconds' THEN a.runtime_load_5 ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - interval '90 seconds' THEN a.runtime_load_15 ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - interval '90 seconds' THEN a.runtime_logical_cpus ELSE NULL END,
-			CASE WHEN a.last_seen_at >= now() - interval '90 seconds' THEN a.runtime_collected_at ELSE NULL END
+			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_load_1 ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_load_5 ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_load_15 ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_logical_cpus ELSE NULL END,
+			CASE WHEN a.last_seen_at >= now() - $2::interval THEN a.runtime_collected_at ELSE NULL END
 		FROM recent_servers s
 		LEFT JOIN agents a ON a.server_id = s.id
 		ORDER BY s.created_at DESC
-	`, serverLimit)
+	`, serverLimit, serverLoadFreshnessWindow.String())
 	if err != nil {
 		return NodeDistribution{}, err
 	}
