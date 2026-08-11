@@ -99,6 +99,14 @@
   white-space: normal !important;
 }
 
+/* The routing-profile master list is narrow. Its heading and row content need
+ * a real inset after the generic admin-table rule resets horizontal padding. */
+:root[data-theme='light'] .routing-profiles-table-row {
+  box-sizing: border-box;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
 /* The default routing-profile badge should belong to the blue theme, not look
  * like a white sticker pasted over it. */
 :root[data-theme='light'] .badge-default {
