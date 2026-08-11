@@ -1,0 +1,97 @@
+/* RouteGate Light — contrast and legacy feature polish.
+ * Loaded after the main Light theme while the legacy dark-first screens are
+ * being migrated to semantic theme tokens.
+ */
+
+/* Table headings and metadata must stay readable on blue surfaces. */
+:root[data-theme='light'] .admin-table-head > span,
+:root[data-theme='light'] .table-head > span,
+:root[data-theme='light'] .vpn-account-management-head > span {
+  color: #315d8c !important;
+}
+
+:root[data-theme='light'] .admin-table-row > span:not(.badge),
+:root[data-theme='light'] .table-row > span:not(.badge),
+:root[data-theme='light'] .timestamp-stack > span,
+:root[data-theme='light'] .protocol-server-identity > span,
+:root[data-theme='light'] .routing-profiles-table-row > div > span,
+:root[data-theme='light'] .portal-profile-meta {
+  color: var(--rg-light-text-muted) !important;
+}
+
+:root[data-theme='light'] .admin-table-row > code,
+:root[data-theme='light'] .table-row > code,
+:root[data-theme='light'] .config-versions-table-row code,
+:root[data-theme='light'] .apply-jobs-table-row code {
+  color: #244c77 !important;
+}
+
+:root[data-theme='light'] .timestamp-stack > strong,
+:root[data-theme='light'] .protocol-server-identity > strong,
+:root[data-theme='light'] .routing-profiles-table-row > div > strong {
+  color: var(--rg-light-text-strong) !important;
+}
+
+/* Config Deploy stage summaries were designed around dark foregrounds. */
+:root[data-theme='light'] .stage-pill {
+  background: rgba(169, 197, 238, 0.46);
+  border-color: #5278aa;
+}
+
+:root[data-theme='light'] .stage-pill > span {
+  color: #355a80 !important;
+}
+
+:root[data-theme='light'] .stage-pill > strong {
+  color: #163b67 !important;
+}
+
+/* Protocol Settings server metadata. */
+:root[data-theme='light'] .protocol-server-table-row > span:not(.badge) {
+  color: #355a80 !important;
+}
+
+/* The default routing-profile badge should belong to the blue theme, not look
+ * like a white sticker pasted over it. */
+:root[data-theme='light'] .badge-default {
+  background: #a9c5ee !important;
+  border: 1px solid #6288bb;
+  color: #071b35 !important;
+}
+
+/* User Portal instructions are content, not a dark code console. */
+:root[data-theme='light'] .portal-instruction-button,
+:root[data-theme='light'] .portal-instruction-detail {
+  background: var(--rg-light-surface-raised) !important;
+  border-color: var(--rg-light-line-strong) !important;
+  color: var(--rg-light-text-strong) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme='light'] .portal-instruction-button:hover,
+:root[data-theme='light'] .portal-instruction-button-selected {
+  background: var(--rg-light-blue-tint) !important;
+  border-color: #5278aa !important;
+}
+
+:root[data-theme='light'] .portal-instruction-button-selected {
+  box-shadow: inset 3px 0 0 #2563eb !important;
+}
+
+:root[data-theme='light'] .portal-instruction-button span,
+:root[data-theme='light'] .portal-instruction-detail p {
+  color: var(--rg-light-text-muted) !important;
+}
+
+:root[data-theme='light'] .portal-section-title,
+:root[data-theme='light'] .portal-step-list,
+:root[data-theme='light'] .portal-note-list,
+:root[data-theme='light'] .portal-instruction-detail strong {
+  color: var(--rg-light-text-strong) !important;
+}
+
+/* Keep portal profile table metadata consistent with the admin console. */
+:root[data-theme='light'] .portal-profiles-table-row > span:not(.badge),
+:root[data-theme='light'] .portal-profiles-table-row code {
+  color: var(--rg-light-text-muted) !important;
+}
