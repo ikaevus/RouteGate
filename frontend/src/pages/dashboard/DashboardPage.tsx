@@ -388,20 +388,25 @@ export function DashboardPage() {
 
   const activeVpnUsers = activeVpnAccountsCountQuery.data?.total ?? 0;
   const vpnAccountsCount = vpnAccountsCountQuery.data?.total ?? 0;
-  const trafficAvailable = dashboardTrafficQuery.isSuccess;
+  const trafficApiAvailable = dashboardTrafficQuery.isSuccess;
+  const monthlyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.monthlyAvailable === true;
+  const dailyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.dailyAvailable === true;
   const monthlyTraffic = dashboardTrafficQuery.data?.monthly;
   const serverTrafficById = new Map((dashboardTrafficQuery.data?.servers ?? []).map((item) => [item.serverId, item]));
   const serverLoadById = new Map((dashboardNodesQuery.data?.serverLoads ?? []).map((item) => [item.serverId, item]));
 
-  const displayServers = servers.slice(0, 5).map((server, index) => ({
-    id: server.id,
-    name: server.name || `server-${index + 1}`,
-    region: server.location || server.provider || t('common.notAvailable'),
-    online: server.agent?.status === 'online',
-    load: dashboardNodesQuery.isSuccess ? formatServerLoad(serverLoadById.get(server.id)) : t('common.notAvailable'),
-    traffic: trafficAvailable ? formatBytes(serverTrafficById.get(server.id)?.totalBytes ?? 0) : t('common.notAvailable'),
-    status: server.status || 'unknown',
-  }));
+  const displayServers = servers.slice(0, 5).map((server, index) => {
+    const serverTraffic = serverTrafficById.get(server.id);
+    return {
+      id: server.id,
+      name: server.name || `server-${index + 1}`,
+      region: server.location || server.provider || t('common.notAvailable'),
+      online: server.agent?.status === 'online',
+      load: dashboardNodesQuery.isSuccess ? formatServerLoad(serverLoadById.get(server.id)) : t('common.notAvailable'),
+      traffic: trafficApiAvailable && serverTraffic?.available ? formatBytes(serverTraffic.totalBytes) : t('common.notAvailable'),
+      status: server.status || 'unknown',
+    };
+  });
 
   return (
     <section className="page dashboard-page dashboard-reference-page dashboard-fidelity-page">
@@ -430,8 +435,8 @@ export function DashboardPage() {
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
-          value={trafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : t('common.notAvailable')}
-          meta={trafficAvailable && monthlyTraffic
+          value={monthlyTrafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : t('common.notAvailable')}
+          meta={monthlyTrafficAvailable && monthlyTraffic
             ? `${t('dashboard.inboundTraffic')}: ${formatBytes(monthlyTraffic.rxBytes)} · ${t('dashboard.outboundTraffic')}: ${formatBytes(monthlyTraffic.txBytes)}`
             : t('common.notAvailable')}
           tone="amber"
@@ -446,7 +451,7 @@ export function DashboardPage() {
           agentsAvailable={agentsQuery.isSuccess}
         />
         <NodeDistributionWidget distribution={dashboardNodesQuery.data} available={dashboardNodesQuery.isSuccess} />
-        <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={trafficAvailable} />
+        <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={dailyTrafficAvailable} />
         <QuickActionsWidget />
         <ServersSummaryWidget servers={displayServers} />
         <RecentDeploymentsWidget
