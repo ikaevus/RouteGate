@@ -10,6 +10,7 @@ import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPa
 import { LoginPage } from '../pages/login/LoginPage';
 import { SetupPage } from '../pages/setup/SetupPage';
 import { SecurityPage } from '../pages/settings/SecurityPage';
+import { SettingsPage } from '../pages/settings/SettingsPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 import { getMe, logout, type AuthUser } from '../entities/auth/api/authApi';
 import { getManagerHealth } from '../entities/health/api/healthApi';
@@ -82,8 +83,6 @@ type IconName =
   | 'licensing'
   | 'appliance'
   | 'search'
-  | 'bell'
-  | 'help'
   | 'settings'
   | 'menu'
   | 'moon'
@@ -102,8 +101,6 @@ function Icon({ name }: { name: IconName }) {
     licensing: <><circle cx="12" cy="12" r="7" /><path d="M9.5 12.5 11 14l3.5-4" /></>,
     appliance: <><rect x="4" y="6" width="16" height="12" rx="2" /><path d="M8 10h8M8 14h3M15 14h1" /></>,
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
-    bell: <><path d="M18 16H6c1.2-1.3 1.8-2.9 1.8-4.7V9a4.2 4.2 0 0 1 8.4 0v2.3c0 1.8.6 3.4 1.8 4.7Z" /><path d="M10 19a2 2 0 0 0 4 0" /></>,
-    help: <><circle cx="12" cy="12" r="8" /><path d="M10 9a2.2 2.2 0 0 1 4.2 1c0 1.8-2.2 1.9-2.2 3.5" /><path d="M12 17h.01" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></>,
     menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
     moon: <><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5 7.6 7.6 0 1 0 19 14.5Z" /></>,
@@ -376,6 +373,14 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <span className="nav-icon" aria-hidden="true"><Icon name="security" /></span>
             <span>{t('navigation.security')}</span>
           </NavLink>
+          <NavLink
+            className={({ isActive }) => (isActive ? 'nav-link nav-link-active' : 'nav-link')}
+            end
+            to="/settings"
+          >
+            <span className="nav-icon" aria-hidden="true"><Icon name="settings" /></span>
+            <span>{t('navigation.settings')}</span>
+          </NavLink>
           {secondaryNavigationItems.map((item) => (
             <span className="nav-link nav-link-muted" key={item.label}>
               <span className="nav-icon" aria-hidden="true"><Icon name={item.icon} /></span>
@@ -433,9 +438,6 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
           </label>
           <div className="topbar-actions">
             <LocaleSwitcher />
-            <button className="topbar-icon-button topbar-notification" type="button" aria-label={t('topbar.notifications')}><Icon name="bell" /></button>
-            <button className="topbar-icon-button" type="button" aria-label={t('topbar.help')}><Icon name="help" /></button>
-            <button className="topbar-icon-button" type="button" aria-label={t('topbar.settings')}><Icon name="settings" /></button>
             <ProfileMenu isLoggingOut={isLoggingOut} onLogout={onLogout} user={user} />
           </div>
         </header>
@@ -452,6 +454,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <Route path="/routing-profiles" element={<RoutingProfilesPage />} />
             <Route path="/routing-profiles/:profileId" element={<RoutingProfilesPage />} />
             <Route path="/settings/security" element={<SecurityPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
