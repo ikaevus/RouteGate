@@ -1,0 +1,9 @@
+{{define "subject"}}Доступ к RouteGate VPN{{end}}
+{{define "text"}}Ваш доступ к RouteGate VPN готов.
+{{if .ProfileName}}
+Профиль: {{.ProfileName}}
+{{end}}
+Открыть VPN:
+{{.ConnectURL}}
+
+Эта ссылка предоставляет доступ к VPN. Не передавайте её посторонним.{{end}}
