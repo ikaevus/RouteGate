@@ -3,10 +3,11 @@ package delivery
 import (
 	"bytes"
 	"embed"
+	htmltemplate "html/template"
 	"io/fs"
 	"path"
 	"strings"
-	"text/template"
+	texttemplate "text/template"
 )
 
 //go:embed templates/*/*.tmpl
@@ -38,28 +39,50 @@ func (r *Renderer) Render(templateKey, locale string, data TemplateData) (Messag
 	if err != nil {
 		return Message{}, Failure{Class: ErrorClassPermanent, Code: "template_not_found"}
 	}
-	parsed, err := template.New(templateKey).Option("missingkey=error").Parse(string(content))
+	parsedText, err := texttemplate.New(templateKey).Option("missingkey=error").Parse(string(content))
 	if err != nil {
 		return Message{}, Failure{Class: ErrorClassPermanent, Code: "template_invalid"}
 	}
 
-	subject, err := executeTemplateBlock(parsed, "subject", data)
+	subject, err := executeTextTemplateBlock(parsedText, "subject", data)
 	if err != nil {
 		return Message{}, err
 	}
-	text, err := executeTemplateBlock(parsed, "text", data)
+	text, err := executeTextTemplateBlock(parsedText, "text", data)
 	if err != nil {
 		return Message{}, err
 	}
+
+	html := ""
+	parsedHTML, err := htmltemplate.New(templateKey).Option("missingkey=error").Parse(string(content))
+	if err != nil {
+		return Message{}, Failure{Class: ErrorClassPermanent, Code: "template_invalid"}
+	}
+	if parsedHTML.Lookup("html") != nil {
+		html, err = executeHTMLTemplateBlock(parsedHTML, "html", data)
+		if err != nil {
+			return Message{}, err
+		}
+	}
+
 	subject = strings.Join(strings.Fields(subject), " ")
 	text = strings.TrimSpace(text)
+	html = strings.TrimSpace(html)
 	if subject == "" || text == "" {
 		return Message{}, Failure{Class: ErrorClassPermanent, Code: "template_empty"}
 	}
-	return Message{Subject: subject, Text: text}, nil
+	return Message{Subject: subject, Text: text, HTML: html}, nil
 }
 
-func executeTemplateBlock(parsed *template.Template, name string, data TemplateData) (string, error) {
+func executeTextTemplateBlock(parsed *texttemplate.Template, name string, data TemplateData) (string, error) {
+	var output bytes.Buffer
+	if err := parsed.ExecuteTemplate(&output, name, data); err != nil {
+		return "", Failure{Class: ErrorClassPermanent, Code: "template_render_failed"}
+	}
+	return output.String(), nil
+}
+
+func executeHTMLTemplateBlock(parsed *htmltemplate.Template, name string, data TemplateData) (string, error) {
 	var output bytes.Buffer
 	if err := parsed.ExecuteTemplate(&output, name, data); err != nil {
 		return "", Failure{Class: ErrorClassPermanent, Code: "template_render_failed"}
