@@ -31,6 +31,8 @@
 
 .routing-profiles-table-row {
   grid-template-columns: 1.6fr 0.6fr 0.9fr;
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 /* The profile list lives in the narrow master column of the split layout.
