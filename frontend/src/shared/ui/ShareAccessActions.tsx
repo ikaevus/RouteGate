@@ -130,6 +130,56 @@ function openExternalShare(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function launchTelegramShare(nativeUrl: string, fallbackUrl: string) {
+  let launchObserved = false;
+  let fallbackTimer: number | null = null;
+
+  function cleanup() {
+    window.removeEventListener('blur', handleBlur);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    if (fallbackTimer !== null) {
+      window.clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+  }
+
+  function markLaunchObserved() {
+    launchObserved = true;
+    cleanup();
+  }
+
+  function handleBlur() {
+    markLaunchObserved();
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      markLaunchObserved();
+    }
+  }
+
+  window.addEventListener('blur', handleBlur, { once: true });
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  try {
+    window.location.href = nativeUrl;
+  } catch {
+    cleanup();
+    openExternalShare(fallbackUrl);
+    return;
+  }
+
+  fallbackTimer = window.setTimeout(() => {
+    if (launchObserved) {
+      cleanup();
+      return;
+    }
+
+    cleanup();
+    openExternalShare(fallbackUrl);
+  }, 2500);
+}
+
 function encodeConnectPayload(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
@@ -237,12 +287,9 @@ export function ShareAccessActions({
   }
 
   const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(emailMessage)}`;
-  const telegramText = [
-    `${copy.intro}: ${normalizedProfileName}`,
-    '',
-    copy.warning,
-  ].join('\n');
+  const telegramText = `${copy.intro}: ${normalizedProfileName}`;
   const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
+  const telegramFallbackUrl = `https://t.me/share/url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(messengerMessage)}`;
 
   const canNativeShareQr = (() => {
@@ -335,7 +382,7 @@ export function ShareAccessActions({
         type="button"
         aria-label={copy.telegram}
         title={copy.telegram}
-        onClick={() => { window.location.href = telegramUrl; }}
+        onClick={() => launchTelegramShare(telegramUrl, telegramFallbackUrl)}
       >
         <TelegramIcon />
       </button>
