@@ -190,16 +190,20 @@ export function ShareAccessActions({
     ? ''
     : `${window.location.origin}/connect.html#vless=${encodeConnectPayload(normalizedLink)}`;
 
-  const message = [
+  const messengerMessage = [
     `${copy.intro}: ${normalizedProfileName}`,
     '',
     copy.openHint,
     connectUrl,
     '',
+    copy.warning,
+  ].join('\n');
+
+  const emailMessage = [
+    messengerMessage,
+    '',
     copy.fallbackHint,
     normalizedLink,
-    '',
-    copy.warning,
   ].join('\n');
 
   useEffect(() => {
@@ -232,14 +236,14 @@ export function ShareAccessActions({
     return null;
   }
 
-  const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(message)}`;
+  const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(emailMessage)}`;
   const telegramText = [
     `${copy.intro}: ${normalizedProfileName}`,
     '',
     copy.warning,
   ].join('\n');
   const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(messengerMessage)}`;
 
   const canNativeShareQr = (() => {
     if (!qrFile || typeof navigator.share !== 'function') {
@@ -290,7 +294,7 @@ export function ShareAccessActions({
         await navigator.share({
           files: [qrFile],
           title: copy.subject,
-          text: message,
+          text: messengerMessage,
         });
         return;
       } catch (error) {
