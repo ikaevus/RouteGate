@@ -11,6 +11,24 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: routegate_ci
+          POSTGRES_USER: routegate
+          POSTGRES_PASSWORD: routegate_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U routegate -d routegate_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ROUTEGATE_TEST_DATABASE_URL: postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_ci?sslmode=disable
+
     defaults:
       run:
         working-directory: backend
