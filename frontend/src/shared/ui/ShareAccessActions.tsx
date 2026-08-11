@@ -31,7 +31,7 @@ function getShareCopy(): ShareCopy {
   if (getCurrentLocale() === 'ru') {
     return {
       email: 'Отправить по Email',
-      telegram: 'Поделиться в Telegram',
+      telegram: 'Открыть Telegram — сообщение будет скопировано',
       whatsapp: 'Поделиться в WhatsApp',
       copyQr: 'Копировать QR',
       qrCopied: 'QR скопирован',
@@ -47,7 +47,7 @@ function getShareCopy(): ShareCopy {
 
   return {
     email: 'Send by email',
-    telegram: 'Share in Telegram',
+    telegram: 'Open Telegram — message will be copied',
     whatsapp: 'Share in WhatsApp',
     copyQr: 'Copy QR',
     qrCopied: 'QR copied',
@@ -130,54 +130,30 @@ function openExternalShare(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-function launchTelegramShare(nativeUrl: string, fallbackUrl: string) {
-  let launchObserved = false;
-  let fallbackTimer: number | null = null;
-
-  function cleanup() {
-    window.removeEventListener('blur', handleBlur);
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    if (fallbackTimer !== null) {
-      window.clearTimeout(fallbackTimer);
-      fallbackTimer = null;
-    }
-  }
-
-  function markLaunchObserved() {
-    launchObserved = true;
-    cleanup();
-  }
-
-  function handleBlur() {
-    markLaunchObserved();
-  }
-
-  function handleVisibilityChange() {
-    if (document.hidden) {
-      markLaunchObserved();
-    }
-  }
-
-  window.addEventListener('blur', handleBlur, { once: true });
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-
-  try {
-    window.location.href = nativeUrl;
-  } catch {
-    cleanup();
-    openExternalShare(fallbackUrl);
+function copyShareText(value: string) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    void navigator.clipboard.writeText(value).catch(() => undefined);
     return;
   }
 
-  fallbackTimer = window.setTimeout(() => {
-    if (launchObserved) {
-      cleanup();
-      return;
-    }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } catch {
+    // Best-effort fallback for older browsers.
+  }
+  textarea.remove();
+}
 
-    cleanup();
-    openExternalShare(fallbackUrl);
-  }, 2500);
+function launchTelegramShare(message: string) {
+  copyShareText(message);
+  window.location.href = 'tg://new';
 }
 
 function encodeConnectPayload(value: string): string {
@@ -287,9 +263,6 @@ export function ShareAccessActions({
   }
 
   const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(emailMessage)}`;
-  const telegramText = `${copy.intro}: ${normalizedProfileName}`;
-  const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
-  const telegramFallbackUrl = `https://t.me/share/url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(messengerMessage)}`;
 
   const canNativeShareQr = (() => {
@@ -382,7 +355,7 @@ export function ShareAccessActions({
         type="button"
         aria-label={copy.telegram}
         title={copy.telegram}
-        onClick={() => launchTelegramShare(telegramUrl, telegramFallbackUrl)}
+        onClick={() => launchTelegramShare(messengerMessage)}
       >
         <TelegramIcon />
       </button>
