@@ -2,9 +2,9 @@ name: Production-like SSH Check
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
-      - rg-111-dashboard-runtime-data
+      - main
     paths:
       - .github/workflows/production-like-ssh-check.yml
 
