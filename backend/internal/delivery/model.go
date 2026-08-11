@@ -91,6 +91,13 @@ type Message struct {
 	Text        string
 	HTML        string
 	Attachments []Attachment
+
+	// Provider-neutral delivery metadata is attached only in memory by the worker.
+	// It allows template-based providers to use the same durable Delivery record
+	// without persisting rendered access material or provider payloads.
+	TemplateKey string
+	Locale      string
+	ActionURL   string
 }
 
 type ProviderResult struct {
