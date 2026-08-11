@@ -29,6 +29,21 @@ function formatDateTime(value?: string | null): string {
   }).format(parsed);
 }
 
+function formatSchemaVersion(value?: string | null): string {
+  if (!value || value.trim() === '') {
+    return '—';
+  }
+
+  const normalized = value.trim();
+  const match = normalized.match(/^0*(\d+)/);
+  if (!match) {
+    return normalized;
+  }
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isNaN(parsed) ? normalized : String(parsed);
+}
+
 function formatUpdateMethod(status?: string | null): string {
   return status?.toLowerCase() === 'manual' ? t('settings.manual') : formatValue(status);
 }
@@ -152,7 +167,7 @@ export function SettingsPage() {
                   <h2>{t('settings.databaseTitle')}</h2>
                   <div className="settings-fact-grid">
                     <Fact label={t('settings.expectedSchema')} value={system.database.expectedSchemaVersion} />
-                    <Fact label={t('settings.appliedSchema')} value={system.database.appliedSchemaVersion ?? '—'} code />
+                    <Fact label={t('settings.appliedSchema')} value={formatSchemaVersion(system.database.appliedSchemaVersion)} />
                   </div>
                 </section>
               </div>
