@@ -1,0 +1,10 @@
+/* RouteGate shell cleanup: do not expose controls that have no implemented action. */
+.topbar-search,
+.sidebar-license-card,
+.routegate-nav-secondary .nav-link-muted {
+  display: none !important;
+}
+
+.admin-topbar {
+  justify-content: space-between;
+}
