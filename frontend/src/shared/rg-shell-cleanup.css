@@ -1,6 +1,7 @@
-/* RouteGate shell cleanup: hide only navigation surfaces that still have no real product function. */
+/* RouteGate shell cleanup: hide only surfaces that do not add real product value. */
 .sidebar-license-card,
-.routegate-nav-secondary .nav-link-muted {
+.routegate-nav-secondary .nav-link-muted,
+.admin-statusbar-time {
   display: none !important;
 }
 
