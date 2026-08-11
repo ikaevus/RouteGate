@@ -8,6 +8,10 @@
   --rg-light-line: #6288bb;
   --rg-light-line-strong: #5278aa;
   --rg-light-blue-tint: #a9c5ee;
+  --rg-light-text-strong: #071b35;
+  --rg-light-text-muted: #355a80;
+  --rg-light-code: #587ba8;
+  --rg-light-code-line: #456b9a;
 }
 
 /* Keep the world map in the same RouteGate Light blue family instead of a dark inset block. */
@@ -45,4 +49,268 @@
   border-color: rgba(49, 93, 140, 0.62);
   color: #163b67;
   font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+ * RouteGate Light — feature-screen completion
+ *
+ * Older screens were authored dark-first with literal rgba/#hex values. The
+ * rules below map those shared surfaces back onto the Light token hierarchy so
+ * feature pages inherit the same visual language as the Dashboard.
+ * -------------------------------------------------------------------------- */
+
+/* Page-level hierarchy. */
+:root[data-theme='light'] .feature-page-header,
+:root[data-theme='light'] .routing-profiles-page .page-header,
+:root[data-theme='light'] .server-details-page .page-header,
+:root[data-theme='light'] .protocol-settings-page .page-header,
+:root[data-theme='light'] .vpn-accounts-page .page-header,
+:root[data-theme='light'] .portal-page .page-header {
+  background: var(--rg-light-chrome);
+  border-color: var(--rg-light-line-strong);
+  box-shadow: 0 8px 22px rgba(31, 68, 111, 0.12);
+}
+
+:root[data-theme='light'] .feature-list-panel,
+:root[data-theme='light'] .feature-detail-panel,
+:root[data-theme='light'] .vpn-accounts-page .panel,
+:root[data-theme='light'] .routing-profiles-page .panel,
+:root[data-theme='light'] .server-details-page .panel,
+:root[data-theme='light'] .protocol-settings-page .panel,
+:root[data-theme='light'] .portal-page .panel,
+:root[data-theme='light'] .portal-card,
+:root[data-theme='light'] .traffic-panel,
+:root[data-theme='light'] .subscription-panel,
+:root[data-theme='light'] .credentials-panel {
+  background: var(--rg-light-surface);
+  border-color: var(--rg-light-line);
+  box-shadow: 0 8px 22px rgba(31, 68, 111, 0.1);
+}
+
+/* Titles and secondary copy: remove dark-theme white/gray literals. */
+:root[data-theme='light'] .admin-main h1,
+:root[data-theme='light'] .admin-main h2,
+:root[data-theme='light'] .admin-main h3,
+:root[data-theme='light'] .admin-main h4,
+:root[data-theme='light'] .feature-page-header h1,
+:root[data-theme='light'] .page-header h1,
+:root[data-theme='light'] .panel-title,
+:root[data-theme='light'] .card-title,
+:root[data-theme='light'] .traffic-metric-value,
+:root[data-theme='light'] .traffic-limit-title,
+:root[data-theme='light'] .protocol-recommended-title,
+:root[data-theme='light'] .protocol-recommended-values,
+:root[data-theme='light'] .protocol-advanced-settings summary,
+:root[data-theme='light'] .traffic-checkbox-field label {
+  color: var(--rg-light-text-strong);
+}
+
+:root[data-theme='light'] .page-header p,
+:root[data-theme='light'] .panel-subtitle,
+:root[data-theme='light'] .card-meta,
+:root[data-theme='light'] .protocol-recommended-copy p,
+:root[data-theme='light'] .protocol-settings-meta,
+:root[data-theme='light'] .traffic-metric-label,
+:root[data-theme='light'] .traffic-metric-meta,
+:root[data-theme='light'] .traffic-limit-meta,
+:root[data-theme='light'] .traffic-checkbox-field p,
+:root[data-theme='light'] .field small,
+:root[data-theme='light'] .empty-state,
+:root[data-theme='light'] .empty-state-card {
+  color: var(--rg-light-text-muted);
+}
+
+/* Nested cards, details, configuration blocks and empty states. */
+:root[data-theme='light'] .feature-subpanel,
+:root[data-theme='light'] .qr-payload-panel,
+:root[data-theme='light'] .client-config-preview,
+:root[data-theme='light'] .traffic-limit-card,
+:root[data-theme='light'] .traffic-metric-card,
+:root[data-theme='light'] .traffic-checkbox-field,
+:root[data-theme='light'] .routing-profile-default-field,
+:root[data-theme='light'] .detail-list,
+:root[data-theme='light'] .credentials-detail-list,
+:root[data-theme='light'] .vpn-account-create-form,
+:root[data-theme='light'] .server-create-form,
+:root[data-theme='light'] .empty-state,
+:root[data-theme='light'] .empty-state-card,
+:root[data-theme='light'] .subscription-status-pill,
+:root[data-theme='light'] .subscription-meta-chip,
+:root[data-theme='light'] .subscription-compact-meta,
+:root[data-theme='light'] .subscription-url-stack,
+:root[data-theme='light'] .subscription-qr-url-preview,
+:root[data-theme='light'] .qr-code-card {
+  background: var(--rg-light-surface-raised);
+  border-color: var(--rg-light-line-strong);
+  box-shadow: none;
+}
+
+:root[data-theme='light'] .detail-row,
+:root[data-theme='light'] .vpn-account-access-actions,
+:root[data-theme='light'] .traffic-limit-form,
+:root[data-theme='light'] .protocol-advanced-settings,
+:root[data-theme='light'] .registration-token-config-example {
+  border-color: rgba(82, 120, 170, 0.56);
+}
+
+/* Inputs and selectors, including the VPN-account toolbar that has its own CSS. */
+:root[data-theme='light'] .field input,
+:root[data-theme='light'] .field select,
+:root[data-theme='light'] .field textarea,
+:root[data-theme='light'] .vpn-account-management-toolbar input,
+:root[data-theme='light'] .vpn-account-management-toolbar select,
+:root[data-theme='light'] .vpn-account-bulk-assign select,
+:root[data-theme='light'] .vpn-account-page-size select {
+  background-color: var(--rg-light-surface-raised);
+  border-color: var(--rg-light-line-strong);
+  color: var(--rg-light-text-strong);
+  color-scheme: light;
+}
+
+:root[data-theme='light'] .vpn-account-management-toolbar input:hover,
+:root[data-theme='light'] .vpn-account-management-toolbar select:hover,
+:root[data-theme='light'] .vpn-account-bulk-assign select:hover,
+:root[data-theme='light'] .vpn-account-page-size select:hover,
+:root[data-theme='light'] .field input:hover,
+:root[data-theme='light'] .field select:hover,
+:root[data-theme='light'] .field textarea:hover {
+  background-color: #a8c2e5;
+  border-color: #456f9f;
+}
+
+:root[data-theme='light'] .vpn-account-management-toolbar input::placeholder,
+:root[data-theme='light'] .field input::placeholder,
+:root[data-theme='light'] .field textarea::placeholder {
+  color: #55779d;
+}
+
+:root[data-theme='light'] .vpn-account-management-toolbar select option,
+:root[data-theme='light'] .vpn-account-bulk-assign select option,
+:root[data-theme='light'] .vpn-account-page-size select option,
+:root[data-theme='light'] .field select option {
+  background: #a9c2e4;
+  color: var(--rg-light-text-strong);
+}
+
+/* Tables and selectable rows. */
+:root[data-theme='light'] .vpn-account-management-table,
+:root[data-theme='light'] .admin-table,
+:root[data-theme='light'] .table {
+  border-color: var(--rg-light-line-strong);
+}
+
+:root[data-theme='light'] .vpn-account-management-head,
+:root[data-theme='light'] .admin-table-head,
+:root[data-theme='light'] .table-head {
+  background: #779fd5;
+  color: #244c77;
+  border-color: var(--rg-light-line-strong);
+}
+
+:root[data-theme='light'] .vpn-account-management-row,
+:root[data-theme='light'] .admin-table-row,
+:root[data-theme='light'] .table-row {
+  border-color: rgba(82, 120, 170, 0.48);
+  color: var(--rg-light-text-strong);
+}
+
+:root[data-theme='light'] .vpn-account-management-row:hover,
+:root[data-theme='light'] .vpn-account-management-row.is-selected,
+:root[data-theme='light'] .vpn-account-row-link:hover,
+:root[data-theme='light'] .vpn-account-row-selected,
+:root[data-theme='light'] .admin-table-row:hover,
+:root[data-theme='light'] .table-row:hover {
+  background: rgba(169, 197, 238, 0.52);
+  border-color: #4773a7;
+}
+
+/* Protocol setup states should remain semantic, but readable in Light. */
+:root[data-theme='light'] .protocol-recommended-setup {
+  background: rgba(169, 197, 238, 0.64);
+  border-color: #5684bd;
+}
+
+:root[data-theme='light'] .protocol-recommended-setup-ready {
+  background: rgba(118, 195, 170, 0.28);
+  border-color: rgba(31, 133, 93, 0.46);
+}
+
+:root[data-theme='light'] .protocol-recommended-eyebrow {
+  color: #154f9b;
+}
+
+:root[data-theme='light'] .protocol-recommended-setup-ready .protocol-recommended-eyebrow {
+  color: #086746;
+}
+
+:root[data-theme='light'] .protocol-port-warning {
+  background: rgba(251, 191, 36, 0.18);
+  border-color: rgba(161, 98, 7, 0.4);
+  color: #74430a;
+}
+
+/* Code and immutable-value surfaces stay slightly denser, but are no longer black. */
+:root[data-theme='light'] .credentials-detail-list code,
+:root[data-theme='light'] .subscription-url-value,
+:root[data-theme='light'] .subscription-url-code,
+:root[data-theme='light'] .code-block,
+:root[data-theme='light'] .inline-code,
+:root[data-theme='light'] .registration-token-field,
+:root[data-theme='light'] .vpn-accounts-page .copyable-value code {
+  background: var(--rg-light-code);
+  border-color: var(--rg-light-code-line);
+  color: #f8fafc;
+}
+
+/* Traffic cards and limit controls. */
+:root[data-theme='light'] .traffic-progress-track {
+  background: #6f98ce;
+  border-color: #5278aa;
+}
+
+:root[data-theme='light'] .traffic-checkbox-field {
+  color: var(--rg-light-text-strong);
+}
+
+/* Subscription modal is a Light surface; only the backdrop remains darkened. */
+:root[data-theme='light'] .subscription-qr-modal {
+  background: var(--rg-light-surface);
+  border-color: var(--rg-light-line-strong);
+  box-shadow: 0 24px 60px rgba(31, 68, 111, 0.24);
+}
+
+:root[data-theme='light'] .subscription-qr-empty-state {
+  border-color: var(--rg-light-line-strong);
+}
+
+/* Danger controls keep their semantic hue without carrying the dark-theme maroon panel. */
+:root[data-theme='light'] .vpn-account-danger-zone {
+  background: rgba(248, 113, 113, 0.13);
+  border-color: rgba(153, 27, 27, 0.42);
+}
+
+:root[data-theme='light'] .danger-button {
+  background: rgba(185, 28, 28, 0.76);
+  border-color: rgba(127, 29, 29, 0.72);
+  color: #fff7f7;
+}
+
+/* Registration / onboarding copy also contains literal dark-theme foregrounds. */
+:root[data-theme='light'] .agent-purpose-summary span,
+:root[data-theme='light'] .registration-token-display > span:first-child,
+:root[data-theme='light'] .agent-onboarding-introduction {
+  color: var(--rg-light-text-muted);
+}
+
+/* Links should remain visibly interactive against blue surfaces. */
+:root[data-theme='light'] .text-button,
+:root[data-theme='light'] .text-link,
+:root[data-theme='light'] .widget-link {
+  color: #0b4ea2;
+}
+
+:root[data-theme='light'] .text-button:hover,
+:root[data-theme='light'] .text-link:hover,
+:root[data-theme='light'] .widget-link:hover {
+  color: #073b7d;
 }
