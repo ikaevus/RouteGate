@@ -1,0 +1,9 @@
+{{define "subject"}}RouteGate VPN access updated{{end}}
+{{define "text"}}Your RouteGate VPN access has been updated.
+{{if .ProfileName}}
+Profile: {{.ProfileName}}
+{{end}}
+Open the updated VPN access:
+{{.ConnectURL}}
+
+Use this updated access information instead of older copies. Do not share it with unauthorized people.{{end}}
