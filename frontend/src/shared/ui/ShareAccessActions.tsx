@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { getCurrentLocale } from '../i18n/i18n';
 import { encodeQrPayload } from '../qr/ScannableQrCode';
 
@@ -13,6 +13,8 @@ type ShareCopy = {
   email: string;
   telegram: string;
   whatsapp: string;
+  copyQr: string;
+  qrCopied: string;
   shareQr: string;
   downloadQr: string;
   subject: string;
@@ -27,9 +29,11 @@ const QR_SCALE = 6;
 function getShareCopy(): ShareCopy {
   if (getCurrentLocale() === 'ru') {
     return {
-      email: 'Email',
-      telegram: 'Telegram',
-      whatsapp: 'WhatsApp',
+      email: 'Отправить по Email',
+      telegram: 'Поделиться в Telegram',
+      whatsapp: 'Поделиться в WhatsApp',
+      copyQr: 'Копировать QR',
+      qrCopied: 'QR скопирован',
       shareQr: 'Поделиться QR',
       downloadQr: 'Скачать QR',
       subject: 'Доступ к RouteGate VPN',
@@ -40,9 +44,11 @@ function getShareCopy(): ShareCopy {
   }
 
   return {
-    email: 'Email',
-    telegram: 'Telegram',
-    whatsapp: 'WhatsApp',
+    email: 'Send by email',
+    telegram: 'Share in Telegram',
+    whatsapp: 'Share in WhatsApp',
+    copyQr: 'Copy QR',
+    qrCopied: 'QR copied',
     shareQr: 'Share QR',
     downloadQr: 'Download QR',
     subject: 'RouteGate VPN access',
@@ -121,6 +127,32 @@ function openExternalShare(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function EmailIcon(): ReactNode {
+  return (
+    <svg className="vpn-share-channel-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2.5" />
+      <path d="m4.5 7 7.5 5.8L19.5 7" />
+    </svg>
+  );
+}
+
+function TelegramIcon(): ReactNode {
+  return (
+    <svg className="vpn-share-channel-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 3.8 17.7 20c-.2 1-1 1.2-1.8.7l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.2-8.3c.4-.4-.1-.6-.6-.2L5.1 13.4.2 11.9c-1-.3-1-1 .2-1.5L19.5 3c.9-.3 1.7.2 1.5.8Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function WhatsAppIcon(): ReactNode {
+  return (
+    <svg className="vpn-share-channel-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.5 11.7a8.3 8.3 0 0 1-12.3 7.2L3.5 20l1.2-4.5A8.3 8.3 0 1 1 20.5 11.7Z" />
+      <path d="M8.4 7.8c.2-.4.4-.4.7-.4h.5c.2 0 .4.1.5.4l.8 1.9c.1.3.1.5-.1.7l-.6.8c-.2.2-.2.4-.1.6.7 1.3 1.7 2.3 3.1 3 .2.1.4.1.6-.1l.9-1.1c.2-.2.4-.3.7-.2l1.9.9c.3.1.4.3.4.5 0 .3-.2 1.5-1.1 2-.7.5-1.5.7-2.5.4-1.2-.3-2.7-.9-4.4-2.4-1.5-1.3-2.5-3-2.8-4.2-.3-1.1 0-2.1.5-2.8Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function ShareAccessActions({
   vlessLink,
   profileName,
@@ -131,6 +163,7 @@ export function ShareAccessActions({
   const normalizedLink = vlessLink?.trim() ?? '';
   const normalizedProfileName = profileName?.trim() || 'VPN';
   const [qrFile, setQrFile] = useState<File | null>(null);
+  const [qrCopied, setQrCopied] = useState(false);
 
   const message = [
     `${copy.intro}: ${normalizedProfileName}`,
@@ -144,6 +177,7 @@ export function ShareAccessActions({
   useEffect(() => {
     let cancelled = false;
     setQrFile(null);
+    setQrCopied(false);
 
     if (!includeQrShare || normalizedLink === '') {
       return undefined;
@@ -190,6 +224,29 @@ export function ShareAccessActions({
     }
   })();
 
+  const canCopyQrImage = Boolean(
+    qrFile
+      && navigator.clipboard
+      && typeof navigator.clipboard.write === 'function'
+      && typeof ClipboardItem !== 'undefined',
+  );
+
+  const handleCopyQr = async () => {
+    if (!qrFile || !canCopyQrImage) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': qrFile }),
+      ]);
+      setQrCopied(true);
+      window.setTimeout(() => setQrCopied(false), 1800);
+    } catch {
+      setQrCopied(false);
+    }
+  };
+
   const handleQrShare = async () => {
     if (!qrFile) {
       return;
@@ -215,18 +272,46 @@ export function ShareAccessActions({
 
   return (
     <div className={`vpn-share-actions${compact ? ' vpn-share-actions-compact' : ''}`}>
-      <button className="small-button vpn-share-button" type="button" onClick={() => { window.location.href = emailUrl; }}>
-        {copy.email}
+      <button
+        className="small-button vpn-share-button vpn-share-channel-button vpn-share-email"
+        type="button"
+        aria-label={copy.email}
+        title={copy.email}
+        onClick={() => { window.location.href = emailUrl; }}
+      >
+        <EmailIcon />
       </button>
-      <button className="small-button vpn-share-button" type="button" onClick={() => openExternalShare(telegramUrl)}>
-        {copy.telegram}
+      <button
+        className="small-button vpn-share-button vpn-share-channel-button vpn-share-telegram"
+        type="button"
+        aria-label={copy.telegram}
+        title={copy.telegram}
+        onClick={() => openExternalShare(telegramUrl)}
+      >
+        <TelegramIcon />
       </button>
-      <button className="small-button vpn-share-button" type="button" onClick={() => openExternalShare(whatsappUrl)}>
-        {copy.whatsapp}
+      <button
+        className="small-button vpn-share-button vpn-share-channel-button vpn-share-whatsapp"
+        type="button"
+        aria-label={copy.whatsapp}
+        title={copy.whatsapp}
+        onClick={() => openExternalShare(whatsappUrl)}
+      >
+        <WhatsAppIcon />
       </button>
+      {includeQrShare && canCopyQrImage && (
+        <button
+          className="small-button vpn-share-button vpn-share-qr-button"
+          type="button"
+          disabled={!qrFile}
+          onClick={() => void handleCopyQr()}
+        >
+          {qrCopied ? copy.qrCopied : copy.copyQr}
+        </button>
+      )}
       {includeQrShare && (
         <button
-          className="small-button vpn-share-button"
+          className="small-button vpn-share-button vpn-share-qr-button"
           type="button"
           disabled={!qrFile}
           onClick={() => void handleQrShare()}
