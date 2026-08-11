@@ -19,7 +19,8 @@ type ShareCopy = {
   downloadQr: string;
   subject: string;
   intro: string;
-  importHint: string;
+  openHint: string;
+  fallbackHint: string;
   warning: string;
 };
 
@@ -38,8 +39,9 @@ function getShareCopy(): ShareCopy {
       downloadQr: 'Скачать QR',
       subject: 'Доступ к RouteGate VPN',
       intro: 'Доступ к RouteGate VPN',
-      importHint: 'Импортируйте эту VLESS-ссылку в совместимый VPN-клиент:',
-      warning: 'QR-код и VLESS-ссылка предоставляют доступ к VPN. Не передавайте их посторонним.',
+      openHint: 'Открыть VPN-профиль:',
+      fallbackHint: 'Если ссылка не открылась, импортируйте VLESS вручную:',
+      warning: 'QR-код и ссылки предоставляют доступ к VPN. Не передавайте их посторонним.',
     };
   }
 
@@ -53,8 +55,9 @@ function getShareCopy(): ShareCopy {
     downloadQr: 'Download QR',
     subject: 'RouteGate VPN access',
     intro: 'RouteGate VPN access',
-    importHint: 'Import this VLESS link into a compatible VPN client:',
-    warning: 'The QR code and VLESS link grant VPN access. Do not share them with unauthorized people.',
+    openHint: 'Open VPN profile:',
+    fallbackHint: 'If the link does not open, import the VLESS profile manually:',
+    warning: 'The QR code and links grant VPN access. Do not share them with unauthorized people.',
   };
 }
 
@@ -127,6 +130,13 @@ function openExternalShare(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function encodeConnectPayload(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
 function EmailIcon(): ReactNode {
   return (
     <svg className="vpn-share-channel-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -176,10 +186,17 @@ export function ShareAccessActions({
   const [qrFile, setQrFile] = useState<File | null>(null);
   const [qrCopied, setQrCopied] = useState(false);
 
+  const connectUrl = normalizedLink === ''
+    ? ''
+    : `${window.location.origin}/connect.html#vless=${encodeConnectPayload(normalizedLink)}`;
+
   const message = [
     `${copy.intro}: ${normalizedProfileName}`,
     '',
-    copy.importHint,
+    copy.openHint,
+    connectUrl,
+    '',
+    copy.fallbackHint,
     normalizedLink,
     '',
     copy.warning,
@@ -216,7 +233,15 @@ export function ShareAccessActions({
   }
 
   const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(message)}`;
-  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(message)}`;
+  const telegramText = [
+    `${copy.intro}: ${normalizedProfileName}`,
+    '',
+    copy.fallbackHint,
+    normalizedLink,
+    '',
+    copy.warning,
+  ].join('\n');
+  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   const canNativeShareQr = (() => {
