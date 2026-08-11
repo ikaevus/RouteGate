@@ -1,0 +1,9 @@
+{{define "subject"}}Доступ к RouteGate VPN обновлён{{end}}
+{{define "text"}}Ваш доступ к RouteGate VPN был обновлён.
+{{if .ProfileName}}
+Профиль: {{.ProfileName}}
+{{end}}
+Открыть обновлённый доступ к VPN:
+{{.ConnectURL}}
+
+Используйте эти обновлённые данные вместо старых копий. Не передавайте их посторонним.{{end}}
