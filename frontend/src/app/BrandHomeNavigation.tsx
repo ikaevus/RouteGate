@@ -3,19 +3,19 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { t } from '../shared/i18n/i18n';
 
 /**
- * Keeps the RouteGate brand behavior consistent across shells.
- * Portal/Auth already use real links; the Admin sidebar brand is legacy markup,
- * so upgrade it to an accessible Dashboard link without changing its layout.
+ * RouteGate brand is the global "home" affordance.
+ * In the Admin UI and User Portal it returns to the Admin Dashboard.
  */
 export function BrandHomeNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
-    let detachBrand: (() => void) | null = null;
+    let detachAdminBrand: (() => void) | null = null;
+    let detachPortalBrand: (() => void) | null = null;
 
     const enhanceAdminBrand = () => {
-      if (detachBrand) {
+      if (detachAdminBrand) {
         return;
       }
 
@@ -54,7 +54,7 @@ export function BrandHomeNavigation() {
       brand.addEventListener('click', handleClick);
       brand.addEventListener('keydown', handleKeyDown);
 
-      detachBrand = () => {
+      detachAdminBrand = () => {
         brand.removeEventListener('click', handleClick);
         brand.removeEventListener('keydown', handleKeyDown);
 
@@ -71,14 +71,60 @@ export function BrandHomeNavigation() {
       };
     };
 
-    enhanceAdminBrand();
+    const enhancePortalBrand = () => {
+      if (detachPortalBrand) {
+        return;
+      }
 
-    const observer = new MutationObserver(enhanceAdminBrand);
+      const brand = document.querySelector<HTMLAnchorElement>('.portal-app-shell .portal-brand');
+      if (!brand) {
+        return;
+      }
+
+      const previousHref = brand.getAttribute('href');
+      const previousAriaLabel = brand.getAttribute('aria-label');
+
+      // Keep native open-in-new-tab / middle-click behavior pointed at Dashboard too.
+      brand.setAttribute('href', '/');
+      brand.setAttribute('aria-label', t('navigation.overview'));
+
+      const handleClick = (event: MouseEvent) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        navigate('/');
+      };
+
+      brand.addEventListener('click', handleClick);
+
+      detachPortalBrand = () => {
+        brand.removeEventListener('click', handleClick);
+
+        if (previousHref === null) brand.removeAttribute('href');
+        else brand.setAttribute('href', previousHref);
+
+        if (previousAriaLabel === null) brand.removeAttribute('aria-label');
+        else brand.setAttribute('aria-label', previousAriaLabel);
+      };
+    };
+
+    const enhanceBrands = () => {
+      enhanceAdminBrand();
+      enhancePortalBrand();
+    };
+
+    enhanceBrands();
+
+    const observer = new MutationObserver(enhanceBrands);
     observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       observer.disconnect();
-      detachBrand?.();
+      detachAdminBrand?.();
+      detachPortalBrand?.();
     };
   }, [location.pathname, navigate]);
 
