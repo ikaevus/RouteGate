@@ -7,9 +7,9 @@ import (
 )
 
 type ProviderCapabilities struct {
-	HTML             bool
-	Attachments      bool
-	DeliveryReceipts bool
+	HTML             bool `json:"html"`
+	Attachments      bool `json:"attachments"`
+	DeliveryReceipts bool `json:"deliveryReceipts"`
 }
 
 type ProviderInfo struct {
