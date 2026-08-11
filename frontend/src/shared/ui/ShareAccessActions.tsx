@@ -236,9 +236,6 @@ export function ShareAccessActions({
   const telegramText = [
     `${copy.intro}: ${normalizedProfileName}`,
     '',
-    copy.fallbackHint,
-    normalizedLink,
-    '',
     copy.warning,
   ].join('\n');
   const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
@@ -329,15 +326,14 @@ export function ShareAccessActions({
       >
         <EmailIcon />
       </button>
-      <button
+      <a
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-telegram"
-        type="button"
+        href={telegramUrl}
         aria-label={copy.telegram}
         title={copy.telegram}
-        onClick={() => { window.location.href = telegramUrl; }}
       >
         <TelegramIcon />
-      </button>
+      </a>
       <button
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-whatsapp"
         type="button"
