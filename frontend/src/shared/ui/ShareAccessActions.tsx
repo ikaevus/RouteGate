@@ -15,7 +15,7 @@ type ShareCopy = {
   whatsapp: string;
   copyQr: string;
   qrCopied: string;
-  shareQr: string;
+  shareAccess: string;
   downloadQr: string;
   subject: string;
   intro: string;
@@ -34,7 +34,7 @@ function getShareCopy(): ShareCopy {
       whatsapp: 'Поделиться в WhatsApp',
       copyQr: 'Копировать QR',
       qrCopied: 'QR скопирован',
-      shareQr: 'Поделиться QR',
+      shareAccess: 'Поделиться',
       downloadQr: 'Скачать QR',
       subject: 'Доступ к RouteGate VPN',
       intro: 'Доступ к RouteGate VPN',
@@ -49,7 +49,7 @@ function getShareCopy(): ShareCopy {
     whatsapp: 'Share in WhatsApp',
     copyQr: 'Copy QR',
     qrCopied: 'QR copied',
-    shareQr: 'Share QR',
+    shareAccess: 'Share',
     downloadQr: 'Download QR',
     subject: 'RouteGate VPN access',
     intro: 'RouteGate VPN access',
@@ -149,6 +149,17 @@ function WhatsAppIcon(): ReactNode {
     <svg className="vpn-share-channel-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M20.5 11.7a8.3 8.3 0 0 1-12.3 7.2L3.5 20l1.2-4.5A8.3 8.3 0 1 1 20.5 11.7Z" />
       <path d="M8.4 7.8c.2-.4.4-.4.7-.4h.5c.2 0 .4.1.5.4l.8 1.9c.1.3.1.5-.1.7l-.6.8c-.2.2-.2.4-.1.6.7 1.3 1.7 2.3 3.1 3 .2.1.4.1.6-.1l.9-1.1c.2-.2.4-.3.7-.2l1.9.9c.3.1.4.3.4.5 0 .3-.2 1.5-1.1 2-.7.5-1.5.7-2.5.4-1.2-.3-2.7-.9-4.4-2.4-1.5-1.3-2.5-3-2.8-4.2-.3-1.1 0-2.1.5-2.8Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function ShareIcon(): ReactNode {
+  return (
+    <svg className="vpn-share-system-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="18" cy="5" r="2.5" />
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="19" r="2.5" />
+      <path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5" />
     </svg>
   );
 }
@@ -272,6 +283,18 @@ export function ShareAccessActions({
 
   return (
     <div className={`vpn-share-actions${compact ? ' vpn-share-actions-compact' : ''}`}>
+      {includeQrShare && (
+        <button
+          className="small-button vpn-share-button vpn-system-share-button"
+          type="button"
+          disabled={!qrFile}
+          onClick={() => void handleQrShare()}
+          title={canNativeShareQr ? copy.shareAccess : copy.downloadQr}
+        >
+          <ShareIcon />
+          <span>{canNativeShareQr ? copy.shareAccess : copy.downloadQr}</span>
+        </button>
+      )}
       <button
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-email"
         type="button"
@@ -307,16 +330,6 @@ export function ShareAccessActions({
           onClick={() => void handleCopyQr()}
         >
           {qrCopied ? copy.qrCopied : copy.copyQr}
-        </button>
-      )}
-      {includeQrShare && (
-        <button
-          className="small-button vpn-share-button vpn-share-qr-button"
-          type="button"
-          disabled={!qrFile}
-          onClick={() => void handleQrShare()}
-        >
-          {canNativeShareQr ? copy.shareQr : copy.downloadQr}
         </button>
       )}
     </div>
