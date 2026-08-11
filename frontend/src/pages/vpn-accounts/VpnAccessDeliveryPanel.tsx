@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createVpnAccountDelivery,
   getDeliveryProviders,
@@ -43,47 +43,24 @@ function deliveryStatusLabel(status: DeliveryStatus): string {
   }
 }
 
-function providerReadyLabel(channel: DeliveryChannel): string {
+function channelLabel(channel: DeliveryChannel): string {
   switch (channel) {
-    case 'telegram': return t('delivery.telegramProviderReady');
-    case 'whatsapp': return t('delivery.whatsappProviderReady');
-    default: return t('delivery.emailProviderReady');
+    case 'telegram': return t('delivery.telegram');
+    case 'whatsapp': return t('delivery.whatsapp');
+    default: return t('delivery.email');
   }
 }
 
-function providerReason(code?: string): string {
-  switch (code) {
-    case 'smtp_not_configured': return t('delivery.provider.smtp_not_configured');
-    case 'smtp_configuration_invalid': return t('delivery.provider.smtp_configuration_invalid');
-    case 'telegram_not_configured': return t('delivery.provider.telegram_not_configured');
-    case 'telegram_configuration_invalid': return t('delivery.provider.telegram_configuration_invalid');
-    case 'whatsapp_not_configured': return t('delivery.provider.whatsapp_not_configured');
-    case 'whatsapp_configuration_invalid': return t('delivery.provider.whatsapp_configuration_invalid');
-    case 'public_url_missing': return t('delivery.provider.public_url_missing');
-    case 'public_url_invalid': return t('delivery.provider.public_url_invalid');
-    default: return t('delivery.provider.default');
-  }
-}
-
-function providerGuidance(code: string | undefined, channel: DeliveryChannel): string {
-  switch (code) {
-    case 'smtp_not_configured':
-    case 'smtp_configuration_invalid': return t('delivery.configureSmtp');
-    case 'telegram_not_configured':
-    case 'telegram_configuration_invalid': return t('delivery.configureTelegram');
-    case 'whatsapp_not_configured':
-    case 'whatsapp_configuration_invalid': return t('delivery.configureWhatsApp');
-    case 'public_url_missing':
-    case 'public_url_invalid': return t('delivery.configurePublicUrl');
-    default:
-      if (channel === 'telegram') return t('delivery.configureTelegram');
-      if (channel === 'whatsapp') return t('delivery.configureWhatsApp');
-      return t('delivery.provider.default');
+function configureChannelLabel(channel: DeliveryChannel): string {
+  switch (channel) {
+    case 'telegram': return t('delivery.configureTelegramAction');
+    case 'whatsapp': return t('delivery.configureWhatsAppAction');
+    default: return t('delivery.configureEmailAction');
   }
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.code) {
+  if (error instanceof ApiError) {
     switch (error.code) {
       case 'vpn_server_missing':
       case 'vpn_endpoint_missing':
@@ -109,7 +86,7 @@ function errorMessage(error: unknown, fallback: string): string {
       case 'whatsapp_template_unsupported': return t('delivery.whatsappFailure');
       case 'public_url_missing':
       case 'public_url_invalid': return t('delivery.configurePublicUrl');
-      default: break;
+      default: return fallback;
     }
   }
   return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
@@ -135,6 +112,7 @@ function recipientPlaceholder(channel: DeliveryChannel): string {
 }
 
 export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProps) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isComposerOpen, setIsComposerOpen] = useState(searchParams.get('sendAccess') === '1');
@@ -159,17 +137,18 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     enabled: accountId !== '',
     refetchInterval: (query) => query.state.data?.items.some((item) => activeStatuses.includes(item.status)) ? 2000 : false,
   });
-  const previewQuery = useQuery({
-    queryKey: ['vpn-account-delivery-preview', accountId, locale, template],
-    queryFn: () => previewVpnAccountDelivery(accountId, { locale, template }),
-    enabled: isComposerOpen && accountId !== '',
-    retry: false,
-  });
 
   const selectedProvider = useMemo(
     () => providersQuery.data?.items.find((item) => item.channel === channel),
     [channel, providersQuery.data],
   );
+
+  const previewQuery = useQuery({
+    queryKey: ['vpn-account-delivery-preview', accountId, locale, template],
+    queryFn: () => previewVpnAccountDelivery(accountId, { locale, template }),
+    enabled: isComposerOpen && accountId !== '' && selectedProvider?.ready === true,
+    retry: false,
+  });
 
   useEffect(() => {
     setChannel('email');
@@ -232,6 +211,10 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     clearSendAccessParam();
   }
 
+  function openProviderSettings() {
+    navigate(`/settings?focus=delivery&channel=${channel}`);
+  }
+
   function updateChannel(value: DeliveryChannel) {
     setChannel(value);
     setAttachQr(false);
@@ -277,89 +260,102 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
         )}
       </div>
 
-      {providersQuery.isLoading && <p className="empty-state">{t('delivery.providerLoading')}</p>}
-      {!providersQuery.isLoading && selectedProvider?.ready && (
-        <div className="form-message form-message-success">{providerReadyLabel(channel)}</div>
-      )}
-      {!providersQuery.isLoading && (!selectedProvider || !selectedProvider.ready) && (
-        <div className="form-message form-message-warning">
-          <strong>{t('delivery.providerNotReady')}</strong>{' '}
-          {providerReason(selectedProvider?.configurationError)} {providerGuidance(selectedProvider?.configurationError, channel)}
-        </div>
-      )}
+      {providersQuery.isLoading && !isComposerOpen && <p className="empty-state">{t('delivery.providerLoading')}</p>}
+      {providersQuery.isError && <div className="form-message form-message-error">{t('delivery.providerLoadError')}</div>}
       {queuedNotice && <div className="form-message form-message-success">{t('delivery.queuedSuccess')}</div>}
 
       {isComposerOpen && (
         <div className="feature-subpanel vpn-access-delivery-composer">
-          <div className="panel-title">{t('delivery.composerTitle')}</div>
-          <div className="vpn-access-delivery-fields">
-            <label className="field">
-              <span>{t('delivery.channel')}</span>
-              <select value={channel} onChange={(event) => updateChannel(event.target.value as DeliveryChannel)}>
-                <option value="email">{t('delivery.email')}</option>
-                <option value="telegram">{t('delivery.telegram')}</option>
-                <option value="whatsapp">{t('delivery.whatsapp')}</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>{recipientLabel(channel)}</span>
-              <input
-                type={channel === 'email' ? 'email' : channel === 'whatsapp' ? 'tel' : 'text'}
-                inputMode={channel === 'telegram' ? 'numeric' : channel === 'whatsapp' ? 'tel' : undefined}
-                value={recipient}
-                placeholder={recipientPlaceholder(channel)}
-                onChange={(event) => updateRecipient(event.target.value)}
-              />
-              {channel === 'telegram' && <small>{t('delivery.telegramPrerequisite')}</small>}
-              {channel === 'whatsapp' && <small>{t('delivery.whatsappPrerequisite')}</small>}
-            </label>
-            <label className="field">
-              <span>{t('delivery.language')}</span>
-              <select value={locale} onChange={(event) => updateLocale(event.target.value as DeliveryLocale)}>
-                <option value="en">{t('delivery.languageEnglish')}</option>
-                <option value="ru">{t('delivery.languageRussian')}</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>{t('delivery.template')}</span>
-              <select value={template} onChange={(event) => updateTemplate(event.target.value as DeliveryTemplate)}>
-                <option value="vpn_access">{t('delivery.templateAccess')}</option>
-                <option value="vpn_access_reissued">{t('delivery.templateReissued')}</option>
-              </select>
-            </label>
-          </div>
+          <label className="field vpn-access-delivery-channel-field">
+            <span>{t('delivery.channel')}</span>
+            <select value={channel} onChange={(event) => updateChannel(event.target.value as DeliveryChannel)}>
+              <option value="email">{t('delivery.email')}</option>
+              <option value="telegram">{t('delivery.telegram')}</option>
+              <option value="whatsapp">{t('delivery.whatsapp')}</option>
+            </select>
+          </label>
 
-          {selectedProvider?.capabilities.Attachments && (
-            <label className="vpn-access-delivery-checkbox">
-              <input type="checkbox" checked={attachQr} onChange={(event) => updateAttachQr(event.target.checked)} />
-              <span>{t('delivery.attachQr')}</span>
-            </label>
+          {providersQuery.isLoading && <p className="empty-state">{t('delivery.providerLoading')}</p>}
+
+          {!providersQuery.isLoading && !providersQuery.isError && selectedProvider?.ready !== true && (
+            <div className="vpn-access-delivery-next-action">
+              <div>
+                <strong>{t('delivery.providerSetupTitle', { channel: channelLabel(channel) })}</strong>
+                <p>{t('delivery.providerSetupDescription')}</p>
+              </div>
+              <div className="form-actions">
+                <button className="primary-button" type="button" onClick={openProviderSettings}>
+                  {configureChannelLabel(channel)}
+                </button>
+                <button className="small-button" type="button" onClick={closeComposer}>{t('delivery.cancel')}</button>
+              </div>
+            </div>
           )}
 
-          <div className="vpn-access-delivery-preview">
-            <strong>{t('delivery.preview')}</strong>
-            {previewQuery.isLoading && <p>{t('delivery.previewLoading')}</p>}
-            {previewQuery.isError && <div className="form-message form-message-warning">{errorMessage(previewQuery.error, t('delivery.previewUnavailable'))}</div>}
-            {previewQuery.data && channel === 'whatsapp' && (
-              <div className="vpn-access-delivery-preview-body">
-                <p>{t('delivery.whatsappPreview')}</p>
+          {!providersQuery.isLoading && !providersQuery.isError && selectedProvider?.ready === true && (
+            <>
+              <div className="vpn-access-delivery-fields">
+                <label className="field">
+                  <span>{recipientLabel(channel)}</span>
+                  <input
+                    type={channel === 'email' ? 'email' : channel === 'whatsapp' ? 'tel' : 'text'}
+                    inputMode={channel === 'telegram' ? 'numeric' : channel === 'whatsapp' ? 'tel' : undefined}
+                    value={recipient}
+                    placeholder={recipientPlaceholder(channel)}
+                    onChange={(event) => updateRecipient(event.target.value)}
+                  />
+                  {channel === 'telegram' && <small>{t('delivery.telegramPrerequisite')}</small>}
+                  {channel === 'whatsapp' && <small>{t('delivery.whatsappPrerequisite')}</small>}
+                </label>
+                <label className="field">
+                  <span>{t('delivery.language')}</span>
+                  <select value={locale} onChange={(event) => updateLocale(event.target.value as DeliveryLocale)}>
+                    <option value="en">{t('delivery.languageEnglish')}</option>
+                    <option value="ru">{t('delivery.languageRussian')}</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{t('delivery.template')}</span>
+                  <select value={template} onChange={(event) => updateTemplate(event.target.value as DeliveryTemplate)}>
+                    <option value="vpn_access">{t('delivery.templateAccess')}</option>
+                    <option value="vpn_access_reissued">{t('delivery.templateReissued')}</option>
+                  </select>
+                </label>
               </div>
-            )}
-            {previewQuery.data && channel !== 'whatsapp' && (
-              <div className="vpn-access-delivery-preview-body">
-                <strong>{previewQuery.data.subject}</strong>
-                <pre>{previewQuery.data.text}</pre>
-              </div>
-            )}
-          </div>
 
-          {sendMutation.isError && <div className="form-message form-message-error">{errorMessage(sendMutation.error, t('delivery.sendError'))}</div>}
-          <div className="form-actions">
-            <button className="primary-button" type="button" disabled={!canSend} onClick={queueDelivery}>
-              {sendMutation.isPending ? t('delivery.sendingRequest') : t('delivery.send')}
-            </button>
-            <button className="small-button" type="button" onClick={closeComposer}>{t('delivery.cancel')}</button>
-          </div>
+              {selectedProvider.capabilities.Attachments && (
+                <label className="vpn-access-delivery-checkbox">
+                  <input type="checkbox" checked={attachQr} onChange={(event) => updateAttachQr(event.target.checked)} />
+                  <span>{t('delivery.attachQr')}</span>
+                </label>
+              )}
+
+              <div className="vpn-access-delivery-preview">
+                <strong>{t('delivery.preview')}</strong>
+                {previewQuery.isLoading && <p>{t('delivery.previewLoading')}</p>}
+                {previewQuery.isError && <div className="form-message form-message-warning">{errorMessage(previewQuery.error, t('delivery.previewUnavailable'))}</div>}
+                {previewQuery.data && channel === 'whatsapp' && (
+                  <div className="vpn-access-delivery-preview-body">
+                    <p>{t('delivery.whatsappPreview')}</p>
+                  </div>
+                )}
+                {previewQuery.data && channel !== 'whatsapp' && (
+                  <div className="vpn-access-delivery-preview-body">
+                    <strong>{previewQuery.data.subject}</strong>
+                    <pre>{previewQuery.data.text}</pre>
+                  </div>
+                )}
+              </div>
+
+              {sendMutation.isError && <div className="form-message form-message-error">{errorMessage(sendMutation.error, t('delivery.sendError'))}</div>}
+              <div className="form-actions">
+                <button className="primary-button" type="button" disabled={!canSend} onClick={queueDelivery}>
+                  {sendMutation.isPending ? t('delivery.sendingRequest') : t('delivery.send')}
+                </button>
+                <button className="small-button" type="button" onClick={closeComposer}>{t('delivery.cancel')}</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
