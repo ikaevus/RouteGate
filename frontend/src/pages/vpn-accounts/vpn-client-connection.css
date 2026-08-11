@@ -65,6 +65,31 @@
   white-space: nowrap;
 }
 
+.vpn-system-share-button {
+  align-items: center;
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #bfdbfe;
+  display: inline-flex;
+  gap: 7px;
+  padding-inline: 12px;
+}
+
+.vpn-system-share-button:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(125, 211, 252, 0.58);
+}
+
+.vpn-share-system-icon {
+  fill: none;
+  height: 17px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+  width: 17px;
+}
+
 .vpn-share-channel-button {
   align-items: center;
   border-radius: 12px;
@@ -228,6 +253,11 @@
     flex-direction: row;
   }
 
+  .vpn-system-share-button {
+    flex: 1 1 150px;
+    justify-content: center;
+  }
+
   .vpn-share-channel-button {
     flex: 0 0 38px;
     width: 38px;
@@ -247,6 +277,7 @@
     flex-direction: row;
   }
 
+  .subscription-qr-modal-footer-actions .vpn-system-share-button,
   .subscription-qr-modal-footer-actions .vpn-share-qr-button {
     flex: 1 1 150px;
   }
