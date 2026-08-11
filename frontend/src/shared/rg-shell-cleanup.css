@@ -1,5 +1,4 @@
-/* RouteGate shell cleanup: do not expose controls that have no implemented action. */
-.topbar-search,
+/* RouteGate shell cleanup: hide only navigation surfaces that still have no real product function. */
 .sidebar-license-card,
 .routegate-nav-secondary .nav-link-muted {
   display: none !important;
