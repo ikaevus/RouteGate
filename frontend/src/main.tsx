@@ -22,6 +22,7 @@ import './shared/rg80-light.css';
 import './shared/rg80-light-canvas-trial.css';
 import './shared/rg80-light-polish.css';
 import './shared/rg-shell-cleanup.css';
+import './shared/rg-status-glass.css';
 
 const storedTheme = window.localStorage.getItem('routegate.admin.theme');
 document.documentElement.dataset.theme = storedTheme === 'light' ? 'light' : 'dark';
