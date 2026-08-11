@@ -23,12 +23,13 @@ jobs:
           set -euo pipefail
           python3 scripts/rg112-phase6-author.py
           git diff --check
+          cp .github/workflows/production-like-deploy.yml scripts/rg112-production-like-deploy.patched.yml
           git diff -- install.sh scripts/test-clean-vps-installer.sh .github/workflows/production-like-deploy.yml
-      - name: Commit bounded patch
+      - name: Commit ordinary files and patched workflow blob
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add install.sh scripts/test-clean-vps-installer.sh .github/workflows/production-like-deploy.yml
-          git commit -m "RG-112 Phase 6: harden installer and production E2E"
+          git add install.sh scripts/test-clean-vps-installer.sh scripts/rg112-production-like-deploy.patched.yml
+          git commit -m "RG-112 Phase 6: harden installer and stage production E2E"
           git push origin HEAD:rg-112-delivery-hardening-e2e
