@@ -7,3 +7,4 @@ Open VPN:
 {{.ConnectURL}}
 
 This link provides access to your VPN. Do not share it with unauthorized people.{{end}}
+{{define "html"}}<p>Your RouteGate VPN access is ready.</p>{{if .ProfileName}}<p>Profile: <strong>{{.ProfileName}}</strong></p>{{end}}<p><a href="{{.ConnectURL}}">Open VPN</a></p><p>This link provides access to your VPN. Do not share it with unauthorized people.</p>{{end}}
