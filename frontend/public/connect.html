@@ -19,12 +19,13 @@
     p { margin:0; color:#a8b8cc; line-height:1.55; }
     .warning { margin:20px 0; padding:13px 14px; border:1px solid rgba(245,158,11,.32); border-radius:13px; background:rgba(245,158,11,.08); color:#f5d88d; font-size:13px; }
     .actions { display:grid; gap:10px; margin-top:22px; }
-    a,button { min-height:46px; border-radius:13px; border:1px solid rgba(96,165,250,.35); font:inherit; font-weight:650; cursor:pointer; display:flex; align-items:center; justify-content:center; text-decoration:none; }
-    a { background:#2563eb; color:white; box-shadow:0 10px 25px rgba(37,99,235,.22); }
-    button { background:rgba(30,58,95,.48); color:#dceaff; }
-    a:hover { background:#2f6ff2; }
-    button:hover { background:rgba(42,75,118,.58); }
-    .status { min-height:20px; margin-top:10px; text-align:center; color:#8fd6aa; font-size:12px; }
+    button { min-height:46px; border-radius:13px; border:1px solid rgba(96,165,250,.35); font:inherit; font-weight:650; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    button.primary { background:#2563eb; color:white; box-shadow:0 10px 25px rgba(37,99,235,.22); }
+    button.secondary { background:rgba(30,58,95,.48); color:#dceaff; }
+    button.primary:hover { background:#2f6ff2; }
+    button.secondary:hover { background:rgba(42,75,118,.58); }
+    .status { min-height:20px; margin-top:10px; text-align:center; color:#8fd6aa; font-size:12px; line-height:1.45; }
+    .status.status-warn { color:#f5d88d; }
     .invalid { display:none; margin-top:18px; padding:14px; border-radius:13px; border:1px solid rgba(248,113,113,.35); background:rgba(127,29,29,.18); color:#fecaca; }
   </style>
 </head>
@@ -36,8 +37,8 @@
       <p id="description">This secure link contains a VLESS profile. Open it in a compatible VPN client or copy the profile manually.</p>
       <div class="warning" id="warning">Anyone with this link can use the VPN access. Do not forward it to unauthorized people.</div>
       <div class="actions">
-        <a id="open-link" href="#">Open in VPN client</a>
-        <button id="copy-button" type="button">Copy VLESS profile</button>
+        <button class="primary" id="open-link" type="button">Open in VPN client</button>
+        <button class="secondary" id="copy-button" type="button">Copy VLESS profile</button>
       </div>
       <div class="status" id="status" aria-live="polite"></div>
     </section>
@@ -51,12 +52,16 @@
         description: 'Эта защищённая ссылка содержит профиль VLESS. Откройте его в совместимом VPN-клиенте или скопируйте профиль вручную.',
         warning: 'Любой, у кого есть эта ссылка, получает доступ к VPN. Не пересылайте её посторонним.',
         open: 'Открыть в VPN-клиенте', copy: 'Скопировать VLESS-профиль', copied: 'VLESS-профиль скопирован',
+        opening: 'Передаём VLESS-ссылку системе…',
+        noHandler: 'Если VPN-клиент не открылся, в системе не зарегистрирован обработчик ссылок vless://. Используйте копирование профиля или включите обработку VLESS-ссылок в VPN-клиенте.',
         invalid: 'Ссылка подключения RouteGate недействительна или неполна.'
       } : {
         subtitle: 'VPN access', title: 'Open VPN profile',
         description: 'This secure link contains a VLESS profile. Open it in a compatible VPN client or copy the profile manually.',
         warning: 'Anyone with this link can use the VPN access. Do not forward it to unauthorized people.',
         open: 'Open in VPN client', copy: 'Copy VLESS profile', copied: 'VLESS profile copied',
+        opening: 'Passing the VLESS link to your system…',
+        noHandler: 'If no VPN client opened, your system has no registered handler for vless:// links. Copy the profile or enable VLESS link handling in your VPN client.',
         invalid: 'This RouteGate connection link is invalid or incomplete.'
       };
       document.getElementById('brand-subtitle').textContent = strings.subtitle;
@@ -88,17 +93,47 @@
         return;
       }
 
-      document.getElementById('open-link').href = vless;
+      const status = document.getElementById('status');
+      let externalLaunchObserved = false;
+      const markExternalLaunch = () => { externalLaunchObserved = true; };
+      window.addEventListener('blur', markExternalLaunch);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) markExternalLaunch();
+      });
+
+      document.getElementById('open-link').addEventListener('click', () => {
+        externalLaunchObserved = false;
+        status.classList.remove('status-warn');
+        status.textContent = strings.opening;
+
+        const launcher = document.createElement('a');
+        launcher.href = vless;
+        launcher.style.display = 'none';
+        launcher.setAttribute('rel', 'external');
+        document.body.appendChild(launcher);
+        launcher.click();
+        launcher.remove();
+
+        window.setTimeout(() => {
+          if (!externalLaunchObserved) {
+            status.classList.add('status-warn');
+            status.textContent = strings.noHandler;
+          }
+        }, 1600);
+      });
+
       document.getElementById('copy-button').addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(vless);
-          document.getElementById('status').textContent = strings.copied;
+          status.classList.remove('status-warn');
+          status.textContent = strings.copied;
         } catch {
           const area = document.createElement('textarea');
           area.value = vless;
           area.style.position = 'fixed'; area.style.opacity = '0';
           document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
-          document.getElementById('status').textContent = strings.copied;
+          status.classList.remove('status-warn');
+          status.textContent = strings.copied;
         }
       });
     })();
