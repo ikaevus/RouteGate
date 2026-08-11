@@ -61,6 +61,14 @@
   color: var(--rg-light-text-muted) !important;
 }
 
+/* Form labels must read as labels in Light, not inherit the pale dark-theme
+ * foreground that disappears against the blue surfaces. */
+:root[data-theme='light'] .admin-main .field > span,
+:root[data-theme='light'] .admin-main .traffic-checkbox-field > label,
+:root[data-theme='light'] .admin-main .traffic-checkbox-field > p {
+  color: #16385f !important;
+}
+
 /* Config Deploy stage summaries were designed around dark foregrounds. */
 :root[data-theme='light'] .stage-pill {
   background: rgba(169, 197, 238, 0.62);
@@ -78,6 +86,17 @@
 /* Protocol Settings server metadata. */
 :root[data-theme='light'] .protocol-server-table-row > span:not(.badge) {
   color: #173a63 !important;
+}
+
+/* Server descriptions are useful identity metadata. Let them wrap and keep
+ * enough contrast instead of fading into the row and ending in an ellipsis. */
+:root[data-theme='light'] .servers-table-row > div:first-child > span {
+  color: var(--rg-light-text-muted) !important;
+  line-height: 1.35;
+  overflow: visible !important;
+  overflow-wrap: anywhere;
+  text-overflow: clip !important;
+  white-space: normal !important;
 }
 
 /* The default routing-profile badge should belong to the blue theme, not look
