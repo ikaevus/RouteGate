@@ -285,7 +285,8 @@ jobs:
             000110_dashboard_activity_indexes \
             000111_traffic_usage_daily_rollup \
             000112_agent_runtime_metrics \
-            000113_delivery_foundation; do
+            000113_delivery_foundation \
+            000114_agent_runtime_metrics_backfill; do
             applied="$(psql "$DB_URL" -qAtc "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version='${migration}')")"
             [[ "$applied" == "t" ]]
           done
@@ -455,8 +456,8 @@ jobs:
               nodes = json.load(f)
 
           assert version['manager']['gitCommit'] == commit, version['manager']
-          assert version['database']['expectedSchemaVersion'] == 113, version['database']
-          assert version['database']['appliedSchemaVersion'] == '000113_delivery_foundation', version['database']
+          assert version['database']['expectedSchemaVersion'] == 114, version['database']
+          assert version['database']['appliedSchemaVersion'] == '000114_agent_runtime_metrics_backfill', version['database']
 
           assert isinstance(traffic.get('daily'), list) and len(traffic['daily']) == 30
           assert traffic.get('monthlyAvailable') is (month_rows > 0)
