@@ -3,7 +3,7 @@
   gap: 10px;
 }
 
-.node-distribution-content::before {
+.node-distribution-map {
   background-color: #0b1526;
   background-image:
     linear-gradient(180deg, rgba(2, 6, 23, 0.02), rgba(2, 6, 23, 0.18)),
@@ -14,10 +14,44 @@
   border: 1px solid rgba(96, 165, 250, 0.1);
   border-radius: 12px;
   box-shadow: inset 0 0 28px rgba(2, 6, 23, 0.24);
-  content: '';
-  display: block;
   height: 168px;
+  overflow: hidden;
+  position: relative;
 }
+
+.node-country-marker {
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(7, 17, 31, 0.9);
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.42);
+  display: inline-flex;
+  gap: 4px;
+  min-height: 25px;
+  padding: 3px 7px 3px 5px;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.node-country-marker > span {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.node-country-marker strong {
+  color: #f8fafc;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.node-country-marker-na { left: 27%; top: 39%; }
+.node-country-marker-eu { left: 54%; top: 34%; }
+.node-country-marker-eurasia { left: 66%; top: 29%; }
+.node-country-marker-asia { left: 75%; top: 43%; }
+.node-country-marker-sa { left: 37%; top: 70%; }
+.node-country-marker-af { left: 56%; top: 59%; }
+.node-country-marker-oc { left: 84%; top: 72%; }
 
 .node-distribution-list {
   display: grid;
@@ -39,9 +73,23 @@
   min-width: 0;
 }
 
-.node-distribution-label span {
+.node-distribution-location {
+  align-items: center;
   color: var(--rg-text-secondary);
+  display: inline-flex;
   font-size: 10px;
+  gap: 5px;
+  min-width: 0;
+}
+
+.node-distribution-location b {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.node-distribution-location span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -139,19 +187,30 @@
   white-space: nowrap;
 }
 
-.traffic-widget > .empty-state {
+.traffic-empty-state {
   background:
     linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px),
     radial-gradient(circle at 50% 45%, rgba(37, 99, 235, 0.08), rgba(2, 6, 23, 0.08));
   background-size: 44px 38px, 44px 38px, auto;
   border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 12px;
   color: var(--rg-text-secondary);
   display: grid;
-  font-size: 18px;
+  gap: 5px;
   min-height: 184px;
-  padding: 0;
-  place-items: center;
+  padding: 0 16px;
+  place-content: center;
+  text-align: center;
+}
+
+.traffic-empty-state strong {
+  color: var(--rg-text-primary);
+  font-size: 18px;
+}
+
+.traffic-empty-state span {
+  font-size: 11px;
 }
 
 .traffic-types-widget {
@@ -199,6 +258,62 @@
   white-space: nowrap;
 }
 
+.dashboard-table-row .server-country-flag-emoji {
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 14px;
+  justify-content: center;
+  line-height: 1;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  width: 18px;
+}
+
+:root[data-theme='light'] .dashboard-widget {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+  border-color: rgba(203, 213, 225, 0.95);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme='light'] .kpi-title,
+:root[data-theme='light'] .health-row span,
+:root[data-theme='light'] .dashboard-table-row {
+  color: #334155;
+}
+
+:root[data-theme='light'] .dashboard-table-head span {
+  color: #64748b;
+}
+
+:root[data-theme='light'] .node-distribution-map {
+  background-color: #eaf0f7;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(148, 163, 184, 0.08)),
+    url('../../shared/assets/world-map.svg');
+  border-color: rgba(100, 116, 139, 0.18);
+  box-shadow: inset 0 0 24px rgba(148, 163, 184, 0.14);
+}
+
+:root[data-theme='light'] .node-country-marker {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(100, 116, 139, 0.24);
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.14);
+}
+
+:root[data-theme='light'] .node-country-marker strong {
+  color: #0f172a;
+}
+
+:root[data-theme='light'] .traffic-empty-state {
+  background:
+    linear-gradient(rgba(100, 116, 139, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100, 116, 139, 0.07) 1px, transparent 1px),
+    radial-gradient(circle at 50% 45%, rgba(37, 99, 235, 0.07), rgba(255, 255, 255, 0.2));
+  background-size: 44px 38px, 44px 38px, auto;
+  border-color: rgba(100, 116, 139, 0.16);
+}
+
 @media (max-width: 1380px) {
   .deployments-widget,
   .audit-widget {
@@ -207,7 +322,7 @@
 }
 
 @media (max-width: 980px) {
-  .node-distribution-content::before {
+  .node-distribution-map {
     height: 150px;
   }
 
@@ -224,7 +339,7 @@
     font-size: 7px;
   }
 
-  .traffic-widget > .empty-state {
+  .traffic-empty-state {
     min-height: 150px;
   }
 

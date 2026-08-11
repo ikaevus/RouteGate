@@ -59,7 +59,28 @@ function formatServerLoad(load?: DashboardServerLoad): string {
 }
 
 function getRegionCountryCode(region: string): string | null {
-  return region.match(/,\s*([A-Z]{2})$/)?.[1] ?? null;
+  const match = region.trim().match(/,\s*([A-Za-z]{2})$/);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+function countryCodeToFlag(countryCode: string): string {
+  return countryCode
+    .toUpperCase()
+    .split('')
+    .map((character) => String.fromCodePoint(127397 + character.charCodeAt(0)))
+    .join('');
+}
+
+function getCountryMapRegion(countryCode: string): string | null {
+  const code = countryCode.toUpperCase();
+  if (['US', 'CA', 'MX'].includes(code)) return 'na';
+  if (['GB', 'IE', 'IS', 'NO', 'SE', 'FI', 'DK', 'DE', 'NL', 'BE', 'FR', 'ES', 'PT', 'IT', 'CH', 'AT', 'PL', 'CZ', 'SK', 'HU', 'RO', 'BG', 'GR', 'EE', 'LV', 'LT', 'UA'].includes(code)) return 'eu';
+  if (code === 'RU') return 'eurasia';
+  if (['CN', 'JP', 'KR', 'KP', 'IN', 'SG', 'TH', 'VN', 'MY', 'ID', 'PH', 'KZ', 'UZ', 'AE', 'IL', 'TR'].includes(code)) return 'asia';
+  if (['BR', 'AR', 'CL', 'PE', 'CO', 'UY', 'PY', 'BO', 'EC', 'VE'].includes(code)) return 'sa';
+  if (['ZA', 'EG', 'MA', 'DZ', 'TN', 'NG', 'KE', 'ET', 'GH'].includes(code)) return 'af';
+  if (['AU', 'NZ'].includes(code)) return 'oc';
+  return null;
 }
 
 function getActorInitial(actor: string): string {
@@ -144,6 +165,20 @@ function InfrastructureHealthWidget({
 function NodeDistributionWidget({ distribution, available }: { distribution?: DashboardNodeDistribution; available: boolean }) {
   const locations = distribution?.locations ?? [];
   const totalServers = distribution?.totalServers ?? 0;
+  const markers = locations.flatMap((item, index) => {
+    const countryCode = getRegionCountryCode(item.location);
+    const mapRegion = countryCode ? getCountryMapRegion(countryCode) : null;
+    if (!countryCode || !mapRegion) {
+      return [];
+    }
+    return [{
+      key: `${item.location}-${index}`,
+      countryCode,
+      mapRegion,
+      label: item.location,
+      count: item.count,
+    }];
+  });
 
   return (
     <WidgetPanel title={t('dashboard.nodeDistribution')} className="node-widget">
@@ -153,13 +188,32 @@ function NodeDistributionWidget({ distribution, available }: { distribution?: Da
         <p className="empty-state">{t('servers.emptyTitle')}</p>
       ) : (
         <div className="node-distribution-content">
+          <div className="node-distribution-map" aria-label={t('dashboard.nodeDistribution')}>
+            {markers.map((marker) => (
+              <span
+                className={`node-country-marker node-country-marker-${marker.mapRegion}`}
+                key={marker.key}
+                title={`${marker.label} · ${marker.count}`}
+              >
+                <span aria-hidden="true">{countryCodeToFlag(marker.countryCode)}</span>
+                <strong>{marker.count}</strong>
+              </span>
+            ))}
+          </div>
           <div className="node-distribution-list">
             {locations.map((item, index) => {
               const label = item.location || t('common.notAvailable');
+              const countryCode = getRegionCountryCode(item.location);
               const percentage = totalServers > 0 ? (item.count / totalServers) * 100 : 0;
               return (
                 <div className="node-distribution-row" key={`${item.location}-${index}`}>
-                  <div className="node-distribution-label"><span title={label}>{label}</span><strong>{item.count}</strong></div>
+                  <div className="node-distribution-label">
+                    <span className="node-distribution-location" title={label}>
+                      {countryCode && <b aria-hidden="true">{countryCodeToFlag(countryCode)}</b>}
+                      <span>{label}</span>
+                    </span>
+                    <strong>{item.count}</strong>
+                  </div>
                   <div className="node-distribution-track"><span style={{ width: `${percentage}%` }} /></div>
                 </div>
               );
@@ -198,7 +252,10 @@ function TrafficOverviewWidget({ daily, available }: { daily: DashboardDailyTraf
   return (
     <WidgetPanel title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget">
       {!available ? (
-        <p className="empty-state">{t('common.notAvailable')}</p>
+        <div className="traffic-empty-state">
+          <strong>N/A</strong>
+          <span>{t('dashboard.noTrafficData')}</span>
+        </div>
       ) : (
         <div className="traffic-overview-content">
           <div className="traffic-overview-total">
@@ -243,7 +300,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
                 <strong title={server.name}>{server.name}</strong>
                 <span className="server-region-cell">
                   {countryCode && (
-                    <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={t('dashboard.countryCode', { code: countryCode })} />
+                    <span className="server-country-flag-emoji" aria-label={t('dashboard.countryCode', { code: countryCode })}>{countryCodeToFlag(countryCode)}</span>
                   )}
                   <span className="server-region-name">{server.region}</span>
                 </span>
@@ -400,10 +457,10 @@ export function DashboardPage() {
     return {
       id: server.id,
       name: server.name || `server-${index + 1}`,
-      region: server.location || server.provider || t('common.notAvailable'),
+      region: server.location || t('common.notAvailable'),
       online: server.agent?.status === 'online',
       load: dashboardNodesQuery.isSuccess ? formatServerLoad(serverLoadById.get(server.id)) : t('common.notAvailable'),
-      traffic: trafficApiAvailable && serverTraffic?.available ? formatBytes(serverTraffic.totalBytes) : t('common.notAvailable'),
+      traffic: trafficApiAvailable && serverTraffic?.available ? formatBytes(serverTraffic.totalBytes) : 'N/A',
       status: server.status || 'unknown',
     };
   });
@@ -435,10 +492,10 @@ export function DashboardPage() {
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
-          value={monthlyTrafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : t('common.notAvailable')}
+          value={monthlyTrafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : 'N/A'}
           meta={monthlyTrafficAvailable && monthlyTraffic
             ? `${t('dashboard.inboundTraffic')}: ${formatBytes(monthlyTraffic.rxBytes)} · ${t('dashboard.outboundTraffic')}: ${formatBytes(monthlyTraffic.txBytes)}`
-            : t('common.notAvailable')}
+            : t('dashboard.noTrafficData')}
           tone="amber"
           icon="☁"
         />

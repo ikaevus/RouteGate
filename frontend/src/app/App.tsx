@@ -12,12 +12,63 @@ import { SetupPage } from '../pages/setup/SetupPage';
 import { SecurityPage } from '../pages/settings/SecurityPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 import { getMe, logout, type AuthUser } from '../entities/auth/api/authApi';
+import { getManagerHealth } from '../entities/health/api/healthApi';
 import { clearAuthToken, getAuthToken } from '../shared/api/client';
 import { t } from '../shared/i18n/i18n';
 import { useLocale } from '../shared/i18n/useLocale';
 import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
 
 const routeGateSymbolUrl = new URL('../shared/assets/routegate-symbol.svg', import.meta.url).href;
+const ADMIN_THEME_STORAGE_KEY = 'routegate.admin.theme';
+const ADMIN_SIDEBAR_STORAGE_KEY = 'routegate.admin.sidebarCollapsed';
+
+type AdminTheme = 'dark' | 'light';
+
+function readStoredTheme(): AdminTheme {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+  return window.localStorage.getItem(ADMIN_THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+}
+
+function readStoredSidebarCollapsed(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return window.localStorage.getItem(ADMIN_SIDEBAR_STORAGE_KEY) === 'true';
+}
+
+function getTimestampOffsetMinutes(timestamp: string): number {
+  const match = timestamp.match(/(Z|([+-])(\d{2}):(\d{2}))$/);
+  if (!match || match[1] === 'Z') {
+    return 0;
+  }
+  const sign = match[2] === '-' ? -1 : 1;
+  return sign * ((Number(match[3]) * 60) + Number(match[4]));
+}
+
+function formatServerTime(timestamp?: string | null, elapsedMilliseconds = 0): string {
+  if (!timestamp) {
+    return t('common.notAvailable');
+  }
+
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return timestamp;
+  }
+
+  const offsetMinutes = getTimestampOffsetMinutes(timestamp);
+  const shifted = new Date(parsed.getTime() + elapsedMilliseconds + (offsetMinutes * 60_000));
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffset / 60);
+  const offsetRemainder = absoluteOffset % 60;
+  const offsetLabel = offsetMinutes === 0
+    ? 'UTC'
+    : `UTC${offsetMinutes > 0 ? '+' : '-'}${offsetHours}${offsetRemainder ? `:${pad(offsetRemainder)}` : ''}`;
+
+  return `${pad(shifted.getUTCDate())}.${pad(shifted.getUTCMonth() + 1)}.${shifted.getUTCFullYear()} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())} (${offsetLabel})`;
+}
 
 type IconName =
   | 'overview'
@@ -252,6 +303,33 @@ function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
 }
 
 function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
+  const [theme, setTheme] = useState<AdminTheme>(readStoredTheme);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+  const [clockTick, setClockTick] = useState(() => Date.now());
+  const managerHealthQuery = useQuery({
+    queryKey: ['manager-health'],
+    queryFn: getManagerHealth,
+    refetchInterval: 10_000,
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(ADMIN_THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setClockTick(Date.now()), 1_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const serverTimeElapsed = managerHealthQuery.dataUpdatedAt > 0
+    ? Math.max(0, clockTick - managerHealthQuery.dataUpdatedAt)
+    : 0;
+
   const adminNavigationItems = [
     { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
     { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
@@ -266,7 +344,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
   ];
 
   return (
-    <div className="app-shell routegate-admin-shell routegate-reference-shell">
+    <div className={`app-shell routegate-admin-shell routegate-reference-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar routegate-sidebar">
         <div className="brand routegate-brand">
           <BrandMark />
@@ -318,17 +396,36 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
           <div className="license-progress-track"><span /></div>
         </div>
 
-        <button className="sidebar-control sidebar-theme-control" type="button">
+        <button
+          aria-pressed={theme === 'dark'}
+          className="sidebar-control sidebar-theme-control"
+          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          type="button"
+        >
           <Icon name="moon" />
           <span>{t('dashboard.darkTheme')}</span>
-          <i />
+          <i aria-hidden="true" />
         </button>
-        <button className="sidebar-control" type="button"><Icon name="collapse" /> {t('navigation.collapse')}</button>
+        <button
+          aria-expanded={!isSidebarCollapsed}
+          className="sidebar-control sidebar-collapse-control"
+          onClick={() => setIsSidebarCollapsed((current) => !current)}
+          title={t('topbar.toggleSidebar')}
+          type="button"
+        >
+          <Icon name="collapse" />
+          <span>{t('navigation.collapse')}</span>
+        </button>
       </aside>
 
       <div className="admin-workspace">
         <header className="admin-topbar">
-          <button className="topbar-menu-button" type="button" aria-label={t('topbar.toggleSidebar')}><Icon name="menu" /></button>
+          <button
+            aria-label={t('topbar.toggleSidebar')}
+            className="topbar-menu-button"
+            onClick={() => setIsSidebarCollapsed((current) => !current)}
+            type="button"
+          ><Icon name="menu" /></button>
           <label className="topbar-search">
             <Icon name="search" />
             <input placeholder={t('topbar.searchPlaceholder')} />
@@ -363,7 +460,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
           <span>{t('app.footerProduct')}</span>
           <span>{t('app.version')}</span>
           <strong><span className="status-dot status-dot-ok" /> {t('dashboard.systemsOperational')}</strong>
-          <span className="admin-statusbar-time">{t('dashboard.serverTime', { time: '20.05.2026 14:32:11 (UTC+3)' })}</span>
+          <span className="admin-statusbar-time">{t('dashboard.serverTime', { time: formatServerTime(managerHealthQuery.data?.timestamp, serverTimeElapsed) })}</span>
         </footer>
       </div>
     </div>

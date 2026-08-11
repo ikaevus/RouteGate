@@ -17,6 +17,17 @@
   --rg-border: #263449;
 }
 
+:root[data-theme='light'] {
+  --rg-bg-deep: #edf2f7;
+  --rg-bg-main: #f8fafc;
+  --rg-bg-muted: #e2e8f0;
+  --rg-surface-main: #ffffff;
+  --rg-surface-raised: #f8fafc;
+  --rg-text-primary: #0f172a;
+  --rg-text-secondary: #64748b;
+  --rg-border: #cbd5e1;
+}
+
 body {
   background: var(--rg-bg-deep);
   color: var(--rg-text-primary);
@@ -250,6 +261,67 @@ body {
 .portal-topnav a {
   border-color: rgba(38, 52, 73, 0.96);
   font-weight: 600;
+}
+
+
+:root[data-theme='light'] .sidebar {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.99), rgba(241, 245, 249, 0.98));
+  border-color: rgba(203, 213, 225, 0.95);
+}
+
+:root[data-theme='light'] .nav a,
+:root[data-theme='light'] .nav-link {
+  color: #334155;
+}
+
+:root[data-theme='light'] .nav a:hover,
+:root[data-theme='light'] .nav-link:hover,
+:root[data-theme='light'] .nav-link-active {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.18);
+  color: #0f172a;
+}
+
+:root[data-theme='light'] .main,
+:root[data-theme='light'] .portal-app-shell {
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 34rem),
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.05), transparent 28rem),
+    var(--rg-bg-deep);
+}
+
+:root[data-theme='light'] .card,
+:root[data-theme='light'] .panel,
+:root[data-theme='light'] .auth-card,
+:root[data-theme='light'] .portal-instruction-detail,
+:root[data-theme='light'] .portal-instruction-button {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(203, 213, 225, 0.95);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme='light'] .status-pill {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(203, 213, 225, 0.95);
+  color: #334155;
+}
+
+:root[data-theme='light'] .field input,
+:root[data-theme='light'] .field select,
+:root[data-theme='light'] .field textarea {
+  background: #ffffff;
+  border-color: rgba(203, 213, 225, 0.98);
+  color: #0f172a;
+}
+
+:root[data-theme='light'] .table-head,
+:root[data-theme='light'] .admin-table-head {
+  color: #64748b;
+}
+
+:root[data-theme='light'] .portal-topbar {
+  background: rgba(248, 250, 252, 0.96);
+  border-bottom-color: rgba(203, 213, 225, 0.95);
 }
 
 @media (max-width: 980px) {

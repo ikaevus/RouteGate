@@ -68,6 +68,7 @@ export const ru: Record<TranslationKey, string> = {
   'dashboard.onlineAgents': 'Подключённые серверы',
   'dashboard.activeVpnUsers': 'Активные VPN-пользователи',
   'dashboard.monthlyTraffic': 'Трафик за месяц',
+  'dashboard.noTrafficData': 'Нет данных о трафике',
   'dashboard.online': 'Онлайн',
   'dashboard.offline': 'Оффлайн',
   'dashboard.connected': 'Подключено',
