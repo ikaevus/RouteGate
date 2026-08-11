@@ -1,0 +1,9 @@
+{{define "subject"}}RouteGate VPN access{{end}}
+{{define "text"}}Your RouteGate VPN access is ready.
+{{if .ProfileName}}
+Profile: {{.ProfileName}}
+{{end}}
+Open VPN:
+{{.ConnectURL}}
+
+This link provides access to your VPN. Do not share it with unauthorized people.{{end}}
