@@ -8,6 +8,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
+import { VpnAccessDeliveryPanel } from './VpnAccessDeliveryPanel';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
@@ -69,7 +70,7 @@ export function VpnAccountsPage() {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('create');
       nextParams.delete('page');
-      setSearchParams(nextParams, { replace: true });
+      nextParams.set('sendAccess', '1');
       await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
       const query = nextParams.toString();
       navigate(`/vpn-accounts/${account.id}${query ? `?${query}` : ''}`);
@@ -170,6 +171,7 @@ export function VpnAccountsPage() {
 
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
+          {accountId && <VpnAccessDeliveryPanel accountId={accountId} />}
 
           {accountId && (
             <div className="panel credentials-panel feature-detail-panel">
