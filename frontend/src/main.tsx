@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './app/App';
+import { GlobalSearchController } from './app/GlobalSearchController';
 import { ScrollToTop } from './app/ScrollToTop';
 import './shared/styles.css';
 import './shared/rg45.css';
@@ -35,6 +36,7 @@ if (rootElement) {
         <BrowserRouter>
           <ScrollToTop />
           <App />
+          <GlobalSearchController />
         </BrowserRouter>
       </QueryClientProvider>
     </React.StrictMode>,
