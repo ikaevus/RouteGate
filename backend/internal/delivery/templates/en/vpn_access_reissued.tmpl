@@ -7,3 +7,4 @@ Open the updated VPN access:
 {{.ConnectURL}}
 
 Use this updated access information instead of older copies. Do not share it with unauthorized people.{{end}}
+{{define "html"}}<p>Your RouteGate VPN access has been updated.</p>{{if .ProfileName}}<p>Profile: <strong>{{.ProfileName}}</strong></p>{{end}}<p><a href="{{.ConnectURL}}">Open updated VPN access</a></p><p>Use this updated access information instead of older copies. Do not share it with unauthorized people.</p>{{end}}
