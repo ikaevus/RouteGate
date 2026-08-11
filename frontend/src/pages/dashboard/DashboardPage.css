@@ -348,3 +348,14 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Render country flags as local CSS graphics instead of platform-dependent emoji. */
+.node-country-marker .server-country-flag {
+  height: 12px;
+  width: 18px;
+}
+
+.node-distribution-location .server-country-flag {
+  height: 10px;
+  width: 15px;
+}

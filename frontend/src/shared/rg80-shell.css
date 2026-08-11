@@ -573,3 +573,11 @@
     width: 100%;
   }
 }
+
+.sidebar-collapse-control .rg-icon {
+  transition: transform 0.16s ease;
+}
+
+.sidebar-collapsed .sidebar-collapse-control .rg-icon {
+  transform: rotate(180deg);
+}

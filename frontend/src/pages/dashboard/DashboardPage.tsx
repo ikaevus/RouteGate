@@ -63,13 +63,6 @@ function getRegionCountryCode(region: string): string | null {
   return match?.[1]?.toUpperCase() ?? null;
 }
 
-function countryCodeToFlag(countryCode: string): string {
-  return countryCode
-    .toUpperCase()
-    .split('')
-    .map((character) => String.fromCodePoint(127397 + character.charCodeAt(0)))
-    .join('');
-}
 
 function getCountryMapRegion(countryCode: string): string | null {
   const code = countryCode.toUpperCase();
@@ -195,7 +188,7 @@ function NodeDistributionWidget({ distribution, available }: { distribution?: Da
                 key={marker.key}
                 title={`${marker.label} · ${marker.count}`}
               >
-                <span aria-hidden="true">{countryCodeToFlag(marker.countryCode)}</span>
+                <span className={`server-country-flag server-country-${marker.countryCode.toLowerCase()}`} aria-hidden="true" />
                 <strong>{marker.count}</strong>
               </span>
             ))}
@@ -209,7 +202,7 @@ function NodeDistributionWidget({ distribution, available }: { distribution?: Da
                 <div className="node-distribution-row" key={`${item.location}-${index}`}>
                   <div className="node-distribution-label">
                     <span className="node-distribution-location" title={label}>
-                      {countryCode && <b aria-hidden="true">{countryCodeToFlag(countryCode)}</b>}
+                      {countryCode && <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-hidden="true" />}
                       <span>{label}</span>
                     </span>
                     <strong>{item.count}</strong>
@@ -300,7 +293,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
                 <strong title={server.name}>{server.name}</strong>
                 <span className="server-region-cell">
                   {countryCode && (
-                    <span className="server-country-flag-emoji" aria-label={t('dashboard.countryCode', { code: countryCode })}>{countryCodeToFlag(countryCode)}</span>
+                    <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={t('dashboard.countryCode', { code: countryCode })} />
                   )}
                   <span className="server-region-name">{server.region}</span>
                 </span>
