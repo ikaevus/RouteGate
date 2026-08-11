@@ -44,19 +44,22 @@ type DailyTrafficUsage struct {
 type ServerTrafficUsage struct {
 	ServerID   string `json:"serverId"`
 	ServerName string `json:"serverName"`
+	Available  bool   `json:"available"`
 	TrafficTotals
 }
 
 type TrafficSnapshot struct {
-	GeneratedAt     time.Time            `json:"generatedAt"`
-	MonthStart      string               `json:"monthStart"`
-	Last30DaysStart string               `json:"last30DaysStart"`
-	Last30DaysEnd   string               `json:"last30DaysEnd"`
-	Server24hFrom   time.Time            `json:"server24hFrom"`
-	Server24hTo     time.Time            `json:"server24hTo"`
-	Monthly         TrafficTotals        `json:"monthly"`
-	Daily           []DailyTrafficUsage  `json:"daily"`
-	Servers         []ServerTrafficUsage `json:"servers"`
+	GeneratedAt      time.Time            `json:"generatedAt"`
+	MonthStart       string               `json:"monthStart"`
+	Last30DaysStart  string               `json:"last30DaysStart"`
+	Last30DaysEnd    string               `json:"last30DaysEnd"`
+	Server24hFrom    time.Time            `json:"server24hFrom"`
+	Server24hTo      time.Time            `json:"server24hTo"`
+	MonthlyAvailable bool                 `json:"monthlyAvailable"`
+	DailyAvailable   bool                 `json:"dailyAvailable"`
+	Monthly          TrafficTotals        `json:"monthly"`
+	Daily            []DailyTrafficUsage  `json:"daily"`
+	Servers          []ServerTrafficUsage `json:"servers"`
 }
 
 type activityReader interface {
@@ -183,15 +186,27 @@ func (r *Repository) GetTrafficSnapshot(ctx context.Context, currentTime time.Ti
 
 	if err := r.pool.QueryRow(ctx, `
 		SELECT
+			COUNT(*) > 0,
 			COALESCE(SUM(rx_bytes), 0)::bigint,
 			COALESCE(SUM(tx_bytes), 0)::bigint
 		FROM traffic_usage_daily
 		WHERE usage_date >= $1::date
 		  AND usage_date <= $2::date
-	`, monthStart, today).Scan(&snapshot.Monthly.RxBytes, &snapshot.Monthly.TxBytes); err != nil {
+	`, monthStart, today).Scan(&snapshot.MonthlyAvailable, &snapshot.Monthly.RxBytes, &snapshot.Monthly.TxBytes); err != nil {
 		return TrafficSnapshot{}, err
 	}
 	snapshot.Monthly.TotalBytes = snapshot.Monthly.RxBytes + snapshot.Monthly.TxBytes
+
+	if err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM traffic_usage_daily
+			WHERE usage_date >= $1::date
+			  AND usage_date <= $2::date
+		)
+	`, last30DaysStart, today).Scan(&snapshot.DailyAvailable); err != nil {
+		return TrafficSnapshot{}, err
+	}
 
 	dailyRows, err := r.pool.Query(ctx, `
 		SELECT
@@ -231,6 +246,7 @@ func (r *Repository) GetTrafficSnapshot(ctx context.Context, currentTime time.Ti
 		SELECT
 			s.id::text,
 			s.name,
+			COUNT(e.id)::int,
 			COALESCE(SUM(e.rx_bytes), 0)::bigint,
 			COALESCE(SUM(e.tx_bytes), 0)::bigint
 		FROM recent_servers s
@@ -249,9 +265,11 @@ func (r *Repository) GetTrafficSnapshot(ctx context.Context, currentTime time.Ti
 	snapshot.Servers = make([]ServerTrafficUsage, 0, serverLimit)
 	for serverRows.Next() {
 		var item ServerTrafficUsage
-		if err := serverRows.Scan(&item.ServerID, &item.ServerName, &item.RxBytes, &item.TxBytes); err != nil {
+		var eventCount int
+		if err := serverRows.Scan(&item.ServerID, &item.ServerName, &eventCount, &item.RxBytes, &item.TxBytes); err != nil {
 			return TrafficSnapshot{}, err
 		}
+		item.Available = eventCount > 0
 		item.TotalBytes = item.RxBytes + item.TxBytes
 		snapshot.Servers = append(snapshot.Servers, item)
 	}
