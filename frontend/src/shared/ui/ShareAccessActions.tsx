@@ -31,7 +31,7 @@ function getShareCopy(): ShareCopy {
   if (getCurrentLocale() === 'ru') {
     return {
       email: 'Отправить по Email',
-      telegram: 'Открыть Telegram — сообщение будет скопировано',
+      telegram: 'Поделиться в Telegram',
       whatsapp: 'Поделиться в WhatsApp',
       copyQr: 'Копировать QR',
       qrCopied: 'QR скопирован',
@@ -47,7 +47,7 @@ function getShareCopy(): ShareCopy {
 
   return {
     email: 'Send by email',
-    telegram: 'Open Telegram — message will be copied',
+    telegram: 'Share in Telegram',
     whatsapp: 'Share in WhatsApp',
     copyQr: 'Copy QR',
     qrCopied: 'QR copied',
@@ -130,32 +130,6 @@ function openExternalShare(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-function copyShareText(value: string) {
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-    void navigator.clipboard.writeText(value).catch(() => undefined);
-    return;
-  }
-
-  const textarea = document.createElement('textarea');
-  textarea.value = value;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    document.execCommand('copy');
-  } catch {
-    // Best-effort fallback for older browsers.
-  }
-  textarea.remove();
-}
-
-function launchTelegramShare(message: string) {
-  copyShareText(message);
-  window.location.href = 'tg://new';
-}
-
 function encodeConnectPayload(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
@@ -222,15 +196,13 @@ export function ShareAccessActions({
     copy.openHint,
     connectUrl,
     '',
+    copy.fallbackHint,
+    normalizedLink,
+    '',
     copy.warning,
   ].join('\n');
 
-  const emailMessage = [
-    messengerMessage,
-    '',
-    copy.fallbackHint,
-    normalizedLink,
-  ].join('\n');
+  const emailMessage = messengerMessage;
 
   useEffect(() => {
     let cancelled = false;
@@ -263,6 +235,8 @@ export function ShareAccessActions({
   }
 
   const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(emailMessage)}`;
+  const telegramText = `${copy.intro}: ${normalizedProfileName}\n\n${copy.warning}`;
+  const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(messengerMessage)}`;
 
   const canNativeShareQr = (() => {
@@ -350,15 +324,14 @@ export function ShareAccessActions({
       >
         <EmailIcon />
       </button>
-      <button
+      <a
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-telegram"
-        type="button"
+        href={telegramUrl}
         aria-label={copy.telegram}
         title={copy.telegram}
-        onClick={() => launchTelegramShare(messengerMessage)}
       >
         <TelegramIcon />
-      </button>
+      </a>
       <button
         className="small-button vpn-share-button vpn-share-channel-button vpn-share-whatsapp"
         type="button"
