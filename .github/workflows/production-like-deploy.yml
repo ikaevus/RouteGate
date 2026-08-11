@@ -128,7 +128,9 @@ jobs:
 
           rollback() {
             local rc=$?
+            local db_restore_rc=0
             trap - ERR
+            set +e
             if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" ]]; then
               echo "RG-111 E2E failed after deployment started; restoring production-like baseline."
               systemctl stop routegate-agent routegate-manager >/dev/null 2>&1 || true
@@ -142,6 +144,10 @@ jobs:
                   --exit-on-error \
                   --dbname="$DB_URL" \
                   "$BACKUP_DIR/routegate.pgdump" >/dev/null
+                db_restore_rc=$?
+                if (( db_restore_rc != 0 )); then
+                  echo "WARNING: database restore failed (exit $db_restore_rc); continuing rollback of files and services." >&2
+                fi
               fi
 
               install -m 0755 "$BACKUP_DIR/routegate-manager" /usr/local/bin/routegate-manager
