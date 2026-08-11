@@ -49,6 +49,35 @@
   gap: 10px;
 }
 
+.vpn-share-actions {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vpn-share-actions-compact {
+  gap: 7px;
+}
+
+.vpn-share-button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.subscription-qr-modal-footer-actions {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.subscription-qr-modal-footer-actions .vpn-share-actions {
+  display: contents;
+}
+
 .vpn-client-runtime-grid {
   display: grid;
   gap: 10px;
@@ -141,7 +170,30 @@
     flex-direction: column;
   }
 
-  .vpn-client-primary-actions > button {
+  .vpn-client-primary-actions > button,
+  .vpn-client-primary-actions > .vpn-share-actions,
+  .vpn-client-primary-actions .vpn-share-button {
+    width: 100%;
+  }
+
+  .vpn-share-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .subscription-qr-modal-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .subscription-qr-modal-footer-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .subscription-qr-modal-footer-actions > button,
+  .subscription-qr-modal-footer-actions .vpn-share-button,
+  .subscription-qr-modal-footer > .primary-button {
     width: 100%;
   }
 
