@@ -20,6 +20,9 @@ import './shared/rg80-light.css';
 import './shared/rg80-light-canvas-trial.css';
 import './shared/rg80-light-polish.css';
 
+const storedTheme = window.localStorage.getItem('routegate.admin.theme');
+document.documentElement.dataset.theme = storedTheme === 'light' ? 'light' : 'dark';
+
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');
 
