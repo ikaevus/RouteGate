@@ -17,6 +17,7 @@ import './shared/rg80-locale.css';
 import './shared/rg-spacing-audit.css';
 import './shared/rg101-security.css';
 import './shared/rg80-light.css';
+import './shared/rg80-light-canvas-trial.css';
 
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');

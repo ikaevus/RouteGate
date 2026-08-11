@@ -1,0 +1,4 @@
+/* RG-111 visual trial: preserve the canonical dark hue/saturation and raise HSL lightness by 60 percentage points. */
+:root[data-theme='light'] {
+  --rg-light-canvas: #78a3e0;
+}
