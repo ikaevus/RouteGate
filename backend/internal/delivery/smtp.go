@@ -20,16 +20,21 @@ const (
 )
 
 type SMTPProvider struct {
-	config       config.SMTPConfig
-	fromAddress  string
-	configError  string
-	timeout      time.Duration
-	now          func() time.Time
-	dialContext  func(context.Context, string, string) (net.Conn, error)
-	tlsDial      func(context.Context, string, string, *tls.Config) (net.Conn, error)
+	config      config.SMTPConfig
+	fromAddress string
+	configError string
+	timeout     time.Duration
+	now         func() time.Time
+	dialContext func(context.Context, string, string) (net.Conn, error)
+	tlsDial     func(context.Context, string, string, *tls.Config) (net.Conn, error)
 }
 
 func NewSMTPProvider(cfg config.SMTPConfig) *SMTPProvider {
+	cfg.Host = strings.TrimSpace(cfg.Host)
+	cfg.Username = strings.TrimSpace(cfg.Username)
+	cfg.FromAddress = strings.TrimSpace(cfg.FromAddress)
+	cfg.FromName = strings.TrimSpace(cfg.FromName)
+	cfg.TLSMode = strings.ToLower(strings.TrimSpace(cfg.TLSMode))
 	provider := &SMTPProvider{
 		config:  cfg,
 		timeout: 15 * time.Second,
@@ -40,12 +45,15 @@ func NewSMTPProvider(cfg config.SMTPConfig) *SMTPProvider {
 		dialer := &tls.Dialer{NetDialer: &net.Dialer{}, Config: tlsConfig}
 		return dialer.DialContext(ctx, network, address)
 	}
-	provider.fromAddress, provider.configError = validateSMTPConfig(cfg)
+	provider.fromAddress, provider.configError = validateSMTPConfig(provider.config)
 	return provider
 }
 
 func (p *SMTPProvider) Name() string    { return "smtp" }
 func (p *SMTPProvider) Channel() string { return "email" }
+func (p *SMTPProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{HTML: true, Attachments: true, DeliveryReceipts: false}
+}
 
 func (p *SMTPProvider) Configured() bool {
 	return p != nil && p.configError == ""
@@ -79,7 +87,7 @@ func (p *SMTPProvider) Send(ctx context.Context, message Message) ProviderResult
 	}
 	defer client.Close()
 
-	if strings.TrimSpace(p.config.Username) != "" {
+	if p.config.Username != "" {
 		auth := smtp.PlainAuth("", p.config.Username, p.config.Password, p.config.Host)
 		if err := client.Auth(auth); err != nil {
 			return classifySMTPPreDataError(err, "smtp_auth_failed", ErrorClassPermanent)
@@ -109,7 +117,7 @@ func (p *SMTPProvider) Send(ctx context.Context, message Message) ProviderResult
 }
 
 func (p *SMTPProvider) connect(ctx context.Context) (*smtp.Client, error) {
-	host := strings.TrimSpace(p.config.Host)
+	host := p.config.Host
 	address := net.JoinHostPort(host, strconv.Itoa(p.config.Port))
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
@@ -166,8 +174,7 @@ func validateSMTPConfig(cfg config.SMTPConfig) (string, string) {
 	if strings.ContainsAny(host, " \t\r\n/\\") || (strings.Contains(host, ":") && net.ParseIP(host) == nil) {
 		return "", "smtp_configuration_invalid"
 	}
-	mode := strings.ToLower(strings.TrimSpace(cfg.TLSMode))
-	if mode != smtpTLSModeStartTLS && mode != smtpTLSModeTLS {
+	if cfg.TLSMode != smtpTLSModeStartTLS && cfg.TLSMode != smtpTLSModeTLS {
 		return "", "smtp_configuration_invalid"
 	}
 	if (strings.TrimSpace(cfg.Username) == "") != (strings.TrimSpace(cfg.Password) == "") {
@@ -180,7 +187,6 @@ func validateSMTPConfig(cfg config.SMTPConfig) (string, string) {
 	if err != nil {
 		return "", "smtp_configuration_invalid"
 	}
-	cfg.TLSMode = mode
 	return normalizedFrom, ""
 }
 
