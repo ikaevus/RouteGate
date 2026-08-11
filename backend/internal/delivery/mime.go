@@ -46,6 +46,9 @@ func buildMIMEMessage(message Message, fromAddress, fromName string, now time.Ti
 	writeHeaderLine(&output, "Date", now.UTC().Format(time.RFC1123Z))
 	writeHeaderLine(&output, "MIME-Version", "1.0")
 	writeHeaderLine(&output, "Content-Type", contentType)
+	if len(message.Attachments) == 0 && strings.TrimSpace(message.HTML) == "" {
+		writeHeaderLine(&output, "Content-Transfer-Encoding", "quoted-printable")
+	}
 	output.WriteString("\r\n")
 	output.Write(body)
 	return output.Bytes(), recipient, nil
@@ -64,6 +67,9 @@ func buildMIMEBody(message Message) (string, []byte, error) {
 	writer := multipart.NewWriter(&body)
 	firstHeader := make(textproto.MIMEHeader)
 	firstHeader.Set("Content-Type", alternativeType)
+	if strings.TrimSpace(message.HTML) == "" {
+		firstHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	}
 	part, err := writer.CreatePart(firstHeader)
 	if err != nil {
 		return "", nil, Failure{Class: ErrorClassPermanent, Code: "message_encode_failed"}
