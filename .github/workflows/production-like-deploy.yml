@@ -117,6 +117,7 @@ jobs:
           DELIVERY_FIXTURE_ID=""
           MUTATED=0
           DB_MAY_BE_MUTATED=0
+          STAGE="initializing"
 
           cleanup() {
             if [[ -n "${SESSION_ID:-}" && -n "${DB_URL:-}" ]]; then
@@ -137,7 +138,7 @@ jobs:
             trap - ERR
             set +e
             if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" ]]; then
-              echo "RouteGate E2E failed after deployment started; restoring production-like baseline."
+              echo "RouteGate E2E failed at stage=${STAGE:-unknown}; restoring production-like baseline."
               systemctl stop routegate-agent routegate-manager >/dev/null 2>&1 || true
 
               if [[ "$DB_MAY_BE_MUTATED" == "1" && -s "$BACKUP_DIR/routegate.pgdump" ]]; then
@@ -194,6 +195,7 @@ jobs:
           command -v sha256sum >/dev/null
           command -v tar >/dev/null
 
+          STAGE="preflight"
           actual_bundle_sha="$(sha256sum "$BUNDLE_FILE" | awk '{print $1}')"
           [[ "$actual_bundle_sha" == "$EXPECTED_BUNDLE_SHA" ]]
 
@@ -216,6 +218,7 @@ jobs:
           set +a
           DB_URL="${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}"
 
+          STAGE="backup"
           BACKUP_DIR="/root/routegate-backups/rg112-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
           install -d -m 0700 /root/routegate-backups "$BACKUP_DIR"
 
@@ -233,6 +236,7 @@ jobs:
           chmod -R go-rwx "$BACKUP_DIR"
           echo "Backup complete: $BACKUP_DIR"
 
+          STAGE="deploy_files"
           systemctl stop routegate-agent
           systemctl stop routegate-manager
           MUTATED=1
@@ -262,6 +266,7 @@ jobs:
           chmod 0600 /etc/routegate/manager.env
           grep -Fxq 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' /etc/routegate/manager.env
 
+          STAGE="manager_start"
           DB_MAY_BE_MUTATED=1
           systemctl start routegate-manager
 
@@ -275,6 +280,7 @@ jobs:
           done
           [[ "$manager_ready" == "1" ]]
 
+          STAGE="migration_validation"
           for migration in \
             000110_dashboard_activity_indexes \
             000111_traffic_usage_daily_rollup \
@@ -284,8 +290,10 @@ jobs:
             [[ "$applied" == "t" ]]
           done
 
+          STAGE="agent_start"
           systemctl start routegate-agent
 
+          STAGE="agent_runtime"
           metrics_row=""
           for _ in $(seq 1 18); do
             metrics_row="$(psql "$DB_URL" -qAtc "
@@ -306,6 +314,7 @@ jobs:
           persisted_runtime_block="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM agents WHERE capabilities ? 'runtimeMetrics'")"
           [[ "$persisted_runtime_block" == "0" ]]
 
+          STAGE="auth_session"
           ADMIN_ID="$(psql "$DB_URL" -qAtc "
             SELECT u.id::text
             FROM users u
@@ -327,6 +336,7 @@ jobs:
           [[ -n "$SESSION_ID" ]]
 
           API="http://127.0.0.1:8080"
+          STAGE="delivery_security"
           FORBIDDEN_DELIVERY_COLUMNS="$(psql "$DB_URL" -qAtc "
             SELECT COUNT(*)
             FROM information_schema.columns
@@ -366,6 +376,7 @@ jobs:
           print(f"delivery provider readiness validated: channels={sorted(channels)}")
           PY_DELIVERY_PROVIDERS
 
+          STAGE="delivery_restart_recovery"
           DELIVERY_FIXTURE_ID="$(psql "$DB_URL" -qAtc "
             INSERT INTO deliveries (
               channel, provider, recipient, template_key, locale,
@@ -405,6 +416,7 @@ jobs:
             "DELETE FROM deliveries WHERE id='${DELIVERY_FIXTURE_ID}'::uuid" >/dev/null
           DELIVERY_FIXTURE_ID=""
 
+          STAGE="dashboard_validation"
           curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/system/version" > "$WORK_DIR/version.json"
           curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/dashboard/traffic" > "$WORK_DIR/traffic.json"
           curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/dashboard/nodes" > "$WORK_DIR/nodes.json"
@@ -465,6 +477,7 @@ jobs:
           VERSION_ID="$(psql "$DB_URL" -qAtc "SELECT active_config_version_id::text FROM servers WHERE id='${SERVER_ID}'::uuid")"
           [[ -n "$VERSION_ID" ]]
 
+          STAGE="config_reapply"
           curl -fsS \
             -X POST \
             -H "Authorization: Bearer $TOKEN" \
@@ -523,6 +536,7 @@ jobs:
           print(f"dashboard activity validated: deployments={len(deployments)}, audits={len(audits)}")
           PY_ACTIVITY
 
+          STAGE="final_health"
           systemctl is-active --quiet routegate-manager
           systemctl is-active --quiet routegate-agent
           systemctl is-active --quiet sing-box
@@ -554,6 +568,7 @@ jobs:
             "DELETE FROM auth_sessions WHERE id='${SESSION_ID}'::uuid" >/dev/null
           SESSION_ID=""
 
+          STAGE="complete"
           echo "RG-112 production-like E2E PASSED"
           echo "deployed_commit=$EXPECTED_COMMIT"
           echo "backup=$BACKUP_DIR"
