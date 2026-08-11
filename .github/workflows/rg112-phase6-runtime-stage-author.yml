@@ -29,22 +29,20 @@ jobs:
           from pathlib import Path
           path = Path('.github/workflows/production-like-deploy.yml')
           text = path.read_text()
-          old = '''          STAGE="agent_runtime"
-          metrics_row=""'''
-          new = '''          STAGE="agent_runtime_wait"
-          metrics_row=""'''
-          if text.count(old) != 1:
-              raise SystemExit(f'agent runtime stage target count={text.count(old)}')
-          text = text.replace(old, new, 1)
-          old = '''          persisted_runtime_block="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM agents WHERE capabilities ? 'runtimeMetrics'")"
-          [[ "$persisted_runtime_block" == "0" ]]'''
-          new = '''          STAGE="agent_runtime_persistence"
-          persisted_runtime_block="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM agents WHERE capabilities ? 'runtimeMetrics'")"
-          echo "persisted_runtime_capability_rows=$persisted_runtime_block"
-          [[ "$persisted_runtime_block" == "0" ]]'''
-          if text.count(old) != 1:
-              raise SystemExit(f'agent runtime persistence target count={text.count(old)}')
-          text = text.replace(old, new, 1)
+
+          if text.count('STAGE="agent_runtime"') != 1:
+              raise SystemExit(f'agent runtime stage count={text.count("STAGE=\"agent_runtime\"")}')
+          text = text.replace('STAGE="agent_runtime"', 'STAGE="agent_runtime_wait"', 1)
+
+          marker = 'persisted_runtime_block="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM agents WHERE capabilities ? \'runtimeMetrics\'")"'
+          if text.count(marker) != 1:
+              raise SystemExit(f'agent runtime persistence marker count={text.count(marker)}')
+          text = text.replace(
+              marker,
+              'STAGE="agent_runtime_persistence"\n          ' + marker + '\n          echo "persisted_runtime_capability_rows=$persisted_runtime_block"',
+              1,
+          )
+
           path.write_text(text)
           Path('scripts/rg112-production-like-deploy.runtime-staged.yml').write_text(text)
           PY
