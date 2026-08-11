@@ -44,13 +44,15 @@ func (f *fakeTrafficReader) GetTrafficSnapshot(_ context.Context, currentTime ti
 }
 
 type fakeNodeReader struct {
-	distribution NodeDistribution
-	err          error
-	limit        int
+	distribution  NodeDistribution
+	err           error
+	locationLimit int
+	serverLimit   int
 }
 
-func (f *fakeNodeReader) GetNodeDistribution(_ context.Context, limit int) (NodeDistribution, error) {
-	f.limit = limit
+func (f *fakeNodeReader) GetNodeDistribution(_ context.Context, locationLimit, serverLimit int) (NodeDistribution, error) {
+	f.locationLimit = locationLimit
+	f.serverLimit = serverLimit
 	return f.distribution, f.err
 }
 
@@ -146,10 +148,13 @@ func TestTrafficReturnsDatabaseError(t *testing.T) {
 	}
 }
 
-func TestNodesReturnsBoundedDistribution(t *testing.T) {
+func TestNodesReturnsBoundedDistributionAndServerLoads(t *testing.T) {
+	load1 := 0.42
+	logicalCPUs := 4
 	reader := &fakeNodeReader{distribution: NodeDistribution{
 		TotalServers: 3,
 		Locations: []NodeLocationCount{{Location: "Helsinki, FI", Count: 2}, {Location: "", Count: 1}},
+		ServerLoads: []ServerLoad{{ServerID: "server-1", Load1: &load1, LogicalCPUs: &logicalCPUs}},
 	}}
 	handler := &Handler{logger: slog.Default(), nodes: reader}
 
@@ -159,15 +164,18 @@ func TestNodesReturnsBoundedDistribution(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
-	if reader.limit != nodeLocationLimit {
-		t.Fatalf("node limit = %d, want %d", reader.limit, nodeLocationLimit)
+	if reader.locationLimit != nodeLocationLimit || reader.serverLimit != dashboardServerLimit {
+		t.Fatalf("unexpected node limits: locations=%d servers=%d", reader.locationLimit, reader.serverLimit)
 	}
 
 	var payload NodeDistribution
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if payload.TotalServers != 3 || len(payload.Locations) != 2 || payload.Locations[0].Count != 2 {
+	if payload.TotalServers != 3 || len(payload.Locations) != 2 || len(payload.ServerLoads) != 1 {
 		t.Fatalf("unexpected node distribution: %+v", payload)
+	}
+	if payload.ServerLoads[0].Load1 == nil || *payload.ServerLoads[0].Load1 != 0.42 {
+		t.Fatalf("unexpected server load: %+v", payload.ServerLoads[0])
 	}
 }
