@@ -1,4 +1,8 @@
-/* RG-111 visual trial: preserve the canonical dark hue/saturation and raise HSL lightness by 60 percentage points. */
+/* RG-111 visual trial: use the HSL-lightened canonical dark background as the full Light-theme surface family. */
 :root[data-theme='light'] {
   --rg-light-canvas: #78a3e0;
+  --rg-light-chrome: #78a3e0;
+  --rg-light-sidebar: #78a3e0;
+  --rg-light-surface: #78a3e0;
+  --rg-light-surface-raised: #78a3e0;
 }
