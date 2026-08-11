@@ -4,6 +4,7 @@ import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { getSystemVersion } from '../../entities/system/api/systemApi';
 import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
+import { DeliverySettingsPanel } from './DeliverySettingsPanel';
 import './SettingsPage.css';
 
 function formatValue(value?: string | number | null): string {
@@ -172,6 +173,8 @@ export function SettingsPage() {
                 </section>
               </div>
             </section>
+
+            <DeliverySettingsPanel />
 
             <section className="panel settings-panel">
               <div className="settings-panel-heading">
