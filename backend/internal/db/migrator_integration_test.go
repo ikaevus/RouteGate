@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ikaevus/routegate/backend/internal/agents"
 )
 
@@ -211,9 +213,7 @@ func TestRuntimeMetricsBackfillMigrationUpgradesLegacyAgentRows(t *testing.T) {
 	}
 }
 
-func resetPublicSchema(t *testing.T, ctx context.Context, pool interface {
-	Exec(context.Context, string, ...any) (interface{ RowsAffected() int64 }, error)
-}) {
+func resetPublicSchema(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	if _, err := pool.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
 		t.Fatalf("reset public schema: %v", err)
