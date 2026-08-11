@@ -1,5 +1,6 @@
 name: Production-like SSH Check
 
+# RG-112 Phase 6 revalidates the canonical production-like SSH boundary alongside delivery E2E.
 on:
   workflow_dispatch:
   pull_request:

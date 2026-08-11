@@ -217,6 +217,25 @@ test_success_output() {
     grep -Fq "setup-secret-token" "$ROUTEGATE_LOG_FILE"
 }
 
+test_manager_environment_public_url() {
+  local original_manager_env="$ROUTEGATE_MANAGER_ENV"
+  ROUTEGATE_MANAGER_ENV="$TEST_TMP/manager.env"
+  ROUTEGATE_DOMAIN="us.routegate.org"
+  ROUTEGATE_ADMIN_EMAIL="admin@example.org"
+
+  write_manager_environment "fixture-db-password" "fixture-admin-password"
+
+  assert_true \
+    "manager environment includes the canonical public URL" \
+    grep -Fxq 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' "$ROUTEGATE_MANAGER_ENV"
+  assert_equal \
+    "manager environment remains private" \
+    "600" \
+    "$(stat -c '%a' "$ROUTEGATE_MANAGER_ENV")"
+
+  ROUTEGATE_MANAGER_ENV="$original_manager_env"
+}
+
 test_agent_credentials_detection() {
   local original_config="$ROUTEGATE_AGENT_CONFIG"
   local config_file="$TEST_TMP/agent.yaml"
@@ -267,6 +286,7 @@ test_artifact_urls
 test_checksum_verification
 test_piped_entrypoint_guard
 test_setup_url_contract
+test_manager_environment_public_url
 test_confirmation_prompt
 test_success_output
 test_agent_credentials_detection

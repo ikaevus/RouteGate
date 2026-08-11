@@ -877,6 +877,7 @@ write_manager_environment() {
   cat >"$ROUTEGATE_MANAGER_ENV" <<EOF_MANAGER
 ROUTEGATE_ENV="production"
 ROUTEGATE_HTTP_ADDR="127.0.0.1:8080"
+ROUTEGATE_PUBLIC_URL="https://${ROUTEGATE_DOMAIN}"
 ROUTEGATE_DATABASE_URL="postgres://routegate:${db_password}@127.0.0.1:5432/routegate?sslmode=disable"
 ROUTEGATE_LOG_LEVEL="info"
 ROUTEGATE_AUTH_SESSION_TTL_HOURS="24"
