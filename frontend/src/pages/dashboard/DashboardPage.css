@@ -10,7 +10,7 @@
     url('../../shared/assets/world-map.svg');
   background-position: center;
   background-repeat: no-repeat;
-  background-size: cover;
+  background-size: contain;
   border: 1px solid rgba(96, 165, 250, 0.1);
   border-radius: 12px;
   box-shadow: inset 0 0 28px rgba(2, 6, 23, 0.24);
@@ -158,6 +158,54 @@
   display: none;
 }
 
+.deployments-widget {
+  grid-column: span 4;
+}
+
+.audit-widget {
+  grid-column: span 3;
+}
+
+.audit-row {
+  grid-template-areas:
+    "avatar body body"
+    "avatar badge time";
+  grid-template-columns: 26px auto minmax(0, 1fr);
+}
+
+.audit-row strong {
+  display: block;
+  font-size: 11px;
+  line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-row small {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-area-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1380px) {
+  .deployments-widget,
+  .audit-widget {
+    grid-column: span 6;
+  }
+}
+
 @media (max-width: 980px) {
   .node-distribution-content::before {
     height: 150px;
@@ -178,5 +226,10 @@
 
   .traffic-widget > .empty-state {
     min-height: 150px;
+  }
+
+  .deployments-widget,
+  .audit-widget {
+    grid-column: 1 / -1;
   }
 }
