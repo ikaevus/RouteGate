@@ -5,9 +5,9 @@ export type DeliveryLocale = 'en' | 'ru';
 export type DeliveryTemplate = 'vpn_access' | 'vpn_access_reissued';
 
 export interface DeliveryProviderCapabilities {
-  HTML: boolean;
-  Attachments: boolean;
-  DeliveryReceipts: boolean;
+  html: boolean;
+  attachments: boolean;
+  deliveryReceipts: boolean;
 }
 
 export interface DeliveryProvider {
