@@ -10,6 +10,7 @@ import {
   type UpdateVpnClientProfileRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
+import { ShareAccessActions } from '../../shared/ui/ShareAccessActions';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import './vpn-client-connection.css';
 
@@ -261,6 +262,11 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
               >
                 {copiedTarget === 'vless-link' ? copy.copied : copy.copyVless}
               </button>
+              <ShareAccessActions
+                vlessLink={connection.vlessLink}
+                profileName={connection.profile.name}
+                compact
+              />
             </div>
 
             <div className="vpn-client-runtime-grid">
@@ -429,6 +435,14 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         closeLabel={copy.close}
         loadingLabel={copy.loading}
         unavailableLabel={copy.loadError}
+        footerActions={(
+          <ShareAccessActions
+            vlessLink={connection?.vlessLink}
+            profileName={connection?.profile.name}
+            includeQrShare
+            compact
+          />
+        )}
       />
     </div>
   );
