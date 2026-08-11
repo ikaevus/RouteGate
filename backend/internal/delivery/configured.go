@@ -15,7 +15,8 @@ func NewConfiguredWorker(cfg config.Config, logger *slog.Logger, pool *pgxpool.P
 	recorder := audit.NewRecorder(logger, pool)
 	smtpProvider := NewSMTPProvider(cfg.SMTP)
 	telegramProvider := NewTelegramProvider(cfg.Telegram)
-	registry, _ := NewRegistry(smtpProvider, telegramProvider)
+	whatsAppProvider := NewWhatsAppProvider(cfg.WhatsApp)
+	registry, _ := NewRegistry(smtpProvider, telegramProvider, whatsAppProvider)
 	resolver := NewVPNAccessResolver(vpnaccounts.NewRepository(pool), cfg.PublicURL)
 	return NewWorker(repository, resolver, NewRenderer(), registry, recorder, logger)
 }

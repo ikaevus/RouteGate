@@ -44,7 +44,11 @@ function deliveryStatusLabel(status: DeliveryStatus): string {
 }
 
 function providerReadyLabel(channel: DeliveryChannel): string {
-  return channel === 'telegram' ? t('delivery.telegramProviderReady') : t('delivery.emailProviderReady');
+  switch (channel) {
+    case 'telegram': return t('delivery.telegramProviderReady');
+    case 'whatsapp': return t('delivery.whatsappProviderReady');
+    default: return t('delivery.emailProviderReady');
+  }
 }
 
 function providerReason(code?: string): string {
@@ -53,6 +57,8 @@ function providerReason(code?: string): string {
     case 'smtp_configuration_invalid': return t('delivery.provider.smtp_configuration_invalid');
     case 'telegram_not_configured': return t('delivery.provider.telegram_not_configured');
     case 'telegram_configuration_invalid': return t('delivery.provider.telegram_configuration_invalid');
+    case 'whatsapp_not_configured': return t('delivery.provider.whatsapp_not_configured');
+    case 'whatsapp_configuration_invalid': return t('delivery.provider.whatsapp_configuration_invalid');
     case 'public_url_missing': return t('delivery.provider.public_url_missing');
     case 'public_url_invalid': return t('delivery.provider.public_url_invalid');
     default: return t('delivery.provider.default');
@@ -65,9 +71,14 @@ function providerGuidance(code: string | undefined, channel: DeliveryChannel): s
     case 'smtp_configuration_invalid': return t('delivery.configureSmtp');
     case 'telegram_not_configured':
     case 'telegram_configuration_invalid': return t('delivery.configureTelegram');
+    case 'whatsapp_not_configured':
+    case 'whatsapp_configuration_invalid': return t('delivery.configureWhatsApp');
     case 'public_url_missing':
     case 'public_url_invalid': return t('delivery.configurePublicUrl');
-    default: return channel === 'telegram' ? t('delivery.configureTelegram') : t('delivery.provider.default');
+    default:
+      if (channel === 'telegram') return t('delivery.configureTelegram');
+      if (channel === 'whatsapp') return t('delivery.configureWhatsApp');
+      return t('delivery.provider.default');
   }
 }
 
@@ -88,6 +99,14 @@ function errorMessage(error: unknown, fallback: string): string {
       case 'telegram_forbidden':
       case 'telegram_bad_request':
       case 'telegram_not_found': return t('delivery.telegramRelationship');
+      case 'whatsapp_not_configured':
+      case 'whatsapp_configuration_invalid':
+      case 'whatsapp_unauthorized': return t('delivery.configureWhatsApp');
+      case 'whatsapp_invalid_recipient':
+      case 'whatsapp_bad_request':
+      case 'whatsapp_forbidden':
+      case 'whatsapp_not_found':
+      case 'whatsapp_template_unsupported': return t('delivery.whatsappFailure');
       case 'public_url_missing':
       case 'public_url_invalid': return t('delivery.configurePublicUrl');
       default: break;
@@ -101,6 +120,18 @@ function newIdempotencyKey(): string {
     return `ui-${crypto.randomUUID()}`;
   }
   return `ui-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function recipientLabel(channel: DeliveryChannel): string {
+  if (channel === 'telegram') return t('delivery.telegramChatId');
+  if (channel === 'whatsapp') return t('delivery.whatsappPhone');
+  return t('delivery.recipient');
+}
+
+function recipientPlaceholder(channel: DeliveryChannel): string {
+  if (channel === 'telegram') return t('delivery.telegramChatIdPlaceholder');
+  if (channel === 'whatsapp') return t('delivery.whatsappPhonePlaceholder');
+  return t('delivery.recipientPlaceholder');
 }
 
 export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProps) {
@@ -205,7 +236,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     setChannel(value);
     setAttachQr(false);
     setIdempotencyKey(null);
-    if (value === 'telegram') {
+    if (value !== 'email') {
       setRecipient('');
       return;
     }
@@ -267,18 +298,20 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
               <select value={channel} onChange={(event) => updateChannel(event.target.value as DeliveryChannel)}>
                 <option value="email">{t('delivery.email')}</option>
                 <option value="telegram">{t('delivery.telegram')}</option>
+                <option value="whatsapp">{t('delivery.whatsapp')}</option>
               </select>
             </label>
             <label className="field">
-              <span>{channel === 'telegram' ? t('delivery.telegramChatId') : t('delivery.recipient')}</span>
+              <span>{recipientLabel(channel)}</span>
               <input
-                type={channel === 'email' ? 'email' : 'text'}
-                inputMode={channel === 'telegram' ? 'numeric' : undefined}
+                type={channel === 'email' ? 'email' : channel === 'whatsapp' ? 'tel' : 'text'}
+                inputMode={channel === 'telegram' ? 'numeric' : channel === 'whatsapp' ? 'tel' : undefined}
                 value={recipient}
-                placeholder={channel === 'telegram' ? t('delivery.telegramChatIdPlaceholder') : t('delivery.recipientPlaceholder')}
+                placeholder={recipientPlaceholder(channel)}
                 onChange={(event) => updateRecipient(event.target.value)}
               />
               {channel === 'telegram' && <small>{t('delivery.telegramPrerequisite')}</small>}
+              {channel === 'whatsapp' && <small>{t('delivery.whatsappPrerequisite')}</small>}
             </label>
             <label className="field">
               <span>{t('delivery.language')}</span>
@@ -307,7 +340,12 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
             <strong>{t('delivery.preview')}</strong>
             {previewQuery.isLoading && <p>{t('delivery.previewLoading')}</p>}
             {previewQuery.isError && <div className="form-message form-message-warning">{errorMessage(previewQuery.error, t('delivery.previewUnavailable'))}</div>}
-            {previewQuery.data && (
+            {previewQuery.data && channel === 'whatsapp' && (
+              <div className="vpn-access-delivery-preview-body">
+                <p>{t('delivery.whatsappPreview')}</p>
+              </div>
+            )}
+            {previewQuery.data && channel !== 'whatsapp' && (
               <div className="vpn-access-delivery-preview-body">
                 <strong>{previewQuery.data.subject}</strong>
                 <pre>{previewQuery.data.text}</pre>
@@ -346,8 +384,10 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
 
 function DeliveryHistoryItem({ item, retryPending, onRetry }: { item: DeliveryRecord; retryPending: boolean; onRetry: () => void }) {
   const canRetry = item.status === 'failed' || item.status === 'uncertain';
-  const relationshipFailure = item.channel === 'telegram'
+  const telegramRelationshipFailure = item.channel === 'telegram'
     && ['telegram_forbidden', 'telegram_bad_request', 'telegram_not_found'].includes(item.lastErrorCode ?? '');
+  const whatsAppFailure = item.channel === 'whatsapp'
+    && ['whatsapp_bad_request', 'whatsapp_forbidden', 'whatsapp_not_found', 'whatsapp_template_unsupported'].includes(item.lastErrorCode ?? '');
   return (
     <div className="vpn-access-delivery-history-item">
       <div className="vpn-access-delivery-history-main">
@@ -360,7 +400,11 @@ function DeliveryHistoryItem({ item, retryPending, onRetry }: { item: DeliveryRe
       {item.status === 'uncertain' && <p className="vpn-access-delivery-history-hint">{t('delivery.uncertainHint')}</p>}
       {item.status === 'failed' && (
         <p className="vpn-access-delivery-history-hint">
-          {relationshipFailure ? t('delivery.telegramRelationship') : t('delivery.failedHint')}
+          {telegramRelationshipFailure
+            ? t('delivery.telegramRelationship')
+            : whatsAppFailure
+              ? t('delivery.whatsappFailure')
+              : t('delivery.failedHint')}
         </p>
       )}
       {canRetry && (

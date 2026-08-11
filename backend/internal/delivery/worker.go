@@ -128,6 +128,9 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	}
 	message.Recipient = delivery.Recipient
 	message.Attachments = append(message.Attachments, material.Attachments...)
+	message.TemplateKey = delivery.TemplateKey
+	message.Locale = delivery.Locale
+	message.ActionURL = material.TemplateData.ConnectURL
 
 	result := provider.Send(ctx, message)
 	return true, w.applyProviderResult(ctx, *delivery, result)
