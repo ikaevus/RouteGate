@@ -111,9 +111,11 @@ func TestTrafficReturnsBoundedSnapshot(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 2, 0, 0, 0, time.UTC)
 	reader := &fakeTrafficReader{snapshot: TrafficSnapshot{
 		GeneratedAt: now,
+		MonthlyAvailable: true,
+		DailyAvailable: true,
 		Monthly: TrafficTotals{RxBytes: 100, TxBytes: 50, TotalBytes: 150},
 		Daily: []DailyTrafficUsage{{Date: "2026-08-11", TrafficTotals: TrafficTotals{RxBytes: 10, TxBytes: 5, TotalBytes: 15}}},
-		Servers: []ServerTrafficUsage{{ServerID: "server-1", ServerName: "US VPS", TrafficTotals: TrafficTotals{RxBytes: 8, TxBytes: 2, TotalBytes: 10}}},
+		Servers: []ServerTrafficUsage{{ServerID: "server-1", ServerName: "US VPS", Available: true, TrafficTotals: TrafficTotals{RxBytes: 8, TxBytes: 2, TotalBytes: 10}}},
 	}}
 	handler := &Handler{logger: slog.Default(), traffic: reader, now: func() time.Time { return now }}
 
@@ -131,8 +133,28 @@ func TestTrafficReturnsBoundedSnapshot(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if payload.Monthly.TotalBytes != 150 || len(payload.Daily) != 1 || len(payload.Servers) != 1 {
+	if !payload.MonthlyAvailable || !payload.DailyAvailable || payload.Monthly.TotalBytes != 150 || len(payload.Daily) != 1 || len(payload.Servers) != 1 || !payload.Servers[0].Available {
 		t.Fatalf("unexpected traffic payload: %+v", payload)
+	}
+}
+
+func TestTrafficPreservesUnavailableState(t *testing.T) {
+	reader := &fakeTrafficReader{snapshot: TrafficSnapshot{
+		Monthly: TrafficTotals{},
+		Daily: []DailyTrafficUsage{{Date: "2026-08-11"}},
+		Servers: []ServerTrafficUsage{{ServerID: "server-1", ServerName: "US VPS"}},
+	}}
+	handler := &Handler{logger: slog.Default(), traffic: reader, now: time.Now}
+
+	response := httptest.NewRecorder()
+	handler.Traffic(response, httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/traffic", nil))
+
+	var payload TrafficSnapshot
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.MonthlyAvailable || payload.DailyAvailable || payload.Servers[0].Available {
+		t.Fatalf("unmeasured traffic must remain unavailable: %+v", payload)
 	}
 }
 
