@@ -1,6 +1,26 @@
 .system-settings-page {
   display: grid;
   gap: 16px;
+  max-width: 1640px;
+  width: 100%;
+}
+
+.system-settings-page .page-header {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--rg-surface-main) 92%, transparent);
+  border: 1px solid var(--rg-border);
+  border-radius: 20px;
+  margin: 0;
+  padding: 18px 20px;
+}
+
+.system-settings-page .page-header h1 {
+  letter-spacing: -0.04em;
+  margin: 0;
+}
+
+.system-settings-page .page-header p {
+  margin: 5px 0 0;
 }
 
 .settings-layout {
@@ -19,6 +39,7 @@
 .settings-panel {
   display: grid;
   gap: 16px;
+  margin-top: 0;
   min-width: 0;
 }
 
@@ -184,6 +205,10 @@
 }
 
 @media (max-width: 720px) {
+  .system-settings-page .page-header {
+    padding: 16px;
+  }
+
   .settings-component-grid {
     grid-template-columns: 1fr;
   }
