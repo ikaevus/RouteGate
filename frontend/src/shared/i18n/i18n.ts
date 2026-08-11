@@ -1,14 +1,15 @@
 import { en, type TranslationKey as BaseTranslationKey } from './locales/en';
 import { ru } from './locales/ru';
 import { settingsEn, settingsRu, type SettingsTranslationKey } from './settingsTranslations';
+import { deliveryEn, deliveryRu, type DeliveryTranslationKey } from './deliveryTranslations';
 
 export type Locale = 'en' | 'ru';
-export type TranslationKey = BaseTranslationKey | SettingsTranslationKey;
+export type TranslationKey = BaseTranslationKey | SettingsTranslationKey | DeliveryTranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
-  en: { ...en, ...settingsEn },
-  ru: { ...ru, ...settingsRu },
+  en: { ...en, ...settingsEn, ...deliveryEn },
+  ru: { ...ru, ...settingsRu, ...deliveryRu },
 };
 
 const DEFAULT_LOCALE: Locale = 'en';
