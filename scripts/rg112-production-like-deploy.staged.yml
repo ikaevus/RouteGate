@@ -1,0 +1,578 @@
+name: Production-like Deploy and E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/production-like-deploy.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: routegate-production-like
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-e2e:
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 25
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact target commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build exact amd64 release bundle
+        shell: bash
+        env:
+          VERSION: production-like
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          ARCHITECTURES: amd64
+          OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
+        run: |
+          set -euo pipefail
+          ./scripts/build-release-bundle.sh
+          bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
+          test -s "$bundle"
+          tar -tzf "$bundle" | grep -qx './metadata/manifest.env'
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Backup, deploy and validate production-like host
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+
+          SSH=(
+            ssh
+            -i ~/.ssh/routegate_ci
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=10
+          )
+          SCP=(
+            scp
+            -i ~/.ssh/routegate_ci
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=10
+          )
+
+          bundle="${RUNNER_TEMP}/routegate-dist/routegate-production-like-linux-amd64.tar.gz"
+          bundle_sha="$(sha256sum "$bundle" | awk '{print $1}')"
+          remote_bundle="/tmp/routegate-production-like-${TARGET_SHA}.tar.gz"
+
+          "${SCP[@]}" "$bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle"
+
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "sudo bash -s -- '$TARGET_SHA' '$remote_bundle' '$bundle_sha'" <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
+          umask 077
+
+          EXPECTED_COMMIT="$1"
+          BUNDLE_FILE="$2"
+          EXPECTED_BUNDLE_SHA="$3"
+          WORK_DIR="$(mktemp -d /tmp/routegate-production-like.XXXXXX)"
+          BACKUP_DIR=""
+          DB_URL=""
+          SESSION_ID=""
+          DELIVERY_FIXTURE_ID=""
+          MUTATED=0
+          DB_MAY_BE_MUTATED=0
+          STAGE="initializing"
+
+          cleanup() {
+            if [[ -n "${SESSION_ID:-}" && -n "${DB_URL:-}" ]]; then
+              psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc \
+                "DELETE FROM auth_sessions WHERE id='${SESSION_ID}'::uuid" >/dev/null 2>&1 || true
+            fi
+            if [[ -n "${DELIVERY_FIXTURE_ID:-}" && -n "${DB_URL:-}" ]]; then
+              psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc \
+                "DELETE FROM deliveries WHERE id='${DELIVERY_FIXTURE_ID}'::uuid" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$WORK_DIR"
+            rm -f "$BUNDLE_FILE"
+          }
+
+          rollback() {
+            local rc=$?
+            local db_restore_rc=0
+            trap - ERR
+            set +e
+            if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" ]]; then
+              echo "RouteGate E2E failed at stage=${STAGE:-unknown}; restoring production-like baseline."
+              systemctl stop routegate-agent routegate-manager >/dev/null 2>&1 || true
+
+              if [[ "$DB_MAY_BE_MUTATED" == "1" && -s "$BACKUP_DIR/routegate.pgdump" ]]; then
+                pg_restore \
+                  --clean \
+                  --if-exists \
+                  --no-owner \
+                  --no-privileges \
+                  --exit-on-error \
+                  --dbname="$DB_URL" \
+                  "$BACKUP_DIR/routegate.pgdump" >/dev/null
+                db_restore_rc=$?
+                if (( db_restore_rc != 0 )); then
+                  echo "WARNING: database restore failed (exit $db_restore_rc); continuing rollback of files and services." >&2
+                fi
+              fi
+
+              install -m 0755 "$BACKUP_DIR/routegate-manager" /usr/local/bin/routegate-manager
+              install -m 0755 "$BACKUP_DIR/routegate-agent" /usr/local/bin/routegate-agent
+
+              rm -rf /opt/routegate-manager/migrations
+              tar -xzf "$BACKUP_DIR/manager-migrations.tar.gz" -C /opt
+              chown -R routegate:routegate /opt/routegate-manager
+
+              rm -rf /var/www/routegate
+              tar -xzf "$BACKUP_DIR/frontend.tar.gz" -C /var/www
+
+              install -m 0644 "$BACKUP_DIR/routegate-manager.service" /etc/systemd/system/routegate-manager.service
+              install -m 0644 "$BACKUP_DIR/routegate-agent.service" /etc/systemd/system/routegate-agent.service
+              install -m 0600 "$BACKUP_DIR/manager.env" /etc/routegate/manager.env
+
+              if [[ -s "$BACKUP_DIR/sing-box-config.json" ]]; then
+                install -m 0600 "$BACKUP_DIR/sing-box-config.json" /etc/sing-box/config.json
+              fi
+
+              systemctl daemon-reload
+              systemctl restart sing-box >/dev/null 2>&1 || true
+              systemctl start routegate-manager >/dev/null 2>&1 || true
+              systemctl start routegate-agent >/dev/null 2>&1 || true
+              echo "Rollback attempt completed; backup retained at $BACKUP_DIR"
+            fi
+            cleanup
+            exit "$rc"
+          }
+
+          trap rollback ERR
+          trap cleanup EXIT
+
+          command -v curl >/dev/null
+          command -v pg_dump >/dev/null
+          command -v pg_restore >/dev/null
+          command -v psql >/dev/null
+          command -v python3 >/dev/null
+          command -v sha256sum >/dev/null
+          command -v tar >/dev/null
+
+          STAGE="preflight"
+          actual_bundle_sha="$(sha256sum "$BUNDLE_FILE" | awk '{print $1}')"
+          [[ "$actual_bundle_sha" == "$EXPECTED_BUNDLE_SHA" ]]
+
+          tar -xzf "$BUNDLE_FILE" -C "$WORK_DIR"
+          source "$WORK_DIR/metadata/manifest.env"
+          [[ "$COMMIT" == "$EXPECTED_COMMIT" ]]
+          [[ "$OS" == "linux" ]]
+          [[ "$ARCH" == "amd64" ]]
+
+          echo "Preflight: host=$(hostname), commit=$EXPECTED_COMMIT"
+          for service in routegate-manager routegate-agent sing-box; do
+            state="$(systemctl is-active "$service" || true)"
+            echo "preflight $service=$state"
+            [[ "$state" == "active" ]]
+          done
+
+          [[ -r /etc/routegate/manager.env ]]
+          set -a
+          source /etc/routegate/manager.env
+          set +a
+          DB_URL="${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}"
+
+          STAGE="backup"
+          BACKUP_DIR="/root/routegate-backups/rg112-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
+          install -d -m 0700 /root/routegate-backups "$BACKUP_DIR"
+
+          cp -a /usr/local/bin/routegate-manager "$BACKUP_DIR/routegate-manager"
+          cp -a /usr/local/bin/routegate-agent "$BACKUP_DIR/routegate-agent"
+          cp -a /etc/systemd/system/routegate-manager.service "$BACKUP_DIR/routegate-manager.service"
+          cp -a /etc/systemd/system/routegate-agent.service "$BACKUP_DIR/routegate-agent.service"
+          cp -a /etc/routegate/manager.env "$BACKUP_DIR/manager.env"
+          tar -czf "$BACKUP_DIR/manager-migrations.tar.gz" -C /opt routegate-manager/migrations
+          tar -czf "$BACKUP_DIR/frontend.tar.gz" -C /var/www routegate
+          if [[ -r /etc/sing-box/config.json ]]; then
+            cp -a /etc/sing-box/config.json "$BACKUP_DIR/sing-box-config.json"
+          fi
+          pg_dump --format=custom --no-owner --file="$BACKUP_DIR/routegate.pgdump" "$DB_URL"
+          chmod -R go-rwx "$BACKUP_DIR"
+          echo "Backup complete: $BACKUP_DIR"
+
+          STAGE="deploy_files"
+          systemctl stop routegate-agent
+          systemctl stop routegate-manager
+          MUTATED=1
+
+          install -m 0755 "$WORK_DIR/bin/routegate-manager" /usr/local/bin/routegate-manager
+          install -m 0755 "$WORK_DIR/bin/routegate-agent" /usr/local/bin/routegate-agent
+
+          rm -rf /opt/routegate-manager/migrations
+          cp -a "$WORK_DIR/manager/migrations" /opt/routegate-manager/migrations
+          chown -R routegate:routegate /opt/routegate-manager
+
+          find /var/www/routegate -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+          cp -a "$WORK_DIR/frontend/." /var/www/routegate/
+          chown -R root:root /var/www/routegate
+          find /var/www/routegate -type d -exec chmod 0755 {} +
+          find /var/www/routegate -type f -exec chmod 0644 {} +
+
+          install -m 0644 "$WORK_DIR/systemd/routegate-manager.service" /etc/systemd/system/routegate-manager.service
+          install -m 0644 "$WORK_DIR/systemd/routegate-agent.service" /etc/systemd/system/routegate-agent.service
+          systemctl daemon-reload
+
+          if grep -q '^ROUTEGATE_PUBLIC_URL=' /etc/routegate/manager.env; then
+            sed -i 's#^ROUTEGATE_PUBLIC_URL=.*#ROUTEGATE_PUBLIC_URL="https://us.routegate.org"#' /etc/routegate/manager.env
+          else
+            printf '%s\n' 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' >> /etc/routegate/manager.env
+          fi
+          chmod 0600 /etc/routegate/manager.env
+          grep -Fxq 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' /etc/routegate/manager.env
+
+          STAGE="manager_start"
+          DB_MAY_BE_MUTATED=1
+          systemctl start routegate-manager
+
+          manager_ready=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/admin/health >/dev/null; then
+              manager_ready=1
+              break
+            fi
+            sleep 1
+          done
+          [[ "$manager_ready" == "1" ]]
+
+          STAGE="migration_validation"
+          for migration in \
+            000110_dashboard_activity_indexes \
+            000111_traffic_usage_daily_rollup \
+            000112_agent_runtime_metrics \
+            000113_delivery_foundation; do
+            applied="$(psql "$DB_URL" -qAtc "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version='${migration}')")"
+            [[ "$applied" == "t" ]]
+          done
+
+          STAGE="agent_start"
+          systemctl start routegate-agent
+
+          STAGE="agent_runtime"
+          metrics_row=""
+          for _ in $(seq 1 18); do
+            metrics_row="$(psql "$DB_URL" -qAtc "
+              SELECT server_id::text || '|' || runtime_load_1::text || '|' || runtime_logical_cpus::text
+              FROM agents
+              WHERE last_seen_at >= now() - interval '90 seconds'
+                AND runtime_load_1 IS NOT NULL
+                AND runtime_logical_cpus IS NOT NULL
+              ORDER BY last_seen_at DESC
+              LIMIT 1
+            ")"
+            [[ -n "$metrics_row" ]] && break
+            sleep 5
+          done
+          [[ -n "$metrics_row" ]]
+          SERVER_ID="${metrics_row%%|*}"
+
+          persisted_runtime_block="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM agents WHERE capabilities ? 'runtimeMetrics'")"
+          [[ "$persisted_runtime_block" == "0" ]]
+
+          STAGE="auth_session"
+          ADMIN_ID="$(psql "$DB_URL" -qAtc "
+            SELECT u.id::text
+            FROM users u
+            JOIN user_roles ur ON ur.user_id=u.id
+            JOIN roles r ON r.id=ur.role_id
+            WHERE r.code='super_admin' AND u.status='active'
+            ORDER BY u.created_at
+            LIMIT 1
+          ")"
+          [[ -n "$ADMIN_ID" ]]
+
+          TOKEN="$(openssl rand -hex 32)"
+          TOKEN_HASH="$(printf '%s' "$TOKEN" | sha256sum | awk '{print $1}')"
+          SESSION_ID="$(psql "$DB_URL" -qAtc "
+            INSERT INTO auth_sessions (user_id, token_hash, expires_at, user_agent)
+            VALUES ('${ADMIN_ID}'::uuid, '${TOKEN_HASH}', now() + interval '15 minutes', 'RouteGate production-like E2E')
+            RETURNING id::text
+          ")"
+          [[ -n "$SESSION_ID" ]]
+
+          API="http://127.0.0.1:8080"
+          STAGE="delivery_security"
+          FORBIDDEN_DELIVERY_COLUMNS="$(psql "$DB_URL" -qAtc "
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema='public'
+              AND table_name='deliveries'
+              AND column_name IN (
+                'body', 'message_body', 'rendered_body', 'rendered_html', 'vless_uri',
+                'connect_url', 'qr_payload', 'qr_image', 'provider_response',
+                'raw_provider_response', 'smtp_password', 'bot_token', 'access_token'
+              )
+          ")"
+          [[ "$FORBIDDEN_DELIVERY_COLUMNS" == "0" ]]
+
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/delivery/providers" > "$WORK_DIR/providers.json"
+          python3 - "$WORK_DIR/providers.json" <<'PY_DELIVERY_PROVIDERS'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding='utf-8') as f:
+              payload = json.load(f)
+          items = payload.get('items')
+          assert isinstance(items, list), payload
+          channels = {item.get('channel') for item in items}
+          assert {'email', 'telegram', 'whatsapp'} <= channels, items
+
+          forbidden_tokens = ('password', 'secret', 'token', 'credential', 'accessurl', 'vless', 'rawresponse')
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      normalized = ''.join(ch for ch in key.lower() if ch.isalnum())
+                      assert not any(token in normalized for token in forbidden_tokens), key
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(payload)
+          print(f"delivery provider readiness validated: channels={sorted(channels)}")
+          PY_DELIVERY_PROVIDERS
+
+          STAGE="delivery_restart_recovery"
+          DELIVERY_FIXTURE_ID="$(psql "$DB_URL" -qAtc "
+            INSERT INTO deliveries (
+              channel, provider, recipient, template_key, locale,
+              status, attempt_count, max_attempts, attempt_started_at
+            ) VALUES (
+              'email', 'smtp', 'rg112-restart-fixture@example.invalid',
+              'vpn_access', 'en', 'sending', 1, 5, now()
+            )
+            RETURNING id::text
+          ")"
+          [[ -n "$DELIVERY_FIXTURE_ID" ]]
+
+          systemctl restart routegate-manager
+          manager_ready=0
+          for _ in $(seq 1 30); do
+            if curl -fsS "$API/api/admin/health" >/dev/null; then
+              manager_ready=1
+              break
+            fi
+            sleep 1
+          done
+          [[ "$manager_ready" == "1" ]]
+
+          recovery_state=""
+          for _ in $(seq 1 10); do
+            recovery_state="$(psql "$DB_URL" -qAtc "
+              SELECT status || '|' || COALESCE(last_error_class, '') || '|' || COALESCE(last_error_code, '')
+              FROM deliveries
+              WHERE id='${DELIVERY_FIXTURE_ID}'::uuid
+            ")"
+            [[ "$recovery_state" == "uncertain|uncertain|manager_restart" ]] && break
+            sleep 1
+          done
+          [[ "$recovery_state" == "uncertain|uncertain|manager_restart" ]]
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc \\
+            "DELETE FROM deliveries WHERE id='${DELIVERY_FIXTURE_ID}'::uuid" >/dev/null
+          DELIVERY_FIXTURE_ID=""
+
+          STAGE="dashboard_validation"
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/system/version" > "$WORK_DIR/version.json"
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/dashboard/traffic" > "$WORK_DIR/traffic.json"
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/dashboard/nodes" > "$WORK_DIR/nodes.json"
+
+          MONTH_ROWS="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM traffic_usage_daily WHERE usage_date >= date_trunc('month', now())::date AND usage_date <= now()::date")"
+          DAILY_ROWS="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM traffic_usage_daily WHERE usage_date >= now()::date - 29 AND usage_date <= now()::date")"
+          RAW24_ROWS="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM traffic_usage_events WHERE observed_at >= now() - interval '24 hours'")"
+          TOTAL_SERVERS="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM servers")"
+
+          python3 - \
+            "$WORK_DIR/version.json" \
+            "$WORK_DIR/traffic.json" \
+            "$WORK_DIR/nodes.json" \
+            "$EXPECTED_COMMIT" \
+            "$SERVER_ID" \
+            "$MONTH_ROWS" \
+            "$DAILY_ROWS" \
+            "$RAW24_ROWS" \
+            "$TOTAL_SERVERS" <<'PY_VALIDATE_DASHBOARD'
+          import json
+          import sys
+
+          version_path, traffic_path, nodes_path, commit, server_id, month_rows, daily_rows, raw24_rows, total_servers = sys.argv[1:]
+          month_rows = int(month_rows)
+          daily_rows = int(daily_rows)
+          raw24_rows = int(raw24_rows)
+          total_servers = int(total_servers)
+
+          with open(version_path, encoding='utf-8') as f:
+              version = json.load(f)
+          with open(traffic_path, encoding='utf-8') as f:
+              traffic = json.load(f)
+          with open(nodes_path, encoding='utf-8') as f:
+              nodes = json.load(f)
+
+          assert version['manager']['gitCommit'] == commit, version['manager']
+          assert version['database']['expectedSchemaVersion'] == 113, version['database']
+          assert version['database']['appliedSchemaVersion'] == '000113_delivery_foundation', version['database']
+
+          assert isinstance(traffic.get('daily'), list) and len(traffic['daily']) == 30
+          assert traffic.get('monthlyAvailable') is (month_rows > 0)
+          assert traffic.get('dailyAvailable') is (daily_rows > 0)
+          for bucket in traffic['daily']:
+              assert bucket['rxBytes'] >= 0 and bucket['txBytes'] >= 0 and bucket['totalBytes'] == bucket['rxBytes'] + bucket['txBytes']
+          if raw24_rows == 0:
+              assert all(not item['available'] for item in traffic.get('servers', [])), traffic.get('servers')
+
+          assert nodes.get('totalServers') == total_servers, nodes
+          assert isinstance(nodes.get('locations'), list) and len(nodes['locations']) <= 8
+          assert isinstance(nodes.get('serverLoads'), list) and len(nodes['serverLoads']) <= 5
+          load = next((item for item in nodes['serverLoads'] if item.get('serverId') == server_id), None)
+          assert load is not None, nodes['serverLoads']
+          assert isinstance(load.get('load1'), (int, float)) and load['load1'] >= 0, load
+          assert isinstance(load.get('logicalCpus'), int) and load['logicalCpus'] > 0, load
+          print(f"dashboard API validated: servers={total_servers}, monthlyAvailable={traffic['monthlyAvailable']}, dailyAvailable={traffic['dailyAvailable']}")
+          PY_VALIDATE_DASHBOARD
+
+          VERSION_ID="$(psql "$DB_URL" -qAtc "SELECT active_config_version_id::text FROM servers WHERE id='${SERVER_ID}'::uuid")"
+          [[ -n "$VERSION_ID" ]]
+
+          STAGE="config_reapply"
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/servers/$SERVER_ID/config/versions/$VERSION_ID/reapply" \
+            > "$WORK_DIR/reapply.json"
+
+          JOB_ID="$(python3 - "$WORK_DIR/reapply.json" <<'PY_JOB'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as f:
+              payload = json.load(f)
+          print(payload['job']['id'])
+          PY_JOB
+          )"
+          [[ -n "$JOB_ID" ]]
+
+          job_status=""
+          for _ in $(seq 1 30); do
+            job_status="$(psql "$DB_URL" -qAtc "SELECT status FROM config_apply_jobs WHERE id='${JOB_ID}'::uuid")"
+            case "$job_status" in
+              succeeded) break ;;
+              failed) echo "Config reapply failed"; false ;;
+            esac
+            sleep 3
+          done
+          [[ "$job_status" == "succeeded" ]]
+
+          curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/dashboard/activity" > "$WORK_DIR/activity.json"
+
+          python3 - "$WORK_DIR/activity.json" "$JOB_ID" <<'PY_ACTIVITY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding='utf-8') as f:
+              activity = json.load(f)
+          job_id = sys.argv[2]
+          deployments = activity.get('recentDeployments', [])
+          audits = activity.get('recentAuditEvents', [])
+          assert len(deployments) <= 5
+          assert len(audits) <= 5
+          assert any(item.get('id') == job_id and item.get('status') == 'succeeded' for item in deployments), deployments
+          assert any(item.get('action') == 'config.reapply.requested' for item in audits), audits
+
+          forbidden = {
+              'requestPayload', 'resultPayload', 'errorMessage', 'renderedConfig',
+              'realityPrivateKey', 'privateKey', 'metadata'
+          }
+          def walk(value):
+              if isinstance(value, dict):
+                  assert not (forbidden & value.keys()), forbidden & value.keys()
+                  for child in value.values():
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      walk(child)
+          walk(activity)
+          print(f"dashboard activity validated: deployments={len(deployments)}, audits={len(audits)}")
+          PY_ACTIVITY
+
+          STAGE="final_health"
+          systemctl is-active --quiet routegate-manager
+          systemctl is-active --quiet routegate-agent
+          systemctl is-active --quiet sing-box
+          /usr/bin/sing-box check -c /etc/sing-box/config.json
+
+          python3 - /etc/sing-box/config.json <<'PY_REALITY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding='utf-8') as f:
+              config = json.load(f)
+          vless = [item for item in config.get('inbounds', []) if item.get('type') == 'vless']
+          assert vless, 'VLESS inbound missing'
+          inbound = vless[0]
+          assert inbound.get('listen_port') == 8443, inbound.get('listen_port')
+          tls = inbound.get('tls') or {}
+          assert tls.get('enabled') is True, 'VLESS TLS disabled'
+          reality = tls.get('reality') or {}
+          assert reality.get('enabled') is True, 'Reality disabled'
+          print('VLESS/Reality config validated on TCP 8443')
+          PY_REALITY
+
+          ss -ltn | awk '{print $4}' | grep -Eq '(^|:)8443$'
+          curl -fsS http://127.0.0.1:8080/api/admin/health >/dev/null
+
+          public_status="$(curl -sS -o /dev/null -w '%{http_code}' https://us.routegate.org/)"
+          [[ "$public_status" == "200" ]]
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc \
+            "DELETE FROM auth_sessions WHERE id='${SESSION_ID}'::uuid" >/dev/null
+          SESSION_ID=""
+
+          STAGE="complete"
+          echo "RG-112 production-like E2E PASSED"
+          echo "deployed_commit=$EXPECTED_COMMIT"
+          echo "backup=$BACKUP_DIR"
+          echo "routegate-manager=$(systemctl is-active routegate-manager)"
+          echo "routegate-agent=$(systemctl is-active routegate-agent)"
+          echo "sing-box=$(systemctl is-active sing-box)"
+          REMOTE_SCRIPT
