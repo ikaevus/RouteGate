@@ -40,6 +40,9 @@ func (a *App) Start(ctx context.Context) error {
 	if err := db.Migrate(ctx, pool, "migrations", a.logger); err != nil {
 		return err
 	}
+	if err := delivery.EnsureProviderSecretStore(ctx, pool, a.cfg, a.logger); err != nil {
+		return err
+	}
 
 	authRepo := auth.NewRepository(pool)
 	if err := authRepo.EnsureBuiltIns(ctx); err != nil {
