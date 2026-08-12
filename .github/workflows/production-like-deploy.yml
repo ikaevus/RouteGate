@@ -219,7 +219,7 @@ jobs:
           DB_URL="${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}"
 
           STAGE="backup"
-          BACKUP_DIR="/root/routegate-backups/rg112c-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
+          BACKUP_DIR="/root/routegate-backups/rg112d-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
           install -d -m 0700 /root/routegate-backups "$BACKUP_DIR"
 
           cp -a /usr/local/bin/routegate-manager "$BACKUP_DIR/routegate-manager"
@@ -288,10 +288,37 @@ jobs:
             000113_delivery_foundation \
             000114_agent_runtime_metrics_backfill \
             000115_delivery_provider_settings \
-            000116_delivery_telegram_pairing; do
+            000116_delivery_telegram_pairing \
+            000117_vpn_client_profile_uniqueness_repair; do
             applied="$(psql "$DB_URL" -qAtc "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version='${migration}')")"
             [[ "$applied" == "t" ]]
           done
+
+          CLIENT_PROFILE_UNIQUE_INDEXES="$(psql "$DB_URL" -qAtc "
+            SELECT COUNT(*)
+            FROM pg_index AS index_row
+            JOIN pg_attribute AS attribute_row
+              ON attribute_row.attrelid = index_row.indrelid
+             AND attribute_row.attnum = index_row.indkey[0]
+            WHERE index_row.indrelid = 'vpn_client_profiles'::regclass
+              AND index_row.indisunique
+              AND index_row.indisvalid
+              AND index_row.indpred IS NULL
+              AND index_row.indexprs IS NULL
+              AND index_row.indnkeyatts = 1
+              AND attribute_row.attname = 'vpn_account_id'
+          ")"
+          [[ "$CLIENT_PROFILE_UNIQUE_INDEXES" -ge 1 ]]
+          DUPLICATE_CLIENT_PROFILE_ACCOUNTS="$(psql "$DB_URL" -qAtc "
+            SELECT COUNT(*)
+            FROM (
+              SELECT vpn_account_id
+              FROM vpn_client_profiles
+              GROUP BY vpn_account_id
+              HAVING COUNT(*) > 1
+            ) AS duplicates
+          ")"
+          [[ "$DUPLICATE_CLIENT_PROFILE_ACCOUNTS" == "0" ]]
 
           MASTER_KEY=/var/lib/routegate-manager/master.key
           [[ -s "$MASTER_KEY" ]]
@@ -349,6 +376,54 @@ jobs:
           [[ -n "$SESSION_ID" ]]
 
           API="http://127.0.0.1:8080"
+
+          STAGE="vpn_access_delivery_readiness"
+          ACCESS_ACCOUNT_ID="$(psql "$DB_URL" -qAtc "
+            SELECT a.id::text
+            FROM vpn_accounts a
+            JOIN servers s ON s.id = a.server_id
+            WHERE a.vless_uuid IS NOT NULL
+              AND (s.public_ip IS NOT NULL OR NULLIF(BTRIM(COALESCE(s.hostname, '')), '') IS NOT NULL)
+              AND s.vless_port BETWEEN 1 AND 65535
+              AND NULLIF(BTRIM(COALESCE(s.reality_public_key, '')), '') IS NOT NULL
+              AND NULLIF(BTRIM(COALESCE(s.reality_server_name, '')), '') IS NOT NULL
+            ORDER BY
+              CASE WHEN a.id = '523446e8-0351-4c0a-a9ec-19a269a8848f'::uuid THEN 0 ELSE 1 END,
+              a.updated_at DESC,
+              a.id DESC
+            LIMIT 1
+          ")"
+          [[ -n "$ACCESS_ACCOUNT_ID" ]]
+
+          curl -fsS \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/vpn-accounts/$ACCESS_ACCOUNT_ID/client-connection" \
+            > "$WORK_DIR/client-connection.json"
+          curl -fsS \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"locale":"ru","template":"vpn_access"}' \
+            "$API/api/v1/vpn-accounts/$ACCESS_ACCOUNT_ID/deliveries/preview" \
+            > "$WORK_DIR/delivery-preview.json"
+
+          python3 - "$WORK_DIR/client-connection.json" "$WORK_DIR/delivery-preview.json" <<'PY_ACCESS_READY'
+          import json
+          import sys
+
+          connection_path, preview_path = sys.argv[1:]
+          with open(connection_path, encoding='utf-8') as f:
+              connection = json.load(f)
+          with open(preview_path, encoding='utf-8') as f:
+              preview = json.load(f)
+
+          assert connection.get('format') == 'vless-reality-uri', connection.get('format')
+          assert isinstance(connection.get('vlessLink'), str) and connection['vlessLink'].startswith('vless://')
+          assert isinstance(preview.get('subject'), str) and preview['subject'].strip()
+          assert isinstance(preview.get('text'), str) and preview['text'].strip()
+          print('VPN client connection and Delivery preview validated without exposing access material')
+          PY_ACCESS_READY
+
           STAGE="delivery_security"
           FORBIDDEN_DELIVERY_COLUMNS="$(psql "$DB_URL" -qAtc "
             SELECT COUNT(*)
@@ -603,8 +678,8 @@ jobs:
               nodes = json.load(f)
 
           assert version['manager']['gitCommit'] == commit, version['manager']
-          assert version['database']['expectedSchemaVersion'] == 116, version['database']
-          assert version['database']['appliedSchemaVersion'] == '000116_delivery_telegram_pairing', version['database']
+          assert version['database']['expectedSchemaVersion'] == 117, version['database']
+          assert version['database']['appliedSchemaVersion'] == '000117_vpn_client_profile_uniqueness_repair', version['database']
 
           assert isinstance(traffic.get('daily'), list) and len(traffic['daily']) == 30
           assert traffic.get('monthlyAvailable') is (month_rows > 0)
@@ -719,7 +794,7 @@ jobs:
           SESSION_ID=""
 
           STAGE="complete"
-          echo "RG-112C production-like E2E PASSED"
+          echo "RG-112D production-like E2E PASSED"
           echo "deployed_commit=$EXPECTED_COMMIT"
           echo "backup=$BACKUP_DIR"
           echo "routegate-manager=$(systemctl is-active routegate-manager)"
