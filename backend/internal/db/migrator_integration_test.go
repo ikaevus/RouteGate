@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000115_delivery_provider_settings" {
-		t.Fatalf("applied schema version = %q, want 000115_delivery_provider_settings", version)
+	if version != "000116_delivery_telegram_pairing" {
+		t.Fatalf("applied schema version = %q, want 000116_delivery_telegram_pairing", version)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -94,8 +94,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	defer providerRows.Close()
 
 	allowedSecretStorage := map[string]struct{}{
-		"secret_ciphertext": {},
-		"secret_nonce":      {},
+		"secret_ciphertext":  {},
+		"secret_nonce":       {},
 		"secret_key_version": {},
 	}
 	for providerRows.Next() {
@@ -114,6 +114,34 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	}
 	if err := providerRows.Err(); err != nil {
 		t.Fatalf("iterate delivery_provider_settings columns: %v", err)
+	}
+
+	pairingRows, err := pool.Query(ctx, `
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema='public'
+		  AND table_name='telegram_pairing_sessions'
+	`)
+	if err != nil {
+		t.Fatalf("list telegram_pairing_sessions columns: %v", err)
+	}
+	defer pairingRows.Close()
+	pairingColumns := map[string]bool{}
+	for pairingRows.Next() {
+		var column string
+		if err := pairingRows.Scan(&column); err != nil {
+			t.Fatalf("scan telegram_pairing_sessions column: %v", err)
+		}
+		pairingColumns[column] = true
+		if column == "start_parameter" || column == "token" || column == "pairing_token" || column == "secret" {
+			t.Fatalf("telegram_pairing_sessions contains plaintext pairing secret column %q", column)
+		}
+	}
+	if err := pairingRows.Err(); err != nil {
+		t.Fatalf("iterate telegram_pairing_sessions columns: %v", err)
+	}
+	if !pairingColumns["start_parameter_hash"] {
+		t.Fatal("telegram_pairing_sessions must store only the start parameter hash")
 	}
 }
 
@@ -293,8 +321,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000115_delivery_provider_settings" {
-		t.Fatalf("applied schema version = %q, want 000115_delivery_provider_settings", version)
+	if version != "000116_delivery_telegram_pairing" {
+		t.Fatalf("applied schema version = %q, want 000116_delivery_telegram_pairing", version)
 	}
 }
 
