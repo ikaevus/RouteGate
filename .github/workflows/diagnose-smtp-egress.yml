@@ -1,0 +1,70 @@
+name: Diagnose SMTP egress
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-smtp-egress.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 10
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Check Gmail SMTP reachability without credentials
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "sudo bash -s" <<'REMOTE'
+          set -u
+          echo 'dns:'
+          getent ahosts smtp.gmail.com | awk '{print $1}' | sort -u | head -n 8 || true
+
+          for port in 587 465; do
+            echo "tcp_${port}:"
+            if timeout 10 bash -c "</dev/tcp/smtp.gmail.com/${port}"; then
+              echo reachable
+            else
+              rc=$?
+              echo "unreachable rc=${rc}"
+            fi
+          done
+
+          echo 'starttls_587:'
+          timeout 12 openssl s_client -starttls smtp -connect smtp.gmail.com:587 -servername smtp.gmail.com -brief </dev/null 2>&1 \
+            | sed -E 's/[0-9A-Fa-f]{32,}/[hex]/g' \
+            | head -n 12 || true
+
+          echo 'tls_465:'
+          timeout 12 openssl s_client -connect smtp.gmail.com:465 -servername smtp.gmail.com -brief </dev/null 2>&1 \
+            | sed -E 's/[0-9A-Fa-f]{32,}/[hex]/g' \
+            | head -n 12 || true
+          REMOTE
