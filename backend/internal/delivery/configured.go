@@ -13,10 +13,7 @@ import (
 func NewConfiguredWorker(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) *Worker {
 	repository := NewRepository(pool)
 	recorder := audit.NewRecorder(logger, pool)
-	smtpProvider := NewSMTPProvider(cfg.SMTP)
-	telegramProvider := NewTelegramProvider(cfg.Telegram)
-	whatsAppProvider := NewWhatsAppProvider(cfg.WhatsApp)
-	registry, _ := NewRegistry(smtpProvider, telegramProvider, whatsAppProvider)
+	providers := NewProviderSettingsManager(pool, cfg, logger)
 	resolver := NewVPNAccessResolver(vpnaccounts.NewRepository(pool), cfg.PublicURL)
-	return NewWorker(repository, resolver, NewRenderer(), registry, recorder, logger)
+	return NewWorker(repository, resolver, NewRenderer(), providers, recorder, logger)
 }
