@@ -22,12 +22,6 @@ func (h *Handler) GetProviderSettings(w http.ResponseWriter, r *http.Request) {
 		h.databaseError(w, "get_delivery_provider_settings")
 		return
 	}
-	if view.Ready {
-		if _, err := NormalizePublicURL(h.publicURL); err != nil {
-			view.Ready = false
-			view.ConfigurationError = failureFromError(err, ErrorClassPermanent, "public_url_invalid").Code
-		}
-	}
 	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
@@ -65,12 +59,6 @@ func (h *Handler) PutProviderSettings(w http.ResponseWriter, r *http.Request) {
 			"secret_configured": view.SecretConfigured,
 		},
 	})
-	if view.Ready {
-		if _, err := NormalizePublicURL(h.publicURL); err != nil {
-			view.Ready = false
-			view.ConfigurationError = failureFromError(err, ErrorClassPermanent, "public_url_invalid").Code
-		}
-	}
 	httpx.WriteJSON(w, http.StatusOK, view)
 }
 
