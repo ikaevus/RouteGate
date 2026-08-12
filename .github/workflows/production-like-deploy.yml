@@ -219,7 +219,7 @@ jobs:
           DB_URL="${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}"
 
           STAGE="backup"
-          BACKUP_DIR="/root/routegate-backups/rg112-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
+          BACKUP_DIR="/root/routegate-backups/rg112b-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
           install -d -m 0700 /root/routegate-backups "$BACKUP_DIR"
 
           cp -a /usr/local/bin/routegate-manager "$BACKUP_DIR/routegate-manager"
@@ -286,10 +286,19 @@ jobs:
             000111_traffic_usage_daily_rollup \
             000112_agent_runtime_metrics \
             000113_delivery_foundation \
-            000114_agent_runtime_metrics_backfill; do
+            000114_agent_runtime_metrics_backfill \
+            000115_delivery_provider_settings; do
             applied="$(psql "$DB_URL" -qAtc "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version='${migration}')")"
             [[ "$applied" == "t" ]]
           done
+
+          MASTER_KEY=/var/lib/routegate-manager/master.key
+          [[ -s "$MASTER_KEY" ]]
+          [[ "$(stat -c '%a' "$MASTER_KEY")" == "600" ]]
+          [[ "$(stat -c '%U:%G' "$MASTER_KEY")" == "routegate:routegate" ]]
+          [[ "$(stat -c '%a' /var/lib/routegate-manager)" == "700" ]]
+          ! grep -q 'ROUTEGATE_MASTER_KEY' /etc/routegate/manager.env
+          MASTER_KEY_SHA="$(sha256sum "$MASTER_KEY" | awk '{print $1}')"
 
           STAGE="agent_start"
           systemctl start routegate-agent
@@ -353,6 +362,18 @@ jobs:
           ")"
           [[ "$FORBIDDEN_DELIVERY_COLUMNS" == "0" ]]
 
+          FORBIDDEN_PROVIDER_SECRET_COLUMNS="$(psql "$DB_URL" -qAtc "
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_schema='public'
+              AND table_name='delivery_provider_settings'
+              AND column_name IN (
+                'password', 'smtp_password', 'token', 'bot_token', 'access_token',
+                'credential', 'credentials', 'secret', 'secret_value'
+              )
+          ")"
+          [[ "$FORBIDDEN_PROVIDER_SECRET_COLUMNS" == "0" ]]
+
           curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/delivery/providers" > "$WORK_DIR/providers.json"
           python3 - "$WORK_DIR/providers.json" <<'PY_DELIVERY_PROVIDERS'
           import json
@@ -365,12 +386,16 @@ jobs:
           channels = {item.get('channel') for item in items}
           assert {'email', 'telegram', 'whatsapp'} <= channels, items
 
-          forbidden_tokens = ('password', 'secret', 'token', 'credential', 'accessurl', 'vless', 'rawresponse')
+          forbidden_keys = {
+              'password', 'smtppassword', 'token', 'bottoken', 'telegrambottoken',
+              'accesstoken', 'whatsappaccesstoken', 'credential', 'credentials',
+              'secretvalue', 'plaintextsecret', 'accessurl', 'vless', 'rawresponse'
+          }
           def walk(value):
               if isinstance(value, dict):
                   for key, child in value.items():
                       normalized = ''.join(ch for ch in key.lower() if ch.isalnum())
-                      assert not any(token in normalized for token in forbidden_tokens), key
+                      assert normalized not in forbidden_keys, key
                       walk(child)
               elif isinstance(value, list):
                   for child in value:
@@ -378,6 +403,90 @@ jobs:
           walk(payload)
           print(f"delivery provider readiness validated: channels={sorted(channels)}")
           PY_DELIVERY_PROVIDERS
+
+          STAGE="managed_provider_settings"
+          MANAGED_TELEGRAM_ROWS="$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM delivery_provider_settings WHERE provider='telegram'")"
+          if [[ "$MANAGED_TELEGRAM_ROWS" == "0" ]]; then
+            MANAGER_PID_BEFORE="$(systemctl show -p MainPID --value routegate-manager)"
+            RG112B_SECRET='123456789:RG112BProductionLikeFixture'
+            python3 - "$WORK_DIR/managed-telegram.json" "$RG112B_SECRET" <<'PY_MANAGED_REQUEST'
+          import json
+          import sys
+          with open(sys.argv[1], 'w', encoding='utf-8') as f:
+              json.dump({'enabled': True, 'config': {}, 'secret': sys.argv[2]}, f)
+          PY_MANAGED_REQUEST
+
+            curl -fsS \
+              -X PUT \
+              -H "Authorization: Bearer $TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data-binary @"$WORK_DIR/managed-telegram.json" \
+              "$API/api/v1/delivery/providers/telegram/settings" \
+              > "$WORK_DIR/managed-telegram-response.json"
+
+            curl -fsS \
+              -H "Authorization: Bearer $TOKEN" \
+              "$API/api/v1/delivery/providers/telegram/settings" \
+              > "$WORK_DIR/managed-telegram-read.json"
+            curl -fsS \
+              -H "Authorization: Bearer $TOKEN" \
+              "$API/api/v1/delivery/providers" \
+              > "$WORK_DIR/providers-managed.json"
+
+            python3 - \
+              "$WORK_DIR/managed-telegram-response.json" \
+              "$WORK_DIR/managed-telegram-read.json" \
+              "$WORK_DIR/providers-managed.json" \
+              "$RG112B_SECRET" <<'PY_MANAGED_VALIDATE'
+          import json
+          import sys
+
+          save_path, read_path, providers_path, secret = sys.argv[1:]
+          payloads = []
+          for path in (save_path, read_path, providers_path):
+              with open(path, encoding='utf-8') as f:
+                  payloads.append(json.load(f))
+              raw = open(path, encoding='utf-8').read()
+              assert secret not in raw, path
+
+          saved, read_back, providers = payloads
+          assert saved['provider'] == 'telegram' and saved['source'] == 'managed', saved
+          assert saved['ready'] is True and saved['secretConfigured'] is True, saved
+          assert read_back['source'] == 'managed' and read_back['secretConfigured'] is True, read_back
+          telegram = next(item for item in providers['items'] if item['channel'] == 'telegram')
+          assert telegram['ready'] is True and telegram['source'] == 'managed', telegram
+          assert telegram['secretConfigured'] is True, telegram
+          print('managed Telegram settings became ready without Manager restart')
+          PY_MANAGED_VALIDATE
+
+            [[ "$(systemctl show -p MainPID --value routegate-manager)" == "$MANAGER_PID_BEFORE" ]]
+            [[ "$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM delivery_provider_settings WHERE provider='telegram' AND secret_ciphertext IS NOT NULL AND secret_nonce IS NOT NULL AND secret_key_version=1")" == "1" ]]
+            [[ "$(psql "$DB_URL" -qAtc "SELECT position(convert_to('$RG112B_SECRET', 'UTF8') in secret_ciphertext) FROM delivery_provider_settings WHERE provider='telegram'")" == "0" ]]
+            [[ "$(psql "$DB_URL" -qAtc "SELECT position('$RG112B_SECRET' in config_json::text) FROM delivery_provider_settings WHERE provider='telegram'")" == "0" ]]
+
+            curl -fsS \
+              -X DELETE \
+              -H "Authorization: Bearer $TOKEN" \
+              "$API/api/v1/delivery/providers/telegram/settings" \
+              -o /dev/null
+            [[ "$(psql "$DB_URL" -qAtc "SELECT COUNT(*) FROM delivery_provider_settings WHERE provider='telegram'")" == "0" ]]
+            unset RG112B_SECRET
+          else
+            echo "managed Telegram settings already exist; preserving them and skipping destructive fixture mutation"
+            curl -fsS \
+              -H "Authorization: Bearer $TOKEN" \
+              "$API/api/v1/delivery/providers/telegram/settings" \
+              > "$WORK_DIR/managed-telegram-existing.json"
+            python3 - "$WORK_DIR/managed-telegram-existing.json" <<'PY_MANAGED_EXISTING'
+          import json
+          import sys
+          with open(sys.argv[1], encoding='utf-8') as f:
+              payload = json.load(f)
+          assert payload['provider'] == 'telegram'
+          assert 'secret' not in payload.get('config', {})
+          assert isinstance(payload.get('secretConfigured'), bool)
+          PY_MANAGED_EXISTING
+          fi
 
           STAGE="delivery_restart_recovery"
           DELIVERY_FIXTURE_ID="$(psql "$DB_URL" -qAtc "
@@ -402,6 +511,7 @@ jobs:
             sleep 1
           done
           [[ "$manager_ready" == "1" ]]
+          [[ "$(sha256sum "$MASTER_KEY" | awk '{print $1}')" == "$MASTER_KEY_SHA" ]]
 
           recovery_state=""
           for _ in $(seq 1 10); do
@@ -456,8 +566,8 @@ jobs:
               nodes = json.load(f)
 
           assert version['manager']['gitCommit'] == commit, version['manager']
-          assert version['database']['expectedSchemaVersion'] == 114, version['database']
-          assert version['database']['appliedSchemaVersion'] == '000114_agent_runtime_metrics_backfill', version['database']
+          assert version['database']['expectedSchemaVersion'] == 115, version['database']
+          assert version['database']['appliedSchemaVersion'] == '000115_delivery_provider_settings', version['database']
 
           assert isinstance(traffic.get('daily'), list) and len(traffic['daily']) == 30
           assert traffic.get('monthlyAvailable') is (month_rows > 0)
@@ -572,7 +682,7 @@ jobs:
           SESSION_ID=""
 
           STAGE="complete"
-          echo "RG-112 production-like E2E PASSED"
+          echo "RG-112B production-like E2E PASSED"
           echo "deployed_commit=$EXPECTED_COMMIT"
           echo "backup=$BACKUP_DIR"
           echo "routegate-manager=$(systemctl is-active routegate-manager)"
