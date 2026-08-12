@@ -2,14 +2,19 @@ import { en, type TranslationKey as BaseTranslationKey } from './locales/en';
 import { ru } from './locales/ru';
 import { settingsEn, settingsRu, type SettingsTranslationKey } from './settingsTranslations';
 import { deliveryEn, deliveryRu, type DeliveryTranslationKey } from './deliveryTranslations';
+import {
+  telegramPairingEn,
+  telegramPairingRu,
+  type TelegramPairingTranslationKey,
+} from './telegramPairingTranslations';
 
 export type Locale = 'en' | 'ru';
-export type TranslationKey = BaseTranslationKey | SettingsTranslationKey | DeliveryTranslationKey;
+export type TranslationKey = BaseTranslationKey | SettingsTranslationKey | DeliveryTranslationKey | TelegramPairingTranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
-  en: { ...en, ...settingsEn, ...deliveryEn },
-  ru: { ...ru, ...settingsRu, ...deliveryRu },
+  en: { ...en, ...settingsEn, ...deliveryEn, ...telegramPairingEn },
+  ru: { ...ru, ...settingsRu, ...deliveryRu, ...telegramPairingRu },
 };
 
 const DEFAULT_LOCALE: Locale = 'en';

@@ -5,6 +5,7 @@ import { getSystemVersion } from '../../entities/system/api/systemApi';
 import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { DeliverySettingsPanel } from './DeliverySettingsPanel';
+import { TelegramRecipientsPanel } from './TelegramRecipientsPanel';
 import './SettingsPage.css';
 
 function formatValue(value?: string | number | null): string {
@@ -175,6 +176,7 @@ export function SettingsPage() {
             </section>
 
             <DeliverySettingsPanel />
+            <TelegramRecipientsPanel />
 
             <section className="panel settings-panel">
               <div className="settings-panel-heading">

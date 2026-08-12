@@ -97,6 +97,39 @@ export interface TestDeliveryProviderSettingsResponse {
   errorCode?: string;
 }
 
+export interface DeliveryRecipient {
+  id: string;
+  channel: DeliveryChannel;
+  provider: DeliveryProviderName | string;
+  recipient: string;
+  displayName: string;
+  username?: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeliveryRecipientListResponse {
+  items: DeliveryRecipient[];
+}
+
+export type TelegramPairingState = 'pending' | 'paired' | 'expired';
+
+export interface TelegramPairingSession {
+  id: string;
+  state: TelegramPairingState;
+  botUsername: string;
+  deepLink?: string;
+  expiresAt: string;
+  recipient?: DeliveryRecipient;
+  errorCode?: string;
+}
+
+export interface TelegramRecipientTestResponse {
+  ok: boolean;
+  errorCode?: string;
+}
+
 export function providerNameForChannel(channel: DeliveryChannel): DeliveryProviderName {
   return channel === 'email' ? 'smtp' : channel;
 }
@@ -131,6 +164,28 @@ export function testDeliveryProviderSettings(
 
 export function removeDeliveryProviderSettings(provider: DeliveryProviderName): Promise<void> {
   return apiDelete(`/api/v1/delivery/providers/${encodeURIComponent(provider)}/settings`);
+}
+
+export function getTelegramRecipients(): Promise<DeliveryRecipientListResponse> {
+  return apiGet<DeliveryRecipientListResponse>('/api/v1/delivery/telegram/recipients');
+}
+
+export function startTelegramPairing(): Promise<TelegramPairingSession> {
+  return apiPost<undefined, TelegramPairingSession>('/api/v1/delivery/telegram/pairings');
+}
+
+export function getTelegramPairing(pairingId: string): Promise<TelegramPairingSession> {
+  return apiGet<TelegramPairingSession>(`/api/v1/delivery/telegram/pairings/${encodeURIComponent(pairingId)}`);
+}
+
+export function testTelegramRecipient(recipientId: string): Promise<TelegramRecipientTestResponse> {
+  return apiPost<undefined, TelegramRecipientTestResponse>(
+    `/api/v1/delivery/telegram/recipients/${encodeURIComponent(recipientId)}/test`,
+  );
+}
+
+export function removeTelegramRecipient(recipientId: string): Promise<void> {
+  return apiDelete(`/api/v1/delivery/telegram/recipients/${encodeURIComponent(recipientId)}`);
 }
 
 export function previewVpnAccountDelivery(
