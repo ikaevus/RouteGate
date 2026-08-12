@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	KeySize       = 32
+	KeySize        = 32
 	CurrentVersion = 1
 	credentialName = "routegate-master-key"
 )
@@ -37,13 +37,7 @@ func NewBox(key []byte) (*Box, error) {
 }
 
 func LoadBox(configuredPath string) (*Box, error) {
-	path := strings.TrimSpace(configuredPath)
-	if credentialsDir := strings.TrimSpace(os.Getenv("CREDENTIALS_DIRECTORY")); credentialsDir != "" {
-		candidate := filepath.Join(credentialsDir, credentialName)
-		if _, err := os.Stat(candidate); err == nil {
-			path = candidate
-		}
-	}
+	path := resolveKeyPath(configuredPath)
 	if path == "" {
 		return nil, fmt.Errorf("routegate master key path is not configured")
 	}
@@ -52,6 +46,53 @@ func LoadBox(configuredPath string) (*Box, error) {
 		return nil, fmt.Errorf("read routegate master key: %w", err)
 	}
 	return NewBox(key)
+}
+
+func CreateKeyFile(configuredPath string) error {
+	path := strings.TrimSpace(configuredPath)
+	if path == "" {
+		return fmt.Errorf("routegate master key path is not configured")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create routegate secret state directory: %w", err)
+	}
+	key := make([]byte, KeySize)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return fmt.Errorf("generate routegate master key: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create routegate master key: %w", err)
+	}
+	removeOnFailure := true
+	defer func() {
+		_ = file.Close()
+		if removeOnFailure {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err := file.Write(key); err != nil {
+		return fmt.Errorf("write routegate master key: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync routegate master key: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close routegate master key: %w", err)
+	}
+	removeOnFailure = false
+	return nil
+}
+
+func resolveKeyPath(configuredPath string) string {
+	path := strings.TrimSpace(configuredPath)
+	if credentialsDir := strings.TrimSpace(os.Getenv("CREDENTIALS_DIRECTORY")); credentialsDir != "" {
+		candidate := filepath.Join(credentialsDir, credentialName)
+		if _, err := os.Stat(candidate); err == nil {
+			path = candidate
+		}
+	}
+	return path
 }
 
 func (b *Box) Seal(plaintext, additionalData []byte) (ciphertext, nonce []byte, err error) {
