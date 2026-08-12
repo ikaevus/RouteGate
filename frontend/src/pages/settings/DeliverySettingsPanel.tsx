@@ -17,12 +17,11 @@ import { ApiError } from '../../shared/api/client';
 import { t } from '../../shared/i18n/i18n';
 import './DeliverySettingsPanel.css';
 
-const channels: DeliveryChannel[] = ['email', 'telegram', 'whatsapp'];
+const channels: DeliveryChannel[] = ['email', 'telegram'];
 
 function channelLabel(channel: DeliveryChannel): string {
   switch (channel) {
     case 'telegram': return t('delivery.telegram');
-    case 'whatsapp': return t('delivery.whatsapp');
     default: return t('delivery.email');
   }
 }
@@ -33,8 +32,6 @@ function providerReason(code?: string): string {
     case 'smtp_configuration_invalid': return t('delivery.provider.smtp_configuration_invalid');
     case 'telegram_not_configured': return t('delivery.provider.telegram_not_configured');
     case 'telegram_configuration_invalid': return t('delivery.provider.telegram_configuration_invalid');
-    case 'whatsapp_not_configured': return t('delivery.provider.whatsapp_not_configured');
-    case 'whatsapp_configuration_invalid': return t('delivery.provider.whatsapp_configuration_invalid');
     case 'delivery_provider_disabled': return t('delivery.provider.disabled');
     case 'secret_store_unavailable': return t('delivery.provider.secret_store_unavailable');
     case 'provider_secret_decryption_failed': return t('delivery.provider.secret_decryption_failed');
@@ -45,7 +42,7 @@ function providerReason(code?: string): string {
 }
 
 function parseFocusedChannel(value: string | null): DeliveryChannel | null {
-  return value === 'email' || value === 'telegram' || value === 'whatsapp' ? value : null;
+  return value === 'email' || value === 'telegram' ? value : null;
 }
 
 function sourceLabel(source?: string): string {
@@ -78,8 +75,6 @@ function safeMutationError(error: unknown): string {
       case 'smtp_configuration_invalid':
       case 'telegram_not_configured':
       case 'telegram_configuration_invalid':
-      case 'whatsapp_not_configured':
-      case 'whatsapp_configuration_invalid':
       case 'secret_store_unavailable':
       case 'provider_secret_decryption_failed':
         return providerReason(error.code);
@@ -184,9 +179,7 @@ function DeliveryChannelCard({
             {ready
               ? channel === 'email'
                 ? t('delivery.emailProviderReady')
-                : channel === 'telegram'
-                  ? t('delivery.telegramProviderReady')
-                  : t('delivery.whatsappProviderReady')
+                : t('delivery.telegramProviderReady')
               : providerReason(settings.configurationError)}
           </p>
           <div className="settings-delivery-card-actions">
@@ -237,15 +230,6 @@ function ProviderSettingsEditor({
         fromName: asString(settings.config, 'fromName', 'RouteGate'),
         tlsMode: asString(settings.config, 'tlsMode', 'starttls'),
       });
-    } else if (provider === 'whatsapp') {
-      setFields({
-        phoneNumberId: asString(settings.config, 'phoneNumberId'),
-        graphApiVersion: asString(settings.config, 'graphApiVersion'),
-        vpnAccessTemplate: asString(settings.config, 'vpnAccessTemplate', 'routegate_vpn_access'),
-        vpnAccessReissuedTemplate: asString(settings.config, 'vpnAccessReissuedTemplate', 'routegate_vpn_access_reissued'),
-        languageEn: asString(settings.config, 'languageEn', 'en_US'),
-        languageRu: asString(settings.config, 'languageRu', 'ru'),
-      });
     } else {
       setFields({});
     }
@@ -267,15 +251,6 @@ function ProviderSettingsEditor({
         fromAddress: fields.fromAddress ?? '',
         fromName: fields.fromName ?? 'RouteGate',
         tlsMode: fields.tlsMode ?? 'starttls',
-      };
-    } else if (provider === 'whatsapp') {
-      config = {
-        phoneNumberId: fields.phoneNumberId ?? '',
-        graphApiVersion: fields.graphApiVersion ?? '',
-        vpnAccessTemplate: fields.vpnAccessTemplate ?? '',
-        vpnAccessReissuedTemplate: fields.vpnAccessReissuedTemplate ?? '',
-        languageEn: fields.languageEn ?? 'en_US',
-        languageRu: fields.languageRu ?? 'ru',
       };
     } else {
       config = {};
@@ -364,24 +339,12 @@ function ProviderSettingsEditor({
         </div>
       )}
 
-      {provider === 'whatsapp' && (
-        <div className="settings-delivery-form-grid">
-          <SecretField configured={settings.secretConfigured} label={t('delivery.settingsWhatsAppToken')} value={secret} onChange={setSecret} />
-          <TextField label={t('delivery.settingsWhatsAppPhoneNumberId')} value={fields.phoneNumberId ?? ''} onChange={(value) => updateField('phoneNumberId', value)} inputMode="numeric" />
-          <TextField label={t('delivery.settingsWhatsAppGraphVersion')} value={fields.graphApiVersion ?? ''} onChange={(value) => updateField('graphApiVersion', value)} placeholder="vXX.X" />
-          <TextField label={t('delivery.settingsWhatsAppAccessTemplate')} value={fields.vpnAccessTemplate ?? ''} onChange={(value) => updateField('vpnAccessTemplate', value)} placeholder="routegate_vpn_access" />
-          <TextField label={t('delivery.settingsWhatsAppReissuedTemplate')} value={fields.vpnAccessReissuedTemplate ?? ''} onChange={(value) => updateField('vpnAccessReissuedTemplate', value)} placeholder="routegate_vpn_access_reissued" />
-          <TextField label={t('delivery.settingsWhatsAppLanguageEn')} value={fields.languageEn ?? 'en_US'} onChange={(value) => updateField('languageEn', value)} placeholder="en_US" />
-          <TextField label={t('delivery.settingsWhatsAppLanguageRu')} value={fields.languageRu ?? 'ru'} onChange={(value) => updateField('languageRu', value)} placeholder="ru" />
-        </div>
-      )}
-
       <div className="settings-delivery-secret-note">{t('delivery.settingsSecretWriteOnly')}</div>
 
       {testResult === 'success' && <div className="form-message form-message-success">{t('delivery.settingsTestSuccess')}</div>}
       {testResult === 'failure' && (
         <div className="form-message form-message-error">
-          {testErrorCode && ['smtp_not_configured', 'smtp_configuration_invalid', 'telegram_not_configured', 'telegram_configuration_invalid', 'whatsapp_not_configured', 'whatsapp_configuration_invalid'].includes(testErrorCode)
+          {testErrorCode && ['smtp_not_configured', 'smtp_configuration_invalid', 'telegram_not_configured', 'telegram_configuration_invalid'].includes(testErrorCode)
             ? providerReason(testErrorCode)
             : t('delivery.settingsTestFailed')}
         </div>
