@@ -19,6 +19,7 @@
 }
 
 .settings-delivery-card {
+  align-content: start;
   background: color-mix(in srgb, var(--rg-surface-raised) 88%, transparent);
   border: 1px solid var(--rg-border);
   border-radius: 14px;
@@ -28,22 +29,37 @@
   padding: 14px;
 }
 
+.settings-delivery-card-open {
+  grid-column: 1 / -1;
+}
+
 .settings-delivery-card-focused {
   border-color: color-mix(in srgb, var(--rg-primary) 72%, var(--rg-border));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--rg-primary) 18%, transparent);
 }
 
 .settings-delivery-card-header {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   gap: 10px;
   justify-content: space-between;
+}
+
+.settings-delivery-card-header > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .settings-delivery-card-header h3 {
   color: var(--rg-text-primary);
   font-size: 15px;
   margin: 0;
+}
+
+.settings-delivery-card-header small {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
 }
 
 .settings-delivery-status {
@@ -68,45 +84,106 @@
 }
 
 .settings-delivery-reason,
-.settings-delivery-safe-state,
-.settings-delivery-setup p {
+.settings-delivery-field-hint {
   color: var(--rg-text-secondary);
   font-size: 12px;
   line-height: 1.5;
   margin: 0;
 }
 
-.settings-delivery-setup {
+.settings-delivery-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-delivery-editor {
   border-top: 1px solid var(--rg-border);
   display: grid;
-  gap: 10px;
-  padding-top: 12px;
+  gap: 14px;
+  margin-top: 2px;
+  padding-top: 14px;
 }
 
-.settings-delivery-variable-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.settings-delivery-variable-list code,
-.settings-delivery-command {
-  background: color-mix(in srgb, var(--rg-surface-main) 70%, transparent);
-  border: 1px solid var(--rg-border);
-  border-radius: 8px;
+.settings-delivery-enabled {
+  align-items: center;
   color: var(--rg-text-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-  padding: 5px 7px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+  width: fit-content;
 }
 
-.settings-delivery-command {
-  width: fit-content;
+.settings-delivery-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-delivery-form-grid-single {
+  grid-template-columns: minmax(0, 560px);
+}
+
+.settings-delivery-field-hint {
+  grid-column: 1 / -1;
+}
+
+.settings-delivery-secret-note {
+  background: color-mix(in srgb, var(--rg-surface-main) 76%, transparent);
+  border: 1px solid var(--rg-border);
+  border-radius: 10px;
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
+.settings-delivery-editor-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-delivery-remove {
+  margin-left: auto;
+}
+
+.settings-delivery-return {
+  border-top: 1px solid var(--rg-border);
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+
+.settings-delivery-return .small-button {
+  text-decoration: none;
 }
 
 @media (max-width: 1180px) {
   .settings-delivery-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-delivery-card-open {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-delivery-form-grid,
+  .settings-delivery-form-grid-single {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-delivery-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-delivery-status {
+    width: fit-content;
+  }
+
+  .settings-delivery-remove {
+    margin-left: 0;
   }
 }
