@@ -61,37 +61,3 @@ func (p *TelegramProvider) Test(ctx context.Context) ProviderResult {
 	}
 	return ProviderResult{Outcome: OutcomeAccepted}
 }
-
-func (p *WhatsAppProvider) Test(ctx context.Context) ProviderResult {
-	if !p.Configured() {
-		return ProviderResult{Outcome: OutcomePermanentFailure, ErrorClass: ErrorClassPermanent, ErrorCode: p.ConfigurationErrorCode()}
-	}
-	requestURL := strings.TrimRight(p.apiBaseURL, "/") + "/" + p.config.GraphAPIVersion + "/" + p.config.PhoneNumberID + "?fields=id,display_phone_number"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return ProviderResult{Outcome: OutcomePermanentFailure, ErrorClass: ErrorClassPermanent, ErrorCode: "whatsapp_request_invalid"}
-	}
-	req.Header.Set("Authorization", "Bearer "+p.config.AccessToken)
-	req.Header.Set("Accept", "application/json")
-	response, err := p.client.Do(req)
-	if err != nil {
-		return ProviderResult{Outcome: OutcomeRetryableFailure, ErrorClass: ErrorClassTransient, ErrorCode: "whatsapp_server_error"}
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
-	switch {
-	case response.StatusCode == http.StatusTooManyRequests:
-		return ProviderResult{Outcome: OutcomeRetryableFailure, ErrorClass: ErrorClassTransient, ErrorCode: "whatsapp_rate_limited"}
-	case response.StatusCode >= 500:
-		return ProviderResult{Outcome: OutcomeRetryableFailure, ErrorClass: ErrorClassTransient, ErrorCode: "whatsapp_server_error"}
-	case response.StatusCode == http.StatusUnauthorized:
-		return ProviderResult{Outcome: OutcomePermanentFailure, ErrorClass: ErrorClassPermanent, ErrorCode: "whatsapp_unauthorized"}
-	case response.StatusCode == http.StatusForbidden:
-		return ProviderResult{Outcome: OutcomePermanentFailure, ErrorClass: ErrorClassPermanent, ErrorCode: "whatsapp_forbidden"}
-	case response.StatusCode == http.StatusNotFound:
-		return ProviderResult{Outcome: OutcomePermanentFailure, ErrorClass: ErrorClassPermanent, ErrorCode: "whatsapp_not_found"}
-	case response.StatusCode >= 400:
-		return ProviderResult{Outcome: OutcomePermanentFailure, ErrorClass: ErrorClassPermanent, ErrorCode: "whatsapp_request_rejected"}
-	}
-	return ProviderResult{Outcome: OutcomeAccepted}
-}

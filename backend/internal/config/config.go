@@ -22,16 +22,6 @@ type TelegramConfig struct {
 	BotToken string
 }
 
-type WhatsAppConfig struct {
-	AccessToken               string
-	PhoneNumberID             string
-	GraphAPIVersion           string
-	VPNAccessTemplate         string
-	VPNAccessReissuedTemplate string
-	LanguageEN                string
-	LanguageRU                string
-}
-
 type Config struct {
 	Env                       string
 	HTTPAddr                  string
@@ -46,7 +36,6 @@ type Config struct {
 	BootstrapAdminDisplayName string
 	SMTP                      SMTPConfig
 	Telegram                  TelegramConfig
-	WhatsApp                  WhatsAppConfig
 }
 
 func Load() Config {
@@ -74,15 +63,6 @@ func Load() Config {
 		},
 		Telegram: TelegramConfig{
 			BotToken: env("ROUTEGATE_TELEGRAM_BOT_TOKEN", ""),
-		},
-		WhatsApp: WhatsAppConfig{
-			AccessToken:               env("ROUTEGATE_WHATSAPP_ACCESS_TOKEN", ""),
-			PhoneNumberID:             env("ROUTEGATE_WHATSAPP_PHONE_NUMBER_ID", ""),
-			GraphAPIVersion:           env("ROUTEGATE_WHATSAPP_GRAPH_API_VERSION", ""),
-			VPNAccessTemplate:         env("ROUTEGATE_WHATSAPP_TEMPLATE_VPN_ACCESS", ""),
-			VPNAccessReissuedTemplate: env("ROUTEGATE_WHATSAPP_TEMPLATE_VPN_ACCESS_REISSUED", ""),
-			LanguageEN:                env("ROUTEGATE_WHATSAPP_LANGUAGE_EN", "en_US"),
-			LanguageRU:                env("ROUTEGATE_WHATSAPP_LANGUAGE_RU", "ru"),
 		},
 	}
 }

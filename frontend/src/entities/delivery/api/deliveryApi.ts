@@ -3,8 +3,8 @@ import { apiDelete, apiGet, apiPost, apiPut } from '../../../shared/api/client';
 export type DeliveryStatus = 'queued' | 'sending' | 'retrying' | 'sent' | 'delivered' | 'failed' | 'uncertain';
 export type DeliveryLocale = 'en' | 'ru';
 export type DeliveryTemplate = 'vpn_access' | 'vpn_access_reissued';
-export type DeliveryChannel = 'email' | 'telegram' | 'whatsapp';
-export type DeliveryProviderName = 'smtp' | 'telegram' | 'whatsapp';
+export type DeliveryChannel = 'email' | 'telegram';
+export type DeliveryProviderName = 'smtp' | 'telegram';
 export type DeliveryProviderSource = 'managed' | 'environment' | 'none' | 'static';
 
 export interface DeliveryProviderCapabilities {
@@ -131,7 +131,7 @@ export interface TelegramRecipientTestResponse {
 }
 
 export function providerNameForChannel(channel: DeliveryChannel): DeliveryProviderName {
-  return channel === 'email' ? 'smtp' : channel;
+  return channel === 'email' ? 'smtp' : 'telegram';
 }
 
 export function getDeliveryProviders(): Promise<DeliveryProviderListResponse> {

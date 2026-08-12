@@ -219,7 +219,7 @@ jobs:
           DB_URL="${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}"
 
           STAGE="backup"
-          BACKUP_DIR="/root/routegate-backups/rg112d-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
+          BACKUP_DIR="/root/routegate-backups/rg112e-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
           install -d -m 0700 /root/routegate-backups "$BACKUP_DIR"
 
           cp -a /usr/local/bin/routegate-manager "$BACKUP_DIR/routegate-manager"
@@ -470,7 +470,10 @@ jobs:
           items = payload.get('items')
           assert isinstance(items, list), payload
           channels = {item.get('channel') for item in items}
-          assert {'email', 'telegram', 'whatsapp'} <= channels, items
+          providers = {item.get('name') for item in items}
+          assert channels == {'email', 'telegram'}, items
+          assert providers == {'smtp', 'telegram'}, items
+          assert all(item.get('channel') != 'whatsapp' and item.get('name') != 'whatsapp' for item in items), items
 
           forbidden_keys = {
               'password', 'smtppassword', 'token', 'bottoken', 'telegrambottoken',
@@ -794,7 +797,7 @@ jobs:
           SESSION_ID=""
 
           STAGE="complete"
-          echo "RG-112D production-like E2E PASSED"
+          echo "RG-112E production-like E2E PASSED"
           echo "deployed_commit=$EXPECTED_COMMIT"
           echo "backup=$BACKUP_DIR"
           echo "routegate-manager=$(systemctl is-active routegate-manager)"
