@@ -47,7 +47,6 @@ function deliveryStatusLabel(status: DeliveryStatus): string {
 function channelLabel(channel: DeliveryChannel): string {
   switch (channel) {
     case 'telegram': return t('delivery.telegram');
-    case 'whatsapp': return t('delivery.whatsapp');
     default: return t('delivery.email');
   }
 }
@@ -55,7 +54,6 @@ function channelLabel(channel: DeliveryChannel): string {
 function configureChannelLabel(channel: DeliveryChannel): string {
   switch (channel) {
     case 'telegram': return t('delivery.configureTelegramAction');
-    case 'whatsapp': return t('delivery.configureWhatsAppAction');
     default: return t('delivery.configureEmailAction');
   }
 }
@@ -77,14 +75,6 @@ function errorMessage(error: unknown, fallback: string): string {
       case 'telegram_forbidden':
       case 'telegram_bad_request':
       case 'telegram_not_found': return t('delivery.telegramRelationship');
-      case 'whatsapp_not_configured':
-      case 'whatsapp_configuration_invalid':
-      case 'whatsapp_unauthorized': return t('delivery.configureWhatsApp');
-      case 'whatsapp_invalid_recipient':
-      case 'whatsapp_bad_request':
-      case 'whatsapp_forbidden':
-      case 'whatsapp_not_found':
-      case 'whatsapp_template_unsupported': return t('delivery.whatsappFailure');
       case 'public_url_missing':
       case 'public_url_invalid': return t('delivery.configurePublicUrl');
       default: return fallback;
@@ -98,16 +88,6 @@ function newIdempotencyKey(): string {
     return `ui-${crypto.randomUUID()}`;
   }
   return `ui-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
-}
-
-function recipientLabel(channel: DeliveryChannel): string {
-  if (channel === 'whatsapp') return t('delivery.whatsappPhone');
-  return t('delivery.recipient');
-}
-
-function recipientPlaceholder(channel: DeliveryChannel): string {
-  if (channel === 'whatsapp') return t('delivery.whatsappPhonePlaceholder');
-  return t('delivery.recipientPlaceholder');
 }
 
 export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProps) {
@@ -293,7 +273,6 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
             <select value={channel} onChange={(event) => updateChannel(event.target.value as DeliveryChannel)}>
               <option value="email">{t('delivery.email')}</option>
               <option value="telegram">{t('delivery.telegram')}</option>
-              <option value="whatsapp">{t('delivery.whatsapp')}</option>
             </select>
           </label>
 
@@ -332,15 +311,13 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
                   </label>
                 ) : (
                   <label className="field">
-                    <span>{recipientLabel(channel)}</span>
+                    <span>{t('delivery.recipient')}</span>
                     <input
-                      type={channel === 'email' ? 'email' : 'tel'}
-                      inputMode={channel === 'whatsapp' ? 'tel' : undefined}
+                      type="email"
                       value={recipient}
-                      placeholder={recipientPlaceholder(channel)}
+                      placeholder={t('delivery.recipientPlaceholder')}
                       onChange={(event) => updateRecipient(event.target.value)}
                     />
-                    {channel === 'whatsapp' && <small>{t('delivery.whatsappPrerequisite')}</small>}
                   </label>
                 )}
                 <label className="field">
@@ -381,12 +358,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
                 <strong>{t('delivery.preview')}</strong>
                 {previewQuery.isLoading && <p>{t('delivery.previewLoading')}</p>}
                 {previewQuery.isError && <div className="form-message form-message-warning">{errorMessage(previewQuery.error, t('delivery.previewUnavailable'))}</div>}
-                {previewQuery.data && channel === 'whatsapp' && (
-                  <div className="vpn-access-delivery-preview-body">
-                    <p>{t('delivery.whatsappPreview')}</p>
-                  </div>
-                )}
-                {previewQuery.data && channel !== 'whatsapp' && (
+                {previewQuery.data && (
                   <div className="vpn-access-delivery-preview-body">
                     <strong>{previewQuery.data.subject}</strong>
                     <pre>{previewQuery.data.text}</pre>
