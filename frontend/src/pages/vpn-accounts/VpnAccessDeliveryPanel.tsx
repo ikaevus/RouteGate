@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createVpnAccountDelivery,
   getDeliveryProviders,
+  getTelegramRecipients,
   getVpnAccountDeliveries,
   previewVpnAccountDelivery,
   retryDelivery,
@@ -100,13 +101,11 @@ function newIdempotencyKey(): string {
 }
 
 function recipientLabel(channel: DeliveryChannel): string {
-  if (channel === 'telegram') return t('delivery.telegramChatId');
   if (channel === 'whatsapp') return t('delivery.whatsappPhone');
   return t('delivery.recipient');
 }
 
 function recipientPlaceholder(channel: DeliveryChannel): string {
-  if (channel === 'telegram') return t('delivery.telegramChatIdPlaceholder');
   if (channel === 'whatsapp') return t('delivery.whatsappPhonePlaceholder');
   return t('delivery.recipientPlaceholder');
 }
@@ -143,6 +142,12 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     [channel, providersQuery.data],
   );
 
+  const telegramRecipientsQuery = useQuery({
+    queryKey: ['delivery-telegram-recipients'],
+    queryFn: getTelegramRecipients,
+    enabled: isComposerOpen && channel === 'telegram' && selectedProvider?.ready === true,
+  });
+
   const previewQuery = useQuery({
     queryKey: ['vpn-account-delivery-preview', accountId, locale, template],
     queryFn: () => previewVpnAccountDelivery(accountId, { locale, template }),
@@ -171,6 +176,18 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
       setRecipientSeededFor(accountId);
     }
   }, [accountId, accountQuery.data, channel, recipientSeededFor]);
+
+  useEffect(() => {
+    if (channel !== 'telegram') return;
+    const items = telegramRecipientsQuery.data?.items ?? [];
+    if (recipient !== '' && !items.some((item) => item.recipient === recipient)) {
+      setRecipient('');
+      return;
+    }
+    if (recipient === '' && items.length === 1) {
+      setRecipient(items[0].recipient);
+    }
+  }, [channel, recipient, telegramRecipientsQuery.data]);
 
   const sendMutation = useMutation({
     mutationFn: ({ request, idempotencyKey: requestKey }: SendVariables) => createVpnAccountDelivery(accountId, request, requestKey),
@@ -215,6 +232,10 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     navigate(`/settings?focus=delivery&channel=${channel}`);
   }
 
+  function openTelegramRecipients() {
+    navigate('/settings?focus=delivery&channel=telegram#telegram-recipients');
+  }
+
   function updateChannel(value: DeliveryChannel) {
     setChannel(value);
     setAttachQr(false);
@@ -244,6 +265,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   }
 
   const history = historyQuery.data?.items ?? [];
+  const telegramRecipients = telegramRecipientsQuery.data?.items ?? [];
   const canSend = Boolean(selectedProvider?.ready && recipient.trim() !== '' && previewQuery.data && !previewQuery.isError && !sendMutation.isPending);
 
   return (
@@ -295,18 +317,32 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
           {!providersQuery.isLoading && !providersQuery.isError && selectedProvider?.ready === true && (
             <>
               <div className="vpn-access-delivery-fields">
-                <label className="field">
-                  <span>{recipientLabel(channel)}</span>
-                  <input
-                    type={channel === 'email' ? 'email' : channel === 'whatsapp' ? 'tel' : 'text'}
-                    inputMode={channel === 'telegram' ? 'numeric' : channel === 'whatsapp' ? 'tel' : undefined}
-                    value={recipient}
-                    placeholder={recipientPlaceholder(channel)}
-                    onChange={(event) => updateRecipient(event.target.value)}
-                  />
-                  {channel === 'telegram' && <small>{t('delivery.telegramPrerequisite')}</small>}
-                  {channel === 'whatsapp' && <small>{t('delivery.whatsappPrerequisite')}</small>}
-                </label>
+                {channel === 'telegram' ? (
+                  <label className="field">
+                    <span>{t('telegramPairing.selectRecipient')}</span>
+                    <select value={recipient} onChange={(event) => updateRecipient(event.target.value)} disabled={telegramRecipientsQuery.isLoading}>
+                      <option value="">{t('telegramPairing.selectPlaceholder')}</option>
+                      {telegramRecipients.map((item) => (
+                        <option value={item.recipient} key={item.id}>
+                          {item.displayName}{item.username ? ` (@${item.username})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {telegramRecipientsQuery.isError && <small>{t('telegramPairing.loadError')}</small>}
+                  </label>
+                ) : (
+                  <label className="field">
+                    <span>{recipientLabel(channel)}</span>
+                    <input
+                      type={channel === 'email' ? 'email' : 'tel'}
+                      inputMode={channel === 'whatsapp' ? 'tel' : undefined}
+                      value={recipient}
+                      placeholder={recipientPlaceholder(channel)}
+                      onChange={(event) => updateRecipient(event.target.value)}
+                    />
+                    {channel === 'whatsapp' && <small>{t('delivery.whatsappPrerequisite')}</small>}
+                  </label>
+                )}
                 <label className="field">
                   <span>{t('delivery.language')}</span>
                   <select value={locale} onChange={(event) => updateLocale(event.target.value as DeliveryLocale)}>
@@ -322,6 +358,17 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
                   </select>
                 </label>
               </div>
+
+              {channel === 'telegram' && !telegramRecipientsQuery.isLoading && !telegramRecipientsQuery.isError && telegramRecipients.length === 0 && (
+                <div className="vpn-access-delivery-next-action">
+                  <div>
+                    <strong>{t('telegramPairing.recipientRequired')}</strong>
+                  </div>
+                  <button className="primary-button" type="button" onClick={openTelegramRecipients}>
+                    {t('telegramPairing.manageRecipients')}
+                  </button>
+                </div>
+              )}
 
               {selectedProvider.capabilities.Attachments && (
                 <label className="vpn-access-delivery-checkbox">
