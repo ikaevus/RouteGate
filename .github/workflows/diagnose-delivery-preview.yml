@@ -1,0 +1,121 @@
+name: Diagnose delivery preview
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-delivery-preview.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 10
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Diagnose access readiness without exposing secrets
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "sudo bash -s" <<'REMOTE'
+          set -euo pipefail
+          ACCOUNT_ID='523446e8-0351-4c0a-a9ec-19a269a8848f'
+          set -a
+          source /etc/routegate/manager.env
+          set +a
+          DB_URL="${ROUTEGATE_DATABASE_URL:?missing database url}"
+          API='http://127.0.0.1:8080'
+
+          SESSION_ID=''
+          cleanup() {
+            if [[ -n "$SESSION_ID" ]]; then
+              psql "$DB_URL" -qAtc "DELETE FROM auth_sessions WHERE id='${SESSION_ID}'::uuid" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+
+          echo "account_readiness=$(psql "$DB_URL" -qAtc \"
+            SELECT
+              'account=' || (a.id IS NOT NULL)::text ||
+              ',server_id=' || (a.server_id IS NOT NULL)::text ||
+              ',vless_uuid=' || (a.vless_uuid IS NOT NULL)::text ||
+              ',server=' || (s.id IS NOT NULL)::text ||
+              ',endpoint=' || ((NULLIF(BTRIM(COALESCE(s.public_ip::text,'')), '') IS NOT NULL OR NULLIF(BTRIM(COALESCE(s.hostname,'')), '') IS NOT NULL))::text ||
+              ',vless_port=' || (s.vless_port BETWEEN 1 AND 65535)::text ||
+              ',reality_public_key=' || (NULLIF(BTRIM(COALESCE(s.reality_public_key,'')), '') IS NOT NULL)::text ||
+              ',reality_server_name=' || (NULLIF(BTRIM(COALESCE(s.reality_server_name,'')), '') IS NOT NULL)::text ||
+              ',client_profile=' || EXISTS(SELECT 1 FROM vpn_client_profiles p WHERE p.vpn_account_id=a.id)::text
+            FROM vpn_accounts a
+            LEFT JOIN servers s ON s.id=a.server_id
+            WHERE a.id='${ACCOUNT_ID}'::uuid
+          \")"
+
+          ADMIN_ID="$(psql "$DB_URL" -qAtc "
+            SELECT u.id::text
+            FROM users u
+            JOIN user_roles ur ON ur.user_id=u.id
+            JOIN roles r ON r.id=ur.role_id
+            WHERE r.code='super_admin' AND u.status='active'
+            ORDER BY u.created_at
+            LIMIT 1
+          ")"
+          TOKEN="$(openssl rand -hex 32)"
+          TOKEN_HASH="$(printf '%s' "$TOKEN" | sha256sum | awk '{print $1}')"
+          SESSION_ID="$(psql "$DB_URL" -qAtc "
+            INSERT INTO auth_sessions (user_id, token_hash, expires_at, user_agent)
+            VALUES ('${ADMIN_ID}'::uuid, '${TOKEN_HASH}', now() + interval '5 minutes', 'RouteGate delivery diagnostic')
+            RETURNING id::text
+          ")"
+
+          connection_status="$(curl -sS -o /tmp/rg-connection.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/api/v1/vpn-accounts/$ACCOUNT_ID/client-connection")"
+          preview_status="$(curl -sS -o /tmp/rg-preview.json -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data '{"locale":"ru","template":"vpn_access"}' \
+            "$API/api/v1/vpn-accounts/$ACCOUNT_ID/deliveries/preview")"
+
+          python3 - "$connection_status" /tmp/rg-connection.json "$preview_status" /tmp/rg-preview.json <<'PY'
+          import json, sys
+          connection_status, connection_path, preview_status, preview_path = sys.argv[1:]
+          def safe_code(path):
+              try:
+                  with open(path, encoding='utf-8') as f:
+                      payload = json.load(f)
+              except Exception:
+                  return 'non_json'
+              if isinstance(payload, dict):
+                  return str(payload.get('code') or payload.get('error', {}).get('code') or 'ok')
+              return 'unexpected_json'
+          print(f'client_connection_http={connection_status} code={safe_code(connection_path)}')
+          print(f'delivery_preview_http={preview_status} code={safe_code(preview_path)}')
+          PY
+
+          rm -f /tmp/rg-connection.json /tmp/rg-preview.json
+          REMOTE
