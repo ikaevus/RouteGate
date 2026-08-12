@@ -113,11 +113,20 @@ jobs:
               except Exception:
                   return 'non_json'
               if isinstance(payload, dict):
-                  return str(payload.get('code') or payload.get('error', {}).get('code') or 'ok')
+                  if isinstance(payload.get('error'), dict):
+                      return str(payload['error'].get('code') or 'error')
+                  return str(payload.get('code') or payload.get('errorCode') or 'ok')
               return 'unexpected_json'
           print(f'client_connection_http={connection_status} code={safe_code(connection_path)}')
           print(f'delivery_preview_http={preview_status} code={safe_code(preview_path)}')
           PY
+
+          echo 'sanitized_manager_error:'
+          journalctl -u routegate-manager --since '2 minutes ago' --no-pager \
+            | grep 'get vpn client connection failed' \
+            | tail -n 1 \
+            | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[uuid]/g' \
+            || true
 
           rm -f /tmp/rg-connection.json /tmp/rg-preview.json
           REMOTE
