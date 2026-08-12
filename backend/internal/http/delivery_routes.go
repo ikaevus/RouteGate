@@ -24,6 +24,13 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	mux.Handle("PUT /api/v1/delivery/providers/{provider}/settings", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.PutProviderSettings))))
 	mux.Handle("POST /api/v1/delivery/providers/{provider}/settings/test", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.TestProviderSettings))))
 	mux.Handle("DELETE /api/v1/delivery/providers/{provider}/settings", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.DeleteProviderSettings))))
+
+	mux.Handle("POST /api/v1/delivery/telegram/pairings", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.StartTelegramPairing))))
+	mux.Handle("GET /api/v1/delivery/telegram/pairings/{pairing_id}", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.GetTelegramPairing))))
+	mux.Handle("GET /api/v1/delivery/telegram/recipients", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListTelegramRecipients))))
+	mux.Handle("POST /api/v1/delivery/telegram/recipients/{recipient_id}/test", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.TestTelegramRecipient))))
+	mux.Handle("DELETE /api/v1/delivery/telegram/recipients/{recipient_id}", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.DeleteTelegramRecipient))))
+
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/deliveries/preview", authn(auth.RequirePermission("deliveries:send")(stdhttp.HandlerFunc(deliveryHandler.PreviewForVPNAccount))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/deliveries", authn(auth.RequirePermission("deliveries:send")(stdhttp.HandlerFunc(deliveryHandler.CreateForVPNAccount))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/deliveries", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListForVPNAccount))))
