@@ -22,7 +22,7 @@ const (
 	providerSourceNone        = "none"
 )
 
-var canonicalProviderNames = []string{"smtp", "telegram", "whatsapp"}
+var canonicalProviderNames = []string{"smtp", "telegram"}
 
 type ProviderSettingsRecord struct {
 	Provider         string
@@ -134,19 +134,9 @@ type smtpManagedConfig struct {
 
 type telegramManagedConfig struct{}
 
-type whatsAppManagedConfig struct {
-	PhoneNumberID             string `json:"phoneNumberId"`
-	GraphAPIVersion           string `json:"graphApiVersion"`
-	VPNAccessTemplate         string `json:"vpnAccessTemplate"`
-	VPNAccessReissuedTemplate string `json:"vpnAccessReissuedTemplate"`
-	LanguageEN                string `json:"languageEn"`
-	LanguageRU                string `json:"languageRu"`
-}
-
 type providerSecretEnvelope struct {
-	SMTPPassword       string `json:"smtpPassword,omitempty"`
-	TelegramBotToken   string `json:"telegramBotToken,omitempty"`
-	WhatsAppAccessToken string `json:"whatsAppAccessToken,omitempty"`
+	SMTPPassword     string `json:"smtpPassword,omitempty"`
+	TelegramBotToken string `json:"telegramBotToken,omitempty"`
 }
 
 type ProviderSettingsRequest struct {
@@ -451,8 +441,6 @@ func (m *ProviderSettingsManager) legacyProvider(providerName string) Provider {
 		return NewSMTPProvider(m.legacy.SMTP)
 	case "telegram":
 		return NewTelegramProvider(m.legacy.Telegram)
-	case "whatsapp":
-		return NewWhatsAppProvider(m.legacy.WhatsApp)
 	default:
 		return nil
 	}
@@ -480,20 +468,6 @@ func providerFromManagedParts(providerName string, configJSON []byte, envelope p
 			return nil, "telegram_configuration_invalid"
 		}
 		return NewTelegramProvider(config.TelegramConfig{BotToken: envelope.TelegramBotToken}), ""
-	case "whatsapp":
-		var managed whatsAppManagedConfig
-		if err := json.Unmarshal(configJSON, &managed); err != nil {
-			return nil, "whatsapp_configuration_invalid"
-		}
-		return NewWhatsAppProvider(config.WhatsAppConfig{
-			AccessToken:               envelope.WhatsAppAccessToken,
-			PhoneNumberID:             managed.PhoneNumberID,
-			GraphAPIVersion:           managed.GraphAPIVersion,
-			VPNAccessTemplate:         managed.VPNAccessTemplate,
-			VPNAccessReissuedTemplate: managed.VPNAccessReissuedTemplate,
-			LanguageEN:                managed.LanguageEN,
-			LanguageRU:                managed.LanguageRU,
-		}), ""
 	default:
 		return nil, "delivery_provider_unsupported"
 	}
@@ -517,18 +491,6 @@ func normalizeManagedConfigJSON(providerName string, raw json.RawMessage) ([]byt
 		return json.Marshal(value)
 	case "telegram":
 		return json.Marshal(telegramManagedConfig{})
-	case "whatsapp":
-		var value whatsAppManagedConfig
-		if err := json.Unmarshal(raw, &value); err != nil {
-			return nil, err
-		}
-		value.PhoneNumberID = strings.TrimSpace(value.PhoneNumberID)
-		value.GraphAPIVersion = strings.TrimSpace(value.GraphAPIVersion)
-		value.VPNAccessTemplate = strings.TrimSpace(value.VPNAccessTemplate)
-		value.VPNAccessReissuedTemplate = strings.TrimSpace(value.VPNAccessReissuedTemplate)
-		value.LanguageEN = strings.TrimSpace(value.LanguageEN)
-		value.LanguageRU = strings.TrimSpace(value.LanguageRU)
-		return json.Marshal(value)
 	default:
 		return nil, fmt.Errorf("unsupported provider")
 	}
@@ -553,15 +515,6 @@ func safeLegacyConfig(providerName string, cfg config.Config) map[string]any {
 			"fromName": cfg.SMTP.FromName,
 			"tlsMode": cfg.SMTP.TLSMode,
 		}
-	case "whatsapp":
-		return map[string]any{
-			"phoneNumberId": cfg.WhatsApp.PhoneNumberID,
-			"graphApiVersion": cfg.WhatsApp.GraphAPIVersion,
-			"vpnAccessTemplate": cfg.WhatsApp.VPNAccessTemplate,
-			"vpnAccessReissuedTemplate": cfg.WhatsApp.VPNAccessReissuedTemplate,
-			"languageEn": cfg.WhatsApp.LanguageEN,
-			"languageRu": cfg.WhatsApp.LanguageRU,
-		}
 	default:
 		return map[string]any{}
 	}
@@ -580,8 +533,6 @@ func legacyHasAnyConfig(providerName string, cfg config.Config) bool {
 		return strings.TrimSpace(cfg.SMTP.Host) != "" || strings.TrimSpace(cfg.SMTP.Username) != "" || strings.TrimSpace(cfg.SMTP.Password) != "" || strings.TrimSpace(cfg.SMTP.FromAddress) != ""
 	case "telegram":
 		return strings.TrimSpace(cfg.Telegram.BotToken) != ""
-	case "whatsapp":
-		return strings.TrimSpace(cfg.WhatsApp.AccessToken) != "" || strings.TrimSpace(cfg.WhatsApp.PhoneNumberID) != "" || strings.TrimSpace(cfg.WhatsApp.GraphAPIVersion) != "" || strings.TrimSpace(cfg.WhatsApp.VPNAccessTemplate) != "" || strings.TrimSpace(cfg.WhatsApp.VPNAccessReissuedTemplate) != ""
 	default:
 		return false
 	}
@@ -593,8 +544,6 @@ func legacySecretConfigured(providerName string, cfg config.Config) bool {
 		return strings.TrimSpace(cfg.SMTP.Password) != ""
 	case "telegram":
 		return strings.TrimSpace(cfg.Telegram.BotToken) != ""
-	case "whatsapp":
-		return strings.TrimSpace(cfg.WhatsApp.AccessToken) != ""
 	default:
 		return false
 	}
@@ -607,8 +556,6 @@ func legacySecretEnvelope(providerName string, cfg config.Config) providerSecret
 		envelope.SMTPPassword = cfg.SMTP.Password
 	case "telegram":
 		envelope.TelegramBotToken = cfg.Telegram.BotToken
-	case "whatsapp":
-		envelope.WhatsAppAccessToken = cfg.WhatsApp.AccessToken
 	}
 	return envelope
 }
@@ -622,8 +569,6 @@ func setProviderSecret(providerName string, envelope *providerSecretEnvelope, va
 		envelope.SMTPPassword = value
 	case "telegram":
 		envelope.TelegramBotToken = strings.TrimSpace(value)
-	case "whatsapp":
-		envelope.WhatsAppAccessToken = strings.TrimSpace(value)
 	}
 }
 
@@ -633,8 +578,6 @@ func providerSecretEmpty(providerName string, envelope providerSecretEnvelope) b
 		return envelope.SMTPPassword == ""
 	case "telegram":
 		return strings.TrimSpace(envelope.TelegramBotToken) == ""
-	case "whatsapp":
-		return strings.TrimSpace(envelope.WhatsAppAccessToken) == ""
 	default:
 		return true
 	}
@@ -657,7 +600,7 @@ func providerConfiguration(provider Provider) (bool, string) {
 
 func supportedProviderName(value string) bool {
 	switch normalizeProviderName(value) {
-	case "smtp", "telegram", "whatsapp":
+	case "smtp", "telegram":
 		return true
 	default:
 		return false
@@ -674,8 +617,6 @@ func channelForProvider(providerName string) string {
 		return "email"
 	case "telegram":
 		return "telegram"
-	case "whatsapp":
-		return "whatsapp"
 	default:
 		return ""
 	}
@@ -687,8 +628,6 @@ func providerConfigInvalidCode(providerName string) string {
 		return "smtp_configuration_invalid"
 	case "telegram":
 		return "telegram_configuration_invalid"
-	case "whatsapp":
-		return "whatsapp_configuration_invalid"
 	default:
 		return "delivery_provider_unsupported"
 	}
