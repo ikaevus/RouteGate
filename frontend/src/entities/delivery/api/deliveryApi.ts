@@ -1,9 +1,11 @@
-import { apiGet, apiPost } from '../../../shared/api/client';
+import { apiDelete, apiGet, apiPost, apiPut } from '../../../shared/api/client';
 
 export type DeliveryStatus = 'queued' | 'sending' | 'retrying' | 'sent' | 'delivered' | 'failed' | 'uncertain';
 export type DeliveryLocale = 'en' | 'ru';
 export type DeliveryTemplate = 'vpn_access' | 'vpn_access_reissued';
 export type DeliveryChannel = 'email' | 'telegram' | 'whatsapp';
+export type DeliveryProviderName = 'smtp' | 'telegram' | 'whatsapp';
+export type DeliveryProviderSource = 'managed' | 'environment' | 'none' | 'static';
 
 export interface DeliveryProviderCapabilities {
   HTML: boolean;
@@ -12,12 +14,14 @@ export interface DeliveryProviderCapabilities {
 }
 
 export interface DeliveryProvider {
-  name: string;
+  name: DeliveryProviderName | string;
   channel: DeliveryChannel | string;
   configured: boolean;
   ready: boolean;
   configurationError?: string;
   capabilities: DeliveryProviderCapabilities;
+  source?: DeliveryProviderSource | string;
+  secretConfigured?: boolean;
 }
 
 export interface DeliveryProviderListResponse {
@@ -67,8 +71,66 @@ export interface DeliveryPreviewResponse {
   text: string;
 }
 
+export type DeliveryProviderConfigValue = string | number | boolean | null;
+export type DeliveryProviderConfig = Record<string, DeliveryProviderConfigValue>;
+
+export interface DeliveryProviderSettings {
+  provider: DeliveryProviderName;
+  channel: DeliveryChannel;
+  source: DeliveryProviderSource;
+  enabled: boolean;
+  configured: boolean;
+  ready: boolean;
+  secretConfigured: boolean;
+  configurationError?: string;
+  config: DeliveryProviderConfig;
+}
+
+export interface SaveDeliveryProviderSettingsRequest {
+  enabled?: boolean;
+  config: DeliveryProviderConfig;
+  secret?: string;
+}
+
+export interface TestDeliveryProviderSettingsResponse {
+  ok: boolean;
+  errorCode?: string;
+}
+
+export function providerNameForChannel(channel: DeliveryChannel): DeliveryProviderName {
+  return channel === 'email' ? 'smtp' : channel;
+}
+
 export function getDeliveryProviders(): Promise<DeliveryProviderListResponse> {
   return apiGet<DeliveryProviderListResponse>('/api/v1/delivery/providers');
+}
+
+export function getDeliveryProviderSettings(provider: DeliveryProviderName): Promise<DeliveryProviderSettings> {
+  return apiGet<DeliveryProviderSettings>(`/api/v1/delivery/providers/${encodeURIComponent(provider)}/settings`);
+}
+
+export function saveDeliveryProviderSettings(
+  provider: DeliveryProviderName,
+  request: SaveDeliveryProviderSettingsRequest,
+): Promise<DeliveryProviderSettings> {
+  return apiPut<SaveDeliveryProviderSettingsRequest, DeliveryProviderSettings>(
+    `/api/v1/delivery/providers/${encodeURIComponent(provider)}/settings`,
+    request,
+  );
+}
+
+export function testDeliveryProviderSettings(
+  provider: DeliveryProviderName,
+  request: SaveDeliveryProviderSettingsRequest,
+): Promise<TestDeliveryProviderSettingsResponse> {
+  return apiPost<SaveDeliveryProviderSettingsRequest, TestDeliveryProviderSettingsResponse>(
+    `/api/v1/delivery/providers/${encodeURIComponent(provider)}/settings/test`,
+    request,
+  );
+}
+
+export function removeDeliveryProviderSettings(provider: DeliveryProviderName): Promise<void> {
+  return apiDelete(`/api/v1/delivery/providers/${encodeURIComponent(provider)}/settings`);
 }
 
 export function previewVpnAccountDelivery(

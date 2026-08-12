@@ -23,13 +23,13 @@ type TelegramConfig struct {
 }
 
 type WhatsAppConfig struct {
-	AccessToken             string
-	PhoneNumberID           string
-	GraphAPIVersion         string
-	VPNAccessTemplate       string
+	AccessToken               string
+	PhoneNumberID             string
+	GraphAPIVersion           string
+	VPNAccessTemplate         string
 	VPNAccessReissuedTemplate string
-	LanguageEN              string
-	LanguageRU              string
+	LanguageEN                string
+	LanguageRU                string
 }
 
 type Config struct {
@@ -37,6 +37,7 @@ type Config struct {
 	HTTPAddr                  string
 	PublicURL                 string
 	DatabaseURL               string
+	SecretsKeyFile            string
 	LogLevel                  slog.Level
 	AuthSessionTTL            time.Duration
 	BootstrapAdminEmail       string
@@ -49,11 +50,13 @@ type Config struct {
 }
 
 func Load() Config {
+	environment := env("ROUTEGATE_ENV", "dev")
 	return Config{
-		Env:                       env("ROUTEGATE_ENV", "dev"),
+		Env:                       environment,
 		HTTPAddr:                  env("ROUTEGATE_HTTP_ADDR", ":8080"),
 		PublicURL:                 env("ROUTEGATE_PUBLIC_URL", ""),
 		DatabaseURL:               env("ROUTEGATE_DATABASE_URL", "postgres://routegate:routegate_dev_password@localhost:5432/routegate?sslmode=disable"),
+		SecretsKeyFile:            env("ROUTEGATE_MASTER_KEY_FILE", defaultSecretsKeyFile(environment)),
 		LogLevel:                  parseLogLevel(env("ROUTEGATE_LOG_LEVEL", "info")),
 		AuthSessionTTL:            time.Duration(envInt("ROUTEGATE_AUTH_SESSION_TTL_HOURS", 24)) * time.Hour,
 		BootstrapAdminEmail:       env("ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL", ""),
@@ -82,6 +85,13 @@ func Load() Config {
 			LanguageRU:                env("ROUTEGATE_WHATSAPP_LANGUAGE_RU", "ru"),
 		},
 	}
+}
+
+func defaultSecretsKeyFile(environment string) string {
+	if strings.EqualFold(strings.TrimSpace(environment), "production") {
+		return "/var/lib/routegate-manager/master.key"
+	}
+	return ".routegate/master.key"
 }
 
 func env(key, fallback string) string {

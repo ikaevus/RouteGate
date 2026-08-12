@@ -142,6 +142,14 @@ function isLikelyTechnicalOnly(value) {
     return true;
   }
 
+  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(text)) {
+    return true;
+  }
+
+  if (/^[a-z]{2}(?:_[A-Z]{2})?$/.test(text)) {
+    return true;
+  }
+
   if (/^[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}$/.test(text)) {
     return true;
   }

@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -18,6 +19,8 @@ type ProviderInfo struct {
 	Configured         bool
 	ConfigurationError string
 	Capabilities       ProviderCapabilities
+	Source             string
+	SecretConfigured   bool
 }
 
 type configurableProvider interface {
@@ -27,6 +30,15 @@ type configurableProvider interface {
 
 type capableProvider interface {
 	Capabilities() ProviderCapabilities
+}
+
+type testableProvider interface {
+	Test(context.Context) ProviderResult
+}
+
+type providerResolver interface {
+	Resolve(context.Context, string) (Provider, bool, error)
+	List(context.Context) ([]ProviderInfo, error)
 }
 
 type Registry struct {
@@ -70,6 +82,15 @@ func (r *Registry) Get(name string) (Provider, bool) {
 	return provider, ok
 }
 
+func (r *Registry) Resolve(_ context.Context, name string) (Provider, bool, error) {
+	provider, ok := r.Get(name)
+	return provider, ok, nil
+}
+
+func (r *Registry) List(_ context.Context) ([]ProviderInfo, error) {
+	return r.Info(), nil
+}
+
 func (r *Registry) Info() []ProviderInfo {
 	if r == nil {
 		return []ProviderInfo{}
@@ -87,6 +108,7 @@ func (r *Registry) Info() []ProviderInfo {
 			Name:       name,
 			Channel:    strings.ToLower(strings.TrimSpace(provider.Channel())),
 			Configured: true,
+			Source:     "static",
 		}
 		if configurable, ok := provider.(configurableProvider); ok {
 			item.Configured = configurable.Configured()

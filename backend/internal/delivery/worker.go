@@ -31,7 +31,7 @@ type Worker struct {
 	repository   workerRepository
 	resolver     MaterialResolver
 	renderer     messageRenderer
-	providers    *Registry
+	providers    providerResolver
 	audit        auditRecorder
 	logger       *slog.Logger
 	retryPolicy  RetryPolicy
@@ -39,7 +39,7 @@ type Worker struct {
 	now          func() time.Time
 }
 
-func NewWorker(repository workerRepository, resolver MaterialResolver, renderer messageRenderer, providers *Registry, recorder auditRecorder, logger *slog.Logger) *Worker {
+func NewWorker(repository workerRepository, resolver MaterialResolver, renderer messageRenderer, providers providerResolver, recorder auditRecorder, logger *slog.Logger) *Worker {
 	return &Worker{
 		repository:   repository,
 		resolver:     resolver,
@@ -103,9 +103,15 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	if w.providers == nil {
 		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "provider_unavailable"})
 	}
-	provider, ok := w.providers.Get(delivery.Provider)
-	if !ok {
+	provider, ok, err := w.providers.Resolve(ctx, delivery.Provider)
+	if err != nil {
+		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassTransient, Code: "provider_configuration_unavailable"})
+	}
+	if !ok || provider == nil {
 		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "provider_unavailable"})
+	}
+	if configured, ok := provider.(configurableProvider); ok && !configured.Configured() {
+		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: configured.ConfigurationErrorCode()})
 	}
 	if strings.ToLower(strings.TrimSpace(provider.Channel())) != strings.ToLower(strings.TrimSpace(delivery.Channel)) {
 		return true, w.failBeforeSend(ctx, *delivery, Failure{Class: ErrorClassPermanent, Code: "provider_channel_mismatch"})

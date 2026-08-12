@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000114_agent_runtime_metrics_backfill" {
-		t.Fatalf("applied schema version = %q, want 000114_agent_runtime_metrics_backfill", version)
+	if version != "000115_delivery_provider_settings" {
+		t.Fatalf("applied schema version = %q, want 000115_delivery_provider_settings", version)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -80,6 +80,40 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate deliveries columns: %v", err)
+	}
+
+	providerRows, err := pool.Query(ctx, `
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'delivery_provider_settings'
+	`)
+	if err != nil {
+		t.Fatalf("list delivery_provider_settings columns: %v", err)
+	}
+	defer providerRows.Close()
+
+	allowedSecretStorage := map[string]struct{}{
+		"secret_ciphertext": {},
+		"secret_nonce":      {},
+		"secret_key_version": {},
+	}
+	for providerRows.Next() {
+		var column string
+		if err := providerRows.Scan(&column); err != nil {
+			t.Fatalf("scan delivery_provider_settings column: %v", err)
+		}
+		if column == "password" || column == "token" || column == "access_token" || column == "credentials" || column == "secret" {
+			t.Fatalf("delivery_provider_settings contains plaintext secret column %q", column)
+		}
+		if len(column) >= 7 && column[:7] == "secret_" {
+			if _, allowed := allowedSecretStorage[column]; !allowed {
+				t.Fatalf("delivery_provider_settings contains unexpected secret column %q", column)
+			}
+		}
+	}
+	if err := providerRows.Err(); err != nil {
+		t.Fatalf("iterate delivery_provider_settings columns: %v", err)
 	}
 }
 
@@ -191,8 +225,9 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 		t.Fatalf("simulate applied-112 extractor drift: %v", err)
 	}
 
-	// Applying the full directory now executes only migration 114. It must
-	// restore the canonical trigger/function itself and backfill the legacy row.
+	// Applying the full directory now executes migration 114 followed by later
+	// migrations. Migration 114 must restore the canonical trigger/function
+	// itself and backfill the legacy row before the schema advances further.
 	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
 		t.Fatalf("apply self-contained runtime backfill migration: %v", err)
 	}
@@ -258,8 +293,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000114_agent_runtime_metrics_backfill" {
-		t.Fatalf("applied schema version = %q, want 000114_agent_runtime_metrics_backfill", version)
+	if version != "000115_delivery_provider_settings" {
+		t.Fatalf("applied schema version = %q, want 000115_delivery_provider_settings", version)
 	}
 }
 

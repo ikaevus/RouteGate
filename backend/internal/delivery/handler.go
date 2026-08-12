@@ -33,6 +33,8 @@ type ProviderResponse struct {
 	Ready              bool                 `json:"ready"`
 	ConfigurationError string               `json:"configurationError,omitempty"`
 	Capabilities       ProviderCapabilities `json:"capabilities"`
+	Source             string               `json:"source,omitempty"`
+	SecretConfigured   bool                 `json:"secretConfigured"`
 }
 
 type ProviderListResponse struct {
@@ -68,7 +70,8 @@ type Handler struct {
 	logger     *slog.Logger
 	repository *Repository
 	service    *Service
-	registry   *Registry
+	providers  providerResolver
+	settings   *ProviderSettingsManager
 	resolver   *VPNAccessResolver
 	audit      *audit.Recorder
 	publicURL  string
@@ -78,16 +81,14 @@ type Handler struct {
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) *Handler {
 	repository := NewRepository(pool)
 	recorder := audit.NewRecorder(logger, pool)
-	smtpProvider := NewSMTPProvider(cfg.SMTP)
-	telegramProvider := NewTelegramProvider(cfg.Telegram)
-	whatsAppProvider := NewWhatsAppProvider(cfg.WhatsApp)
-	registry, _ := NewRegistry(smtpProvider, telegramProvider, whatsAppProvider)
+	providers := NewProviderSettingsManager(pool, cfg, logger)
 	accounts := vpnaccounts.NewRepository(pool)
 	return &Handler{
 		logger:     logger,
 		repository: repository,
 		service:    NewService(repository, recorder),
-		registry:   registry,
+		providers:  providers,
+		settings:   providers,
 		resolver:   NewVPNAccessResolver(accounts, cfg.PublicURL),
 		audit:      recorder,
 		publicURL:  cfg.PublicURL,
@@ -96,7 +97,11 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) *Han
 }
 
 func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
-	items := h.registry.Info()
+	items, err := h.providers.List(r.Context())
+	if err != nil {
+		h.databaseError(w, "list_delivery_providers")
+		return
+	}
 	response := ProviderListResponse{Items: make([]ProviderResponse, 0, len(items))}
 	for _, item := range items {
 		provider := ProviderResponse{
@@ -106,6 +111,8 @@ func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 			Ready:              item.Configured,
 			ConfigurationError: item.ConfigurationError,
 			Capabilities:       item.Capabilities,
+			Source:             item.Source,
+			SecretConfigured:   item.SecretConfigured,
 		}
 		if provider.Ready {
 			if _, err := NormalizePublicURL(h.publicURL); err != nil {
@@ -160,8 +167,12 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, ok := h.registry.Get(providerName)
-	if !ok {
+	provider, ok, err := h.providers.Resolve(r.Context(), providerName)
+	if err != nil {
+		h.databaseError(w, "resolve_delivery_provider")
+		return
+	}
+	if !ok || provider == nil {
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("delivery_provider_unavailable", "This delivery provider is not available."))
 		return
 	}
