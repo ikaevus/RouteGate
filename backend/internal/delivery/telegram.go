@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,47 @@ type telegramAPIResponse struct {
 	OK     bool `json:"ok"`
 	Result struct {
 		MessageID int64 `json:"message_id"`
+	} `json:"result"`
+}
+
+type TelegramBotIdentity struct {
+	ID       int64
+	Username string
+}
+
+type TelegramIncomingUpdate struct {
+	UpdateID  int64
+	ChatID    int64
+	ChatType  string
+	FirstName string
+	LastName  string
+	Username  string
+	Text      string
+}
+
+type telegramGetMeResponse struct {
+	OK     bool `json:"ok"`
+	Result struct {
+		ID       int64  `json:"id"`
+		IsBot    bool   `json:"is_bot"`
+		Username string `json:"username"`
+	} `json:"result"`
+}
+
+type telegramGetUpdatesResponse struct {
+	OK     bool `json:"ok"`
+	Result []struct {
+		UpdateID int64 `json:"update_id"`
+		Message  *struct {
+			Text string `json:"text"`
+			Chat struct {
+				ID        int64  `json:"id"`
+				Type      string `json:"type"`
+				FirstName string `json:"first_name"`
+				LastName  string `json:"last_name"`
+				Username  string `json:"username"`
+			} `json:"chat"`
+		} `json:"message"`
 	} `json:"result"`
 }
 
@@ -91,8 +133,6 @@ func (p *TelegramProvider) Send(ctx context.Context, message Message) ProviderRe
 
 	response, err := p.client.Do(req)
 	if err != nil {
-		// RouteGate cannot prove whether Telegram received an in-flight HTTP request.
-		// Preserve the no-duplicate invariant by treating transport errors as uncertain.
 		return ProviderResult{Outcome: OutcomeUncertain, ErrorClass: ErrorClassUncertain, ErrorCode: "telegram_request_uncertain"}
 	}
 	defer response.Body.Close()
@@ -116,6 +156,98 @@ func (p *TelegramProvider) Send(ctx context.Context, message Message) ProviderRe
 		Outcome:           OutcomeAccepted,
 		ProviderReference: "message:" + strconv.FormatInt(decoded.Result.MessageID, 10),
 	}
+}
+
+func (p *TelegramProvider) BotIdentity(ctx context.Context) (TelegramBotIdentity, string) {
+	if !p.Configured() {
+		return TelegramBotIdentity{}, p.ConfigurationErrorCode()
+	}
+	var decoded telegramGetMeResponse
+	status, err := p.telegramGET(ctx, "/getMe", nil, &decoded)
+	if err != nil {
+		return TelegramBotIdentity{}, "telegram_request_failed"
+	}
+	if status >= 400 {
+		return TelegramBotIdentity{}, telegramHTTPErrorCode(status)
+	}
+	if !decoded.OK || !decoded.Result.IsBot || decoded.Result.ID == 0 || strings.TrimSpace(decoded.Result.Username) == "" {
+		return TelegramBotIdentity{}, "telegram_identity_invalid"
+	}
+	return TelegramBotIdentity{ID: decoded.Result.ID, Username: strings.TrimSpace(decoded.Result.Username)}, ""
+}
+
+func (p *TelegramProvider) GetUpdates(ctx context.Context, offset int64) ([]TelegramIncomingUpdate, int64, string) {
+	if !p.Configured() {
+		return nil, offset, p.ConfigurationErrorCode()
+	}
+	query := url.Values{}
+	query.Set("offset", strconv.FormatInt(offset, 10))
+	query.Set("limit", "100")
+	query.Set("timeout", "0")
+	query.Set("allowed_updates", `["message"]`)
+
+	var decoded telegramGetUpdatesResponse
+	status, err := p.telegramGET(ctx, "/getUpdates", query, &decoded)
+	if err != nil {
+		return nil, offset, "telegram_pairing_unavailable"
+	}
+	if status == http.StatusConflict {
+		return nil, offset, "telegram_pairing_webhook_conflict"
+	}
+	if status >= 400 {
+		return nil, offset, telegramHTTPErrorCode(status)
+	}
+	if !decoded.OK {
+		return nil, offset, "telegram_pairing_response_invalid"
+	}
+
+	updates := make([]TelegramIncomingUpdate, 0, len(decoded.Result))
+	nextOffset := offset
+	for _, item := range decoded.Result {
+		if item.UpdateID >= nextOffset {
+			nextOffset = item.UpdateID + 1
+		}
+		if item.Message == nil {
+			continue
+		}
+		updates = append(updates, TelegramIncomingUpdate{
+			UpdateID:  item.UpdateID,
+			ChatID:    item.Message.Chat.ID,
+			ChatType:  strings.TrimSpace(item.Message.Chat.Type),
+			FirstName: strings.TrimSpace(item.Message.Chat.FirstName),
+			LastName:  strings.TrimSpace(item.Message.Chat.LastName),
+			Username:  strings.TrimSpace(item.Message.Chat.Username),
+			Text:      strings.TrimSpace(item.Message.Text),
+		})
+	}
+	return updates, nextOffset, ""
+}
+
+func (p *TelegramProvider) telegramGET(ctx context.Context, method string, query url.Values, target any) (int, error) {
+	requestURL := strings.TrimRight(p.apiBaseURL, "/") + "/bot" + p.botToken + method
+	if len(query) > 0 {
+		requestURL += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	response, err := p.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
+	if err != nil {
+		return response.StatusCode, err
+	}
+	if response.StatusCode < 400 && target != nil {
+		if err := json.Unmarshal(body, target); err != nil {
+			return response.StatusCode, err
+		}
+	}
+	return response.StatusCode, nil
 }
 
 func validateTelegramBotToken(token string) string {
@@ -157,6 +289,8 @@ func telegramHTTPErrorCode(status int) string {
 		return "telegram_forbidden"
 	case http.StatusNotFound:
 		return "telegram_not_found"
+	case http.StatusConflict:
+		return "telegram_conflict"
 	case http.StatusTooManyRequests:
 		return "telegram_rate_limited"
 	default:
