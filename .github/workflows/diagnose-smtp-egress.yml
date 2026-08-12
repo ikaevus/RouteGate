@@ -48,8 +48,22 @@ jobs:
           echo 'dns:'
           getent ahosts smtp.gmail.com | awk '{print $1}' | sort -u | head -n 8 || true
 
+          echo 'ufw:'
+          ufw status verbose 2>/dev/null | head -n 12 || echo 'ufw unavailable'
+
+          echo 'iptables_output_policy:'
+          iptables -S OUTPUT 2>/dev/null | head -n 20 || true
+
+          echo 'https_443:'
+          if timeout 10 bash -c '</dev/tcp/www.google.com/443'; then
+            echo reachable
+          else
+            rc=$?
+            echo "unreachable rc=${rc}"
+          fi
+
           for port in 587 465; do
-            echo "tcp_${port}:"
+            echo "gmail_tcp_${port}:"
             if timeout 10 bash -c "</dev/tcp/smtp.gmail.com/${port}"; then
               echo reachable
             else
@@ -57,6 +71,14 @@ jobs:
               echo "unreachable rc=${rc}"
             fi
           done
+
+          echo 'office365_tcp_587:'
+          if timeout 10 bash -c '</dev/tcp/smtp.office365.com/587'; then
+            echo reachable
+          else
+            rc=$?
+            echo "unreachable rc=${rc}"
+          fi
 
           echo 'starttls_587:'
           timeout 12 openssl s_client -starttls smtp -connect smtp.gmail.com:587 -servername smtp.gmail.com -brief </dev/null 2>&1 \
