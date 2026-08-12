@@ -60,21 +60,23 @@ jobs:
           }
           trap cleanup EXIT
 
-          echo "account_readiness=$(psql "$DB_URL" -qAtc \"
-            SELECT
-              'account=' || (a.id IS NOT NULL)::text ||
-              ',server_id=' || (a.server_id IS NOT NULL)::text ||
-              ',vless_uuid=' || (a.vless_uuid IS NOT NULL)::text ||
-              ',server=' || (s.id IS NOT NULL)::text ||
-              ',endpoint=' || ((NULLIF(BTRIM(COALESCE(s.public_ip::text,'')), '') IS NOT NULL OR NULLIF(BTRIM(COALESCE(s.hostname,'')), '') IS NOT NULL))::text ||
-              ',vless_port=' || (s.vless_port BETWEEN 1 AND 65535)::text ||
-              ',reality_public_key=' || (NULLIF(BTRIM(COALESCE(s.reality_public_key,'')), '') IS NOT NULL)::text ||
-              ',reality_server_name=' || (NULLIF(BTRIM(COALESCE(s.reality_server_name,'')), '') IS NOT NULL)::text ||
-              ',client_profile=' || EXISTS(SELECT 1 FROM vpn_client_profiles p WHERE p.vpn_account_id=a.id)::text
-            FROM vpn_accounts a
-            LEFT JOIN servers s ON s.id=a.server_id
-            WHERE a.id='${ACCOUNT_ID}'::uuid
-          \")"
+          readiness="$(psql "$DB_URL" -qAt -v account_id="$ACCOUNT_ID" <<'SQL'
+          SELECT
+            'account=' || CASE WHEN a.id IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',server_id=' || CASE WHEN a.server_id IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',vless_uuid=' || CASE WHEN a.vless_uuid IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',server=' || CASE WHEN s.id IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',endpoint=' || CASE WHEN NULLIF(BTRIM(COALESCE(s.public_ip::text,'')), '') IS NOT NULL OR NULLIF(BTRIM(COALESCE(s.hostname,'')), '') IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',vless_port=' || CASE WHEN s.vless_port BETWEEN 1 AND 65535 THEN 'true' ELSE 'false' END ||
+            ',reality_public_key=' || CASE WHEN NULLIF(BTRIM(COALESCE(s.reality_public_key,'')), '') IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',reality_server_name=' || CASE WHEN NULLIF(BTRIM(COALESCE(s.reality_server_name,'')), '') IS NOT NULL THEN 'true' ELSE 'false' END ||
+            ',client_profile=' || CASE WHEN EXISTS(SELECT 1 FROM vpn_client_profiles p WHERE p.vpn_account_id=a.id) THEN 'true' ELSE 'false' END
+          FROM vpn_accounts a
+          LEFT JOIN servers s ON s.id=a.server_id
+          WHERE a.id=:'account_id'::uuid;
+          SQL
+          )"
+          echo "account_readiness=$readiness"
 
           ADMIN_ID="$(psql "$DB_URL" -qAtc "
             SELECT u.id::text
