@@ -145,20 +145,20 @@ type Event struct {
 // Alert represents one alert episode. Fingerprint identifies the logical
 // condition across recurrences, while ID identifies this concrete episode.
 type Alert struct {
-	ID                     string
-	Fingerprint            string
-	RuleKey                string
-	Resource               ResourceRef
-	Severity               Severity
-	State                  AlertState
-	Summary                string
-	ReasonCode             string
-	StartedAt              time.Time
-	FiringAt               *time.Time
-	ResolvedAt             *time.Time
-	LastEvaluatedAt        time.Time
-	AcknowledgedAt         *time.Time
-	AcknowledgedByUserID   string
+	ID                   string
+	Fingerprint          string
+	RuleKey              string
+	Resource             ResourceRef
+	Severity             Severity
+	State                AlertState
+	Summary              string
+	ReasonCode           string
+	StartedAt            time.Time
+	FiringAt             *time.Time
+	ResolvedAt           *time.Time
+	LastEvaluatedAt      time.Time
+	AcknowledgedAt       *time.Time
+	AcknowledgedByUserID string
 }
 
 func (a Alert) Active() bool {
@@ -200,10 +200,10 @@ type DiagnosticRun struct {
 }
 
 type DiagnosticResult struct {
-	CheckKey           string
-	State              HealthState
-	ReasonCode         string
-	Summary            string
-	RecommendedAction  string
-	Evidence           json.RawMessage
+	CheckKey          string
+	State             HealthState
+	ReasonCode        string
+	Summary           string
+	RecommendedAction string
+	Evidence          json.RawMessage
 }
