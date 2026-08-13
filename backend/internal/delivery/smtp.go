@@ -124,12 +124,15 @@ func (p *SMTPProvider) connect(ctx context.Context) (*smtp.Client, error) {
 		ServerName: host,
 	}
 
+	connectCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+
 	var conn net.Conn
 	var err error
 	if p.config.TLSMode == smtpTLSModeTLS {
-		conn, err = p.tlsDial(ctx, "tcp", address, tlsConfig)
+		conn, err = p.tlsDial(connectCtx, "tcp", address, tlsConfig)
 	} else {
-		conn, err = p.dialContext(ctx, "tcp", address)
+		conn, err = p.dialContext(connectCtx, "tcp", address)
 	}
 	if err != nil {
 		return nil, err
