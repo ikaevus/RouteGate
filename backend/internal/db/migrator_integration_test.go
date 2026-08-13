@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000117_vpn_client_profile_uniqueness_repair" {
-		t.Fatalf("applied schema version = %q, want 000117_vpn_client_profile_uniqueness_repair", version)
+	if version != "000118_observability_foundation" {
+		t.Fatalf("applied schema version = %q, want 000118_observability_foundation", version)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -321,8 +321,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000117_vpn_client_profile_uniqueness_repair" {
-		t.Fatalf("applied schema version = %q, want 000117_vpn_client_profile_uniqueness_repair", version)
+	if version != "000118_observability_foundation" {
+		t.Fatalf("applied schema version = %q, want 000118_observability_foundation", version)
 	}
 }
 
