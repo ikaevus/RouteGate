@@ -41,6 +41,11 @@ export const settingsEn = {
   'settings.agentsLoadError': 'Could not load Agent information.',
   'settings.noAgents': 'No registered Agents.',
   'settings.manualUpdateNotice': 'Automatic update installation is not available in this build. Updates remain an explicit administrator-controlled operation.',
+  'settings.smtpEgressHint': 'Some VPS providers block outbound SMTP ports by default. RouteGate will report a connection failure if the configured SMTP server cannot be reached.',
+  'settings.smtpTestConnectFailed': 'RouteGate could not connect to the SMTP server. Check the host and port, and verify that your VPS provider allows outbound SMTP traffic.',
+  'settings.smtpTestAuthFailed': 'SMTP authentication failed. Check the configured SMTP sign-in values.',
+  'settings.smtpTestStartTLSUnavailable': 'The SMTP server did not offer STARTTLS. Check the selected security mode and SMTP port.',
+  'settings.smtpTestTLSFailed': 'RouteGate could not establish a secure TLS connection to the SMTP server. Check the security mode, port, and server certificate configuration.',
 } as const;
 
 export type SettingsTranslationKey = keyof typeof settingsEn;
@@ -88,4 +93,9 @@ export const settingsRu: Record<SettingsTranslationKey, string> = {
   'settings.agentsLoadError': 'Не удалось загрузить сведения об агентах.',
   'settings.noAgents': 'Нет зарегистрированных агентов.',
   'settings.manualUpdateNotice': 'Автоматическая установка обновлений в этой сборке недоступна. Обновление остаётся явной операцией под контролем администратора.',
+  'settings.smtpEgressHint': 'Некоторые VPS-провайдеры по умолчанию блокируют исходящие SMTP-порты. RouteGate сообщит об ошибке подключения, если настроенный SMTP-сервер недоступен.',
+  'settings.smtpTestConnectFailed': 'RouteGate не удалось подключиться к SMTP-серверу. Проверьте адрес и порт, а также разрешены ли исходящие SMTP-подключения у вашего VPS-провайдера.',
+  'settings.smtpTestAuthFailed': 'SMTP-аутентификация не прошла. Проверьте настроенные параметры входа SMTP.',
+  'settings.smtpTestStartTLSUnavailable': 'SMTP-сервер не предложил STARTTLS. Проверьте выбранный режим защиты и SMTP-порт.',
+  'settings.smtpTestTLSFailed': 'RouteGate не удалось установить защищённое TLS-соединение с SMTP-сервером. Проверьте режим защиты, порт и настройки сертификата сервера.',
 };
