@@ -1,4 +1,5 @@
 name: Production-like Deploy and E2E
+# Temporary trigger for RG-112F production-like validation.
 
 on:
   workflow_dispatch:
