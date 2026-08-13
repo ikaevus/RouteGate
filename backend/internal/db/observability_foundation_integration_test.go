@@ -178,6 +178,7 @@ func TestObservabilityFoundationPersistenceBoundaries(t *testing.T) {
 			now(),
 			now(),
 			now()
+		)
 	`); err != nil {
 		t.Fatalf("create recurrence after resolved episode: %v", err)
 	}
