@@ -9,7 +9,6 @@ import {
   createServerRegistrationToken,
   deleteConfigVersion,
   deleteServer,
-  getConfigApplyJobs,
   getConfigVersions,
   getServer,
   getServerRoutingProfile,
@@ -23,8 +22,15 @@ import {
   type ConfigVersion,
   type RegistrationTokenResponse,
 } from '../../entities/server/api/serverApi';
+import {
+  clearCompletedConfigApplyJobs,
+  getConfigApplyJobsPage,
+} from '../../entities/server/api/deploymentHistoryApi';
 import { getRoutingProfiles } from '../../entities/routingProfile/api/routingProfileApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
+import './DeploymentHistoryControls.css';
+
+const APPLY_HISTORY_PAGE_SIZE = 8;
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -253,6 +259,7 @@ export function ServerDetailsPage() {
   const [editLocation, setEditLocation] = useState('');
   const [editPublicIp, setEditPublicIp] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [applyHistoryPage, setApplyHistoryPage] = useState(0);
 
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
@@ -409,10 +416,29 @@ export function ServerDetailsPage() {
   });
 
   const applyJobsQuery = useQuery({
-    queryKey: ['server-config-apply-jobs', serverId],
-    queryFn: () => getConfigApplyJobs(serverId ?? ''),
+    queryKey: ['server-config-apply-jobs', serverId, applyHistoryPage],
+    queryFn: () => getConfigApplyJobsPage(
+      serverId ?? '',
+      APPLY_HISTORY_PAGE_SIZE,
+      applyHistoryPage * APPLY_HISTORY_PAGE_SIZE,
+    ),
     enabled: Boolean(serverId),
   });
+
+  useEffect(() => {
+    setApplyHistoryPage(0);
+  }, [serverId]);
+
+  useEffect(() => {
+    const total = applyJobsQuery.data?.total;
+    if (total === undefined || applyHistoryPage === 0) {
+      return;
+    }
+    const lastPage = Math.max(0, Math.ceil(total / APPLY_HISTORY_PAGE_SIZE) - 1);
+    if (applyHistoryPage > lastPage) {
+      setApplyHistoryPage(lastPage);
+    }
+  }, [applyHistoryPage, applyJobsQuery.data?.total]);
 
   const refreshConfigQueries = async () => {
     await Promise.all([
@@ -453,12 +479,18 @@ export function ServerDetailsPage() {
 
   const applyConfigMutation = useMutation({
     mutationFn: (versionId: string) => applyConfigVersion(serverId ?? '', versionId),
-    onSuccess: refreshConfigQueries,
+    onSuccess: async () => {
+      setApplyHistoryPage(0);
+      await refreshConfigQueries();
+    },
   });
 
   const reapplyConfigMutation = useMutation({
     mutationFn: (versionId: string) => reapplyConfigVersion(serverId ?? '', versionId),
-    onSuccess: refreshConfigQueries,
+    onSuccess: async () => {
+      setApplyHistoryPage(0);
+      await refreshConfigQueries();
+    },
   });
 
   const deleteConfigVersionMutation = useMutation({
@@ -474,6 +506,14 @@ export function ServerDetailsPage() {
   const unpinConfigVersionMutation = useMutation({
     mutationFn: (versionId: string) => unpinConfigVersion(serverId ?? '', versionId),
     onSuccess: refreshConfigQueries,
+  });
+
+  const clearApplyHistoryMutation = useMutation({
+    mutationFn: () => clearCompletedConfigApplyJobs(serverId ?? ''),
+    onSuccess: async () => {
+      setApplyHistoryPage(0);
+      await refreshConfigQueries();
+    },
   });
 
   const updateServerMutation = useMutation({
@@ -586,6 +626,12 @@ export function ServerDetailsPage() {
   const canSaveRoutingProfile = selectedRoutingProfileId.trim() !== '';
   const configVersions = configVersionsQuery.data?.items ?? [];
   const applyJobs = applyJobsQuery.data?.items ?? [];
+  const applyJobsTotal = applyJobsQuery.data?.total ?? 0;
+  const applyHistoryPageCount = Math.max(1, Math.ceil(applyJobsTotal / APPLY_HISTORY_PAGE_SIZE));
+  const applyHistoryFrom = applyJobsTotal === 0 ? 0 : (applyJobsQuery.data?.offset ?? 0) + 1;
+  const applyHistoryTo = applyJobsTotal === 0
+    ? 0
+    : Math.min((applyJobsQuery.data?.offset ?? 0) + applyJobs.length, applyJobsTotal);
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
   const currentConfigVersionId = configVersionsQuery.data?.currentConfigVersionId ?? null;
   const managerBaseUrl = getManagerBaseUrl();
@@ -1072,6 +1118,22 @@ export function ServerDetailsPage() {
             <div className="panel-title">{t('serverDetails.applyJobs')}</div>
             <p className="panel-subtitle">{t('serverDetails.applyJobsSubtitle')}</p>
           </div>
+          {applyJobsTotal > 0 && (
+            <div className="deployment-history-actions">
+              <button
+                className="small-button deployment-history-clear"
+                type="button"
+                disabled={clearApplyHistoryMutation.isPending}
+                onClick={() => {
+                  if (window.confirm(t('serverDetails.clearDeploymentHistoryConfirm'))) {
+                    clearApplyHistoryMutation.mutate();
+                  }
+                }}
+              >
+                {t('serverDetails.clearDeploymentHistory')}
+              </button>
+            </div>
+          )}
         </div>
 
         <p className="muted-text">{t('serverDetails.deploymentHistoryImmutableHint')}</p>
@@ -1079,43 +1141,88 @@ export function ServerDetailsPage() {
         {applyJobsQuery.isError && (
           <div className="form-message form-message-error">{t('serverDetails.applyJobsLoadError')}</div>
         )}
+        {clearApplyHistoryMutation.isSuccess && (
+          <div className="form-message form-message-success" role="status">
+            {t('serverDetails.clearDeploymentHistorySuccess')}
+          </div>
+        )}
+        {clearApplyHistoryMutation.isError && (
+          <div className="form-message form-message-error" role="alert">
+            {t('serverDetails.clearDeploymentHistoryError')}
+          </div>
+        )}
 
         {applyJobsQuery.isLoading ? (
           <p className="empty-state">{t('serverDetails.loadingApplyJobs')}</p>
         ) : applyJobs.length === 0 ? (
           <p className="empty-state">{t('serverDetails.noApplyJobs')}</p>
         ) : (
-          <div className="admin-table apply-jobs-table">
-            <div className="admin-table-row admin-table-head apply-jobs-table-row">
-              <span>{t('vpnAccounts.status')}</span>
-              <span>{t('routingProfiles.action')}</span>
-              <span>{t('serverDetails.version')}</span>
-              <span>{t('serverDetails.stages')}</span>
-              <span>{t('serverDetails.error')}</span>
-              <span>{t('serverDetails.timestamps')}</span>
-            </div>
-            {applyJobs.map((job: ConfigApplyJob) => {
-              const version = versionsById.get(job.configVersionId);
+          <>
+            <div className="admin-table apply-jobs-table">
+              <div className="admin-table-row admin-table-head apply-jobs-table-row">
+                <span>{t('vpnAccounts.status')}</span>
+                <span>{t('routingProfiles.action')}</span>
+                <span>{t('serverDetails.version')}</span>
+                <span>{t('serverDetails.stages')}</span>
+                <span>{t('serverDetails.error')}</span>
+                <span>{t('serverDetails.timestamps')}</span>
+              </div>
+              {applyJobs.map((job: ConfigApplyJob) => {
+                const version = versionsById.get(job.configVersionId);
 
-              return (
-                <div className="admin-table-row apply-jobs-table-row" key={job.id}>
-                  <StatusBadge status={job.status} />
-                  <strong>{job.action}</strong>
-                  <div className="timestamp-stack">
-                    <strong>{version ? `v${version.version}` : t('serverDetails.versionUnknown')}</strong>
-                    <span>{shortHash(job.configVersionId)}</span>
+                return (
+                  <div className="admin-table-row apply-jobs-table-row" key={job.id}>
+                    <StatusBadge status={job.status} />
+                    <strong>{job.action}</strong>
+                    <div className="timestamp-stack">
+                      <strong>{version ? `v${version.version}` : t('serverDetails.versionUnknown')}</strong>
+                      <span>{shortHash(job.configVersionId)}</span>
+                    </div>
+                    <StageSummary resultPayload={job.resultPayload} />
+                    <span>{formatValue(job.errorMessage)}</span>
+                    <div className="timestamp-stack">
+                      <span>{t('serverDetails.createdValue', { value: formatDate(job.createdAt) })}</span>
+                      <span>{t('serverDetails.updatedValue', { value: formatDate(job.updatedAt) })}</span>
+                      <span>{t('serverDetails.completedValue', { value: formatDate(job.completedAt) })}</span>
+                    </div>
                   </div>
-                  <StageSummary resultPayload={job.resultPayload} />
-                  <span>{formatValue(job.errorMessage)}</span>
-                  <div className="timestamp-stack">
-                    <span>{t('serverDetails.createdValue', { value: formatDate(job.createdAt) })}</span>
-                    <span>{t('serverDetails.updatedValue', { value: formatDate(job.updatedAt) })}</span>
-                    <span>{t('serverDetails.completedValue', { value: formatDate(job.completedAt) })}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            <div className="deployment-history-footer">
+              <span className="deployment-history-range">
+                {t('serverDetails.deploymentHistoryRange', {
+                  from: applyHistoryFrom,
+                  to: applyHistoryTo,
+                  total: applyJobsTotal,
+                })}
+              </span>
+              <div className="deployment-history-pagination">
+                <button
+                  className="small-button"
+                  type="button"
+                  disabled={applyHistoryPage === 0 || applyJobsQuery.isFetching}
+                  onClick={() => setApplyHistoryPage((current) => Math.max(0, current - 1))}
+                >
+                  {t('serverDetails.deploymentHistoryPrevious')}
+                </button>
+                <span className="deployment-history-page-label">
+                  {t('serverDetails.deploymentHistoryPage', {
+                    page: applyHistoryPage + 1,
+                    pages: applyHistoryPageCount,
+                  })}
+                </span>
+                <button
+                  className="small-button"
+                  type="button"
+                  disabled={applyHistoryPage + 1 >= applyHistoryPageCount || applyJobsQuery.isFetching}
+                  onClick={() => setApplyHistoryPage((current) => current + 1)}
+                >
+                  {t('serverDetails.deploymentHistoryNext')}
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
