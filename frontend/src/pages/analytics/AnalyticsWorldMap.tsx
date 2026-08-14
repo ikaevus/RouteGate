@@ -1,4 +1,5 @@
 import type { AnalyticsNode, HealthState } from '../../entities/analytics/api/analyticsApi';
+import { t } from '../../shared/i18n/i18n';
 
 interface AnalyticsWorldMapProps {
   nodes: AnalyticsNode[];
@@ -26,6 +27,19 @@ const HEALTH_RANK: Record<HealthState, number> = {
   degraded: 3,
   unhealthy: 4,
 };
+
+function healthLabel(state: HealthState): string {
+  switch (state) {
+    case 'healthy':
+      return t('analytics.healthy');
+    case 'degraded':
+      return t('analytics.degraded');
+    case 'unhealthy':
+      return t('analytics.unhealthy');
+    default:
+      return t('analytics.unknown');
+  }
+}
 
 function project(longitude: number, latitude: number): { x: number; y: number } {
   return {
@@ -66,9 +80,9 @@ function clusterLabel(cluster: NodeCluster): string {
   if (cluster.nodes.length === 1) {
     const node = cluster.nodes[0].node;
     const location = [node.location.city, node.location.country].filter(Boolean).join(', ');
-    return `${node.name}${location ? ` · ${location}` : ''} · ${node.health.state}`;
+    return `${node.name}${location ? ` · ${location}` : ''} · ${healthLabel(node.health.state)}`;
   }
-  return `${cluster.nodes.length} RouteGate nodes · ${cluster.state}`;
+  return `${cluster.nodes.length} · ${healthLabel(cluster.state)}`;
 }
 
 function preferredClusterNode(cluster: NodeCluster): AnalyticsNode {
@@ -81,8 +95,8 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   const clusters = clusterNodes(nodes);
 
   return (
-    <div className="analytics-world-map" aria-label="RouteGate global fleet map">
-      <svg viewBox="0 0 1000 500" role="img" aria-label="World map with RouteGate managed nodes">
+    <div className="analytics-world-map" aria-label={t('analytics.worldMap')}>
+      <svg viewBox="0 0 1000 500" role="img" aria-label={t('analytics.worldMapSubtitle')}>
         <defs>
           <linearGradient id="analytics-map-ocean" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="currentColor" stopOpacity="0.025" />
