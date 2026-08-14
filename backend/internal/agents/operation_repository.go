@@ -16,6 +16,9 @@ const (
 	AgentOperationJobStatusInProgress = "in_progress"
 	AgentOperationJobStatusSucceeded  = "succeeded"
 	AgentOperationJobStatusFailed     = "failed"
+
+	maxAgentOperationResultPayloadBytes = 64 * 1024
+	maxAgentOperationErrorMessageBytes  = 2048
 )
 
 type CreateAgentOperationJobInput struct {
@@ -169,6 +172,13 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 	if err != nil {
 		return "", err
 	}
+	if len(payloadBytes) > maxAgentOperationResultPayloadBytes {
+		return "", fmt.Errorf("agent operation result payload exceeds %d bytes", maxAgentOperationResultPayloadBytes)
+	}
+	errorMessage := strings.TrimSpace(input.ErrorMessage)
+	if len(errorMessage) > maxAgentOperationErrorMessageBytes {
+		return "", fmt.Errorf("agent operation error message exceeds %d bytes", maxAgentOperationErrorMessageBytes)
+	}
 
 	var kind string
 	err = r.pool.QueryRow(ctx, `
@@ -185,7 +195,7 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 		  AND j.agent_id = a.id
 		  AND j.status = 'in_progress'
 		RETURNING j.kind
-	`, input.JobID, input.TokenHash, input.Status, payloadBytes, strings.TrimSpace(input.ErrorMessage)).Scan(&kind)
+	`, input.JobID, input.TokenHash, input.Status, payloadBytes, errorMessage).Scan(&kind)
 	if err != nil {
 		return "", err
 	}
