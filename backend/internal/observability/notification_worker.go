@@ -10,16 +10,8 @@ import (
 
 const notificationPollInterval = 2 * time.Second
 
-type SystemNotificationRequest struct {
-	Channel        string
-	Provider       string
-	Recipient      string
-	Locale         string
-	IdempotencyKey string
-}
-
 type SystemNotificationCreator interface {
-	CreateSystemNotification(context.Context, SystemNotificationRequest) (string, error)
+	CreateSystemNotification(context.Context, string, string, string, string, string) (string, error)
 }
 
 type NotificationWorker struct {
@@ -64,10 +56,14 @@ func (w *NotificationWorker) ProcessNext(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	for _, recipient := range recipients {
-		deliveryID, err := w.creator.CreateSystemNotification(ctx, SystemNotificationRequest{
-			Channel: recipient.Channel, Provider: recipient.Provider, Recipient: recipient.Address,
-			Locale: recipient.Locale, IdempotencyKey: notificationDeliveryIdempotencyKey(intent.ID, recipient.ID),
-		})
+		deliveryID, err := w.creator.CreateSystemNotification(
+			ctx,
+			recipient.Channel,
+			recipient.Provider,
+			recipient.Address,
+			recipient.Locale,
+			notificationDeliveryIdempotencyKey(intent.ID, recipient.ID),
+		)
 		if err != nil {
 			return true, err
 		}
