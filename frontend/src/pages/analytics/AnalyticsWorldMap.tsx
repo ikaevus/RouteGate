@@ -126,16 +126,18 @@ function preferredClusterNode(cluster: NodeCluster): AnalyticsNode {
 
 export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: AnalyticsWorldMapProps) {
   const queryClient = useQueryClient();
-  const [placementMode, setPlacementMode] = useState(false);
+  const [placementTargetId, setPlacementTargetId] = useState<string>();
   const [pendingPoint, setPendingPoint] = useState<PlacementPoint>();
   const clusters = clusterNodes(nodes);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const unlocatedNodes = nodes.filter((node) => !hasCoordinates(node));
-  const placementNode = selectedNode && !hasCoordinates(selectedNode)
+  const placementCandidate = selectedNode && !hasCoordinates(selectedNode)
     ? selectedNode
     : unlocatedNodes.length === 1
       ? unlocatedNodes[0]
       : undefined;
+  const placementNode = placementTargetId ? nodes.find((node) => node.id === placementTargetId) : undefined;
+  const placementMode = placementNode !== undefined;
 
   const saveLocationMutation = useMutation({
     mutationFn: ({ node, point }: { node: AnalyticsNode; point: PlacementPoint }) => updateServerGeography(node.id, {
@@ -149,33 +151,38 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
       setPendingPoint(undefined);
-      setPlacementMode(false);
+      setPlacementTargetId(undefined);
     },
   });
 
   useEffect(() => {
-    setPendingPoint(undefined);
-    setPlacementMode(false);
-  }, [selectedNodeId]);
+    if (placementTargetId && selectedNodeId && selectedNodeId !== placementTargetId) {
+      setPendingPoint(undefined);
+      setPlacementTargetId(undefined);
+      saveLocationMutation.reset();
+    }
+  // The mutation object is stable for the lifetime of this component; only selection changes should cancel placement.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placementTargetId, selectedNodeId]);
 
   const beginPlacement = () => {
-    if (!placementNode) {
+    if (!placementCandidate) {
       return;
     }
-    onSelectNode(placementNode.id);
+    onSelectNode(placementCandidate.id);
     setPendingPoint(undefined);
-    setPlacementMode(true);
+    setPlacementTargetId(placementCandidate.id);
     saveLocationMutation.reset();
   };
 
   const cancelPlacement = () => {
     setPendingPoint(undefined);
-    setPlacementMode(false);
+    setPlacementTargetId(undefined);
     saveLocationMutation.reset();
   };
 
   const handleMapClick = (event: MouseEvent<SVGSVGElement>) => {
-    if (!placementMode || !placementNode || saveLocationMutation.isPending) {
+    if (!placementNode || saveLocationMutation.isPending) {
       return;
     }
 
@@ -210,7 +217,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
 
   return (
     <div className={`analytics-world-map${placementMode ? ' is-placement-mode' : ''}`} aria-label={t('analytics.worldMap')}>
-      {placementNode && !placementMode && (
+      {placementCandidate && !placementMode && (
         <div className="analytics-map-placement-entry">
           <button className="button button-secondary" onClick={beginPlacement} type="button">
             {t('analytics.placeOnMap')}
@@ -218,7 +225,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
         </div>
       )}
 
-      {placementMode && placementNode && (
+      {placementNode && (
         <div className="analytics-map-placement-panel" role="status">
           <div>
             <strong>{t('analytics.placeOnMapTitle', { node: placementNode.name })}</strong>
