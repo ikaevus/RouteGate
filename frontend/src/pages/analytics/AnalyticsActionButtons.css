@@ -56,6 +56,95 @@
   color: #ffffff;
 }
 
+.analytics-world-map {
+  position: relative;
+}
+
+.analytics-map-placement-entry,
+.analytics-map-placement-panel {
+  left: 14px;
+  position: absolute;
+  top: 14px;
+  z-index: 4;
+}
+
+.analytics-map-placement-entry {
+  display: flex;
+}
+
+.analytics-map-placement-panel {
+  backdrop-filter: blur(16px);
+  background: rgba(7, 17, 31, 0.94);
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.38);
+  color: var(--analytics-text);
+  display: grid;
+  gap: 10px;
+  max-width: min(430px, calc(100% - 28px));
+  padding: 13px;
+}
+
+.analytics-map-placement-panel > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.analytics-map-placement-panel strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.analytics-map-placement-panel span {
+  color: var(--analytics-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.analytics-map-placement-panel > small {
+  color: var(--analytics-unhealthy);
+  font-size: 10px;
+}
+
+.analytics-map-placement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.analytics-world-map svg.is-placement-mode {
+  cursor: crosshair;
+}
+
+.analytics-world-map.is-placement-mode + .analytics-map-empty {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.analytics-map-placement-preview {
+  pointer-events: none;
+}
+
+.analytics-map-placement-preview-ring {
+  fill: rgba(37, 99, 235, 0.14);
+  stroke: #60a5fa;
+  stroke-width: 2;
+}
+
+.analytics-map-placement-preview-core {
+  fill: #60a5fa;
+  filter: drop-shadow(0 0 7px rgba(96, 165, 250, 0.85));
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.analytics-map-placement-preview path {
+  fill: none;
+  stroke: rgba(219, 234, 254, 0.86);
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
 :root[data-theme='light'] .analytics-page .button-secondary {
   background: rgba(37, 99, 235, 0.07);
   border-color: rgba(37, 99, 235, 0.22);
@@ -66,4 +155,10 @@
   background: rgba(37, 99, 235, 0.12);
   border-color: rgba(37, 99, 235, 0.34);
   color: #1e3a8a;
+}
+
+:root[data-theme='light'] .analytics-map-placement-panel {
+  background: rgba(248, 250, 252, 0.96);
+  border-color: rgba(37, 99, 235, 0.24);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
 }
