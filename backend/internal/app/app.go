@@ -10,8 +10,10 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/db"
 	"github.com/ikaevus/routegate/backend/internal/delivery"
+	"github.com/ikaevus/routegate/backend/internal/geoip"
 	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
 	"github.com/ikaevus/routegate/backend/internal/observability"
+	"github.com/ikaevus/routegate/backend/internal/servers"
 )
 
 type App struct {
@@ -73,16 +75,23 @@ func (a *App) Start(ctx context.Context) error {
 		a.logger,
 	)
 	diagnosticWorker := observability.NewDiagnosticWorker(a.logger, pool)
+	var geoIPWorker *geoip.Worker
+	if a.cfg.GeoIP.Enabled {
+		geoIPWorker = geoip.NewWorker(a.logger, servers.NewRepository(pool), geoip.NewIPWhoisResolver(nil))
+	}
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 6)
+	errCh := make(chan error, 7)
 	go func() { errCh <- a.server.Start(runtimeCtx) }()
 	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
 	go func() { errCh <- healthWorker.Run(runtimeCtx) }()
 	go func() { errCh <- alertWorker.Run(runtimeCtx) }()
 	go func() { errCh <- notificationWorker.Run(runtimeCtx) }()
 	go func() { errCh <- diagnosticWorker.Run(runtimeCtx) }()
+	if geoIPWorker != nil {
+		go func() { errCh <- geoIPWorker.Run(runtimeCtx) }()
+	}
 
 	select {
 	case <-ctx.Done():
