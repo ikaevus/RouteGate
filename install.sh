@@ -15,6 +15,7 @@ ROUTEGATE_CHECKSUM_FILE="${ROUTEGATE_CHECKSUM_FILE:-}"
 ROUTEGATE_BUNDLE_URL="${ROUTEGATE_BUNDLE_URL:-}"
 ROUTEGATE_CHECKSUM_URL="${ROUTEGATE_CHECKSUM_URL:-}"
 ROUTEGATE_ASSUME_YES="${ROUTEGATE_ASSUME_YES:-0}"
+ROUTEGATE_INSTALL_PROMETHEUS="${ROUTEGATE_INSTALL_PROMETHEUS:-}"
 
 ROUTEGATE_STATE_DIR="/var/lib/routegate-installer"
 ROUTEGATE_STATE_FILE="/etc/routegate/install-state.env"
@@ -30,11 +31,17 @@ ROUTEGATE_BUNDLE_NAME=""
 ROUTEGATE_PUBLIC_IPV4=""
 ROUTEGATE_DB_PASSWORD=""
 ROUTEGATE_ADMIN_PASSWORD=""
+ROUTEGATE_MONITORING_TOKEN=""
 ROUTEGATE_SECRETS_FILE="/var/lib/routegate-installer/secrets.env"
 ROUTEGATE_RESUME_INSTALL=0
 ROUTEGATE_SETUP_URL=""
 ROUTEGATE_SETUP_EXPIRES_AT=""
 ROUTEGATE_LOCK_FILE="/run/lock/routegate-installer.lock"
+ROUTEGATE_PROMETHEUS_CONFIG="/etc/prometheus/routegate.yml"
+ROUTEGATE_PROMETHEUS_TOKEN_FILE="/etc/prometheus/routegate.token"
+ROUTEGATE_PROMETHEUS_STORAGE="/var/lib/prometheus/routegate"
+ROUTEGATE_PROMETHEUS_OVERRIDE="/etc/systemd/system/prometheus.service.d/routegate.conf"
+ROUTEGATE_PROMETHEUS_INSTALL_MASK="/etc/systemd/system/prometheus.service"
 
 usage() {
   cat <<'USAGE'
@@ -47,8 +54,8 @@ Canonical interactive installation:
   curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
     | sudo bash
 
-The installer asks for the public FQDN and email addresses when they are not
-provided as command-line options.
+The installer asks for the public FQDN, email addresses, and whether the
+optional RouteGate-managed Prometheus component should be installed.
 
 Options:
   --domain FQDN             Public RouteGate hostname. DNS must already point here.
@@ -60,6 +67,8 @@ Options:
   --checksum-file PATH      SHA256SUMS file for --bundle-file.
   --bundle-url URL          Use an explicit bundle URL.
   --checksum-url URL        SHA256SUMS URL for --bundle-url.
+  --with-prometheus         Install RouteGate-managed Prometheus.
+  --without-prometheus      Do not install Prometheus (default).
   --yes                     Skip the final confirmation prompt.
   --help                    Show this help.
 
@@ -161,6 +170,14 @@ parse_args() {
         ROUTEGATE_CHECKSUM_URL="$2"
         shift 2
         ;;
+      --with-prometheus)
+        ROUTEGATE_INSTALL_PROMETHEUS=1
+        shift
+        ;;
+      --without-prometheus)
+        ROUTEGATE_INSTALL_PROMETHEUS=0
+        shift
+        ;;
       --yes|-y)
         ROUTEGATE_ASSUME_YES=1
         shift
@@ -211,6 +228,51 @@ prompt_valid_value() {
   done
 }
 
+normalize_prometheus_choice() {
+  case "${1,,}" in
+    1|true|yes|y)
+      printf '1'
+      ;;
+    0|false|no|n|"")
+      printf '0'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prompt_for_prometheus() {
+  if [[ -n "$ROUTEGATE_INSTALL_PROMETHEUS" ]]; then
+    ROUTEGATE_INSTALL_PROMETHEUS=$(normalize_prometheus_choice "$ROUTEGATE_INSTALL_PROMETHEUS") \
+      || die "ROUTEGATE_INSTALL_PROMETHEUS must be true/false or 1/0."
+    return 0
+  fi
+
+  if [[ -f "$ROUTEGATE_STATE_FILE" ]]; then
+    local stored_choice=""
+    stored_choice=$(state_value PROMETHEUS_MANAGED || true)
+    if [[ -n "$stored_choice" ]]; then
+      ROUTEGATE_INSTALL_PROMETHEUS=$(normalize_prometheus_choice "$stored_choice") \
+        || die "Stored Prometheus installation state is invalid."
+      return 0
+    fi
+  fi
+
+  if [[ "$ROUTEGATE_ASSUME_YES" == "1" ]] || ! interactive_tty_available; then
+    ROUTEGATE_INSTALL_PROMETHEUS=0
+    return 0
+  fi
+
+  local answer=""
+  read -r -p "Install Prometheus for historical infrastructure metrics? [y/N] " answer </dev/tty
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    ROUTEGATE_INSTALL_PROMETHEUS=1
+  else
+    ROUTEGATE_INSTALL_PROMETHEUS=0
+  fi
+}
+
 prompt_for_inputs() {
   if [[ -z "$ROUTEGATE_DOMAIN" || -z "$ROUTEGATE_EMAIL" ]]; then
     [[ "$ROUTEGATE_ASSUME_YES" != "1" ]] \
@@ -242,6 +304,7 @@ prompt_for_inputs() {
     fi
   fi
 
+  prompt_for_prometheus
   ROUTEGATE_SERVER_NAME="${ROUTEGATE_SERVER_NAME:-$ROUTEGATE_DOMAIN}"
 }
 
@@ -282,6 +345,8 @@ validate_inputs() {
   validate_email "$ROUTEGATE_EMAIL" || die "Invalid Let's Encrypt email address."
   validate_email "$ROUTEGATE_ADMIN_EMAIL" || die "Invalid administrator email address."
   validate_release_version "$ROUTEGATE_VERSION" || die "Invalid release version: $ROUTEGATE_VERSION"
+  [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "0" || "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]] \
+    || die "Prometheus installation choice is invalid."
   [[ -n "$ROUTEGATE_SERVER_NAME" ]] || die "Server name cannot be empty."
   [[ ${#ROUTEGATE_SERVER_NAME} -le 128 ]] || die "Server name must be 128 characters or fewer."
   [[ "$ROUTEGATE_SERVER_NAME" != *$'\n'* && "$ROUTEGATE_SERVER_NAME" != *$'\r'* ]] \
@@ -355,17 +420,25 @@ STATUS=${status}
 DOMAIN=${ROUTEGATE_DOMAIN}
 VERSION=${version}
 ARCH=${ROUTEGATE_ARCH}
+PROMETHEUS_MANAGED=${ROUTEGATE_INSTALL_PROMETHEUS}
 UPDATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF_STATE
   chmod 0600 "$ROUTEGATE_STATE_FILE"
 }
 
 verify_existing_install() {
-  local installed_domain installed_status
+  local installed_domain installed_status installed_prometheus
   installed_domain=$(state_value DOMAIN || true)
   installed_status=$(state_value STATUS || true)
+  installed_prometheus=$(state_value PROMETHEUS_MANAGED || true)
+  installed_prometheus=${installed_prometheus:-0}
+  installed_prometheus=$(normalize_prometheus_choice "$installed_prometheus") \
+    || die "Existing RouteGate Prometheus ownership state is invalid."
+
   [[ "$installed_domain" == "$ROUTEGATE_DOMAIN" ]] \
     || die "This host is already owned by RouteGate for ${installed_domain:-another domain}."
+  [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "$installed_prometheus" ]] \
+    || die "Existing RouteGate installation uses a different Prometheus ownership mode. Manage Prometheus through RouteGate instead of re-running the platform installer with a different choice."
 
   if [[ "$installed_status" == "installing" ]]; then
     ROUTEGATE_RESUME_INSTALL=1
@@ -376,8 +449,12 @@ verify_existing_install() {
     || die "RouteGate state is unknown (${installed_status:-missing}); review ${ROUTEGATE_STATE_FILE}."
 
   log "Existing RouteGate-owned installation detected; running idempotency checks."
+  local services=(postgresql nginx routegate-manager routegate-agent)
+  if [[ "$installed_prometheus" == "1" ]]; then
+    services+=(prometheus)
+  fi
   local service
-  for service in postgresql nginx routegate-manager routegate-agent; do
+  for service in "${services[@]}"; do
     systemctl is-enabled "$service" >/dev/null 2>&1 \
       || die "Existing installation is incomplete: ${service} is not enabled."
     systemctl is-active "$service" >/dev/null 2>&1 \
@@ -385,6 +462,10 @@ verify_existing_install() {
   done
   curl -fsS --max-time 15 "https://${ROUTEGATE_DOMAIN}/api/admin/health" >/dev/null \
     || die "Existing installation is unhealthy: HTTPS health check failed."
+  if [[ "$installed_prometheus" == "1" ]]; then
+    wait_for_url "http://127.0.0.1:9090/-/ready" 5 1 \
+      || die "Existing installation is unhealthy: Prometheus readiness check failed."
+  fi
 
   log "RouteGate is already installed and healthy. No changes were made."
   log "Open https://${ROUTEGATE_DOMAIN}/"
@@ -402,8 +483,12 @@ collect_routegate_conflicts() {
     /etc/systemd/system/routegate-manager.service \
     /etc/systemd/system/routegate-agent.service \
     /etc/nginx/sites-available/routegate \
+    /etc/prometheus/routegate.yml \
+    /etc/prometheus/routegate.token \
+    /etc/systemd/system/prometheus.service \
+    /etc/systemd/system/prometheus.service.d/routegate.conf \
     /var/www/routegate/index.html; do
-    [[ ! -e "${root}${path}" ]] || printf '%s\n' "$path"
+    [[ ! -e "${root}${path}" && ! -L "${root}${path}" ]] || printf '%s\n' "$path"
   done
 }
 
@@ -411,19 +496,26 @@ package_installed() {
   dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -qx 'install ok installed'
 }
 
-print_dependency_plan() {
-  local packages=(
-    ca-certificates
-    certbot
-    curl
-    jq
-    nginx
-    openssl
-    postgresql
-    postgresql-client
-    python3-certbot-nginx
+platform_packages() {
+  printf '%s\n' \
+    ca-certificates \
+    certbot \
+    curl \
+    jq \
+    nginx \
+    openssl \
+    postgresql \
+    postgresql-client \
+    python3-certbot-nginx \
     tar
-  )
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    printf '%s\n' prometheus
+  fi
+}
+
+print_dependency_plan() {
+  local packages=()
+  mapfile -t packages < <(platform_packages)
   local package
 
   printf '\n[RouteGate] Dependency preflight\n'
@@ -453,6 +545,14 @@ Safe options:
   - Keep the existing nginx sites unchanged and install RouteGate on a clean VPS (recommended).
   - Move the existing site or reverse proxy to another host, then choose Recheck.
   - Use a future advanced existing-reverse-proxy profile. Standard All-in-One mode will not edit unrelated nginx configuration.
+EOF_RECOMMENDATIONS
+      ;;
+    prometheus)
+      cat <<'EOF_RECOMMENDATIONS'
+Safe options:
+  - Keep the existing Prometheus deployment unchanged and select No for RouteGate-managed Prometheus.
+  - Install RouteGate on a clean VPS and let RouteGate own its local Prometheus instance.
+  - Use the existing Prometheus as an external integration; RouteGate will not rewrite an existing Prometheus installation.
 EOF_RECOMMENDATIONS
       ;;
     apache|ports)
@@ -489,6 +589,10 @@ show_conflict_diagnostics() {
       systemctl --no-pager --full status nginx.service 2>/dev/null || true
       find /etc/nginx/sites-enabled -maxdepth 1 -type l -printf 'enabled site: %f -> %l\n' 2>/dev/null || true
       ss -ltnp 2>/dev/null | awk '$4 ~ /:(80|443)$/' || true
+      ;;
+    prometheus)
+      systemctl --no-pager --full status prometheus.service 2>/dev/null || true
+      ss -ltnp 2>/dev/null | awk '$4 ~ /:9090$/' || true
       ;;
     apache)
       systemctl --no-pager --full status apache2.service 2>/dev/null || true
@@ -568,6 +672,12 @@ detect_conflicts() {
     guided_conflict_resolution nginx \
       "An active nginx deployment was detected. RouteGate will not overwrite or guess the purpose of existing sites."
   done
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    while package_installed prometheus || systemctl is-active prometheus.service >/dev/null 2>&1; do
+      guided_conflict_resolution prometheus \
+        "An existing Prometheus package or service was detected. RouteGate will not take ownership of an existing monitoring installation."
+    done
+  fi
   while systemctl is-active apache2.service >/dev/null 2>&1; do
     guided_conflict_resolution apache \
       "Apache is active and may already own TCP 80/443."
@@ -589,20 +699,37 @@ load_or_create_secrets() {
   if [[ -r "$ROUTEGATE_SECRETS_FILE" ]]; then
     ROUTEGATE_DB_PASSWORD=$(sed -n 's/^DB_PASSWORD=//p' "$ROUTEGATE_SECRETS_FILE" | head -n1)
     ROUTEGATE_ADMIN_PASSWORD=$(sed -n 's/^ADMIN_PASSWORD=//p' "$ROUTEGATE_SECRETS_FILE" | head -n1)
+    ROUTEGATE_MONITORING_TOKEN=$(sed -n 's/^MONITORING_TOKEN=//p' "$ROUTEGATE_SECRETS_FILE" | head -n1)
     [[ "$ROUTEGATE_DB_PASSWORD" =~ ^[a-f0-9]{64}$ ]] \
       || die "Preserved database secret is invalid."
     [[ "$ROUTEGATE_ADMIN_PASSWORD" =~ ^[A-Za-z0-9_-]{30,}$ ]] \
       || die "Preserved administrator secret is invalid."
+    if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+      if [[ -z "$ROUTEGATE_MONITORING_TOKEN" ]]; then
+        ROUTEGATE_MONITORING_TOKEN=$(openssl rand -hex 32)
+        printf 'MONITORING_TOKEN=%s\n' "$ROUTEGATE_MONITORING_TOKEN" >>"$ROUTEGATE_SECRETS_FILE"
+      fi
+      [[ "$ROUTEGATE_MONITORING_TOKEN" =~ ^[a-f0-9]{64}$ ]] \
+        || die "Preserved monitoring secret is invalid."
+    else
+      ROUTEGATE_MONITORING_TOKEN=""
+    fi
     return 0
   fi
 
   ROUTEGATE_DB_PASSWORD=$(openssl rand -hex 32)
   ROUTEGATE_ADMIN_PASSWORD=$(openssl rand -base64 30 | tr -d '\n' | tr '/+' '_-')
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    ROUTEGATE_MONITORING_TOKEN=$(openssl rand -hex 32)
+  fi
   install -m 0600 /dev/null "$ROUTEGATE_SECRETS_FILE"
   cat >"$ROUTEGATE_SECRETS_FILE" <<EOF_SECRETS
 DB_PASSWORD=${ROUTEGATE_DB_PASSWORD}
 ADMIN_PASSWORD=${ROUTEGATE_ADMIN_PASSWORD}
 EOF_SECRETS
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    printf 'MONITORING_TOKEN=%s\n' "$ROUTEGATE_MONITORING_TOKEN" >>"$ROUTEGATE_SECRETS_FILE"
+  fi
   chmod 0600 "$ROUTEGATE_SECRETS_FILE"
 }
 
@@ -645,6 +772,11 @@ confirm_installation() {
   log "  Administrator: ${ROUTEGATE_ADMIN_EMAIL}"
   log "  Platform: Ubuntu 24.04 LTS / ${ROUTEGATE_ARCH}"
   log "  TLS: Let's Encrypt"
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    log "  Prometheus: install and manage locally (loopback only)"
+  else
+    log "  Prometheus: not installed (optional)"
+  fi
 
   [[ "$ROUTEGATE_ASSUME_YES" == "1" ]] && return 0
   interactive_tty_available || die "Non-interactive installation requires --yes."
@@ -666,21 +798,53 @@ confirm_installation() {
   done
 }
 
+cleanup_prometheus_install_mask() {
+  if [[ -L "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" ]] \
+    && [[ "$(readlink "$ROUTEGATE_PROMETHEUS_INSTALL_MASK")" == "/dev/null" ]]; then
+    systemctl stop prometheus.service >/dev/null 2>&1 || true
+    rm -f "$ROUTEGATE_PROMETHEUS_INSTALL_MASK"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+}
+
+prepare_prometheus_package_install() {
+  [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]] || return 0
+
+  if [[ -e "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" || -L "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" ]]; then
+    if [[ "$ROUTEGATE_RESUME_INSTALL" == "1" ]] \
+      && [[ -L "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" ]] \
+      && [[ "$(readlink "$ROUTEGATE_PROMETHEUS_INSTALL_MASK")" == "/dev/null" ]]; then
+      rm -f "$ROUTEGATE_PROMETHEUS_INSTALL_MASK"
+    else
+      die "Refusing to replace an existing local prometheus.service override."
+    fi
+  fi
+
+  install -d -m 0755 "$(dirname "$ROUTEGATE_PROMETHEUS_INSTALL_MASK")"
+  ln -s /dev/null "$ROUTEGATE_PROMETHEUS_INSTALL_MASK"
+  systemctl daemon-reload
+}
+
 install_dependencies() {
   log "Installing platform dependencies."
   export DEBIAN_FRONTEND=noninteractive
+  local packages=()
+  mapfile -t packages < <(platform_packages)
+
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    prepare_prometheus_package_install
+  fi
+
   apt-get update >>"$ROUTEGATE_LOG_FILE" 2>&1
-  apt-get install -y \
-    ca-certificates \
-    certbot \
-    curl \
-    jq \
-    nginx \
-    openssl \
-    postgresql \
-    postgresql-client \
-    python3-certbot-nginx \
-    tar >>"$ROUTEGATE_LOG_FILE" 2>&1
+  if ! apt-get install -y "${packages[@]}" >>"$ROUTEGATE_LOG_FILE" 2>&1; then
+    cleanup_prometheus_install_mask
+    die "Failed to install required platform dependencies."
+  fi
+
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    cleanup_prometheus_install_mask
+    package_installed prometheus || die "Prometheus package installation did not complete successfully."
+  fi
 }
 
 resolve_release_version() {
@@ -780,7 +944,6 @@ extract_bundle() {
     metadata/manifest.env; do
     [[ -e "$extract_dir/$required" ]] || die "Release bundle is missing ${required}."
   done
-
 
   local manifest_format manifest_version manifest_os manifest_arch
   manifest_format=$(sed -n 's/^FORMAT_VERSION=//p' "$extract_dir/metadata/manifest.env" | head -n1)
@@ -886,6 +1049,14 @@ ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME="admin"
 ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD="${admin_password}"
 ROUTEGATE_BOOTSTRAP_ADMIN_DISPLAY_NAME="RouteGate Administrator"
 EOF_MANAGER
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    [[ "$ROUTEGATE_MONITORING_TOKEN" =~ ^[a-f0-9]{64}$ ]] \
+      || die "Monitoring token is unavailable."
+    cat >>"$ROUTEGATE_MANAGER_ENV" <<EOF_MONITORING
+ROUTEGATE_MONITORING_ENABLED="true"
+ROUTEGATE_MONITORING_TOKEN="${ROUTEGATE_MONITORING_TOKEN}"
+EOF_MONITORING
+  fi
   chmod 0600 "$ROUTEGATE_MANAGER_ENV"
 }
 
@@ -911,6 +1082,113 @@ start_manager() {
     journalctl -u routegate-manager -n 100 --no-pager >>"$ROUTEGATE_LOG_FILE" 2>&1 || true
     die "RouteGate Manager did not become healthy."
   fi
+}
+
+write_prometheus_config() {
+  install -d -m 0755 /etc/prometheus
+  install -o root -g prometheus -m 0640 /dev/null "$ROUTEGATE_PROMETHEUS_TOKEN_FILE"
+  printf '%s\n' "$ROUTEGATE_MONITORING_TOKEN" >"$ROUTEGATE_PROMETHEUS_TOKEN_FILE"
+  chown root:prometheus "$ROUTEGATE_PROMETHEUS_TOKEN_FILE"
+  chmod 0640 "$ROUTEGATE_PROMETHEUS_TOKEN_FILE"
+
+  install -o root -g prometheus -m 0640 /dev/null "$ROUTEGATE_PROMETHEUS_CONFIG"
+  cat >"$ROUTEGATE_PROMETHEUS_CONFIG" <<EOF_PROMETHEUS
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: routegate-manager
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: ${ROUTEGATE_PROMETHEUS_TOKEN_FILE}
+    static_configs:
+      - targets: ["127.0.0.1:8080"]
+
+  - job_name: routegate-fleet
+    metrics_path: /metrics/fleet
+    authorization:
+      type: Bearer
+      credentials_file: ${ROUTEGATE_PROMETHEUS_TOKEN_FILE}
+    static_configs:
+      - targets: ["127.0.0.1:8080"]
+EOF_PROMETHEUS
+  chown root:prometheus "$ROUTEGATE_PROMETHEUS_CONFIG"
+  chmod 0640 "$ROUTEGATE_PROMETHEUS_CONFIG"
+}
+
+write_prometheus_systemd_override() {
+  install -d -m 0755 "$(dirname "$ROUTEGATE_PROMETHEUS_OVERRIDE")"
+  install -m 0644 /dev/null "$ROUTEGATE_PROMETHEUS_OVERRIDE"
+  cat >"$ROUTEGATE_PROMETHEUS_OVERRIDE" <<EOF_OVERRIDE
+[Service]
+ExecStart=
+ExecStart=/usr/bin/prometheus --config.file=${ROUTEGATE_PROMETHEUS_CONFIG} --storage.tsdb.path=${ROUTEGATE_PROMETHEUS_STORAGE} --web.listen-address=127.0.0.1:9090
+EOF_OVERRIDE
+}
+
+write_monitoring_curl_config() {
+  local path=$1
+  install -m 0600 /dev/null "$path"
+  printf 'header = "Authorization: Bearer %s"\n' "$ROUTEGATE_MONITORING_TOKEN" >"$path"
+  chmod 0600 "$path"
+}
+
+wait_for_prometheus_targets() {
+  local attempts=${1:-30}
+  local delay=${2:-2}
+  local i response up_count
+  for ((i = 1; i <= attempts; i++)); do
+    response=$(curl -fsS --max-time 5 "http://127.0.0.1:9090/api/v1/targets" 2>/dev/null || true)
+    if [[ -n "$response" ]]; then
+      up_count=$(jq -r '[.data.activeTargets[]? | select(.health == "up") | .labels.job] | unique | length' <<<"$response" 2>/dev/null || printf '0')
+      if [[ "$up_count" == "2" ]]; then
+        return 0
+      fi
+    fi
+    sleep "$delay"
+  done
+  return 1
+}
+
+configure_managed_prometheus() {
+  [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]] || return 0
+  log "Configuring RouteGate-managed Prometheus."
+
+  command -v prometheus >/dev/null 2>&1 || die "The Prometheus package is not installed."
+  command -v promtool >/dev/null 2>&1 || die "promtool is not available."
+  getent group prometheus >/dev/null 2>&1 || die "The Prometheus system group is unavailable."
+
+  install -d -o prometheus -g prometheus -m 0750 "$ROUTEGATE_PROMETHEUS_STORAGE"
+  write_prometheus_config
+  write_prometheus_systemd_override
+
+  promtool check config "$ROUTEGATE_PROMETHEUS_CONFIG" >>"$ROUTEGATE_LOG_FILE" 2>&1 \
+    || die "Prometheus configuration validation failed."
+
+  local auth_config="$ROUTEGATE_WORK_DIR/monitoring-auth.curl"
+  write_monitoring_curl_config "$auth_config"
+  curl -fsS --max-time 10 --config "$auth_config" "${ROUTEGATE_LOCAL_API}/metrics" >/dev/null \
+    || die "RouteGate Manager metrics endpoint verification failed."
+  curl -fsS --max-time 10 --config "$auth_config" "${ROUTEGATE_LOCAL_API}/metrics/fleet" >/dev/null \
+    || die "RouteGate fleet metrics endpoint verification failed."
+
+  systemctl daemon-reload
+  systemctl enable prometheus >>"$ROUTEGATE_LOG_FILE" 2>&1
+  systemctl restart prometheus >>"$ROUTEGATE_LOG_FILE" 2>&1
+  wait_for_url "http://127.0.0.1:9090/-/ready" 30 1 \
+    || die "Prometheus did not become ready."
+
+  if ss -ltnH | awk '{print $4}' | grep -Eq '(^0\.0\.0\.0:9090$|^\[::\]:9090$)'; then
+    die "Prometheus is unexpectedly listening on a public wildcard address."
+  fi
+  if ! ss -ltnH | awk '{print $4}' | grep -Eq '(^127\.0\.0\.1:9090$|^\[::1\]:9090$)'; then
+    die "Prometheus is not listening on the expected loopback address."
+  fi
+
+  wait_for_prometheus_targets 30 2 \
+    || die "Prometheus did not successfully scrape both RouteGate metrics targets."
 }
 
 configure_nginx_and_tls() {
@@ -1150,8 +1428,12 @@ EOF_CREDENTIALS
 
 verify_final_state() {
   log "Verifying the installed RouteGate stack."
+  local services=(postgresql nginx routegate-manager routegate-agent)
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    services+=(prometheus)
+  fi
   local service
-  for service in postgresql nginx routegate-manager routegate-agent; do
+  for service in "${services[@]}"; do
     systemctl is-enabled "$service" >/dev/null 2>&1 || die "${service} is not enabled."
     systemctl is-active "$service" >/dev/null 2>&1 || die "${service} is not active."
   done
@@ -1162,6 +1444,14 @@ verify_final_state() {
   if ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)5432$' \
     && ss -ltnH | awk '{print $4}' | grep -Eq '(^0\.0\.0\.0:5432$|^\[::\]:5432$)'; then
     die "PostgreSQL is unexpectedly listening on a public wildcard address."
+  fi
+
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    wait_for_url "http://127.0.0.1:9090/-/ready" 5 1 \
+      || die "Final Prometheus readiness check failed."
+    if ss -ltnH | awk '{print $4}' | grep -Eq '(^0\.0\.0\.0:9090$|^\[::\]:9090$)'; then
+      die "Prometheus is unexpectedly listening on a public wildcard address."
+    fi
   fi
 }
 
@@ -1186,6 +1476,27 @@ Read them with:
   sudo cat ${ROUTEGATE_CREDENTIALS_FILE}
 
 SMTP delivery is not configured by default. RouteGate does not email passwords.
+EOF_SUCCESS
+
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    cat <<'EOF_PROMETHEUS_SUCCESS'
+
+Prometheus:
+  Installed and managed by RouteGate.
+  Web/API listener: 127.0.0.1:9090 (loopback only).
+  RouteGate metrics history is enabled.
+EOF_PROMETHEUS_SUCCESS
+  else
+    cat <<'EOF_PROMETHEUS_SUCCESS'
+
+Prometheus:
+  Optional component not installed.
+  RouteGate health, alerts, diagnostics, and current metrics remain available.
+  Prometheus can be added later through RouteGate Analytics.
+EOF_PROMETHEUS_SUCCESS
+  fi
+
+  cat <<EOF_SUCCESS
 
 Services:
   PostgreSQL, nginx, RouteGate Manager, and RouteGate Agent are active and enabled.
@@ -1222,6 +1533,7 @@ main() {
   configure_postgresql "$ROUTEGATE_DB_PASSWORD"
   write_manager_environment "$ROUTEGATE_DB_PASSWORD" "$ROUTEGATE_ADMIN_PASSWORD"
   start_manager
+  configure_managed_prometheus
   configure_nginx_and_tls
   bootstrap_local_agent "$ROUTEGATE_ADMIN_PASSWORD"
   create_initial_setup_link "$ROUTEGATE_ADMIN_PASSWORD"

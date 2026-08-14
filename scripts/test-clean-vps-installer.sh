@@ -80,6 +80,12 @@ test_validation_helpers() {
   assert_false "rejects Ubuntu 22.04" platform_tuple_supported ubuntu 22.04 amd64 1
   assert_false "rejects arm64 in the installer MVP" platform_tuple_supported ubuntu 24.04 arm64 1
   assert_false "rejects a non-systemd tuple" platform_tuple_supported ubuntu 24.04 amd64 0
+
+  assert_equal "normalizes Prometheus yes" "1" "$(normalize_prometheus_choice yes)"
+  assert_equal "normalizes Prometheus true" "1" "$(normalize_prometheus_choice true)"
+  assert_equal "normalizes Prometheus no" "0" "$(normalize_prometheus_choice no)"
+  assert_equal "empty Prometheus choice defaults to no" "0" "$(normalize_prometheus_choice '')"
+  assert_false "rejects invalid Prometheus choice" normalize_prometheus_choice maybe
 }
 
 test_argument_parsing() {
@@ -91,24 +97,44 @@ test_argument_parsing() {
     ROUTEGATE_SERVER_NAME=""
     ROUTEGATE_VERSION="latest"
     ROUTEGATE_ASSUME_YES=0
+    ROUTEGATE_INSTALL_PROMETHEUS=""
     parse_args \
       --domain US.RouteGate.org \
       --email owner@example.org \
       --version v1.2.3 \
       --yes
     prompt_for_inputs
-    printf '%s|%s|%s|%s|%s|%s' \
+    printf '%s|%s|%s|%s|%s|%s|%s' \
       "$ROUTEGATE_DOMAIN" \
       "$ROUTEGATE_EMAIL" \
       "$ROUTEGATE_ADMIN_EMAIL" \
       "$ROUTEGATE_SERVER_NAME" \
       "$ROUTEGATE_VERSION" \
-      "$ROUTEGATE_ASSUME_YES"
+      "$ROUTEGATE_ASSUME_YES" \
+      "$ROUTEGATE_INSTALL_PROMETHEUS"
   )
   assert_equal \
-    "parses and normalizes installer arguments" \
-    "us.routegate.org|owner@example.org|owner@example.org|us.routegate.org|v1.2.3|1" \
+    "parses installer arguments and defaults Prometheus to no" \
+    "us.routegate.org|owner@example.org|owner@example.org|us.routegate.org|v1.2.3|1|0" \
     "$output"
+
+  output=$(
+    ROUTEGATE_DOMAIN=""
+    ROUTEGATE_EMAIL=""
+    ROUTEGATE_ADMIN_EMAIL=""
+    ROUTEGATE_SERVER_NAME=""
+    ROUTEGATE_VERSION="latest"
+    ROUTEGATE_ASSUME_YES=0
+    ROUTEGATE_INSTALL_PROMETHEUS=""
+    parse_args \
+      --domain us.routegate.org \
+      --email owner@example.org \
+      --with-prometheus \
+      --yes
+    prompt_for_inputs
+    printf '%s' "$ROUTEGATE_INSTALL_PROMETHEUS"
+  )
+  assert_equal "parses explicit managed Prometheus opt-in" "1" "$output"
 }
 
 test_artifact_urls() {
@@ -165,7 +191,7 @@ run_confirmation_prompt() {
   local input=$1
   local command
   printf -v command \
-    'source %q; ROUTEGATE_LOG_FILE=%q; ROUTEGATE_DOMAIN=us.routegate.org; ROUTEGATE_ADMIN_EMAIL=admin@example.org; ROUTEGATE_ARCH=amd64; ROUTEGATE_ASSUME_YES=0; confirm_installation' \
+    'source %q; ROUTEGATE_LOG_FILE=%q; ROUTEGATE_DOMAIN=us.routegate.org; ROUTEGATE_ADMIN_EMAIL=admin@example.org; ROUTEGATE_ARCH=amd64; ROUTEGATE_ASSUME_YES=0; ROUTEGATE_INSTALL_PROMETHEUS=0; confirm_installation' \
     "$ROOT_DIR/install.sh" "$ROUTEGATE_LOG_FILE"
   printf '%b' "$input" | script -qefc "bash -c $(printf '%q' "$command")" /dev/null
 }
@@ -192,6 +218,7 @@ test_success_output() {
   ROUTEGATE_SETUP_URL="https://us.routegate.org/setup#token=setup-secret-token"
   ROUTEGATE_SETUP_EXPIRES_AT="2026-08-05T09:30:00Z"
   ROUTEGATE_CREDENTIALS_FILE="/root/routegate-first-login.txt"
+  ROUTEGATE_INSTALL_PROMETHEUS=0
   : >"$ROUTEGATE_LOG_FILE"
 
   local output
@@ -209,6 +236,9 @@ test_success_output() {
   assert_true \
     "completion output includes the recovery command" \
     grep -Fq "sudo cat /root/routegate-first-login.txt" <<<"$output"
+  assert_true \
+    "completion output explains optional Prometheus remains available later" \
+    grep -Fq "Optional component not installed." <<<"$output"
   assert_false \
     "completion output no longer presents the generic Open block" \
     grep -Fq 'Open:' <<<"$output"
@@ -222,18 +252,61 @@ test_manager_environment_public_url() {
   ROUTEGATE_MANAGER_ENV="$TEST_TMP/manager.env"
   ROUTEGATE_DOMAIN="us.routegate.org"
   ROUTEGATE_ADMIN_EMAIL="admin@example.org"
+  ROUTEGATE_INSTALL_PROMETHEUS=0
+  ROUTEGATE_MONITORING_TOKEN=""
 
   write_manager_environment "fixture-db-password" "fixture-admin-password"
 
   assert_true \
     "manager environment includes the canonical public URL" \
     grep -Fxq 'ROUTEGATE_PUBLIC_URL="https://us.routegate.org"' "$ROUTEGATE_MANAGER_ENV"
+  assert_false \
+    "manager monitoring surface remains disabled by default" \
+    grep -Fq 'ROUTEGATE_MONITORING_' "$ROUTEGATE_MANAGER_ENV"
   assert_equal \
     "manager environment remains private" \
     "600" \
     "$(stat -c '%a' "$ROUTEGATE_MANAGER_ENV")"
 
+  ROUTEGATE_INSTALL_PROMETHEUS=1
+  ROUTEGATE_MONITORING_TOKEN="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  write_manager_environment "fixture-db-password" "fixture-admin-password"
+  assert_true \
+    "managed Prometheus enables the monitoring surface" \
+    grep -Fxq 'ROUTEGATE_MONITORING_ENABLED="true"' "$ROUTEGATE_MANAGER_ENV"
+  assert_true \
+    "managed Prometheus persists the dedicated monitoring token" \
+    grep -Fxq "ROUTEGATE_MONITORING_TOKEN=\"${ROUTEGATE_MONITORING_TOKEN}\"" "$ROUTEGATE_MANAGER_ENV"
+
   ROUTEGATE_MANAGER_ENV="$original_manager_env"
+  ROUTEGATE_INSTALL_PROMETHEUS=0
+  ROUTEGATE_MONITORING_TOKEN=""
+}
+
+test_prometheus_dependency_and_security_contract() {
+  ROUTEGATE_INSTALL_PROMETHEUS=0
+  assert_false \
+    "Prometheus is not a default platform dependency" \
+    grep -Fxq prometheus < <(platform_packages)
+
+  ROUTEGATE_INSTALL_PROMETHEUS=1
+  assert_true \
+    "Prometheus becomes a dependency only after opt-in" \
+    grep -Fxq prometheus < <(platform_packages)
+  assert_true \
+    "managed Prometheus web listener is loopback-only" \
+    grep -Fq -- '--web.listen-address=127.0.0.1:9090' "$ROOT_DIR/install.sh"
+  assert_true \
+    "managed Prometheus scrapes the Manager metrics endpoint" \
+    grep -Fq 'metrics_path: /metrics' "$ROOT_DIR/install.sh"
+  assert_true \
+    "managed Prometheus scrapes the fleet metrics endpoint" \
+    grep -Fq 'metrics_path: /metrics/fleet' "$ROOT_DIR/install.sh"
+  assert_true \
+    "managed Prometheus uses a credentials file instead of embedding the token in YAML" \
+    grep -Fq "credentials_file: \${ROUTEGATE_PROMETHEUS_TOKEN_FILE}" "$ROOT_DIR/install.sh"
+
+  ROUTEGATE_INSTALL_PROMETHEUS=0
 }
 
 test_agent_credentials_detection() {
@@ -255,14 +328,16 @@ EOF_AGENT_TEST
 }
 
 test_conflict_recommendations() {
-  local postgres nginx ports
+  local postgres nginx ports prometheus
   postgres=$(conflict_recommendations postgresql)
   nginx=$(conflict_recommendations nginx)
   ports=$(conflict_recommendations ports)
+  prometheus=$(conflict_recommendations prometheus)
 
   assert_true "PostgreSQL conflict recommends preserving existing data" grep -Fq "Keep the existing PostgreSQL deployment unchanged" <<<"$postgres"
   assert_true "nginx conflict recommends preserving existing sites" grep -Fq "Keep the existing nginx sites unchanged" <<<"$nginx"
   assert_true "port conflict recommends a clean VPS" grep -Fq "clean VPS" <<<"$ports"
+  assert_true "Prometheus conflict recommends external integration instead of takeover" grep -Fq "external integration" <<<"$prometheus"
 }
 
 test_conflict_collection() {
@@ -287,6 +362,7 @@ test_checksum_verification
 test_piped_entrypoint_guard
 test_setup_url_contract
 test_manager_environment_public_url
+test_prometheus_dependency_and_security_contract
 test_confirmation_prompt
 test_success_output
 test_agent_credentials_detection
