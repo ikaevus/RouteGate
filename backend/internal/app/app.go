@@ -11,6 +11,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/db"
 	"github.com/ikaevus/routegate/backend/internal/delivery"
 	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
+	"github.com/ikaevus/routegate/backend/internal/observability"
 )
 
 type App struct {
@@ -64,12 +65,14 @@ func (a *App) Start(ctx context.Context) error {
 
 	a.server = routegatehttp.NewServer(a.cfg, a.logger, pool)
 	deliveryWorker := delivery.NewConfiguredWorker(a.cfg, a.logger, pool)
+	healthWorker := observability.NewHealthWorker(a.logger, pool)
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() { errCh <- a.server.Start(runtimeCtx) }()
 	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
+	go func() { errCh <- healthWorker.Run(runtimeCtx) }()
 
 	select {
 	case <-ctx.Done():
