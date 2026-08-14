@@ -67,14 +67,20 @@ func (a *App) Start(ctx context.Context) error {
 	deliveryWorker := delivery.NewConfiguredWorker(a.cfg, a.logger, pool)
 	healthWorker := observability.NewHealthWorker(a.logger, pool)
 	alertWorker := observability.NewAlertEngine(a.logger, pool)
+	notificationWorker := observability.NewNotificationWorker(
+		observability.NewNotificationRepository(pool),
+		delivery.NewConfiguredSystemNotificationCreator(a.logger, pool),
+		a.logger,
+	)
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 4)
+	errCh := make(chan error, 5)
 	go func() { errCh <- a.server.Start(runtimeCtx) }()
 	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
 	go func() { errCh <- healthWorker.Run(runtimeCtx) }()
 	go func() { errCh <- alertWorker.Run(runtimeCtx) }()
+	go func() { errCh <- notificationWorker.Run(runtimeCtx) }()
 
 	select {
 	case <-ctx.Done():

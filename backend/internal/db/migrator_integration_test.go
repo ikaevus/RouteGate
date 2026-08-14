@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000120_observability_alert_recovery" {
-		t.Fatalf("applied schema version = %q, want 000120_observability_alert_recovery", version)
+	if version != "000121_observability_notification_outbox" {
+		t.Fatalf("applied schema version = %q, want 000121_observability_notification_outbox", version)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -312,8 +312,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000120_observability_alert_recovery" {
-		t.Fatalf("applied schema version = %q, want 000120_observability_alert_recovery", version)
+	if version != "000121_observability_notification_outbox" {
+		t.Fatalf("applied schema version = %q, want 000121_observability_notification_outbox", version)
 	}
 }
 
