@@ -62,36 +62,32 @@ type RealityKeypair struct {
 }
 
 type CreateServerInput struct {
-	Name              string
-	Description       string
-	Location          string
-	Provider          string
-	PublicIP          string
-	PrivateIP         string
-	Status            string
-	LocationCountry   string
-	LocationRegion    string
-	LocationCity      string
-	LocationLatitude  *float64
-	LocationLongitude *float64
-	LocationSource    string
+	Name        string
+	Description string
+	Location    string
+	Provider    string
+	PublicIP    string
+	PrivateIP   string
+	Status      string
 }
 
 type UpdateServerInput struct {
-	Name              *string
-	Description       *string
-	Location          *string
-	Provider          *string
-	PublicIP          *string
-	PrivateIP         *string
-	Status            *string
-	LocationCountry   *string
-	LocationRegion    *string
-	LocationCity      *string
-	LocationLatitude  *float64
-	LocationLongitude *float64
-	LocationSource    *string
-	ClearCoordinates  bool
+	Name        *string
+	Description *string
+	Location    *string
+	Provider    *string
+	PublicIP    *string
+	PrivateIP   *string
+	Status      *string
+}
+
+type UpdateServerGeographyInput struct {
+	Country   string
+	Region    string
+	City      string
+	Latitude  *float64
+	Longitude *float64
+	Source    string
 }
 
 type UpdateProtocolSettingsInput struct {
