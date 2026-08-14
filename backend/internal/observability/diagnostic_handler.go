@@ -72,7 +72,7 @@ func (h *DiagnosticHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if h.audit != nil {
 		h.audit.RecordSafe(r.Context(), audit.EventInput{
-			ActorType:    audit.ActorTypeAdmin,
+			ActorType:    audit.ActorTypeUser,
 			ActorUserID:  requestedBy,
 			Action:       "observability.diagnostic.requested",
 			ResourceType: "diagnostic_run",
