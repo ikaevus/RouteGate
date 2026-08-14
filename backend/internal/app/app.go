@@ -72,15 +72,17 @@ func (a *App) Start(ctx context.Context) error {
 		delivery.NewConfiguredSystemNotificationCreator(a.logger, pool),
 		a.logger,
 	)
+	diagnosticWorker := observability.NewDiagnosticWorker(a.logger, pool)
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 5)
+	errCh := make(chan error, 6)
 	go func() { errCh <- a.server.Start(runtimeCtx) }()
 	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
 	go func() { errCh <- healthWorker.Run(runtimeCtx) }()
 	go func() { errCh <- alertWorker.Run(runtimeCtx) }()
 	go func() { errCh <- notificationWorker.Run(runtimeCtx) }()
+	go func() { errCh <- diagnosticWorker.Run(runtimeCtx) }()
 
 	select {
 	case <-ctx.Done():
