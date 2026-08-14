@@ -67,11 +67,10 @@ func (a *App) Start(ctx context.Context) error {
 	deliveryWorker := delivery.NewConfiguredWorker(a.cfg, a.logger, pool)
 	healthWorker := observability.NewHealthWorker(a.logger, pool)
 	alertWorker := observability.NewAlertEngine(a.logger, pool)
-	notificationCreator := delivery.NewSystemNotificationCreator(
-		delivery.NewService(delivery.NewRepository(pool), nil),
-	)
 	notificationWorker := observability.NewNotificationWorker(
-		observability.NewNotificationRepository(pool), notificationCreator, a.logger,
+		observability.NewNotificationRepository(pool),
+		delivery.NewConfiguredSystemNotificationCreator(a.logger, pool),
+		a.logger,
 	)
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
