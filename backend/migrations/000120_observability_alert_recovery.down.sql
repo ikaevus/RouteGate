@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_observability_alerts_recovering;
+ALTER TABLE observability_alerts DROP CONSTRAINT IF EXISTS observability_alerts_recovery_started_at_check;
+ALTER TABLE observability_alerts DROP COLUMN IF EXISTS recovery_started_at;
