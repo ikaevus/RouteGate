@@ -377,7 +377,7 @@ func (h *Handler) recordRegistrationFailure(r *http.Request, registrationToken s
 func (h *Handler) recordTaskClaimed(r *http.Request, task AgentConfigTask) {
 	kind := task.EffectiveKind()
 	resourceType := "config_apply_job"
-	if kind == AgentTaskKindVPNCoreService || kind == AgentTaskKindVPNCoreInstall {
+	if kind == AgentTaskKindVPNCoreService || kind == AgentTaskKindVPNCoreInstall || kind == AgentTaskKindDiagnostic {
 		resourceType = "agent_operation_job"
 	}
 	h.recordAudit(r.Context(), audit.EventInput{
@@ -400,7 +400,7 @@ func (h *Handler) recordTaskClaimed(r *http.Request, task AgentConfigTask) {
 
 func (h *Handler) recordTaskCompleted(r *http.Request, jobID string, status string, kind string) {
 	resourceType := "config_apply_job"
-	if kind == AgentTaskKindVPNCoreService || kind == AgentTaskKindVPNCoreInstall {
+	if kind == AgentTaskKindVPNCoreService || kind == AgentTaskKindVPNCoreInstall || kind == AgentTaskKindDiagnostic {
 		resourceType = "agent_operation_job"
 	}
 	h.recordAudit(r.Context(), audit.EventInput{
