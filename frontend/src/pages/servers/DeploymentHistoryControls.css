@@ -30,6 +30,14 @@
   gap: 8px;
 }
 
+.config-versions-table-row > .timestamp-stack {
+  justify-items: start;
+}
+
+.config-versions-table-row > .timestamp-stack > .badge {
+  justify-self: start;
+}
+
 @media (max-width: 760px) {
   .deployment-history-footer {
     align-items: stretch;
