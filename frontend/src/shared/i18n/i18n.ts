@@ -4,6 +4,11 @@ import { settingsEn, settingsRu, type SettingsTranslationKey } from './settingsT
 import { deliveryEn, deliveryRu, type DeliveryTranslationKey } from './deliveryTranslations';
 import { analyticsEn, analyticsRu, type AnalyticsTranslationKey } from './analyticsTranslations';
 import {
+  deploymentHistoryEn,
+  deploymentHistoryRu,
+  type DeploymentHistoryTranslationKey,
+} from './deploymentHistoryTranslations';
+import {
   telegramPairingEn,
   telegramPairingRu,
   type TelegramPairingTranslationKey,
@@ -15,12 +20,27 @@ export type TranslationKey =
   | SettingsTranslationKey
   | DeliveryTranslationKey
   | AnalyticsTranslationKey
+  | DeploymentHistoryTranslationKey
   | TelegramPairingTranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
-  en: { ...en, ...settingsEn, ...deliveryEn, ...analyticsEn, ...telegramPairingEn },
-  ru: { ...ru, ...settingsRu, ...deliveryRu, ...analyticsRu, ...telegramPairingRu },
+  en: {
+    ...en,
+    ...settingsEn,
+    ...deliveryEn,
+    ...analyticsEn,
+    ...deploymentHistoryEn,
+    ...telegramPairingEn,
+  },
+  ru: {
+    ...ru,
+    ...settingsRu,
+    ...deliveryRu,
+    ...analyticsRu,
+    ...deploymentHistoryRu,
+    ...telegramPairingRu,
+  },
 };
 
 const DEFAULT_LOCALE: Locale = 'en';
