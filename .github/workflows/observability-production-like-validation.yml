@@ -1,0 +1,128 @@
+name: RG-113 Observability Production-like Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/observability-production-like-validation.yml
+      - scripts/deploy-production-like-bundle.sh
+      - scripts/validate-observability-production-like.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: routegate-production-like
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-validate:
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout exact target commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build exact amd64 release bundle
+        shell: bash
+        env:
+          VERSION: production-like
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          ARCHITECTURES: amd64
+          OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
+        run: |
+          set -euo pipefail
+          ./scripts/build-release-bundle.sh
+          bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
+          test -s "$bundle"
+          tar -tzf "$bundle" | grep -qx './metadata/manifest.env'
+
+      - name: Validate production-like scripts locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/deploy-production-like-bundle.sh
+          bash -n scripts/validate-observability-production-like.sh
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck scripts/deploy-production-like-bundle.sh scripts/validate-observability-production-like.sh
+          fi
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy exact bundle and validate observability failure recovery
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+
+          SSH=(
+            ssh
+            -i ~/.ssh/routegate_ci
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=10
+          )
+          SCP=(
+            scp
+            -i ~/.ssh/routegate_ci
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=10
+          )
+
+          bundle="${RUNNER_TEMP}/routegate-dist/routegate-production-like-linux-amd64.tar.gz"
+          bundle_sha="$(sha256sum "$bundle" | awk '{print $1}')"
+          remote_bundle="/tmp/routegate-rg113i-${TARGET_SHA}.tar.gz"
+          remote_deploy="/tmp/routegate-rg113i-deploy-${TARGET_SHA}.sh"
+          remote_validate="/tmp/routegate-rg113i-validate-${TARGET_SHA}.sh"
+
+          "${SCP[@]}" "$bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle"
+          "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
+          "${SCP[@]}" scripts/validate-observability-production-like.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
+
+          set +e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "sudo bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate'"
+          rc=$?
+          set -e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_deploy' '$remote_validate' '$remote_bundle'" || true
+          exit "$rc"
