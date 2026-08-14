@@ -28,5 +28,12 @@ type ListConfigVersionsResponse struct {
 }
 
 type ListConfigApplyJobsResponse struct {
-	Items []ConfigApplyJob `json:"items"`
+	Items  []ConfigApplyJob `json:"items"`
+	Total  int              `json:"total"`
+	Limit  int              `json:"limit"`
+	Offset int              `json:"offset"`
+}
+
+type ClearConfigApplyHistoryResponse struct {
+	Deleted int64 `json:"deleted"`
 }
