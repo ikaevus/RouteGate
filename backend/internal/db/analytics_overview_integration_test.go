@@ -75,7 +75,7 @@ func TestAnalyticsOverviewProjectsLocationHealthTelemetryAndAlerts(t *testing.T)
 		INSERT INTO observability_current_health (
 			resource_type,resource_id,check_key,component,state,required,reason_code,summary,recommended_action,evidence,observed_at,expires_at
 		) VALUES
-		('server',$1,'agent.telemetry.freshness','agent','healthy',true,'telemetry_recent','Agent telemetry is current.','', '{}'::jsonb,$2,$3),
+		('server',$1,'agent.telemetry.freshness','agent','healthy',true,'telemetry_recent','Agent telemetry is current.',NULL,'{}'::jsonb,$2,$3),
 		('server',$1,'host.disk.capacity','host','degraded',true,'disk_free_low','Root filesystem free space is low.','free_disk_space','{}'::jsonb,$2,$3)
 	`, serverID, now, expiresAt); err != nil {
 		t.Fatalf("create health: %v", err)
