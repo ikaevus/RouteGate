@@ -126,7 +126,7 @@ func renderAlertNotificationEN(intent systemNotificationIntent, label string) (s
 }
 
 func renderAlertNotificationRU(intent systemNotificationIntent, label string) (string, string) {
-	condition := alertReasonTextRU(intent.ReasonCode, intent.Summary)
+	condition := alertReasonTextRU(intent.ReasonCode)
 	switch intent.Kind {
 	case "resolved":
 		return "Инцидент RouteGate устранён", fmt.Sprintf("%s: %s Инцидент устранён.", label, condition)
@@ -155,11 +155,14 @@ func alertReasonTextEN(reasonCode, fallback string) string {
 	case "vpn_core_not_running":
 		return "VPN Core service is not running."
 	default:
-		return strings.TrimSpace(fallback)
+		if strings.TrimSpace(fallback) != "" {
+			return strings.TrimSpace(fallback)
+		}
+		return "A RouteGate health condition requires attention."
 	}
 }
 
-func alertReasonTextRU(reasonCode, fallback string) string {
+func alertReasonTextRU(reasonCode string) string {
 	switch strings.TrimSpace(reasonCode) {
 	case "telemetry_stale":
 		return "Телеметрия Agent устарела: Manager не получает актуальные данные."
@@ -174,9 +177,6 @@ func alertReasonTextRU(reasonCode, fallback string) string {
 	case "vpn_core_not_running":
 		return "Служба VPN Core не работает."
 	default:
-		if strings.TrimSpace(fallback) != "" {
-			return strings.TrimSpace(fallback)
-		}
 		return "Состояние RouteGate требует внимания."
 	}
 }
