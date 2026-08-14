@@ -39,7 +39,7 @@ func (w *DiagnosticWorker) Run(ctx context.Context) error {
 }
 
 func (w *DiagnosticWorker) syncSafe(ctx context.Context) {
-	updated, err := w.repository.SyncFromAgentJobs(ctx)
+	updated, err := w.repository.SyncSemanticFromAgentJobs(ctx)
 	if err != nil {
 		if w.logger != nil {
 			w.logger.Error("diagnostic run synchronization failed", "error", err)
