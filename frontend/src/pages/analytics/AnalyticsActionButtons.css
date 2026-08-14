@@ -1,0 +1,69 @@
+.analytics-page .button {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  min-height: 36px;
+  padding: 9px 12px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.analytics-page .button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.analytics-page .button:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.78);
+  outline-offset: 2px;
+}
+
+.analytics-page .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.analytics-page .button-primary {
+  background: linear-gradient(135deg, var(--rg-primary), var(--rg-primary-hover));
+  border-color: rgba(96, 165, 250, 0.2);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.24);
+  color: #ffffff;
+}
+
+.analytics-page .button-primary:hover:not(:disabled) {
+  box-shadow: 0 15px 34px rgba(37, 99, 235, 0.32);
+}
+
+.analytics-page .button-secondary {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(96, 165, 250, 0.3);
+  color: #dbeafe;
+}
+
+.analytics-page .button-secondary:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.17);
+  border-color: rgba(96, 165, 250, 0.46);
+  color: #ffffff;
+}
+
+:root[data-theme='light'] .analytics-page .button-secondary {
+  background: rgba(37, 99, 235, 0.07);
+  border-color: rgba(37, 99, 235, 0.22);
+  color: #1d4ed8;
+}
+
+:root[data-theme='light'] .analytics-page .button-secondary:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.34);
+  color: #1e3a8a;
+}
