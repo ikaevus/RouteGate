@@ -27,6 +27,10 @@ type MonitoringConfig struct {
 	Token   string
 }
 
+type GeoIPConfig struct {
+	Enabled bool
+}
+
 type Config struct {
 	Env                       string
 	HTTPAddr                  string
@@ -42,6 +46,7 @@ type Config struct {
 	SMTP                      SMTPConfig
 	Telegram                  TelegramConfig
 	Monitoring                MonitoringConfig
+	GeoIP                     GeoIPConfig
 }
 
 func Load() Config {
@@ -73,6 +78,9 @@ func Load() Config {
 		Monitoring: MonitoringConfig{
 			Enabled: envBool("ROUTEGATE_MONITORING_ENABLED", false),
 			Token:   env("ROUTEGATE_MONITORING_TOKEN", ""),
+		},
+		GeoIP: GeoIPConfig{
+			Enabled: envBool("ROUTEGATE_GEOIP_ENABLED", true),
 		},
 	}
 }
