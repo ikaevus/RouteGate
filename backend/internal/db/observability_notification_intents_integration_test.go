@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ikaevus/routegate/backend/internal/observability"
 )
 
@@ -153,9 +155,7 @@ func TestTransientPendingAlertDoesNotCreateNotificationIntent(t *testing.T) {
 	assertNotificationIntentCounts(t, ctx, pool, 0, 0, 0)
 }
 
-func assertNotificationIntentCounts(t *testing.T, ctx context.Context, pool interface {
-	QueryRow(context.Context, string, ...any) rowScanner
-}, firing, escalated, resolved int) {
+func assertNotificationIntentCounts(t *testing.T, ctx context.Context, pool *pgxpool.Pool, firing, escalated, resolved int) {
 	t.Helper()
 	var gotFiring, gotEscalated, gotResolved int
 	if err := pool.QueryRow(ctx, `
@@ -170,8 +170,4 @@ func assertNotificationIntentCounts(t *testing.T, ctx context.Context, pool inte
 	if gotFiring != firing || gotEscalated != escalated || gotResolved != resolved {
 		t.Fatalf("intent counts firing/escalated/resolved=%d/%d/%d, want %d/%d/%d", gotFiring, gotEscalated, gotResolved, firing, escalated, resolved)
 	}
-}
-
-type rowScanner interface {
-	Scan(...any) error
 }
