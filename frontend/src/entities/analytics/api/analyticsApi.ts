@@ -99,8 +99,8 @@ export function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   return apiGet<AnalyticsOverview>('/api/v1/analytics/overview');
 }
 
-export function updateServerGeography(serverId: string, input: ServerGeographyInput): Promise<AnalyticsNode> {
-  return apiPut<ServerGeographyInput, AnalyticsNode>(`/api/v1/servers/${serverId}/geography`, input);
+export function updateServerGeography(serverId: string, input: ServerGeographyInput): Promise<unknown> {
+  return apiPut<ServerGeographyInput, unknown>(`/api/v1/servers/${serverId}/geography`, input);
 }
 
 export function runHostDiagnostic(serverId: string): Promise<DiagnosticRun> {
