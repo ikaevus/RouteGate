@@ -50,6 +50,7 @@ func TestObservabilityFoundationPersistenceBoundaries(t *testing.T) {
 		"observability_alert_transitions",
 		"observability_alerts",
 		"observability_current_health",
+		"observability_diagnostic_runs",
 		"observability_events",
 		"observability_health_transitions",
 		"observability_notification_deliveries",
