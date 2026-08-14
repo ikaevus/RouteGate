@@ -23,6 +23,7 @@ const (
 	AgentTaskKindConfigApply    = "config_apply"
 	AgentTaskKindVPNCoreService = "vpn_core_service"
 	AgentTaskKindVPNCoreInstall = "vpn_core_install"
+	AgentTaskKindDiagnostic     = "diagnostic"
 )
 
 const (
@@ -30,6 +31,8 @@ const (
 	VPNCoreOperationStop           = "stop"
 	VPNCoreOperationRestart        = "restart"
 	VPNCoreOperationInstallSingBox = "install_sing_box"
+	DiagnosticOperationHostOverview = "host_overview"
+	DiagnosticOperationVPNCoreStatus = "vpn_core_status"
 )
 
 type Capabilities map[string]any
@@ -99,7 +102,7 @@ type CreateOrReplaceAgentInput struct {
 	ProtocolVersion *int
 	TokenHash       string
 	Capabilities    Capabilities
-	Status          string
+	Status           string
 	RegisteredAt    *time.Time
 	LastSeenAt      *time.Time
 }

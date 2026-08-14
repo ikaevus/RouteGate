@@ -122,7 +122,7 @@ func TestClientProfileUniquenessRepairMigrationRepairsHistoricalDrift(t *testing
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000121_observability_notification_outbox" {
-		t.Fatalf("applied schema version = %q, want 000121_observability_notification_outbox", version)
+	if version != "000122_observability_diagnostics" {
+		t.Fatalf("applied schema version = %q, want 000122_observability_diagnostics", version)
 	}
 }

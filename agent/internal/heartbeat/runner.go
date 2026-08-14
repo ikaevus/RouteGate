@@ -160,6 +160,8 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return r.processVPNCoreServiceTask(ctx, *task)
 	case tasks.TaskKindVPNCoreInstall:
 		return r.processVPNCoreInstallTask(ctx, *task)
+	case tasks.TaskKindDiagnostic:
+		return r.processDiagnosticTask(ctx, *task)
 	case tasks.TaskKindConfigApply:
 		// Continue through the existing config deployment workflow.
 	default:
@@ -212,7 +214,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"apply":           "failed",
 			"stagedPath":      stageResult.StagedPath,
 			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
+			"configHash":      task.ConfigHash,
 			"command":         validationResult.Command,
 			"output":          validationResult.Output,
 		}
@@ -234,7 +236,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"activePath":      applyResult.ActivePath,
 			"backupPath":      applyResult.BackupPath,
 			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
+			"configHash":      task.ConfigHash,
 			"command":         validationResult.Command,
 			"output":          validationResult.Output,
 		}
@@ -260,7 +262,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"activePath":      applyResult.ActivePath,
 			"backupPath":      applyResult.BackupPath,
 			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
+			"configHash":      task.ConfigHash,
 			"command":         restartResult.Command,
 			"output":          restartResult.Output,
 		}
@@ -284,7 +286,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"activePath":      applyResult.ActivePath,
 			"backupPath":      applyResult.BackupPath,
 			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
+			"configHash":      task.ConfigHash,
 			"command":         healthResult.Command,
 			"output":          healthResult.Output,
 		}
@@ -308,7 +310,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"activePath":      applyResult.ActivePath,
 			"backupPath":      applyResult.BackupPath,
 			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
+			"configHash":      task.ConfigHash,
 			"command":         persistenceResult.Command,
 			"output":          persistenceResult.Output,
 		}
@@ -332,7 +334,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"activePath":      applyResult.ActivePath,
 			"backupPath":      applyResult.BackupPath,
 			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
+			"configHash":      task.ConfigHash,
 			"listenerPort":    listenerResult.Port,
 		}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
@@ -352,7 +354,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		"activePath":         applyResult.ActivePath,
 		"backupPath":         applyResult.BackupPath,
 		"configVersionId":    stageResult.ConfigVersionID,
-		"configHash":         stageResult.ConfigHash,
+		"configHash":         task.ConfigHash,
 		"command":            validationResult.Command,
 		"output":             validationResult.Output,
 		"restartCommand":     restartResult.Command,
