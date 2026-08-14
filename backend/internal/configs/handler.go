@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,11 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/audit"
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+)
+
+const (
+	defaultApplyHistoryLimit = 20
+	maxApplyHistoryLimit     = 100
 )
 
 type Handler struct {
@@ -152,12 +158,48 @@ func (h *Handler) Apply(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListApplyJobs(w http.ResponseWriter, r *http.Request) {
-	items, err := h.service.ListApplyJobs(r.Context(), r.PathValue("server_id"))
+	limit, offset, err := parseApplyHistoryPagination(r)
+	if err != nil {
+		writeInvalidRequest(w, err.Error())
+		return
+	}
+
+	items, total, err := h.service.ListApplyJobsPage(r.Context(), r.PathValue("server_id"), limit, offset)
 	if err != nil {
 		h.databaseError(w, "list config apply jobs", err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, ListConfigApplyJobsResponse{Items: items})
+	httpx.WriteJSON(w, http.StatusOK, ListConfigApplyJobsResponse{
+		Items:  items,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	})
+}
+
+func (h *Handler) ClearCompletedApplyHistory(w http.ResponseWriter, r *http.Request) {
+	serverID := r.PathValue("server_id")
+	deleted, err := h.service.ClearCompletedApplyHistory(r.Context(), serverID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "clear completed config apply jobs", err)
+		return
+	}
+
+	h.recordAudit(r, audit.EventInput{
+		Action:       "config.apply_history.cleared",
+		ResourceType: "server",
+		ResourceID:   serverID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"deleted_count": deleted,
+			"scope":         "terminal_jobs_only",
+		},
+	})
+	httpx.WriteJSON(w, http.StatusOK, ClearConfigApplyHistoryResponse{Deleted: deleted})
 }
 
 func (h *Handler) GetApplyJob(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +213,26 @@ func (h *Handler) GetApplyJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, job)
+}
+
+func parseApplyHistoryPagination(r *http.Request) (int, int, error) {
+	limit := defaultApplyHistoryLimit
+	offset := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > maxApplyHistoryLimit {
+			return 0, 0, errors.New("limit must be an integer between 1 and 100")
+		}
+		limit = parsed
+	}
+	if raw := r.URL.Query().Get("offset"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			return 0, 0, errors.New("offset must be a non-negative integer")
+		}
+		offset = parsed
+	}
+	return limit, offset, nil
 }
 
 func (h *Handler) recordApplyRequested(r *http.Request, job ConfigApplyJob) {
