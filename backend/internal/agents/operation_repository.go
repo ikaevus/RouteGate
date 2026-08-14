@@ -41,6 +41,15 @@ func ValidVPNCoreOperation(operation string) bool {
 	}
 }
 
+func ValidDiagnosticOperation(operation string) bool {
+	switch strings.TrimSpace(operation) {
+	case DiagnosticOperationHostOverview, DiagnosticOperationVPNCoreStatus:
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAgentOperationJobInput) (AgentConfigTask, error) {
 	kind := strings.TrimSpace(input.Kind)
 	if kind == "" {
@@ -86,6 +95,8 @@ func operationCapability(kind, operation string) (string, error) {
 		return "vpnCoreServiceOperations", nil
 	case kind == AgentTaskKindVPNCoreInstall && operation == VPNCoreOperationInstallSingBox:
 		return "vpnCoreInstallationOperations", nil
+	case kind == AgentTaskKindDiagnostic && ValidDiagnosticOperation(operation):
+		return "diagnosticProfiles", nil
 	default:
 		return "", fmt.Errorf("unsupported Agent operation kind %q operation %q", kind, operation)
 	}
