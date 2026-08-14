@@ -23,7 +23,7 @@ func (f fakeSchemaVersionReader) AppliedSchemaVersion(context.Context) (string, 
 func TestVersionEndpointReturnsBuildAndSchemaMetadata(t *testing.T) {
 	handler := &Handler{
 		logger: slog.Default(),
-		reader: fakeSchemaVersionReader{version: "000121_observability_notification_outbox"},
+		reader: fakeSchemaVersionReader{version: "000122_observability_diagnostics"},
 		info:   buildinfo.Current,
 	}
 
@@ -41,10 +41,10 @@ func TestVersionEndpointReturnsBuildAndSchemaMetadata(t *testing.T) {
 	if payload.Manager.Version != "dev" || payload.Manager.GitCommit != "unknown" {
 		t.Fatalf("unexpected manager metadata: %+v", payload.Manager)
 	}
-	if payload.Database.ExpectedSchemaVersion != 121 {
+	if payload.Database.ExpectedSchemaVersion != 122 {
 		t.Fatalf("unexpected schema metadata: %+v", payload.Database)
 	}
-	if payload.Database.AppliedSchemaVersion == nil || *payload.Database.AppliedSchemaVersion != "000121_observability_notification_outbox" {
+	if payload.Database.AppliedSchemaVersion == nil || *payload.Database.AppliedSchemaVersion != "000122_observability_diagnostics" {
 		t.Fatalf("unexpected applied schema version: %+v", payload.Database.AppliedSchemaVersion)
 	}
 	if payload.Update.AutomaticUpdatesSupported {
