@@ -20,6 +20,11 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	authn := auth.Middleware(authRepo)
 	deliveryHandler := delivery.NewHandler(logger, pool, cfg)
 	diagnosticHandler := observability.NewDiagnosticHandler(logger, pool)
+	prometheusHandler := observability.NewPrometheusHandler(
+		observability.NewPrometheusRepository(pool),
+		cfg.Monitoring.Enabled,
+		cfg.Monitoring.Token,
+	)
 
 	mux.Handle("GET /api/v1/delivery/providers", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListProviders))))
 	mux.Handle("GET /api/v1/delivery/providers/{provider}/settings", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.GetProviderSettings))))
@@ -42,6 +47,9 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	mux.Handle("POST /api/v1/servers/{server_id}/diagnostics", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(diagnosticHandler.Create))))
 	mux.Handle("GET /api/v1/servers/{server_id}/diagnostics", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(diagnosticHandler.List))))
 	mux.Handle("GET /api/v1/servers/{server_id}/diagnostics/{run_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(diagnosticHandler.Get))))
+
+	mux.HandleFunc("GET /metrics", prometheusHandler.Manager)
+	mux.HandleFunc("GET /metrics/fleet", prometheusHandler.Fleet)
 
 	mux.Handle("/", base)
 	return mux
