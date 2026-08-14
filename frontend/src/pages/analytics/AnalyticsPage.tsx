@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
+  autoDetectServerGeography,
   getAnalyticsOverview,
   runHostDiagnostic,
   updateServerGeography,
@@ -128,6 +129,14 @@ function LocationEditor({ node, onClose }: { node: AnalyticsNode; onClose: () =>
     },
   });
 
+  const autoDetectMutation = useMutation({
+    mutationFn: () => autoDetectServerGeography(node.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
+      onClose();
+    },
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const parsedLatitude = latitude.trim() === '' ? undefined : Number(latitude);
@@ -181,10 +190,24 @@ function LocationEditor({ node, onClose }: { node: AnalyticsNode; onClose: () =>
           <input inputMode="decimal" onChange={(event) => setLongitude(event.target.value)} placeholder="8.6821" value={longitude} />
         </label>
       </div>
+      {node.publicIp && (
+        <div className="form-message">
+          {t('analytics.autoLocationHint', { publicIp: node.publicIp })}
+        </div>
+      )}
       {mutation.isError && <div className="form-message form-message-error">{t('analytics.locationError')}</div>}
+      {autoDetectMutation.isError && <div className="form-message form-message-error">{t('analytics.autoLocationError')}</div>}
       <div className="analytics-location-actions">
-        <button className="button button-secondary" onClick={onClose} type="button">{t('analytics.cancel')}</button>
-        <button className="button button-primary" disabled={mutation.isPending} type="submit">
+        <button className="button button-secondary" disabled={mutation.isPending || autoDetectMutation.isPending} onClick={onClose} type="button">{t('analytics.cancel')}</button>
+        <button
+          className="button button-secondary"
+          disabled={!node.publicIp || mutation.isPending || autoDetectMutation.isPending}
+          onClick={() => autoDetectMutation.mutate()}
+          type="button"
+        >
+          {autoDetectMutation.isPending ? t('analytics.detectingLocation') : t('analytics.detectAutomatically')}
+        </button>
+        <button className="button button-primary" disabled={mutation.isPending || autoDetectMutation.isPending} type="submit">
           {mutation.isPending ? t('analytics.savingLocation') : t('analytics.saveLocation')}
         </button>
       </div>

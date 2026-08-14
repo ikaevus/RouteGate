@@ -11,6 +11,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/configs"
 	"github.com/ikaevus/routegate/backend/internal/dashboard"
+	"github.com/ikaevus/routegate/backend/internal/geoip"
 	"github.com/ikaevus/routegate/backend/internal/health"
 	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
@@ -30,6 +31,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	authRepo := auth.NewRepository(pool)
 	authHandler := auth.NewHandler(logger, pool, cfg.AuthSessionTTL)
 	serversHandler := servers.NewHandler(logger, pool)
+	geoIPHandler := geoip.NewHandler(logger, pool, cfg.GeoIP.Enabled)
 	agentsHandler := agents.NewHandler(logger, pool)
 	configsHandler := configs.NewHandler(logger, pool)
 	dashboardHandler := dashboard.NewHandler(logger, pool)
@@ -85,6 +87,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(serversHandler.Get))))
 	mux.Handle("PATCH /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.Update))))
 	mux.Handle("DELETE /api/v1/servers/{server_id}", authn(auth.RequirePermission("servers:delete")(stdhttp.HandlerFunc(serversHandler.Delete))))
+	mux.Handle("POST /api/v1/servers/{server_id}/geography/auto-detect", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(geoIPHandler.AutoDetect))))
 	mux.Handle("GET /api/v1/servers/{server_id}/protocol-settings", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(serversHandler.GetProtocolSettings))))
 	mux.Handle("PATCH /api/v1/servers/{server_id}/protocol-settings", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.UpdateProtocolSettings))))
 	mux.Handle("POST /api/v1/servers/{server_id}/protocol-settings/recommended", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.ConfigureRecommendedProtocolSettings))))
