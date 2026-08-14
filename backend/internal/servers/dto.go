@@ -14,13 +14,6 @@ type CreateServerRequest struct {
 	PublicIP    string `json:"publicIp"`
 	PrivateIP   string `json:"privateIp"`
 
-	LocationCountry   string   `json:"locationCountry"`
-	LocationRegion    string   `json:"locationRegion"`
-	LocationCity      string   `json:"locationCity"`
-	LocationLatitude  *float64 `json:"locationLatitude"`
-	LocationLongitude *float64 `json:"locationLongitude"`
-	LocationSource    string   `json:"locationSource"`
-
 	// Hostname is accepted for backwards compatibility with the legacy admin API.
 	Hostname string `json:"hostname,omitempty"`
 }
@@ -33,14 +26,15 @@ type UpdateServerRequest struct {
 	PublicIP    *string `json:"publicIp"`
 	PrivateIP   *string `json:"privateIp"`
 	Status      *string `json:"status"`
+}
 
-	LocationCountry        *string  `json:"locationCountry"`
-	LocationRegion         *string  `json:"locationRegion"`
-	LocationCity           *string  `json:"locationCity"`
-	LocationLatitude       *float64 `json:"locationLatitude"`
-	LocationLongitude      *float64 `json:"locationLongitude"`
-	LocationSource         *string  `json:"locationSource"`
-	ClearLocationCoordinates bool   `json:"clearLocationCoordinates"`
+type UpdateServerGeographyRequest struct {
+	Country   string   `json:"country"`
+	Region    string   `json:"region"`
+	City      string   `json:"city"`
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+	Source    string   `json:"source"`
 }
 
 type UpdateProtocolSettingsRequest struct {
