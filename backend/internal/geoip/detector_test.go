@@ -22,12 +22,12 @@ func (f *fakeDetectionRepository) UpdateServerGeography(_ context.Context, _ str
 	return f.server, nil
 }
 
-type fakeResolver struct {
+type fakeDetectionResolver struct {
 	location Location
 	err      error
 }
 
-func (f fakeResolver) Lookup(context.Context, string) (Location, error) {
+func (f fakeDetectionResolver) Lookup(context.Context, string) (Location, error) {
 	return f.location, f.err
 }
 
@@ -35,13 +35,13 @@ func TestDetectorOverwritesManualCoordinatesOnlyWhenExplicitlyRequested(t *testi
 	oldLatitude := 50.1109
 	oldLongitude := 8.6821
 	repo := &fakeDetectionRepository{server: servers.Server{
-		ID:                    "server-id",
-		PublicIP:              "203.0.113.10",
-		LocationLatitude:      &oldLatitude,
-		LocationLongitude:     &oldLongitude,
-		LocationSource:        servers.LocationSourceManual,
+		ID:                "server-id",
+		PublicIP:          "203.0.113.10",
+		LocationLatitude:  &oldLatitude,
+		LocationLongitude: &oldLongitude,
+		LocationSource:    servers.LocationSourceManual,
 	}}
-	detector := NewDetector(repo, fakeResolver{location: Location{
+	detector := NewDetector(repo, fakeDetectionResolver{location: Location{
 		Country: "United States", Region: "Virginia", City: "Ashburn",
 		Latitude: 39.0438, Longitude: -77.4874,
 	}})
@@ -62,7 +62,7 @@ func TestDetectorOverwritesManualCoordinatesOnlyWhenExplicitlyRequested(t *testi
 
 func TestDetectorRequiresPublicIP(t *testing.T) {
 	repo := &fakeDetectionRepository{server: servers.Server{ID: "server-id"}}
-	detector := NewDetector(repo, fakeResolver{})
+	detector := NewDetector(repo, fakeDetectionResolver{})
 
 	_, err := detector.Detect(context.Background(), "server-id")
 	if !errors.Is(err, ErrPublicIPRequired) {
