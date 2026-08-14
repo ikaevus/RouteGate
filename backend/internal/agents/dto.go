@@ -22,9 +22,10 @@ type AgentRegistrationResponse struct {
 }
 
 type AgentHeartbeatRequest struct {
-	AgentVersion    *string      `json:"agentVersion,omitempty"`
-	ProtocolVersion *int         `json:"protocolVersion,omitempty"`
-	Capabilities    Capabilities `json:"capabilities,omitempty"`
+	AgentVersion    *string             `json:"agentVersion,omitempty"`
+	ProtocolVersion *int                `json:"protocolVersion,omitempty"`
+	Capabilities    Capabilities        `json:"capabilities,omitempty"`
+	Telemetry       *HeartbeatTelemetry `json:"telemetry,omitempty"`
 }
 
 type AgentHeartbeatResponse struct {

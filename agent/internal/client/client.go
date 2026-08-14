@@ -45,9 +45,10 @@ type RegisterResponse struct {
 }
 
 type heartbeatRequest struct {
-	AgentVersion    string         `json:"agentVersion"`
-	ProtocolVersion int            `json:"protocolVersion"`
-	Capabilities    map[string]any `json:"capabilities"`
+	AgentVersion    string                        `json:"agentVersion"`
+	ProtocolVersion int                           `json:"protocolVersion"`
+	Capabilities    map[string]any                `json:"capabilities"`
+	Telemetry       *systeminfo.TelemetrySnapshot `json:"telemetry,omitempty"`
 }
 
 type HeartbeatResponse struct {
@@ -95,6 +96,7 @@ func (c *Client) Heartbeat(ctx context.Context, agentToken string, info systemin
 		AgentVersion:    info.AgentVersion,
 		ProtocolVersion: info.ProtocolVersion,
 		Capabilities:    heartbeatCapabilities(info),
+		Telemetry:       info.Telemetry,
 	}
 	var res HeartbeatResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/heartbeat", agentToken, req, &res); err != nil {

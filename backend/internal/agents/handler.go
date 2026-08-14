@@ -202,6 +202,15 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if request.Telemetry != nil {
+		if err := validateHeartbeatTelemetry(*request.Telemetry); err != nil {
+			httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error(
+				"invalid_telemetry",
+				"Agent telemetry snapshot is invalid.",
+			))
+			return
+		}
+	}
 
 	agent, err := h.repository.UpdateAgentHeartbeat(r.Context(), UpdateAgentHeartbeatInput{
 		TokenHash: HashToken(token), AgentVersion: request.AgentVersion, ProtocolVersion: request.ProtocolVersion, Capabilities: request.Capabilities,
@@ -217,6 +226,26 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 			"Failed to update agent heartbeat.",
 		))
 		return
+	}
+
+	if request.Telemetry != nil {
+		writer, supported := h.repository.(telemetryHeartbeatWriter)
+		if !supported {
+			h.logger.Error("agent telemetry persistence unavailable", "agent_id", agent.ID, "server_id", agent.ServerID)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
+				"telemetry_unavailable",
+				"Failed to store agent telemetry.",
+			))
+			return
+		}
+		if err := writer.UpsertAgentTelemetry(r.Context(), agent.ID, agent.ServerID, *request.Telemetry); err != nil {
+			h.logger.Error("persist agent telemetry failed", "error", err, "agent_id", agent.ID, "server_id", agent.ServerID)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(
+				"telemetry_persistence_failed",
+				"Failed to store agent telemetry.",
+			))
+			return
+		}
 	}
 
 	h.logger.Debug("agent heartbeat accepted", "agent_id", agent.ID, "server_id", agent.ServerID)

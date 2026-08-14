@@ -56,6 +56,7 @@ func TestObservabilityFoundationPersistenceBoundaries(t *testing.T) {
 	}
 
 	wantTables := []string{
+		"observability_agent_telemetry",
 		"observability_alert_acknowledgements",
 		"observability_alert_transitions",
 		"observability_alerts",
