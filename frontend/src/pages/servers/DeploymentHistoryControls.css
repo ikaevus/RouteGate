@@ -1,0 +1,42 @@
+.deployment-history-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.deployment-history-clear {
+  border-color: color-mix(in srgb, var(--rg-danger, #ef4444) 42%, var(--rg-border));
+  color: color-mix(in srgb, var(--rg-danger, #ef4444) 82%, var(--rg-text-primary));
+}
+
+.deployment-history-footer {
+  align-items: center;
+  border-top: 1px solid var(--rg-border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 0 2px;
+}
+
+.deployment-history-range,
+.deployment-history-page-label {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.deployment-history-pagination {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .deployment-history-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .deployment-history-pagination {
+    justify-content: space-between;
+  }
+}

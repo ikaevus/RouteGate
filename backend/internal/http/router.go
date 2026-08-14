@@ -107,6 +107,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/servers/{server_id}/config/versions/{version_id}/pin", authn(auth.RequirePermission("configs:delete")(stdhttp.HandlerFunc(configsHandler.PinVersion))))
 	mux.Handle("DELETE /api/v1/servers/{server_id}/config/versions/{version_id}/pin", authn(auth.RequirePermission("configs:delete")(stdhttp.HandlerFunc(configsHandler.UnpinVersion))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.ListApplyJobs))))
+	mux.Handle("DELETE /api/v1/servers/{server_id}/config/apply-jobs/completed", authn(auth.RequirePermission("configs:delete")(stdhttp.HandlerFunc(configsHandler.ClearCompletedApplyHistory))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs/{job_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.GetApplyJob))))
 
 	mux.Handle("GET /api/v1/routing-profiles", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.List))))
