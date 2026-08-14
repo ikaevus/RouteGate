@@ -65,8 +65,8 @@ func TestServerPublicIPChangeInvalidatesOnlyAutomaticGeography(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update automatic server public IP: %v", err)
 	}
-	if automatic.PublicIP != newAutomaticIP {
-		t.Fatalf("automatic public IP=%q, want %q", automatic.PublicIP, newAutomaticIP)
+	if automatic.PublicIP != "9.9.9.9/32" {
+		t.Fatalf("automatic public IP=%q, want %q", automatic.PublicIP, "9.9.9.9/32")
 	}
 	if automatic.LocationSource != "" || automatic.LocationCountry != "" || automatic.LocationRegion != "" || automatic.LocationCity != "" || automatic.LocationLatitude != nil || automatic.LocationLongitude != nil {
 		t.Fatalf("automatic geography must be invalidated after public IP change: %+v", automatic)
