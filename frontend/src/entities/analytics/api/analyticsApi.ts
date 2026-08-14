@@ -103,6 +103,10 @@ export function updateServerGeography(serverId: string, input: ServerGeographyIn
   return apiPut<ServerGeographyInput, unknown>(`/api/v1/servers/${serverId}/geography`, input);
 }
 
+export function autoDetectServerGeography(serverId: string): Promise<unknown> {
+  return apiPost<undefined, unknown>(`/api/v1/servers/${serverId}/geography/auto-detect`);
+}
+
 export function runHostDiagnostic(serverId: string): Promise<DiagnosticRun> {
   return apiPost<{ profileKey: string }, DiagnosticRun>(`/api/v1/servers/${serverId}/diagnostics`, {
     profileKey: 'host_overview',
