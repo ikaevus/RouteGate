@@ -22,6 +22,11 @@ type TelegramConfig struct {
 	BotToken string
 }
 
+type MonitoringConfig struct {
+	Enabled bool
+	Token   string
+}
+
 type Config struct {
 	Env                       string
 	HTTPAddr                  string
@@ -36,6 +41,7 @@ type Config struct {
 	BootstrapAdminDisplayName string
 	SMTP                      SMTPConfig
 	Telegram                  TelegramConfig
+	Monitoring                MonitoringConfig
 }
 
 func Load() Config {
@@ -63,6 +69,10 @@ func Load() Config {
 		},
 		Telegram: TelegramConfig{
 			BotToken: env("ROUTEGATE_TELEGRAM_BOT_TOKEN", ""),
+		},
+		Monitoring: MonitoringConfig{
+			Enabled: envBool("ROUTEGATE_MONITORING_ENABLED", false),
+			Token:   env("ROUTEGATE_MONITORING_TOKEN", ""),
 		},
 	}
 }
@@ -102,6 +112,18 @@ func envInt(key string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
 		return fallback
 	}
 	return parsed
