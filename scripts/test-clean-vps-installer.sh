@@ -304,7 +304,7 @@ test_prometheus_dependency_and_security_contract() {
     grep -Fq 'metrics_path: /metrics/fleet' "$ROOT_DIR/install.sh"
   assert_true \
     "managed Prometheus uses a credentials file instead of embedding the token in YAML" \
-    grep -Fq 'credentials_file: ${ROUTEGATE_PROMETHEUS_TOKEN_FILE}' "$ROOT_DIR/install.sh"
+    grep -Fq "credentials_file: \${ROUTEGATE_PROMETHEUS_TOKEN_FILE}" "$ROOT_DIR/install.sh"
 
   ROUTEGATE_INSTALL_PROMETHEUS=0
 }
