@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000118_observability_foundation" {
-		t.Fatalf("applied schema version = %q, want 000118_observability_foundation", version)
+	if version != "000119_observability_agent_telemetry" {
+		t.Fatalf("applied schema version = %q, want 000119_observability_agent_telemetry", version)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -217,9 +217,6 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 		t.Fatal("fixture must contain legacy runtimeMetrics before migration 112")
 	}
 
-	// Apply through 113 so schema_migrations records 112/113 exactly as an
-	// already-upgraded host would. Migration 112 installs the canonical trigger,
-	// but it does not retroactively rewrite the legacy row created above.
 	preBackfillDir := copyMigrationsBefore(t, "../../migrations", "000114_agent_runtime_metrics_backfill.up.sql")
 	if err := Migrate(ctx, pool, preBackfillDir, logger); err != nil {
 		t.Fatalf("apply migrations through 113: %v", err)
@@ -243,9 +240,6 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 		t.Fatal("legacy row must remain untouched before migration 114")
 	}
 
-	// Reproduce the production-like drift discovered by RG-112: migrations 112
-	// and 113 are recorded as applied, but the canonical runtime extractor is
-	// absent. The migrator therefore cannot repair this by replaying 112.
 	if _, err := pool.Exec(ctx, `
 		DROP TRIGGER IF EXISTS agents_extract_runtime_metrics ON agents;
 		DROP FUNCTION IF EXISTS routegate_extract_agent_runtime_metrics();
@@ -253,9 +247,6 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 		t.Fatalf("simulate applied-112 extractor drift: %v", err)
 	}
 
-	// Applying the full directory now executes migration 114 followed by later
-	// migrations. Migration 114 must restore the canonical trigger/function
-	// itself and backfill the legacy row before the schema advances further.
 	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
 		t.Fatalf("apply self-contained runtime backfill migration: %v", err)
 	}
@@ -321,8 +312,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000118_observability_foundation" {
-		t.Fatalf("applied schema version = %q, want 000118_observability_foundation", version)
+	if version != "000119_observability_agent_telemetry" {
+		t.Fatalf("applied schema version = %q, want 000119_observability_agent_telemetry", version)
 	}
 }
 

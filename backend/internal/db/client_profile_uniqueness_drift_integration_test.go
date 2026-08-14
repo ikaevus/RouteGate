@@ -122,7 +122,7 @@ func TestClientProfileUniquenessRepairMigrationRepairsHistoricalDrift(t *testing
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000118_observability_foundation" {
-		t.Fatalf("applied schema version = %q, want 000118_observability_foundation", version)
+	if version != "000119_observability_agent_telemetry" {
+		t.Fatalf("applied schema version = %q, want 000119_observability_agent_telemetry", version)
 	}
 }
