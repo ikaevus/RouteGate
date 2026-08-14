@@ -20,6 +20,17 @@ func TestRenderAlertNotificationLocalizesKnownReasons(t *testing.T) {
 	}
 }
 
+func TestRenderAlertNotificationDoesNotLeakEnglishFallbackIntoRussian(t *testing.T) {
+	intent := systemNotificationIntent{
+		Kind: "firing", Severity: "warning", ReasonCode: "future_unknown_reason",
+		Summary: "Future English-only alert summary.",
+	}
+	_, message := renderAlertNotification("ru", intent, "Moscow Edge")
+	if strings.Contains(message, "Future English-only") || !strings.Contains(message, "требует внимания") {
+		t.Fatalf("unexpected RU fallback: %q", message)
+	}
+}
+
 func TestNotificationIntentIDFallsBackToDeliveryIdempotencyKey(t *testing.T) {
 	id, ok := notificationIntentIDFromIdempotencyKey("alert-notification:intent-1:recipient-1")
 	if !ok || id != "intent-1" {
