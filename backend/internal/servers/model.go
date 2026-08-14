@@ -14,6 +14,11 @@ const (
 	StatusError    = "error"
 )
 
+const (
+	LocationSourceManual       = "manual"
+	LocationSourceAutoDetected = "auto_detected"
+)
+
 const defaultVLESSPort = 443
 
 type Server struct {
@@ -27,6 +32,13 @@ type Server struct {
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+
+	LocationCountry   string   `json:"locationCountry,omitempty"`
+	LocationRegion    string   `json:"locationRegion,omitempty"`
+	LocationCity      string   `json:"locationCity,omitempty"`
+	LocationLatitude  *float64 `json:"locationLatitude,omitempty"`
+	LocationLongitude *float64 `json:"locationLongitude,omitempty"`
+	LocationSource    string   `json:"locationSource,omitempty"`
 
 	// Hostname is retained for compatibility with the existing API while the
 	// legacy servers.hostname column remains in the schema.
@@ -50,23 +62,36 @@ type RealityKeypair struct {
 }
 
 type CreateServerInput struct {
-	Name        string
-	Description string
-	Location    string
-	Provider    string
-	PublicIP    string
-	PrivateIP   string
-	Status      string
+	Name              string
+	Description       string
+	Location          string
+	Provider          string
+	PublicIP          string
+	PrivateIP         string
+	Status            string
+	LocationCountry   string
+	LocationRegion    string
+	LocationCity      string
+	LocationLatitude  *float64
+	LocationLongitude *float64
+	LocationSource    string
 }
 
 type UpdateServerInput struct {
-	Name        *string
-	Description *string
-	Location    *string
-	Provider    *string
-	PublicIP    *string
-	PrivateIP   *string
-	Status      *string
+	Name              *string
+	Description       *string
+	Location          *string
+	Provider          *string
+	PublicIP          *string
+	PrivateIP         *string
+	Status            *string
+	LocationCountry   *string
+	LocationRegion    *string
+	LocationCity      *string
+	LocationLatitude  *float64
+	LocationLongitude *float64
+	LocationSource    *string
+	ClearCoordinates  bool
 }
 
 type UpdateProtocolSettingsInput struct {
