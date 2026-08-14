@@ -9,6 +9,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/delivery"
+	"github.com/ikaevus/routegate/backend/internal/observability"
 )
 
 func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdhttp.Handler {
@@ -18,6 +19,7 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	authRepo := auth.NewRepository(pool)
 	authn := auth.Middleware(authRepo)
 	deliveryHandler := delivery.NewHandler(logger, pool, cfg)
+	diagnosticHandler := observability.NewDiagnosticHandler(logger, pool)
 
 	mux.Handle("GET /api/v1/delivery/providers", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListProviders))))
 	mux.Handle("GET /api/v1/delivery/providers/{provider}/settings", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(deliveryHandler.GetProviderSettings))))
@@ -36,6 +38,11 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/deliveries", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.ListForVPNAccount))))
 	mux.Handle("GET /api/v1/deliveries/{delivery_id}", authn(auth.RequirePermission("deliveries:read")(stdhttp.HandlerFunc(deliveryHandler.Get))))
 	mux.Handle("POST /api/v1/deliveries/{delivery_id}/retry", authn(auth.RequirePermission("deliveries:send")(stdhttp.HandlerFunc(deliveryHandler.Retry))))
+
+	mux.Handle("POST /api/v1/servers/{server_id}/diagnostics", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(diagnosticHandler.Create))))
+	mux.Handle("GET /api/v1/servers/{server_id}/diagnostics", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(diagnosticHandler.List))))
+	mux.Handle("GET /api/v1/servers/{server_id}/diagnostics/{run_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(diagnosticHandler.Get))))
+
 	mux.Handle("/", base)
 	return mux
 }
