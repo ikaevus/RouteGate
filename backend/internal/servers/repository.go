@@ -35,11 +35,7 @@ func (r *Repository) CreateServer(ctx context.Context, input CreateServerInput) 
 			$1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''),
 			NULLIF($5, '')::inet, NULLIF($6, '')::inet, $7
 		)
-		RETURNING
-			id::text, name, COALESCE(description, ''), COALESCE(location, ''),
-			COALESCE(provider, ''), COALESCE(public_ip::text, ''),
-			COALESCE(private_ip::text, ''), status, created_at, updated_at,
-			COALESCE(hostname, '')
+		RETURNING `+serverColumns+`
 	`, input.Name, input.Description, input.Location, input.Provider, input.PublicIP, input.PrivateIP, status))
 }
 
@@ -86,11 +82,7 @@ func (r *Repository) UpdateServer(ctx context.Context, id string, input UpdateSe
 			status = CASE WHEN $14 THEN $15 ELSE status END,
 			updated_at = now()
 		WHERE id = $1::uuid
-		RETURNING
-			id::text, name, COALESCE(description, ''), COALESCE(location, ''),
-			COALESCE(provider, ''), COALESCE(public_ip::text, ''),
-			COALESCE(private_ip::text, ''), status, created_at, updated_at,
-			COALESCE(hostname, '')
+		RETURNING `+serverColumns+`
 	`,
 		id,
 		input.Name != nil, stringValue(input.Name),
@@ -101,6 +93,22 @@ func (r *Repository) UpdateServer(ctx context.Context, id string, input UpdateSe
 		input.PrivateIP != nil, stringValue(input.PrivateIP),
 		input.Status != nil, stringValue(input.Status),
 	))
+}
+
+func (r *Repository) UpdateServerGeography(ctx context.Context, id string, input UpdateServerGeographyInput) (Server, error) {
+	return scanServer(r.pool.QueryRow(ctx, `
+		UPDATE servers
+		SET
+			location_country = NULLIF($2,''),
+			location_region = NULLIF($3,''),
+			location_city = NULLIF($4,''),
+			location_latitude = $5,
+			location_longitude = $6,
+			location_source = NULLIF($7,''),
+			updated_at = now()
+		WHERE id=$1::uuid
+		RETURNING `+serverColumns+`
+	`, id, input.Country, input.Region, input.City, input.Latitude, input.Longitude, input.Source))
 }
 
 func (r *Repository) DeleteServer(ctx context.Context, id string) error {
@@ -187,39 +195,45 @@ func (r *Repository) Create(ctx context.Context, request CreateServerRequest) (S
 			$1, NULLIF($2, ''), NULLIF($3, '')::inet,
 			NULLIF($4, ''), NULLIF($5, ''), 'pending'
 		)
-		RETURNING
-			id::text, name, COALESCE(description, ''), COALESCE(location, ''),
-			COALESCE(provider, ''), COALESCE(public_ip::text, ''),
-			COALESCE(private_ip::text, ''), status, created_at, updated_at,
-			COALESCE(hostname, '')
+		RETURNING `+serverColumns+`
 	`, request.Name, request.Hostname, request.PublicIP, request.Location, request.Provider))
 }
 
 func (r *Repository) SeedDemo(ctx context.Context) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO servers (name, hostname, public_ip, location, provider, status)
+		INSERT INTO servers (
+			name, hostname, public_ip, location, provider, status,
+			location_country, location_city, location_latitude, location_longitude, location_source
+		)
 		VALUES (
 			'Demo Finland VPS', 'fi-demo.routegate.local', '203.0.113.10'::inet,
-			'Finland', 'Demo', 'active'
+			'Finland', 'Demo', 'active',
+			'Finland', 'Helsinki', 60.1699, 24.9384, 'manual'
 		)
 	`)
 	return err
 }
 
-const serverSelect = `
-	SELECT
-		id::text,
-		name,
-		COALESCE(description, ''),
-		COALESCE(location, ''),
-		COALESCE(provider, ''),
-		COALESCE(public_ip::text, ''),
-		COALESCE(private_ip::text, ''),
-		status,
-		created_at,
-		updated_at,
-		COALESCE(hostname, '')
-	FROM servers`
+const serverColumns = `
+	id::text,
+	name,
+	COALESCE(description, ''),
+	COALESCE(location, ''),
+	COALESCE(provider, ''),
+	COALESCE(public_ip::text, ''),
+	COALESCE(private_ip::text, ''),
+	status,
+	created_at,
+	updated_at,
+	COALESCE(hostname, ''),
+	COALESCE(location_country, ''),
+	COALESCE(location_region, ''),
+	COALESCE(location_city, ''),
+	location_latitude,
+	location_longitude,
+	COALESCE(location_source, '')`
+
+const serverSelect = `SELECT ` + serverColumns + ` FROM servers`
 
 const serverWithAgentSelect = `
 	SELECT
@@ -234,6 +248,12 @@ const serverWithAgentSelect = `
 		s.created_at,
 		s.updated_at,
 		COALESCE(s.hostname, ''),
+		COALESCE(s.location_country, ''),
+		COALESCE(s.location_region, ''),
+		COALESCE(s.location_city, ''),
+		s.location_latitude,
+		s.location_longitude,
+		COALESCE(s.location_source, ''),
 		a.id::text,
 		a.server_id::text,
 		a.hostname,
@@ -258,6 +278,7 @@ type scanner interface {
 
 func scanServer(row scanner) (Server, error) {
 	var server Server
+	var latitude, longitude sql.NullFloat64
 	err := row.Scan(
 		&server.ID,
 		&server.Name,
@@ -270,12 +291,27 @@ func scanServer(row scanner) (Server, error) {
 		&server.CreatedAt,
 		&server.UpdatedAt,
 		&server.Hostname,
+		&server.LocationCountry,
+		&server.LocationRegion,
+		&server.LocationCity,
+		&latitude,
+		&longitude,
+		&server.LocationSource,
 	)
+	if latitude.Valid {
+		value := latitude.Float64
+		server.LocationLatitude = &value
+	}
+	if longitude.Valid {
+		value := longitude.Float64
+		server.LocationLongitude = &value
+	}
 	return server, err
 }
 
 func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 	var result ServerWithAgent
+	var latitude, longitude sql.NullFloat64
 	var agentID, serverID, hostname, osName, arch, version sql.NullString
 	var status, tokenHash, name sql.NullString
 	var protocolVersion sql.NullInt32
@@ -294,6 +330,12 @@ func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 		&result.Server.CreatedAt,
 		&result.Server.UpdatedAt,
 		&result.Server.Hostname,
+		&result.Server.LocationCountry,
+		&result.Server.LocationRegion,
+		&result.Server.LocationCity,
+		&latitude,
+		&longitude,
+		&result.Server.LocationSource,
 		&agentID,
 		&serverID,
 		&hostname,
@@ -312,6 +354,14 @@ func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 	)
 	if err != nil {
 		return ServerWithAgent{}, err
+	}
+	if latitude.Valid {
+		value := latitude.Float64
+		result.Server.LocationLatitude = &value
+	}
+	if longitude.Valid {
+		value := longitude.Float64
+		result.Server.LocationLongitude = &value
 	}
 	if !agentID.Valid {
 		return result, nil
