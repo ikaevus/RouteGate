@@ -1,4 +1,4 @@
-import { apiGet } from '../../../shared/api/client';
+import { apiGet, apiPost, apiPut } from '../../../shared/api/client';
 
 export type HealthState = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
 
@@ -79,6 +79,32 @@ export interface AnalyticsAlert {
   acknowledged: boolean;
 }
 
+export interface ServerGeographyInput {
+  country: string;
+  region: string;
+  city: string;
+  latitude?: number;
+  longitude?: number;
+  source: 'manual';
+}
+
+export interface DiagnosticRun {
+  id: string;
+  serverId: string;
+  profileKey: string;
+  status: string;
+}
+
 export function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   return apiGet<AnalyticsOverview>('/api/v1/analytics/overview');
+}
+
+export function updateServerGeography(serverId: string, input: ServerGeographyInput): Promise<AnalyticsNode> {
+  return apiPut<ServerGeographyInput, AnalyticsNode>(`/api/v1/servers/${serverId}/geography`, input);
+}
+
+export function runHostDiagnostic(serverId: string): Promise<DiagnosticRun> {
+  return apiPost<{ profileKey: string }, DiagnosticRun>(`/api/v1/servers/${serverId}/diagnostics`, {
+    profileKey: 'host_overview',
+  });
 }
