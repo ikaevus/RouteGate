@@ -41,6 +41,7 @@ ROUTEGATE_PROMETHEUS_CONFIG="/etc/prometheus/routegate.yml"
 ROUTEGATE_PROMETHEUS_TOKEN_FILE="/etc/prometheus/routegate.token"
 ROUTEGATE_PROMETHEUS_STORAGE="/var/lib/prometheus/routegate"
 ROUTEGATE_PROMETHEUS_OVERRIDE="/etc/systemd/system/prometheus.service.d/routegate.conf"
+ROUTEGATE_PROMETHEUS_INSTALL_MASK="/etc/systemd/system/prometheus.service"
 
 usage() {
   cat <<'USAGE'
@@ -484,9 +485,10 @@ collect_routegate_conflicts() {
     /etc/nginx/sites-available/routegate \
     /etc/prometheus/routegate.yml \
     /etc/prometheus/routegate.token \
+    /etc/systemd/system/prometheus.service \
     /etc/systemd/system/prometheus.service.d/routegate.conf \
     /var/www/routegate/index.html; do
-    [[ ! -e "${root}${path}" ]] || printf '%s\n' "$path"
+    [[ ! -e "${root}${path}" && ! -L "${root}${path}" ]] || printf '%s\n' "$path"
   done
 }
 
@@ -550,7 +552,7 @@ EOF_RECOMMENDATIONS
 Safe options:
   - Keep the existing Prometheus deployment unchanged and select No for RouteGate-managed Prometheus.
   - Install RouteGate on a clean VPS and let RouteGate own its local Prometheus instance.
-  - Use the existing Prometheus as an external integration; RouteGate will not rewrite an active Prometheus installation.
+  - Use the existing Prometheus as an external integration; RouteGate will not rewrite an existing Prometheus installation.
 EOF_RECOMMENDATIONS
       ;;
     apache|ports)
@@ -671,9 +673,9 @@ detect_conflicts() {
       "An active nginx deployment was detected. RouteGate will not overwrite or guess the purpose of existing sites."
   done
   if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
-    while systemctl is-active prometheus.service >/dev/null 2>&1; do
+    while package_installed prometheus || systemctl is-active prometheus.service >/dev/null 2>&1; do
       guided_conflict_resolution prometheus \
-        "An active Prometheus deployment was detected. RouteGate will not overwrite or take ownership of an existing monitoring service."
+        "An existing Prometheus package or service was detected. RouteGate will not take ownership of an existing monitoring installation."
     done
   fi
   while systemctl is-active apache2.service >/dev/null 2>&1; do
@@ -796,13 +798,53 @@ confirm_installation() {
   done
 }
 
+cleanup_prometheus_install_mask() {
+  if [[ -L "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" ]] \
+    && [[ "$(readlink "$ROUTEGATE_PROMETHEUS_INSTALL_MASK")" == "/dev/null" ]]; then
+    systemctl stop prometheus.service >/dev/null 2>&1 || true
+    rm -f "$ROUTEGATE_PROMETHEUS_INSTALL_MASK"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+}
+
+prepare_prometheus_package_install() {
+  [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]] || return 0
+
+  if [[ -e "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" || -L "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" ]]; then
+    if [[ "$ROUTEGATE_RESUME_INSTALL" == "1" ]] \
+      && [[ -L "$ROUTEGATE_PROMETHEUS_INSTALL_MASK" ]] \
+      && [[ "$(readlink "$ROUTEGATE_PROMETHEUS_INSTALL_MASK")" == "/dev/null" ]]; then
+      rm -f "$ROUTEGATE_PROMETHEUS_INSTALL_MASK"
+    else
+      die "Refusing to replace an existing local prometheus.service override."
+    fi
+  fi
+
+  install -d -m 0755 "$(dirname "$ROUTEGATE_PROMETHEUS_INSTALL_MASK")"
+  ln -s /dev/null "$ROUTEGATE_PROMETHEUS_INSTALL_MASK"
+  systemctl daemon-reload
+}
+
 install_dependencies() {
   log "Installing platform dependencies."
   export DEBIAN_FRONTEND=noninteractive
   local packages=()
   mapfile -t packages < <(platform_packages)
+
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    prepare_prometheus_package_install
+  fi
+
   apt-get update >>"$ROUTEGATE_LOG_FILE" 2>&1
-  apt-get install -y "${packages[@]}" >>"$ROUTEGATE_LOG_FILE" 2>&1
+  if ! apt-get install -y "${packages[@]}" >>"$ROUTEGATE_LOG_FILE" 2>&1; then
+    cleanup_prometheus_install_mask
+    die "Failed to install required platform dependencies."
+  fi
+
+  if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
+    cleanup_prometheus_install_mask
+    package_installed prometheus || die "Prometheus package installation did not complete successfully."
+  fi
 }
 
 resolve_release_version() {
