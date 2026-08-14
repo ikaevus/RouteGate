@@ -6,10 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ikaevus/routegate/backend/internal/analytics"
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/delivery"
 	"github.com/ikaevus/routegate/backend/internal/observability"
+	"github.com/ikaevus/routegate/backend/internal/servers"
 )
 
 func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdhttp.Handler {
@@ -20,6 +22,8 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	authn := auth.Middleware(authRepo)
 	deliveryHandler := delivery.NewHandler(logger, pool, cfg)
 	diagnosticHandler := observability.NewDiagnosticHandler(logger, pool)
+	analyticsHandler := analytics.NewHandler(logger, pool)
+	serversHandler := servers.NewHandler(logger, pool)
 	prometheusHandler := observability.NewPrometheusHandler(
 		observability.NewPrometheusRepository(pool),
 		cfg.Monitoring.Enabled,
@@ -47,6 +51,9 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	mux.Handle("POST /api/v1/servers/{server_id}/diagnostics", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(diagnosticHandler.Create))))
 	mux.Handle("GET /api/v1/servers/{server_id}/diagnostics", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(diagnosticHandler.List))))
 	mux.Handle("GET /api/v1/servers/{server_id}/diagnostics/{run_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(diagnosticHandler.Get))))
+	mux.Handle("PUT /api/v1/servers/{server_id}/geography", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.UpdateGeography))))
+
+	mux.Handle("GET /api/v1/analytics/overview", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(analyticsHandler.Overview))))
 
 	mux.HandleFunc("GET /metrics", prometheusHandler.Manager)
 	mux.HandleFunc("GET /metrics/fleet", prometheusHandler.Fleet)

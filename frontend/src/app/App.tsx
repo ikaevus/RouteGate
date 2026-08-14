@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
+import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 import { ServersPage } from '../pages/servers/ServersPage';
 import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
 import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSettingsPage';
@@ -73,6 +74,7 @@ function formatServerTime(timestamp?: string | null, elapsedMilliseconds = 0): s
 
 type IconName =
   | 'overview'
+  | 'analytics'
   | 'servers'
   | 'accounts'
   | 'deploy'
@@ -91,6 +93,7 @@ type IconName =
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     overview: <><path d="M3.5 11.5 12 4l8.5 7.5" /><path d="M5.5 10.5V20h13v-9.5" /><path d="M9.5 20v-5.5h5V20" /></>,
+    analytics: <><circle cx="12" cy="12" r="8.5" /><path d="M3.7 9h16.6M3.7 15h16.6M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5M12 3.5C9.9 5.8 8.8 8.6 8.8 12s1.1 6.2 3.2 8.5" /></>,
     servers: <><rect x="4" y="5" width="16" height="5" rx="1.4" /><rect x="4" y="14" width="16" height="5" rx="1.4" /><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6" /></>,
     accounts: <><circle cx="8.5" cy="10" r="3" /><circle cx="15.5" cy="8" r="2.5" /><path d="M3.5 20a5 5 0 0 1 10 0" /><path d="M13.5 14.5A4.5 4.5 0 0 1 20.5 18" /></>,
     deploy: <><path d="M6 5h12v14H6z" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
@@ -329,6 +332,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
 
   const adminNavigationItems = [
     { to: '/', label: t('navigation.overview'), icon: 'overview' as const, end: true },
+    { to: '/analytics', label: t('navigation.analytics'), icon: 'analytics' as const },
     { to: '/servers', label: t('navigation.servers'), icon: 'servers' as const },
     { to: '/vpn-accounts', label: t('navigation.vpnAccounts'), icon: 'accounts' as const },
     { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
@@ -445,6 +449,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
         <main className="main admin-main">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/servers" element={<ServersPage />} />
             <Route path="/servers/:serverId" element={<ServerDetailsPage />} />
             <Route path="/protocol-settings" element={<ProtocolSettingsPage />} />

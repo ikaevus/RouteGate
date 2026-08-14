@@ -14,6 +14,11 @@ const (
 	StatusError    = "error"
 )
 
+const (
+	LocationSourceManual       = "manual"
+	LocationSourceAutoDetected = "auto_detected"
+)
+
 const defaultVLESSPort = 443
 
 type Server struct {
@@ -27,6 +32,13 @@ type Server struct {
 	Status      string    `json:"status"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+
+	LocationCountry   string   `json:"locationCountry,omitempty"`
+	LocationRegion    string   `json:"locationRegion,omitempty"`
+	LocationCity      string   `json:"locationCity,omitempty"`
+	LocationLatitude  *float64 `json:"locationLatitude,omitempty"`
+	LocationLongitude *float64 `json:"locationLongitude,omitempty"`
+	LocationSource    string   `json:"locationSource,omitempty"`
 
 	// Hostname is retained for compatibility with the existing API while the
 	// legacy servers.hostname column remains in the schema.
@@ -67,6 +79,15 @@ type UpdateServerInput struct {
 	PublicIP    *string
 	PrivateIP   *string
 	Status      *string
+}
+
+type UpdateServerGeographyInput struct {
+	Country   string
+	Region    string
+	City      string
+	Latitude  *float64
+	Longitude *float64
+	Source    string
 }
 
 type UpdateProtocolSettingsInput struct {

@@ -28,6 +28,15 @@ type UpdateServerRequest struct {
 	Status      *string `json:"status"`
 }
 
+type UpdateServerGeographyRequest struct {
+	Country   string   `json:"country"`
+	Region    string   `json:"region"`
+	City      string   `json:"city"`
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+	Source    string   `json:"source"`
+}
+
 type UpdateProtocolSettingsRequest struct {
 	VLESSPort         *int    `json:"vlessPort"`
 	VLESSFlow         *string `json:"vlessFlow"`
