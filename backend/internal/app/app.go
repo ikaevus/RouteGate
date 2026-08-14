@@ -66,13 +66,15 @@ func (a *App) Start(ctx context.Context) error {
 	a.server = routegatehttp.NewServer(a.cfg, a.logger, pool)
 	deliveryWorker := delivery.NewConfiguredWorker(a.cfg, a.logger, pool)
 	healthWorker := observability.NewHealthWorker(a.logger, pool)
+	alertWorker := observability.NewAlertEngine(a.logger, pool)
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
 	go func() { errCh <- a.server.Start(runtimeCtx) }()
 	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
 	go func() { errCh <- healthWorker.Run(runtimeCtx) }()
+	go func() { errCh <- alertWorker.Run(runtimeCtx) }()
 
 	select {
 	case <-ctx.Done():
