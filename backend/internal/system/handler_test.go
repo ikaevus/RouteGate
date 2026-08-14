@@ -23,7 +23,7 @@ func (f fakeSchemaVersionReader) AppliedSchemaVersion(context.Context) (string, 
 func TestVersionEndpointReturnsBuildAndSchemaMetadata(t *testing.T) {
 	handler := &Handler{
 		logger: slog.Default(),
-		reader: fakeSchemaVersionReader{version: "000117_vpn_client_profile_uniqueness_repair"},
+		reader: fakeSchemaVersionReader{version: "000118_observability_foundation"},
 		info:   buildinfo.Current,
 	}
 
@@ -41,10 +41,10 @@ func TestVersionEndpointReturnsBuildAndSchemaMetadata(t *testing.T) {
 	if payload.Manager.Version != "dev" || payload.Manager.GitCommit != "unknown" {
 		t.Fatalf("unexpected manager metadata: %+v", payload.Manager)
 	}
-	if payload.Database.ExpectedSchemaVersion != 117 {
+	if payload.Database.ExpectedSchemaVersion != 118 {
 		t.Fatalf("unexpected schema metadata: %+v", payload.Database)
 	}
-	if payload.Database.AppliedSchemaVersion == nil || *payload.Database.AppliedSchemaVersion != "000117_vpn_client_profile_uniqueness_repair" {
+	if payload.Database.AppliedSchemaVersion == nil || *payload.Database.AppliedSchemaVersion != "000118_observability_foundation" {
 		t.Fatalf("unexpected applied schema version: %+v", payload.Database.AppliedSchemaVersion)
 	}
 	if payload.Update.AutomaticUpdatesSupported {
