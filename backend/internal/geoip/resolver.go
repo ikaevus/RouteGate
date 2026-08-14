@@ -26,9 +26,14 @@ type Resolver interface {
 }
 
 func normalizePublicIP(raw string) (string, error) {
-	address, err := netip.ParseAddr(strings.TrimSpace(raw))
+	raw = strings.TrimSpace(raw)
+	address, err := netip.ParseAddr(raw)
 	if err != nil {
-		return "", fmt.Errorf("parse IP address: %w", err)
+		prefix, prefixErr := netip.ParsePrefix(raw)
+		if prefixErr != nil || prefix.Bits() != prefix.Addr().BitLen() {
+			return "", fmt.Errorf("parse IP address: %w", err)
+		}
+		address = prefix.Addr()
 	}
 	address = address.Unmap()
 	if !address.IsGlobalUnicast() || address.IsPrivate() || address.IsLoopback() || address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() || address.IsMulticast() || address.IsUnspecified() {
