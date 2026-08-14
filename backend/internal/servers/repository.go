@@ -77,6 +77,48 @@ func (r *Repository) UpdateServer(ctx context.Context, id string, input UpdateSe
 			description = CASE WHEN $4 THEN NULLIF($5, '') ELSE description END,
 			location = CASE WHEN $6 THEN NULLIF($7, '') ELSE location END,
 			provider = CASE WHEN $8 THEN NULLIF($9, '') ELSE provider END,
+			location_country = CASE
+				WHEN $10
+				 AND location_source = 'auto_detected'
+				 AND public_ip IS DISTINCT FROM NULLIF($11, '')::inet
+				THEN NULL
+				ELSE location_country
+			END,
+			location_region = CASE
+				WHEN $10
+				 AND location_source = 'auto_detected'
+				 AND public_ip IS DISTINCT FROM NULLIF($11, '')::inet
+				THEN NULL
+				ELSE location_region
+			END,
+			location_city = CASE
+				WHEN $10
+				 AND location_source = 'auto_detected'
+				 AND public_ip IS DISTINCT FROM NULLIF($11, '')::inet
+				THEN NULL
+				ELSE location_city
+			END,
+			location_latitude = CASE
+				WHEN $10
+				 AND location_source = 'auto_detected'
+				 AND public_ip IS DISTINCT FROM NULLIF($11, '')::inet
+				THEN NULL
+				ELSE location_latitude
+			END,
+			location_longitude = CASE
+				WHEN $10
+				 AND location_source = 'auto_detected'
+				 AND public_ip IS DISTINCT FROM NULLIF($11, '')::inet
+				THEN NULL
+				ELSE location_longitude
+			END,
+			location_source = CASE
+				WHEN $10
+				 AND location_source = 'auto_detected'
+				 AND public_ip IS DISTINCT FROM NULLIF($11, '')::inet
+				THEN NULL
+				ELSE location_source
+			END,
 			public_ip = CASE WHEN $10 THEN NULLIF($11, '')::inet ELSE public_ip END,
 			private_ip = CASE WHEN $12 THEN NULLIF($13, '')::inet ELSE private_ip END,
 			status = CASE WHEN $14 THEN $15 ELSE status END,
