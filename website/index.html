@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#06101e" />
-    <meta name="description" content="RouteGate is an open-source self-hosted platform for managing Linux VPN servers, accounts, routing profiles, and client access." />
+    <meta name="description" content="RouteGate is an open-source self-hosted platform for managing Linux VPN servers, accounts, routing profiles, client access, deployment, and operational visibility." />
     <meta name="robots" content="index, follow" />
     <meta name="author" content="RouteGate" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="RouteGate" />
     <meta property="og:title" content="RouteGate — Linux VPN Management Platform" />
-    <meta property="og:description" content="RouteGate is an open-source self-hosted platform for managing Linux VPN servers, accounts, routing profiles, and client access." />
+    <meta property="og:description" content="Open-source self-hosted Linux VPN infrastructure management with guided deployment and operational visibility." />
     <meta property="og:url" content="https://routegate.org/" />
     <meta property="og:image" content="https://routegate.org/og-image.png" />
     <meta property="og:image:width" content="1200" />
@@ -31,6 +31,10 @@
     <style>
       .hero-copy > h1 { display: none; }
       .hero-copy > h2 { margin-top: 22px; }
+      @media (min-width: 1101px) {
+        .hero-copy { transform: translateY(-36px) !important; }
+        .dashboard { transform: none !important; box-shadow: inset 0 1px rgba(255,255,255,.025), 0 22px 70px rgba(0,0,0,.32) !important; }
+      }
     </style>
     <script type="application/ld+json">
       {
@@ -51,4 +55,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
