@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	defaultReconcileInterval = time.Hour
+	defaultReconcileInterval = 30 * time.Second
+	failedLookupRetryDelay   = 10 * time.Minute
 	serverPageSize           = 100
 	maxLookupsPerRun         = 40
 )
@@ -21,18 +22,22 @@ type serverRepository interface {
 }
 
 type Worker struct {
-	logger   *slog.Logger
-	repo     serverRepository
-	resolver Resolver
-	interval time.Duration
+	logger     *slog.Logger
+	repo       serverRepository
+	resolver   Resolver
+	interval   time.Duration
+	now        func() time.Time
+	retryAfter map[string]time.Time
 }
 
 func NewWorker(logger *slog.Logger, repo serverRepository, resolver Resolver) *Worker {
 	return &Worker{
-		logger:   logger,
-		repo:     repo,
-		resolver: resolver,
-		interval: defaultReconcileInterval,
+		logger:     logger,
+		repo:       repo,
+		resolver:   resolver,
+		interval:   defaultReconcileInterval,
+		now:        time.Now,
+		retryAfter: make(map[string]time.Time),
 	}
 }
 
@@ -59,6 +64,7 @@ func (w *Worker) reconcileAndLog(ctx context.Context) {
 
 func (w *Worker) reconcile(ctx context.Context) error {
 	lookups := 0
+	now := w.now().UTC()
 	for offset := 0; ; offset += serverPageSize {
 		items, err := w.repo.ListServers(ctx, servers.ServerFilter{Limit: serverPageSize, Offset: offset})
 		if err != nil {
@@ -70,16 +76,22 @@ func (w *Worker) reconcile(ctx context.Context) error {
 				return nil
 			}
 			if !needsAutomaticLocation(server) {
+				delete(w.retryAfter, server.ID)
+				continue
+			}
+			if retryAt, ok := w.retryAfter[server.ID]; ok && now.Before(retryAt) {
 				continue
 			}
 
 			lookups++
 			location, err := w.resolver.Lookup(ctx, server.PublicIP)
 			if errors.Is(err, ErrRateLimited) {
+				w.retryAfter[server.ID] = now.Add(failedLookupRetryDelay)
 				w.logger.Warn("automatic server geolocation paused because provider rate limit was reached")
 				return nil
 			}
 			if err != nil {
+				w.retryAfter[server.ID] = now.Add(failedLookupRetryDelay)
 				w.logger.Debug("automatic server geolocation lookup failed", "server_id", server.ID, "error", err)
 				continue
 			}
@@ -94,9 +106,11 @@ func (w *Worker) reconcile(ctx context.Context) error {
 				Longitude: &longitude,
 				Source:    servers.LocationSourceAutoDetected,
 			}); err != nil {
+				w.retryAfter[server.ID] = now.Add(failedLookupRetryDelay)
 				w.logger.Warn("failed to persist automatic server geolocation", "server_id", server.ID, "error", err)
 				continue
 			}
+			delete(w.retryAfter, server.ID)
 			w.logger.Info("server location detected automatically", "server_id", server.ID, "country", location.Country, "city", location.City)
 		}
 

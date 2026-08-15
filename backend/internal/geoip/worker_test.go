@@ -2,9 +2,11 @@ package geoip
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/ikaevus/routegate/backend/internal/servers"
 )
@@ -34,10 +36,14 @@ func (r *fakeServerRepository) UpdateServerGeography(_ context.Context, id strin
 
 type fakeResolver struct {
 	calls []string
+	err   error
 }
 
 func (r *fakeResolver) Lookup(_ context.Context, ip string) (Location, error) {
 	r.calls = append(r.calls, ip)
+	if r.err != nil {
+		return Location{}, r.err
+	}
 	return Location{Country: "United States", Region: "Virginia", City: "Ashburn", Latitude: 39.0438, Longitude: -77.4874}, nil
 }
 
@@ -68,5 +74,38 @@ func TestWorkerDetectsOnlyUnlocatedNonManualServers(t *testing.T) {
 	}
 	if repo.updates[0].Latitude == nil || repo.updates[0].Longitude == nil {
 		t.Fatal("automatic location must include coordinates")
+	}
+}
+
+func TestWorkerReconcilesFrequentlyEnoughForAutomaticPlacement(t *testing.T) {
+	if defaultReconcileInterval > time.Minute {
+		t.Fatalf("reconcile interval = %s, want automatic placement within one minute", defaultReconcileInterval)
+	}
+}
+
+func TestWorkerBacksOffFailedLookups(t *testing.T) {
+	now := time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC)
+	repo := &fakeServerRepository{items: []servers.Server{{ID: "pending-location", PublicIP: "8.8.8.8"}}}
+	resolver := &fakeResolver{err: errors.New("provider unavailable")}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	worker := NewWorker(logger, repo, resolver)
+	worker.now = func() time.Time { return now }
+
+	if err := worker.reconcile(context.Background()); err != nil {
+		t.Fatalf("first reconcile failed: %v", err)
+	}
+	if err := worker.reconcile(context.Background()); err != nil {
+		t.Fatalf("second reconcile failed: %v", err)
+	}
+	if len(resolver.calls) != 1 {
+		t.Fatalf("resolver calls during backoff = %d, want 1", len(resolver.calls))
+	}
+
+	now = now.Add(failedLookupRetryDelay)
+	if err := worker.reconcile(context.Background()); err != nil {
+		t.Fatalf("reconcile after backoff failed: %v", err)
+	}
+	if len(resolver.calls) != 2 {
+		t.Fatalf("resolver calls after backoff = %d, want 2", len(resolver.calls))
 	}
 }
