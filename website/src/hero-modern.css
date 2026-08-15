@@ -1,0 +1,222 @@
+/* Modern presentation layer for the public RouteGate hero.
+   Intentionally isolated from the base stylesheet so the rest of the site stays stable. */
+
+.hero {
+  min-height: 740px;
+  padding: 128px 0 86px;
+  background:
+    radial-gradient(ellipse 52% 58% at 78% 38%, rgba(37, 99, 235, .14), transparent 72%),
+    radial-gradient(circle at 16% 18%, rgba(59, 130, 246, .055), transparent 32%),
+    #06101e;
+}
+
+.hero::before {
+  opacity: .58;
+  background-size: 52px 52px;
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.72) 54%, transparent 92%);
+}
+
+.hero-grid {
+  grid-template-columns: minmax(430px, .82fr) minmax(650px, 1.25fr);
+  gap: clamp(46px, 5vw, 78px);
+  align-items: center;
+}
+
+.hero-copy {
+  max-width: 600px;
+  padding-bottom: 0;
+}
+
+/* Brand already lives in the header. The hero should communicate the product, not repeat the logo. */
+.hero-copy > h1 {
+  display: none;
+}
+
+.hero-copy > h2 {
+  max-width: 620px;
+  margin: 18px 0 0;
+  font-size: clamp(46px, 4.4vw, 67px);
+  line-height: 1.01;
+  letter-spacing: -.052em;
+  font-weight: 760;
+  text-wrap: balance;
+}
+
+.eyebrow {
+  gap: 10px;
+  color: #79adfa;
+  font-size: 10px;
+  letter-spacing: .17em;
+}
+
+.eyebrow i {
+  width: 7px;
+  height: 7px;
+  box-shadow: 0 0 0 4px rgba(37,99,235,.11), 0 0 15px rgba(59,130,246,.72);
+}
+
+.hero-copy > p {
+  max-width: 555px;
+  margin-top: 25px;
+  color: #b5c3d5;
+  font-size: 16px;
+  line-height: 1.72;
+}
+
+.hero-copy .hero-note {
+  max-width: 520px;
+  margin-top: 8px;
+  color: #748ba7;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.hero-actions {
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.hero-actions .button {
+  min-height: 50px;
+  padding-inline: 22px;
+  border-radius: 10px;
+}
+
+.hero-actions .button--primary {
+  box-shadow: 0 15px 36px rgba(37,99,235,.22);
+}
+
+.hero-actions .button--ghost {
+  border-color: rgba(148,163,184,.19);
+  background: rgba(8,19,34,.56);
+  backdrop-filter: blur(10px);
+}
+
+.hero-meta {
+  gap: 9px;
+  margin-top: 23px;
+}
+
+.hero-meta span {
+  padding: 7px 11px;
+  border-color: rgba(148,163,184,.11);
+  border-radius: 999px;
+  color: #7f96b0;
+  background: rgba(9,22,40,.38);
+  font-size: 9px;
+  letter-spacing: .085em;
+}
+
+.dashboard-wrap {
+  width: 820px;
+  filter: drop-shadow(0 34px 72px rgba(0,0,0,.33));
+}
+
+.dashboard {
+  grid-template-columns: 142px 1fr;
+  min-height: 510px;
+  border-color: rgba(96,165,250,.20);
+  border-radius: 18px;
+  background: #091426;
+  box-shadow:
+    0 0 0 1px rgba(2,8,23,.52),
+    inset 0 1px rgba(255,255,255,.028),
+    0 30px 80px rgba(0,0,0,.24);
+  transform: none;
+}
+
+.dashboard::before {
+  background: linear-gradient(135deg, rgba(255,255,255,.025), transparent 24%);
+}
+
+.dashboard-nav {
+  padding: 20px 14px 13px;
+  background: rgba(6,16,29,.94);
+  border-right-color: rgba(148,163,184,.09);
+}
+
+.dashboard-main {
+  padding: 19px 20px 16px;
+  background:
+    radial-gradient(circle at 68% 10%, rgba(37,99,235,.055), transparent 31%),
+    #091628;
+}
+
+.dashboard-top h3 {
+  font-size: 18px;
+}
+
+.stats article,
+.map-widget,
+.health-card,
+.traffic-card,
+.activity-card,
+.latency-card {
+  border-color: rgba(148,163,184,.105);
+  background-color: rgba(11,25,44,.84);
+}
+
+.stats article {
+  border-radius: 9px;
+}
+
+.map-widget {
+  border-radius: 10px;
+}
+
+.dashboard-caption {
+  margin: 11px 6px 0;
+  color: #536a84;
+  font-size: 6px;
+  letter-spacing: .14em;
+  opacity: .72;
+}
+
+@media (max-width: 1100px) {
+  .hero {
+    min-height: auto;
+    padding: 116px 0 72px;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 54px;
+  }
+
+  .hero-copy {
+    max-width: 780px;
+  }
+
+  .hero-copy > h2 {
+    max-width: 780px;
+  }
+
+  .dashboard-wrap {
+    width: min(900px, 100%);
+    justify-self: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero {
+    padding: 98px 0 54px;
+  }
+
+  .hero-copy > h2 {
+    font-size: clamp(38px, 10vw, 50px);
+    line-height: 1.03;
+  }
+
+  .hero-copy > p {
+    margin-top: 20px;
+    font-size: 14px;
+  }
+
+  .hero-actions {
+    flex-wrap: wrap;
+  }
+
+  .dashboard {
+    border-radius: 14px;
+  }
+}
