@@ -31,11 +31,16 @@
 }
 
 .config-versions-table-row > .timestamp-stack {
-  justify-items: start;
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-self: stretch;
+  width: 100%;
 }
 
 .config-versions-table-row > .timestamp-stack > .badge {
-  justify-self: start;
+  flex: none;
 }
 
 @media (max-width: 760px) {
