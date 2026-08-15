@@ -30,6 +30,16 @@
   gap: 8px;
 }
 
+.config-versions-table-row {
+  grid-template-columns:
+    minmax(0, 0.55fr)
+    minmax(0, 0.9fr)
+    minmax(0, 1fr)
+    minmax(0, 1.25fr)
+    minmax(0, 1.25fr)
+    minmax(0, 1.25fr);
+}
+
 .config-versions-table-row > .timestamp-stack {
   align-items: flex-start;
   align-self: center;
