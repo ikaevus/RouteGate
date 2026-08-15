@@ -1,4 +1,11 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+  type WheelEvent,
+} from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   updateServerGeography,
@@ -8,6 +15,7 @@ import {
 import { t } from '../../shared/i18n/i18n';
 import './AnalyticsActionButtons.css';
 import './AnalyticsMapNodePopover.css';
+import './AnalyticsWorldMapViewport.css';
 
 interface AnalyticsWorldMapProps {
   nodes: AnalyticsNode[];
@@ -36,17 +44,49 @@ interface PlacementPoint {
   longitude: number;
 }
 
+interface MapViewport {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface MapPoint {
+  x: number;
+  y: number;
+}
+
 interface PopoverPosition {
   x: number;
   y: number;
 }
 
+interface PanGesture {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startViewport: MapViewport;
+  scaleX: number;
+  scaleY: number;
+  didMove: boolean;
+}
+
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 430;
+const MAP_MIN_ZOOM = 1;
+const MAP_MAX_ZOOM = 8;
+const MAP_BUTTON_ZOOM_FACTOR = 1.45;
+const MAP_WHEEL_ZOOM_SENSITIVITY = 0.0016;
 const NODE_POPOVER_WIDTH = 320;
 const NODE_POPOVER_HEIGHT = 220;
 const NODE_POPOVER_GAP = 18;
 const NODE_POPOVER_MARGIN = 8;
+const INITIAL_VIEWPORT: MapViewport = {
+  x: 0,
+  y: 0,
+  width: MAP_WIDTH,
+  height: MAP_HEIGHT,
+};
 const worldMapUrl = new URL('../../shared/assets/world-map.svg', import.meta.url).href;
 
 const HEALTH_RANK: Record<HealthState, number> = {
@@ -95,7 +135,7 @@ function numberValue(value?: number, digits = 2): string {
   return value.toFixed(digits).replace(/\.00$/, '');
 }
 
-function project(longitude: number, latitude: number): { x: number; y: number } {
+function project(longitude: number, latitude: number): MapPoint {
   return {
     x: ((longitude + 180) / 360) * MAP_WIDTH,
     y: ((90 - latitude) / 180) * MAP_HEIGHT,
@@ -121,24 +161,86 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function nodePopoverPosition(node: AnalyticsNode): PopoverPosition {
+function viewportZoom(viewport: MapViewport): number {
+  return MAP_WIDTH / viewport.width;
+}
+
+function clampViewport(viewport: MapViewport): MapViewport {
+  const width = clamp(viewport.width, MAP_WIDTH / MAP_MAX_ZOOM, MAP_WIDTH);
+  const height = clamp(viewport.height, MAP_HEIGHT / MAP_MAX_ZOOM, MAP_HEIGHT);
+  return {
+    x: clamp(viewport.x, 0, MAP_WIDTH - width),
+    y: clamp(viewport.y, 0, MAP_HEIGHT - height),
+    width,
+    height,
+  };
+}
+
+function zoomViewport(current: MapViewport, focus: MapPoint, requestedZoom: number): MapViewport {
+  const targetZoom = clamp(requestedZoom, MAP_MIN_ZOOM, MAP_MAX_ZOOM);
+  const width = MAP_WIDTH / targetZoom;
+  const height = MAP_HEIGHT / targetZoom;
+  const boundedFocus = {
+    x: clamp(focus.x, current.x, current.x + current.width),
+    y: clamp(focus.y, current.y, current.y + current.height),
+  };
+  const xRatio = width / current.width;
+  const yRatio = height / current.height;
+
+  return clampViewport({
+    x: boundedFocus.x - (boundedFocus.x - current.x) * xRatio,
+    y: boundedFocus.y - (boundedFocus.y - current.y) * yRatio,
+    width,
+    height,
+  });
+}
+
+function viewportCenter(viewport: MapViewport): MapPoint {
+  return {
+    x: viewport.x + viewport.width / 2,
+    y: viewport.y + viewport.height / 2,
+  };
+}
+
+function screenToMapPoint(svg: SVGSVGElement, clientX: number, clientY: number): MapPoint | undefined {
+  const matrix = svg.getScreenCTM();
+  if (!matrix) {
+    return undefined;
+  }
+
+  const screenPoint = svg.createSVGPoint();
+  screenPoint.x = clientX;
+  screenPoint.y = clientY;
+  const point = screenPoint.matrixTransform(matrix.inverse());
+  return { x: point.x, y: point.y };
+}
+
+function nodePopoverPosition(node: AnalyticsNode, viewport: MapViewport, zoom: number): PopoverPosition {
   const point = project(node.location.longitude as number, node.location.latitude as number);
-  const rightX = point.x + NODE_POPOVER_GAP;
-  const preferredX = rightX + NODE_POPOVER_WIDTH <= MAP_WIDTH - NODE_POPOVER_MARGIN
+  const popoverWidth = NODE_POPOVER_WIDTH / zoom;
+  const popoverHeight = NODE_POPOVER_HEIGHT / zoom;
+  const gap = NODE_POPOVER_GAP / zoom;
+  const margin = NODE_POPOVER_MARGIN / zoom;
+  const rightX = point.x + gap;
+  const preferredX = rightX + popoverWidth <= viewport.x + viewport.width - margin
     ? rightX
-    : point.x - NODE_POPOVER_WIDTH - NODE_POPOVER_GAP;
+    : point.x - popoverWidth - gap;
 
   return {
-    x: clamp(preferredX, NODE_POPOVER_MARGIN, MAP_WIDTH - NODE_POPOVER_WIDTH - NODE_POPOVER_MARGIN),
+    x: clamp(
+      preferredX,
+      viewport.x + margin,
+      viewport.x + viewport.width - popoverWidth - margin,
+    ),
     y: clamp(
-      point.y - NODE_POPOVER_HEIGHT / 2,
-      NODE_POPOVER_MARGIN,
-      MAP_HEIGHT - NODE_POPOVER_HEIGHT - NODE_POPOVER_MARGIN,
+      point.y - popoverHeight / 2,
+      viewport.y + margin,
+      viewport.y + viewport.height - popoverHeight - margin,
     ),
   };
 }
 
-function clusterNodes(nodes: AnalyticsNode[]): NodeCluster[] {
+function clusterNodes(nodes: AnalyticsNode[], zoom: number): NodeCluster[] {
   const projected: ProjectedNode[] = nodes
     .filter(hasCoordinates)
     .map((node) => {
@@ -147,8 +249,10 @@ function clusterNodes(nodes: AnalyticsNode[]): NodeCluster[] {
     });
 
   const groups = new Map<string, ProjectedNode[]>();
+  const clusterWidth = 56 / zoom;
+  const clusterHeight = 38 / zoom;
   projected.forEach((item) => {
-    const key = `${Math.round(item.x / 56)}:${Math.round(item.y / 38)}`;
+    const key = `${Math.round(item.x / clusterWidth)}:${Math.round(item.y / clusterHeight)}`;
     groups.set(key, [...(groups.get(key) ?? []), item]);
   });
 
@@ -181,77 +285,142 @@ function preferredClusterNode(cluster: NodeCluster): AnalyticsNode {
     .node;
 }
 
-function NodeDetailsPopover({ node }: { node: AnalyticsNode }) {
-  const position = nodePopoverPosition(node);
+function ZoomInIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function ZoomOutIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function ResetViewIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M4.5 9A8 8 0 1 1 5 16" />
+      <path d="M4.5 4.5V9H9" />
+    </svg>
+  );
+}
+
+function FullscreenIcon({ active }: { active: boolean }) {
+  if (active) {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M9 4v5H4" />
+        <path d="M15 4v5h5" />
+        <path d="M9 20v-5H4" />
+        <path d="M15 20v-5h5" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M9 4H4v5" />
+      <path d="M15 4h5v5" />
+      <path d="M9 20H4v-5" />
+      <path d="M15 20h5v-5" />
+    </svg>
+  );
+}
+
+function NodeDetailsPopover({
+  node,
+  viewport,
+  zoom,
+}: {
+  node: AnalyticsNode;
+  viewport: MapViewport;
+  zoom: number;
+}) {
+  const position = nodePopoverPosition(node, viewport, zoom);
   const telemetryAge = node.agent.observationAgeSeconds !== undefined
     ? `${Math.round(node.agent.observationAgeSeconds)}s`
     : '—';
 
   return (
-    <foreignObject
-      className="analytics-map-node-popover"
-      height={NODE_POPOVER_HEIGHT}
-      width={NODE_POPOVER_WIDTH}
-      x={position.x}
-      y={position.y}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <div className="analytics-map-node-popover-card" role="group" aria-label={node.name}>
-        <div className="analytics-map-node-popover-header">
-          <div className="analytics-map-node-popover-title">
-            <strong>{node.name}</strong>
-            <span className="analytics-map-node-popover-location">{formatLocation(node)}</span>
+    <g transform={`translate(${position.x} ${position.y}) scale(${1 / zoom})`}>
+      <foreignObject
+        className="analytics-map-node-popover"
+        height={NODE_POPOVER_HEIGHT}
+        width={NODE_POPOVER_WIDTH}
+        x="0"
+        y="0"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className="analytics-map-node-popover-card" role="group" aria-label={node.name}>
+          <div className="analytics-map-node-popover-header">
+            <div className="analytics-map-node-popover-title">
+              <strong>{node.name}</strong>
+              <span className="analytics-map-node-popover-location">{formatLocation(node)}</span>
+            </div>
+            <span className={`analytics-map-node-popover-status analytics-map-node-popover-status--${node.health.state}`}>
+              {healthLabel(node.health.state)}
+            </span>
           </div>
-          <span className={`analytics-map-node-popover-status analytics-map-node-popover-status--${node.health.state}`}>
-            {healthLabel(node.health.state)}
-          </span>
-        </div>
 
-        <div className="analytics-map-node-popover-facts">
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('servers.publicIp')}</span>
-            <strong>{formatIpAddress(node.publicIp)}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('servers.provider')}</span>
-            <strong>{node.provider || '—'}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('analytics.agent')}</span>
-            <strong>{node.agent.status || '—'}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('analytics.vpnCore')}</span>
-            <strong>{node.vpnCore.type || '—'} · {node.vpnCore.serviceState || '—'}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('analytics.memory')}</span>
-            <strong>{percent(node.resources.memoryUsageRatio)}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('analytics.disk')}</span>
-            <strong>{percent(node.resources.rootFsUsageRatio)}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{t('analytics.load')}</span>
-            <strong>{numberValue(node.resources.load1)}</strong>
-          </div>
-          <div className="analytics-map-node-popover-fact">
-            <span>{node.agent.observationFresh ? t('analytics.observationFresh') : t('analytics.observationStale')}</span>
-            <strong>{telemetryAge}</strong>
+          <div className="analytics-map-node-popover-facts">
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('servers.publicIp')}</span>
+              <strong>{formatIpAddress(node.publicIp)}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('servers.provider')}</span>
+              <strong>{node.provider || '—'}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('analytics.agent')}</span>
+              <strong>{node.agent.status || '—'}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('analytics.vpnCore')}</span>
+              <strong>{node.vpnCore.type || '—'} · {node.vpnCore.serviceState || '—'}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('analytics.memory')}</span>
+              <strong>{percent(node.resources.memoryUsageRatio)}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('analytics.disk')}</span>
+              <strong>{percent(node.resources.rootFsUsageRatio)}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{t('analytics.load')}</span>
+              <strong>{numberValue(node.resources.load1)}</strong>
+            </div>
+            <div className="analytics-map-node-popover-fact">
+              <span>{node.agent.observationFresh ? t('analytics.observationFresh') : t('analytics.observationStale')}</span>
+              <strong>{telemetryAge}</strong>
+            </div>
           </div>
         </div>
-      </div>
-    </foreignObject>
+      </foreignObject>
+    </g>
   );
 }
 
 export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: AnalyticsWorldMapProps) {
   const queryClient = useQueryClient();
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const panGestureRef = useRef<PanGesture | null>(null);
+  const suppressNextClickRef = useRef(false);
   const [placementTargetId, setPlacementTargetId] = useState<string>();
   const [pendingPoint, setPendingPoint] = useState<PlacementPoint>();
   const [popoverNodeId, setPopoverNodeId] = useState<string>();
-  const clusters = clusterNodes(nodes);
+  const [viewport, setViewport] = useState<MapViewport>(INITIAL_VIEWPORT);
+  const [isPanning, setIsPanning] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const zoom = viewportZoom(viewport);
+  const clusters = clusterNodes(nodes, zoom);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const popoverNode = popoverNodeId ? nodes.find((node) => node.id === popoverNodeId) : undefined;
   const unlocatedNodes = nodes.filter((node) => !hasCoordinates(node));
@@ -262,6 +431,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
       : undefined;
   const placementNode = placementTargetId ? nodes.find((node) => node.id === placementTargetId) : undefined;
   const placementMode = placementNode !== undefined;
+  const fullscreenSupported = typeof document !== 'undefined' && document.fullscreenEnabled;
 
   const saveLocationMutation = useMutation({
     mutationFn: ({ node, point }: { node: AnalyticsNode; point: PlacementPoint }) => updateServerGeography(node.id, {
@@ -299,6 +469,14 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
     }
   }, [placementMode, popoverNode, popoverNodeId, selectedNodeId]);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === mapContainerRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   const beginPlacement = () => {
     if (!placementCandidate) {
       return;
@@ -317,6 +495,10 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   };
 
   const handleMapClick = (event: MouseEvent<SVGSVGElement>) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
     if (!placementNode) {
       setPopoverNodeId(undefined);
       return;
@@ -325,17 +507,12 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
       return;
     }
 
-    const matrix = event.currentTarget.getScreenCTM();
-    if (!matrix) {
+    const point = screenToMapPoint(event.currentTarget, event.clientX, event.clientY);
+    if (!point) {
       return;
     }
-
-    const screenPoint = event.currentTarget.createSVGPoint();
-    screenPoint.x = event.clientX;
-    screenPoint.y = event.clientY;
-    const svgPoint = screenPoint.matrixTransform(matrix.inverse());
-    const x = Math.max(0, Math.min(MAP_WIDTH, svgPoint.x));
-    const y = Math.max(0, Math.min(MAP_HEIGHT, svgPoint.y));
+    const x = clamp(point.x, 0, MAP_WIDTH);
+    const y = clamp(point.y, 0, MAP_HEIGHT);
     const coordinates = unproject(x, y);
 
     setPendingPoint({
@@ -347,6 +524,110 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
     saveLocationMutation.reset();
   };
 
+  const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
+    const focus = screenToMapPoint(event.currentTarget, event.clientX, event.clientY);
+    if (!focus) {
+      return;
+    }
+    event.preventDefault();
+    setViewport((current) => {
+      const currentZoom = viewportZoom(current);
+      const zoomFactor = Math.exp(-event.deltaY * MAP_WHEEL_ZOOM_SENSITIVITY);
+      return zoomViewport(current, focus, currentZoom * zoomFactor);
+    });
+  };
+
+  const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (placementMode || zoom <= MAP_MIN_ZOOM || event.button !== 0) {
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest('.analytics-map-marker, .analytics-map-node-popover')) {
+      return;
+    }
+
+    const matrix = event.currentTarget.getScreenCTM();
+    if (!matrix) {
+      return;
+    }
+    const scaleX = Math.hypot(matrix.a, matrix.b);
+    const scaleY = Math.hypot(matrix.c, matrix.d);
+    if (scaleX <= 0 || scaleY <= 0) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panGestureRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startViewport: viewport,
+      scaleX,
+      scaleY,
+      didMove: false,
+    };
+    setIsPanning(true);
+  };
+
+  const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    const gesture = panGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - gesture.startClientX;
+    const deltaY = event.clientY - gesture.startClientY;
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      gesture.didMove = true;
+    }
+
+    setViewport(clampViewport({
+      ...gesture.startViewport,
+      x: gesture.startViewport.x - deltaX / gesture.scaleX,
+      y: gesture.startViewport.y - deltaY / gesture.scaleY,
+    }));
+  };
+
+  const finishPan = (event: PointerEvent<SVGSVGElement>, cancelled = false) => {
+    const gesture = panGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    suppressNextClickRef.current = !cancelled && gesture.didMove;
+    panGestureRef.current = null;
+    setIsPanning(false);
+  };
+
+  const changeZoom = (factor: number) => {
+    setViewport((current) => zoomViewport(
+      current,
+      viewportCenter(current),
+      viewportZoom(current) * factor,
+    ));
+  };
+
+  const resetViewport = () => {
+    setViewport({ ...INITIAL_VIEWPORT });
+  };
+
+  const toggleFullscreen = async () => {
+    const container = mapContainerRef.current;
+    if (!container || !fullscreenSupported) {
+      return;
+    }
+    try {
+      if (document.fullscreenElement === container) {
+        await document.exitFullscreen();
+      } else {
+        await container.requestFullscreen();
+      }
+    } catch {
+      // Fullscreen can be rejected by the browser or host policy. The map remains fully usable inline.
+    }
+  };
+
   const savePlacement = () => {
     if (!placementNode || !pendingPoint) {
       return;
@@ -354,8 +635,67 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
     saveLocationMutation.mutate({ node: placementNode, point: pendingPoint });
   };
 
+  const canvasClasses = [
+    'analytics-world-map-canvas',
+    placementMode ? 'is-placement-mode' : '',
+    zoom > MAP_MIN_ZOOM && !placementMode ? 'is-pannable' : '',
+    isPanning ? 'is-panning' : '',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={`analytics-world-map${placementMode ? ' is-placement-mode' : ''}`} aria-label={t('analytics.worldMap')}>
+    <div
+      ref={mapContainerRef}
+      className={`analytics-world-map${placementMode ? ' is-placement-mode' : ''}`}
+      aria-label={t('analytics.worldMap')}
+    >
+      <div className="analytics-map-navigation-controls" role="group" aria-label={t('analytics.mapNavigation')}>
+        <button
+          className="analytics-map-navigation-button"
+          type="button"
+          aria-label={t('analytics.mapZoomOut')}
+          title={t('analytics.mapZoomOut')}
+          disabled={zoom <= MAP_MIN_ZOOM + 0.001}
+          onClick={() => changeZoom(1 / MAP_BUTTON_ZOOM_FACTOR)}
+        >
+          <ZoomOutIcon />
+        </button>
+        <span className="analytics-map-zoom-readout" aria-hidden="true">{Math.round(zoom * 100)}%</span>
+        <button
+          className="analytics-map-navigation-button"
+          type="button"
+          aria-label={t('analytics.mapZoomIn')}
+          title={t('analytics.mapZoomIn')}
+          disabled={zoom >= MAP_MAX_ZOOM - 0.001}
+          onClick={() => changeZoom(MAP_BUTTON_ZOOM_FACTOR)}
+        >
+          <ZoomInIcon />
+        </button>
+        <button
+          className="analytics-map-navigation-button"
+          type="button"
+          aria-label={t('analytics.mapResetView')}
+          title={t('analytics.mapResetView')}
+          disabled={zoom <= MAP_MIN_ZOOM + 0.001}
+          onClick={resetViewport}
+        >
+          <ResetViewIcon />
+        </button>
+        {fullscreenSupported && (
+          <>
+            <span className="analytics-map-navigation-separator" aria-hidden="true" />
+            <button
+              className="analytics-map-navigation-button"
+              type="button"
+              aria-label={isFullscreen ? t('analytics.mapExitFullscreen') : t('analytics.mapEnterFullscreen')}
+              title={isFullscreen ? t('analytics.mapExitFullscreen') : t('analytics.mapEnterFullscreen')}
+              onClick={() => void toggleFullscreen()}
+            >
+              <FullscreenIcon active={isFullscreen} />
+            </button>
+          </>
+        )}
+      </div>
+
       {placementCandidate && !placementMode && (
         <div className="analytics-map-placement-entry">
           <button className="button button-secondary" onClick={beginPlacement} type="button">
@@ -387,11 +727,17 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
       )}
 
       <svg
-        className={placementMode ? 'is-placement-mode' : undefined}
-        viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+        className={canvasClasses}
+        viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={t('analytics.worldMapSubtitle')}
         onClick={handleMapClick}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={(event) => finishPan(event)}
+        onPointerCancel={(event) => finishPan(event, true)}
       >
         <defs>
           <filter id="analytics-map-glow" x="-80%" y="-80%" width="260%" height="260%">
@@ -441,7 +787,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
                     handleSelect();
                   }
                 }}
-                transform={`translate(${cluster.x} ${cluster.y})`}
+                transform={`translate(${cluster.x} ${cluster.y}) scale(${1 / zoom})`}
               >
                 <circle className="analytics-map-marker-pulse" r={radius + 8} />
                 <circle className="analytics-map-marker-core" r={radius} filter="url(#analytics-map-glow)" />
@@ -457,11 +803,15 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
         </g>
 
         {popoverNode && hasCoordinates(popoverNode) && !placementMode && (
-          <NodeDetailsPopover node={popoverNode} />
+          <NodeDetailsPopover node={popoverNode} viewport={viewport} zoom={zoom} />
         )}
 
         {pendingPoint && (
-          <g className="analytics-map-placement-preview" aria-hidden="true" transform={`translate(${pendingPoint.x} ${pendingPoint.y})`}>
+          <g
+            className="analytics-map-placement-preview"
+            aria-hidden="true"
+            transform={`translate(${pendingPoint.x} ${pendingPoint.y}) scale(${1 / zoom})`}
+          >
             <circle className="analytics-map-placement-preview-ring" r="18" />
             <circle className="analytics-map-placement-preview-core" r="7" />
             <path d="M-26 0 H-12 M12 0 H26 M0 -26 V-12 M0 12 V26" />
