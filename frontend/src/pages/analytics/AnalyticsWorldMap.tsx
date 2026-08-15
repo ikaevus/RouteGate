@@ -12,7 +12,7 @@ import {
   type AnalyticsNode,
   type HealthState,
 } from '../../entities/analytics/api/analyticsApi';
-import { t } from '../../shared/i18n/i18n';
+import { t, type TranslationKey } from '../../shared/i18n/i18n';
 import './AnalyticsActionButtons.css';
 import './AnalyticsMapNodePopover.css';
 import './AnalyticsWorldMapViewport.css';
@@ -133,6 +133,31 @@ function numberValue(value?: number, digits = 2): string {
     return '—';
   }
   return value.toFixed(digits).replace(/\.00$/, '');
+}
+
+function translatedRuntimeValue(prefix: string, value?: string): string {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return '—';
+  }
+  const key = `${prefix}.${normalized}` as TranslationKey;
+  const translated = t(key);
+  return translated !== key ? translated : value!.trim();
+}
+
+function agentStatusLabel(value?: string): string {
+  return translatedRuntimeValue('analytics.agentStatus', value);
+}
+
+function vpnCoreServiceStateLabel(value?: string): string {
+  return translatedRuntimeValue('analytics.vpnCoreState', value);
+}
+
+function telemetryAgeLabel(value?: number): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  return t('analytics.secondsShort', { value: Math.round(value) });
 }
 
 function project(longitude: number, latitude: number): MapPoint {
@@ -342,9 +367,7 @@ function NodeDetailsPopover({
   zoom: number;
 }) {
   const position = nodePopoverPosition(node, viewport, zoom);
-  const telemetryAge = node.agent.observationAgeSeconds !== undefined
-    ? `${Math.round(node.agent.observationAgeSeconds)}s`
-    : '—';
+  const telemetryAge = telemetryAgeLabel(node.agent.observationAgeSeconds);
 
   return (
     <g transform={`translate(${position.x} ${position.y}) scale(${1 / zoom})`}>
@@ -379,11 +402,11 @@ function NodeDetailsPopover({
             </div>
             <div className="analytics-map-node-popover-fact">
               <span>{t('analytics.agent')}</span>
-              <strong>{node.agent.status || '—'}</strong>
+              <strong>{agentStatusLabel(node.agent.status)}</strong>
             </div>
             <div className="analytics-map-node-popover-fact">
               <span>{t('analytics.vpnCore')}</span>
-              <strong>{node.vpnCore.type || '—'} · {node.vpnCore.serviceState || '—'}</strong>
+              <strong>{node.vpnCore.type || '—'} · {vpnCoreServiceStateLabel(node.vpnCore.serviceState)}</strong>
             </div>
             <div className="analytics-map-node-popover-fact">
               <span>{t('analytics.memory')}</span>
