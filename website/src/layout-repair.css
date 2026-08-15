@@ -1,0 +1,260 @@
+/* Compatibility layer for the current public-site markup.
+   Keep these rules explicit so every section stays visually coherent as the page evolves. */
+
+/* Workflow */
+.workflow-section .workflow {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 28px;
+  margin-top: 8px;
+}
+
+.workflow-section .workflow::before {
+  content: "";
+  position: absolute;
+  top: 32px;
+  left: 12.5%;
+  right: 12.5%;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(37,99,235,.08), rgba(59,130,246,.65), rgba(37,99,235,.08));
+}
+
+.workflow-section .workflow article {
+  position: relative;
+  z-index: 1;
+  padding: 0 14px;
+  text-align: center;
+}
+
+.workflow-icon {
+  position: relative;
+  z-index: 2;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 20px;
+  border: 1px solid rgba(96,165,250,.28);
+  border-radius: 16px;
+  color: #78aefc;
+  background: linear-gradient(145deg, #10243f, #0a192c);
+  box-shadow: 0 0 0 8px #081526, 0 14px 30px rgba(0,0,0,.22);
+}
+
+.workflow-icon svg {
+  width: 28px;
+  height: 28px;
+  fill: none !important;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workflow-icon b {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(96,165,250,.35);
+  border-radius: 50%;
+  color: #dbeafe;
+  background: #15345d;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.workflow-section .workflow h3 {
+  margin: 0 0 7px;
+  color: #f4f8fd;
+  font-size: 14px;
+}
+
+.workflow-section .workflow p {
+  max-width: 220px;
+  margin: 0 auto;
+  color: #7f93aa;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.workflow-arrow { display: none; }
+
+/* Deployment cards */
+.deployment-section .deployment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.deployment-section .deployment-grid article {
+  min-height: 128px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: linear-gradient(145deg, rgba(14,31,54,.86), rgba(8,21,38,.82));
+}
+
+.deployment-section .deployment-grid h3 {
+  margin: 0 0 9px;
+  color: #f2f7fd;
+  font-size: 15px;
+}
+
+.deployment-section .deployment-grid p {
+  margin: 0;
+  color: #8296ae;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Final CTA */
+.final-cta {
+  position: relative;
+  overflow: hidden;
+  min-height: 210px;
+  margin-top: 70px;
+  margin-bottom: 70px;
+  padding: 34px 38px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 28px;
+  border: 1px solid rgba(96,165,250,.20);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 88% 22%, rgba(37,99,235,.22), transparent 35%),
+    linear-gradient(135deg, rgba(12,29,51,.98), rgba(7,19,34,.98));
+  box-shadow: 0 26px 70px rgba(0,0,0,.22);
+}
+
+.final-cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148,163,184,.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,.022) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+.final-cta > * { position: relative; z-index: 1; }
+
+.cta-mark {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(96,165,250,.22);
+  border-radius: 18px;
+  background: rgba(37,99,235,.09);
+}
+
+.cta-mark img {
+  display: block;
+  width: 48px;
+  height: 42px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.final-cta h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -.04em;
+}
+
+.final-cta p {
+  max-width: 670px;
+  margin: 10px 0 0;
+  color: #94a8bf;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.final-cta > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Footer */
+.footer {
+  padding: 50px 0 28px;
+  border-top: 1px solid rgba(148,163,184,.08);
+  background: #050d18;
+}
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, .65fr);
+  gap: 60px;
+  align-items: start;
+}
+
+.footer-grid > div:first-child p {
+  max-width: 330px;
+  margin: 14px 0 12px;
+  color: #70859d;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.footer-grid > div:first-child small {
+  display: block;
+  color: #465b73;
+  font-size: 9px;
+}
+
+.footer-grid > div:not(:first-child) strong {
+  display: block;
+  margin-bottom: 13px;
+  color: #d6e0ec;
+  font-size: 10px;
+}
+
+.footer-grid > div:not(:first-child) a {
+  display: block;
+  width: fit-content;
+  margin: 9px 0;
+  color: #71869f;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.footer-grid > div:not(:first-child) a:hover { color: #c7d4e4; }
+
+@media (max-width: 1100px) {
+  .workflow-section .workflow { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 42px 24px; }
+  .workflow-section .workflow::before { display: none; }
+  .final-cta { grid-template-columns: auto 1fr; }
+  .final-cta > div:last-child { grid-column: 1 / -1; justify-content: flex-start; }
+  .footer-grid { grid-template-columns: 1.2fr repeat(3, .75fr); gap: 34px; }
+}
+
+@media (max-width: 720px) {
+  .workflow-section .workflow,
+  .deployment-section .deployment-grid { grid-template-columns: 1fr; }
+  .workflow-section .workflow { gap: 34px; }
+  .final-cta {
+    margin-top: 48px;
+    margin-bottom: 48px;
+    padding: 28px 22px;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .cta-mark { width: 58px; height: 58px; border-radius: 14px; }
+  .cta-mark img { width: 38px; height: 34px; }
+  .final-cta > div:last-child { grid-column: auto; justify-content: flex-start; }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 30px; }
+  .footer-grid > div:first-child { grid-column: 1 / -1; }
+}
