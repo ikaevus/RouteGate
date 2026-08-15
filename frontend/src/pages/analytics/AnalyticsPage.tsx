@@ -14,6 +14,7 @@ import {
 import { getCurrentLocale, t, type TranslationKey } from '../../shared/i18n/i18n';
 import { AnalyticsWorldMap } from './AnalyticsWorldMap';
 import './AnalyticsPage.css';
+import './AnalyticsMapInspectorLatch.css';
 
 const HEALTH_RANK: Record<HealthState, number> = {
   healthy: 1,
@@ -110,6 +111,14 @@ function HealthPill({ state }: { state: HealthState }) {
       <i aria-hidden="true" />
       {healthLabel(state)}
     </span>
+  );
+}
+
+function MapInspectorLatchIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d={collapsed ? 'M15 5l-6 7 6 7' : 'M9 5l6 7-6 7'} />
+    </svg>
   );
 }
 
@@ -311,6 +320,7 @@ export function AnalyticsPage() {
     staleTime: 5_000,
   });
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
+  const [mapInspectorCollapsed, setMapInspectorCollapsed] = useState(false);
 
   const nodes = overviewQuery.data?.nodes ?? [];
   const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId), [nodes, selectedNodeId]);
@@ -330,6 +340,7 @@ export function AnalyticsPage() {
   const summary = overviewQuery.data?.summary;
   const locatedNodes = nodes.filter((node) => node.location.latitude !== undefined && node.location.longitude !== undefined);
   const problemNodes = nodes.filter((node) => node.health.state === 'unhealthy' || node.health.state === 'degraded');
+  const inspectorLatchLabel = mapInspectorCollapsed ? t('analytics.mapShowInspector') : t('analytics.mapHideInspector');
 
   return (
     <section className="page analytics-page">
@@ -368,9 +379,19 @@ export function AnalyticsPage() {
               <span>{t('analytics.nodesLocated', { located: summary.locatedNodes, total: summary.totalNodes })}</span>
             </div>
 
-            <div className="analytics-map-layout">
+            <div className={`analytics-map-layout${mapInspectorCollapsed ? ' is-inspector-collapsed' : ''}`}>
               <div className="analytics-map-stage">
                 <AnalyticsWorldMap nodes={nodes} onSelectNode={setSelectedNodeId} selectedNodeId={selectedNodeId} />
+                <button
+                  className="analytics-map-inspector-latch"
+                  type="button"
+                  aria-expanded={!mapInspectorCollapsed}
+                  aria-label={inspectorLatchLabel}
+                  title={inspectorLatchLabel}
+                  onClick={() => setMapInspectorCollapsed((value) => !value)}
+                >
+                  <MapInspectorLatchIcon collapsed={mapInspectorCollapsed} />
+                </button>
                 {locatedNodes.length === 0 && (
                   <div className="analytics-map-empty">
                     <strong>{t('analytics.mapNoLocations')}</strong>
@@ -379,7 +400,11 @@ export function AnalyticsPage() {
                 )}
                 <small className="analytics-map-footnote">{t('analytics.coordinatesManaged')}</small>
               </div>
-              {selectedNode ? <SelectedNodePanel node={selectedNode} /> : <div className="analytics-map-selection-empty">{t('analytics.selectNode')}</div>}
+              {!mapInspectorCollapsed && (
+                selectedNode
+                  ? <SelectedNodePanel node={selectedNode} />
+                  : <div className="analytics-map-selection-empty">{t('analytics.selectNode')}</div>
+              )}
             </div>
           </section>
 
