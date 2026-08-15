@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Manage VPN servers, accounts, routing profiles, configuration delivery, client access, and traffic visibility from one web interface.
+  Manage VPN servers, accounts, routing profiles, configuration deployment, client access, delivery, and operational visibility from one web interface.
 </p>
 
 <p align="center">
@@ -31,48 +31,48 @@
 
 ## What is RouteGate?
 
-RouteGate is an independent, open-source platform for operating self-hosted Linux VPN infrastructure.
-
-Its product model is intentionally simple:
+RouteGate is an independent open-source platform for operating self-hosted Linux VPN infrastructure.
 
 ```text
 RouteGate Manager → RouteGate Agent → VPN Core
 ```
 
-- **Manager** provides the web interface, API, persistence, configuration lifecycle, and administrative workflows.
-- **Agent** runs on managed Linux servers and performs allow-listed infrastructure operations.
-- **VPN Core** handles the actual VPN runtime. RouteGate currently integrates with **sing-box**.
+- **Manager** provides the Admin UI, API, PostgreSQL-backed state, configuration lifecycle, operational workflows, delivery, and observability.
+- **Agent** runs on managed Linux servers and performs authenticated, allow-listed infrastructure operations.
+- **VPN Core** provides the VPN runtime. The current supported core is **sing-box**, with **VLESS / Reality** as the validated public path.
 
-RouteGate is designed for administrators who want to operate their own infrastructure without relying on scattered scripts or a closed control panel.
+RouteGate is designed for administrators who want a coherent infrastructure product instead of a collection of scripts, disconnected panels, and manual VPN configuration steps.
 
-## RouteGate v0.1.0
+## Current project state
 
-**v0.1.0 is the first public RouteGate MVP release.**
+**RouteGate v0.1.0 is the first public MVP release. Development on `main` continues beyond the release baseline.**
 
-The supported MVP path has been validated end to end on a clean Ubuntu 24.04 LTS VPS:
+The canonical clean-host flow has been validated end to end on Ubuntu 24.04 LTS:
 
 ```text
-Clean VPS
-→ RouteGate installer
+Clean Ubuntu VPS
+→ one-command RouteGate installer
 → PostgreSQL + Manager + Admin UI + nginx/HTTPS + local Agent
-→ secure /setup activation
-→ Guided Workflow
+→ secure one-time /setup activation
+→ Guided Workflow / Next Action First
 → install sing-box through RouteGate
 → configure VLESS / Reality
-→ create the first VPN account
-→ Config Deploy
-→ persistent client profile / QR / VLESS link
+→ create VPN account
+→ render → validate → apply → health check → rollback boundary
+→ persistent client profile / QR / VLESS link / subscription
 → working VPN connection
 → reboot
 → automatic service recovery
 → working VPN connection after reboot
 ```
 
-The validated third-party clients are **V2Box** and **V2RayTun**. The persistent client-profile path with `fingerprint=firefox` was validated during the final clean-host acceptance.
+The production-like validation environment is operated at `us.routegate.org` and uses the same native systemd/PostgreSQL/nginx model as the supported clean-host deployment.
 
-## Install the supported MVP
+Since the v0.1.0 release baseline, `main` has continued to evolve with scalable VPN-account management, real Dashboard runtime data, stronger operational visibility, and the Delivery / external-integration domain direction.
 
-The v0.1.0 public installation contract is a single-node **Ubuntu 24.04 LTS amd64** host using native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS.
+## Install RouteGate
+
+The supported public installation contract is a single-node **Ubuntu 24.04 LTS amd64** host using native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS.
 
 Before installation:
 
@@ -87,53 +87,45 @@ curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
   | sudo bash
 ```
 
-The installer downloads the latest published RouteGate release bundle and verifies it against `SHA256SUMS`. To install this release explicitly, add `--version v0.1.0` as documented in the [Clean VPS Installer guide](docs/deployment/clean-vps-installer.md).
+The installer downloads the published RouteGate release bundle and verifies it against `SHA256SUMS`. To install v0.1.0 explicitly, use `--version v0.1.0` as documented in the [Clean VPS Installer guide](docs/deployment/clean-vps-installer.md).
 
-After installation, use the single-use `/setup` link printed by the installer to choose the administrator password. RouteGate then signs the administrator in and guides the remaining VPN setup from the Dashboard.
+After installation, open the single-use `/setup` link printed by the installer, choose the administrator password, and continue through the guided Dashboard workflow.
 
-In the canonical All-in-One layout, nginx/HTTPS owns TCP `443` and the recommended VLESS / Reality listener uses TCP `8443`.
+In the canonical All-in-One layout, nginx/HTTPS owns TCP `443`; the recommended VLESS / Reality listener uses TCP `8443`.
 
-## Project principles
+## Product principles
 
-- **Self-hosted by design** — infrastructure and data stay under the operator's control.
-- **Open source** — source code is available for inspection, modification, and self-builds.
-- **Guided Workflow / Next Action First** — the interface should always expose the next logical operational action.
-- **Product model over implementation model** — users manage servers and access, not internal service plumbing.
-- **Security-sensitive code remains open** — no hidden critical components or artificial product limits.
-- **Protected brand** — the code is open under AGPLv3-or-later; the RouteGate name and official branding are governed separately.
+- **Self-hosted by design** — infrastructure and data remain under the operator's control.
+- **Open source** — security-sensitive and operationally critical code stays inspectable and self-buildable.
+- **Guided Workflow / Next Action First** — every major workflow should expose the current state and the most logical next action.
+- **Product model over implementation model** — administrators manage infrastructure concepts, not internal service plumbing.
+- **Operational safety** — configuration deployment follows render, validation, apply, health-check, and rollback boundaries.
+- **Provider-independent integrations** — external communication is modeled through a Delivery domain rather than scattered provider-specific logic.
+- **No artificial product limits** — RouteGate is one open-source self-hosted product, not a crippled community edition around closed critical features.
+- **Protected brand** — source code is AGPLv3-or-later; the RouteGate name and official branding are governed separately.
 
-## MVP capabilities
+## Current capabilities
 
-v0.1.0 includes working foundations and end-to-end flows for:
+RouteGate currently includes working foundations and end-to-end flows for:
 
-- Clean VPS installation with PostgreSQL, Manager, Admin UI, nginx/HTTPS, and local Agent;
-- secure single-use first administrator activation at `/setup`;
+- clean Ubuntu 24.04 LTS VPS installation;
+- PostgreSQL, Manager, Admin UI, nginx/HTTPS, and local Agent deployment;
+- secure single-use administrator activation at `/setup`;
 - automatic local All-in-One Server and Agent registration;
-- state-aware Guided Workflow on the Dashboard;
-- VPN Core detection, allow-listed sing-box installation, and service management;
-- VLESS / Reality protocol settings with recommended first-run configuration;
-- VPN account lifecycle and persistent client profiles;
-- QR code and VLESS-link client delivery;
+- state-aware Dashboard and Guided Workflow;
+- real runtime Dashboard data rather than static operational placeholders;
+- VPN Core detection and allow-listed sing-box installation/service management;
+- VLESS / Reality settings and validated first-run configuration;
+- scalable VPN-account lifecycle, search, and management;
+- persistent client profiles, QR codes, VLESS links, and subscriptions;
 - configuration render, validation, deployment, health checking, and rollback foundations;
 - routing profiles with Direct, VPN, and Block actions;
-- user portal and portal access hardening;
+- user portal and self-service access foundations;
 - traffic collection, visibility, limits, and enforcement foundations;
 - version, schema, protocol, and compatibility reporting;
 - PostgreSQL-backed persistence and migrations;
-- English-first UI with Russian localization.
-
-## MVP boundaries
-
-v0.1.0 intentionally does not include:
-
-- additional VPN Cores or protocols beyond the current sing-box + VLESS / Reality path;
-- an appliance image or appliance operating system;
-- Kubernetes or HA deployment;
-- a managed/automatic RouteGate update system;
-- official RouteGate mobile clients;
-- RG-101C compatibility auto-tuning and advanced client-profile controls.
-
-The release workflow publishes both amd64 and arm64 native bundles. The **live Clean VPS support contract for v0.1.0 is amd64**; arm64 packaging is published but has not yet received the same clean-host acceptance boundary.
+- English-first UI with Russian localization;
+- Delivery architecture for provider-independent external communication, with Email/SMTP, Telegram, and WhatsApp adapter boundaries defined for integration work.
 
 ## Architecture
 
@@ -144,7 +136,9 @@ Administrator
 RouteGate Admin UI
      │
      ▼
-RouteGate Manager ───── PostgreSQL
+RouteGate Manager ───────── PostgreSQL
+     │
+     ├── Servers / Accounts / Routing / Traffic / Delivery
      │
      │ authenticated task queue
      ▼
@@ -158,7 +152,27 @@ sing-box
 VPN clients
 ```
 
-The backend follows a **modular monolith** architecture. Components are extracted only when real operational pressure justifies it.
+The Manager follows a **modular monolith** architecture. Domain boundaries are kept explicit, but components are extracted into separately deployed services only when demonstrated scaling or operational pressure justifies it.
+
+### Delivery / external integrations
+
+The accepted integration direction is:
+
+```text
+RouteGate Manager
+      │
+      ▼
+Delivery Service
+      │
+      ▼
+Provider Adapter
+      │
+      ├── SMTP → Email
+      ├── Telegram Bot API → Telegram
+      └── WhatsApp Business Cloud API → WhatsApp
+```
+
+Delivery owns durable requests, template selection, idempotency, lifecycle/status, bounded retries, restart-safe recovery, and audit/history. Provider adapters contain only external-system communication logic.
 
 ## Technology stack
 
@@ -169,9 +183,10 @@ The backend follows a **modular monolith** architecture. Components are extracte
 | Admin UI | React, TypeScript, Vite |
 | Database | PostgreSQL |
 | VPN Core | sing-box |
-| Supported MVP deployment | Native systemd services, PostgreSQL, nginx, Let's Encrypt TLS |
+| Current validated VPN path | VLESS / Reality |
+| Supported public deployment | Ubuntu 24.04 LTS, native systemd services, PostgreSQL, nginx, Let's Encrypt TLS |
 | Development | Docker Compose |
-| Public website | Static React/Vite site deployed with GitHub Pages |
+| Public website | React/Vite static site on GitHub Pages |
 
 ## Repository layout
 
@@ -183,12 +198,12 @@ deploy/      Development and deployment resources
 docs/        Architecture, API, operations, features, and release notes
 frontend/    RouteGate Admin UI
 scripts/     Development, packaging, and operational helpers
-website/     Static public website for routegate.org
+website/     Public routegate.org website
 ```
 
 ## Development quick start
 
-The Docker Compose stack remains the contributor/development path; it is not the supported public VPS installation path.
+Docker Compose is the contributor/development path; it is not the supported public VPS installation contract.
 
 ### Requirements
 
@@ -206,7 +221,7 @@ make dev
 
 Open the Admin UI at `http://127.0.0.1:5173`.
 
-Run the full project checks:
+Run project checks:
 
 ```bash
 make check
@@ -241,23 +256,28 @@ Development defaults are documented in [`.env.example`](.env.example). Never use
 - [Release documentation](docs/release/)
 - [Official website](https://routegate.org)
 
-Documentation follows the same policy as the product: **English first, with Russian localization developed alongside it**.
+Documentation is English-first, with Russian localization developed alongside the product.
+
+## Current boundaries
+
+RouteGate is not:
+
+- an OPNsense plugin;
+- a firewall distribution;
+- a consumer VPN service;
+- a closed VPN panel;
+- a Hiddify / 3x-ui / Marzban clone;
+- a restriction-bypass marketing product.
+
+The current public release path does not promise Kubernetes/HA deployment, an appliance OS, official RouteGate mobile clients, or multiple production-validated VPN cores.
 
 ## Security
 
-Please do not report security vulnerabilities through public issues.
-
-Read [SECURITY.md](SECURITY.md) for the supported reporting process and disclosure expectations.
+Please do not report security vulnerabilities through public issues. Read [SECURITY.md](SECURITY.md) for the supported reporting process and disclosure expectations.
 
 ## Contributing
 
-Contributions, testing, documentation improvements, and carefully scoped proposals are welcome.
-
-Before opening a pull request, read:
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [SECURITY.md](SECURITY.md)
+Contributions, testing, documentation improvements, and carefully scoped proposals are welcome. Before opening a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
 
 ## License and trademarks
 
