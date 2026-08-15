@@ -54,17 +54,17 @@
 
 .workflow-icon b {
   position: absolute;
-  top: -15px;
-  right: -15px;
-  width: 38px;
-  height: 38px;
+  top: -52px;
+  right: -52px;
+  width: 114px;
+  height: 114px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(96,165,250,.35);
   border-radius: 50%;
   color: #dbeafe;
   background: #15345d;
-  font-size: 27px;
+  font-size: 81px;
   line-height: 1;
   font-weight: 800;
 }
