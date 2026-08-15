@@ -32,15 +32,22 @@
 
 .config-versions-table-row > .timestamp-stack {
   align-items: flex-start;
+  align-self: center;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  justify-self: stretch;
-  width: 100%;
+  justify-self: start;
+  margin: 0;
+  max-width: 100%;
+  padding: 0;
+  width: max-content;
 }
 
 .config-versions-table-row > .timestamp-stack > .badge {
+  align-self: flex-start;
   flex: none;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 @media (max-width: 760px) {
