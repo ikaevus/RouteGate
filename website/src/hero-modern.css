@@ -17,13 +17,13 @@
 }
 
 .hero-grid {
-  grid-template-columns: minmax(430px, .82fr) minmax(650px, 1.25fr);
-  gap: clamp(46px, 5vw, 78px);
+  grid-template-columns: minmax(470px, .9fr) minmax(650px, 1.25fr);
+  gap: clamp(42px, 4vw, 68px);
   align-items: center;
 }
 
 .hero-copy {
-  max-width: 600px;
+  max-width: 650px;
   padding-bottom: 0;
 }
 
@@ -33,12 +33,12 @@
 }
 
 .hero-copy > h2 {
-  max-width: 620px;
+  max-width: 650px;
   margin: 18px 0 0;
-  font-size: clamp(46px, 4.4vw, 67px);
-  line-height: 1.01;
-  letter-spacing: -.052em;
-  font-weight: 760;
+  font-size: clamp(39px, 3.35vw, 52px);
+  line-height: 1.045;
+  letter-spacing: -.042em;
+  font-weight: 740;
   text-wrap: balance;
 }
 
@@ -203,8 +203,8 @@
   }
 
   .hero-copy > h2 {
-    font-size: clamp(38px, 10vw, 50px);
-    line-height: 1.03;
+    font-size: clamp(34px, 9vw, 44px);
+    line-height: 1.04;
   }
 
   .hero-copy > p {
