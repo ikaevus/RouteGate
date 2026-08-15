@@ -7,6 +7,7 @@ import {
 } from '../../entities/analytics/api/analyticsApi';
 import { t } from '../../shared/i18n/i18n';
 import './AnalyticsActionButtons.css';
+import './AnalyticsMapNodePopover.css';
 
 interface AnalyticsWorldMapProps {
   nodes: AnalyticsNode[];
@@ -35,8 +36,17 @@ interface PlacementPoint {
   longitude: number;
 }
 
+interface PopoverPosition {
+  x: number;
+  y: number;
+}
+
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 430;
+const NODE_POPOVER_WIDTH = 320;
+const NODE_POPOVER_HEIGHT = 220;
+const NODE_POPOVER_GAP = 18;
+const NODE_POPOVER_MARGIN = 8;
 const worldMapUrl = new URL('../../shared/assets/world-map.svg', import.meta.url).href;
 
 const HEALTH_RANK: Record<HealthState, number> = {
@@ -59,6 +69,32 @@ function healthLabel(state: HealthState): string {
   }
 }
 
+function formatLocation(node: AnalyticsNode): string {
+  const structured = [node.location.city, node.location.region, node.location.country].filter(Boolean);
+  return structured.length > 0 ? structured.join(', ') : node.location.label?.trim() || t('analytics.notLocated');
+}
+
+function formatIpAddress(value?: string): string {
+  if (!value) {
+    return '—';
+  }
+  return value.replace(/\/(?:32|128)$/, '');
+}
+
+function percent(value?: number): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  return `${Math.round(value * 100)}%`;
+}
+
+function numberValue(value?: number, digits = 2): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  return value.toFixed(digits).replace(/\.00$/, '');
+}
+
 function project(longitude: number, latitude: number): { x: number; y: number } {
   return {
     x: ((longitude + 180) / 360) * MAP_WIDTH,
@@ -79,6 +115,27 @@ function roundCoordinate(value: number): number {
 
 function hasCoordinates(node: AnalyticsNode): boolean {
   return Number.isFinite(node.location.latitude) && Number.isFinite(node.location.longitude);
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function nodePopoverPosition(node: AnalyticsNode): PopoverPosition {
+  const point = project(node.location.longitude as number, node.location.latitude as number);
+  const rightX = point.x + NODE_POPOVER_GAP;
+  const preferredX = rightX + NODE_POPOVER_WIDTH <= MAP_WIDTH - NODE_POPOVER_MARGIN
+    ? rightX
+    : point.x - NODE_POPOVER_WIDTH - NODE_POPOVER_GAP;
+
+  return {
+    x: clamp(preferredX, NODE_POPOVER_MARGIN, MAP_WIDTH - NODE_POPOVER_WIDTH - NODE_POPOVER_MARGIN),
+    y: clamp(
+      point.y - NODE_POPOVER_HEIGHT / 2,
+      NODE_POPOVER_MARGIN,
+      MAP_HEIGHT - NODE_POPOVER_HEIGHT - NODE_POPOVER_MARGIN,
+    ),
+  };
 }
 
 function clusterNodes(nodes: AnalyticsNode[]): NodeCluster[] {
@@ -124,12 +181,79 @@ function preferredClusterNode(cluster: NodeCluster): AnalyticsNode {
     .node;
 }
 
+function NodeDetailsPopover({ node }: { node: AnalyticsNode }) {
+  const position = nodePopoverPosition(node);
+  const telemetryAge = node.agent.observationAgeSeconds !== undefined
+    ? `${Math.round(node.agent.observationAgeSeconds)}s`
+    : '—';
+
+  return (
+    <foreignObject
+      className="analytics-map-node-popover"
+      height={NODE_POPOVER_HEIGHT}
+      width={NODE_POPOVER_WIDTH}
+      x={position.x}
+      y={position.y}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="analytics-map-node-popover-card" role="group" aria-label={node.name}>
+        <div className="analytics-map-node-popover-header">
+          <div className="analytics-map-node-popover-title">
+            <strong>{node.name}</strong>
+            <span className="analytics-map-node-popover-location">{formatLocation(node)}</span>
+          </div>
+          <span className={`analytics-map-node-popover-status analytics-map-node-popover-status--${node.health.state}`}>
+            {healthLabel(node.health.state)}
+          </span>
+        </div>
+
+        <div className="analytics-map-node-popover-facts">
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('servers.publicIp')}</span>
+            <strong>{formatIpAddress(node.publicIp)}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('servers.provider')}</span>
+            <strong>{node.provider || '—'}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('analytics.agent')}</span>
+            <strong>{node.agent.status || '—'}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('analytics.vpnCore')}</span>
+            <strong>{node.vpnCore.type || '—'} · {node.vpnCore.serviceState || '—'}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('analytics.memory')}</span>
+            <strong>{percent(node.resources.memoryUsageRatio)}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('analytics.disk')}</span>
+            <strong>{percent(node.resources.rootFsUsageRatio)}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{t('analytics.load')}</span>
+            <strong>{numberValue(node.resources.load1)}</strong>
+          </div>
+          <div className="analytics-map-node-popover-fact">
+            <span>{node.agent.observationFresh ? t('analytics.observationFresh') : t('analytics.observationStale')}</span>
+            <strong>{telemetryAge}</strong>
+          </div>
+        </div>
+      </div>
+    </foreignObject>
+  );
+}
+
 export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: AnalyticsWorldMapProps) {
   const queryClient = useQueryClient();
   const [placementTargetId, setPlacementTargetId] = useState<string>();
   const [pendingPoint, setPendingPoint] = useState<PlacementPoint>();
+  const [popoverNodeId, setPopoverNodeId] = useState<string>();
   const clusters = clusterNodes(nodes);
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+  const popoverNode = popoverNodeId ? nodes.find((node) => node.id === popoverNodeId) : undefined;
   const unlocatedNodes = nodes.filter((node) => !hasCoordinates(node));
   const placementCandidate = selectedNode && !hasCoordinates(selectedNode)
     ? selectedNode
@@ -165,11 +289,22 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placementTargetId, selectedNodeId]);
 
+  useEffect(() => {
+    if (placementMode || (popoverNodeId && (!popoverNode || !hasCoordinates(popoverNode)))) {
+      setPopoverNodeId(undefined);
+      return;
+    }
+    if (popoverNodeId && selectedNodeId && popoverNodeId !== selectedNodeId) {
+      setPopoverNodeId(undefined);
+    }
+  }, [placementMode, popoverNode, popoverNodeId, selectedNodeId]);
+
   const beginPlacement = () => {
     if (!placementCandidate) {
       return;
     }
     onSelectNode(placementCandidate.id);
+    setPopoverNodeId(undefined);
     setPendingPoint(undefined);
     setPlacementTargetId(placementCandidate.id);
     saveLocationMutation.reset();
@@ -182,7 +317,11 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   };
 
   const handleMapClick = (event: MouseEvent<SVGSVGElement>) => {
-    if (!placementNode || saveLocationMutation.isPending) {
+    if (!placementNode) {
+      setPopoverNodeId(undefined);
+      return;
+    }
+    if (saveLocationMutation.isPending) {
       return;
     }
 
@@ -279,7 +418,10 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
             const preferred = preferredClusterNode(cluster);
             const selected = cluster.nodes.some((item) => item.node.id === selectedNodeId);
             const radius = cluster.nodes.length === 1 ? 8 : Math.min(18, 10 + Math.log2(cluster.nodes.length) * 3);
-            const handleSelect = () => onSelectNode(preferred.id);
+            const handleSelect = () => {
+              onSelectNode(preferred.id);
+              setPopoverNodeId(preferred.id);
+            };
             return (
               <g
                 key={cluster.key}
@@ -313,6 +455,10 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
             );
           })}
         </g>
+
+        {popoverNode && hasCoordinates(popoverNode) && !placementMode && (
+          <NodeDetailsPopover node={popoverNode} />
+        )}
 
         {pendingPoint && (
           <g className="analytics-map-placement-preview" aria-hidden="true" transform={`translate(${pendingPoint.x} ${pendingPoint.y})`}>
