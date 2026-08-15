@@ -96,6 +96,43 @@ function actionLabel(action?: string): string {
   return action.replaceAll('_', ' ').replace(/^./, (value) => value.toUpperCase());
 }
 
+function translatedRuntimeValue(prefix: string, value?: string): string {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return '—';
+  }
+  const key = `${prefix}.${normalized}` as TranslationKey;
+  const translated = t(key);
+  return translated !== key ? translated : value!.trim();
+}
+
+function agentStatusLabel(value?: string): string {
+  return translatedRuntimeValue('analytics.agentStatus', value);
+}
+
+function vpnCoreServiceStateLabel(value?: string): string {
+  return translatedRuntimeValue('analytics.vpnCoreState', value);
+}
+
+function telemetryAgeLabel(value?: number): string {
+  if (value === undefined || !Number.isFinite(value)) {
+    return '—';
+  }
+  return t('analytics.secondsShort', { value: Math.round(value) });
+}
+
+function healthSummaryLabel(reasonCode?: string, fallback?: string): string {
+  const normalized = reasonCode?.trim().toLowerCase();
+  if (normalized) {
+    const key = `analytics.healthReason.${normalized}` as TranslationKey;
+    const translated = t(key);
+    if (translated !== key) {
+      return translated;
+    }
+  }
+  return fallback?.trim() || '—';
+}
+
 function SummaryCard({ label, value, state }: { label: string; value: number; state?: HealthState | 'critical' }) {
   return (
     <article className={`analytics-summary-card${state ? ` analytics-summary-card--${state}` : ''}`}>
@@ -251,20 +288,20 @@ function SelectedNodePanel({ node }: { node: AnalyticsNode }) {
       </div>
 
       <div className="analytics-node-facts">
-        <div><span>{t('analytics.agent')}</span><strong>{node.agent.status || '—'}</strong></div>
-        <div><span>{t('analytics.vpnCore')}</span><strong>{node.vpnCore.type || '—'} · {node.vpnCore.serviceState || '—'}</strong></div>
+        <div><span>{t('analytics.agent')}</span><strong>{agentStatusLabel(node.agent.status)}</strong></div>
+        <div><span>{t('analytics.vpnCore')}</span><strong>{node.vpnCore.type || '—'} · {vpnCoreServiceStateLabel(node.vpnCore.serviceState)}</strong></div>
         <div><span>{t('analytics.memory')}</span><strong>{percent(node.resources.memoryUsageRatio)}</strong></div>
         <div><span>{t('analytics.disk')}</span><strong>{percent(node.resources.rootFsUsageRatio)}</strong></div>
         <div><span>{t('analytics.load')}</span><strong>{numberValue(node.resources.load1)}</strong></div>
         <div>
           <span>{node.agent.observationFresh ? t('analytics.observationFresh') : t('analytics.observationStale')}</span>
-          <strong>{node.agent.observationAgeSeconds !== undefined ? `${Math.round(node.agent.observationAgeSeconds)}s` : '—'}</strong>
+          <strong>{telemetryAgeLabel(node.agent.observationAgeSeconds)}</strong>
         </div>
       </div>
 
       {node.health.summary && (
         <div className={`analytics-next-action analytics-next-action--${node.health.state}`}>
-          <span>{node.health.summary}</span>
+          <span>{healthSummaryLabel(node.health.reasonCode, node.health.summary)}</span>
           {node.health.recommendedAction && (
             <div>
               <small>{t('analytics.recommendedAction')}</small>
@@ -300,7 +337,7 @@ function AlertRow({ alert, onOpen }: { alert: AnalyticsAlert; onOpen: () => void
       </span>
       <span className="analytics-alert-main">
         <strong>{alert.serverName}</strong>
-        <span>{alert.summary}</span>
+        <span>{healthSummaryLabel(alert.reasonCode, alert.summary)}</span>
       </span>
       <span className="analytics-alert-meta">
         {alert.acknowledged && <small>{t('analytics.acknowledged')}</small>}
@@ -422,7 +459,7 @@ export function AnalyticsPage() {
                   <button className="analytics-problem-card" key={node.id} onClick={() => setSelectedNodeId(node.id)} type="button">
                     <HealthPill state={node.health.state} />
                     <strong>{node.name}</strong>
-                    <span>{node.health.summary || healthLabel(node.health.state)}</span>
+                    <span>{healthSummaryLabel(node.health.reasonCode, node.health.summary || healthLabel(node.health.state))}</span>
                     {node.health.recommendedAction && <small>{actionLabel(node.health.recommendedAction)}</small>}
                   </button>
                 ))}
@@ -455,8 +492,8 @@ export function AnalyticsPage() {
                       <td><button className="analytics-node-link" onClick={(event) => { event.stopPropagation(); navigate(`/servers/${node.id}`); }} type="button">{node.name}</button></td>
                       <td><HealthPill state={node.health.state} /></td>
                       <td>{formatLocation(node)}</td>
-                      <td>{node.agent.status || '—'}</td>
-                      <td>{node.vpnCore.type ? `${node.vpnCore.type} · ${node.vpnCore.serviceState || '—'}` : '—'}</td>
+                      <td>{agentStatusLabel(node.agent.status)}</td>
+                      <td>{node.vpnCore.type ? `${node.vpnCore.type} · ${vpnCoreServiceStateLabel(node.vpnCore.serviceState)}` : '—'}</td>
                       <td>{percent(node.resources.memoryUsageRatio)}</td>
                       <td>{percent(node.resources.rootFsUsageRatio)}</td>
                     </tr>
