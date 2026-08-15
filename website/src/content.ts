@@ -33,7 +33,7 @@ export const content: Record<Locale, SiteContent> = {
     dashboard: {
       overview: 'Обзор', servers: 'Серверы', accounts: 'VPN-аккаунты', clients: 'Клиенты', traffic: 'Трафик',
       infrastructure: 'VPN-инфраструктура', healthy: 'Все системы работают', map: 'Карта серверов',
-      online: '5 из 5 онлайн', activity: 'Последняя активность', applied: 'Конфигурация применена',
+      online: '1 из 1 онлайн', activity: 'Последняя активность', applied: 'Конфигурация применена',
       connected: 'Сервер подключён', latency: 'Средняя задержка',
     },
     product: {
@@ -95,7 +95,7 @@ export const content: Record<Locale, SiteContent> = {
     dashboard: {
       overview: 'Overview', servers: 'Servers', accounts: 'VPN accounts', clients: 'Clients', traffic: 'Traffic',
       infrastructure: 'VPN infrastructure', healthy: 'All systems operational', map: 'Server map',
-      online: '5 of 5 online', activity: 'Recent activity', applied: 'Configuration applied',
+      online: '1 of 1 online', activity: 'Recent activity', applied: 'Configuration applied',
       connected: 'Server connected', latency: 'Average latency',
     },
     product: {
