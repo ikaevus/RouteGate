@@ -35,10 +35,10 @@
 .hero-copy > h2 {
   max-width: 650px;
   margin: 18px 0 0;
-  font-size: clamp(39px, 3.35vw, 52px);
-  line-height: 1.045;
-  letter-spacing: -.042em;
-  font-weight: 740;
+  font-size: clamp(33px, 2.8vw, 44px);
+  line-height: 1.07;
+  letter-spacing: -.038em;
+  font-weight: 720;
   text-wrap: balance;
 }
 
@@ -203,8 +203,8 @@
   }
 
   .hero-copy > h2 {
-    font-size: clamp(34px, 9vw, 44px);
-    line-height: 1.04;
+    font-size: clamp(30px, 8vw, 38px);
+    line-height: 1.05;
   }
 
   .hero-copy > p {
