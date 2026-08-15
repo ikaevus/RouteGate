@@ -30,14 +30,27 @@
   gap: 8px;
 }
 
-.config-versions-table-row {
-  grid-template-columns:
-    minmax(0, 0.55fr)
-    minmax(0, 0.9fr)
-    minmax(0, 1fr)
-    minmax(0, 1.25fr)
-    minmax(0, 1.25fr)
-    minmax(0, 1.25fr);
+/*
+ * Config Versions is one logical table. Its header and every data row must use
+ * the same column tracks; otherwise the content-sized Actions column can make
+ * independent row grids drift horizontally when rows expose different actions.
+ */
+@media (min-width: 981px) {
+  .config-versions-table {
+    column-gap: 11px;
+    grid-template-columns:
+      minmax(0, 0.6fr)
+      minmax(0, 0.8fr)
+      minmax(0, 0.95fr)
+      minmax(0, 1fr)
+      minmax(0, 1fr)
+      auto;
+  }
+
+  .config-versions-table > .config-versions-table-row {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
 }
 
 .config-versions-table-row > .timestamp-stack {
