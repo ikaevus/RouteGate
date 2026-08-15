@@ -15,6 +15,23 @@
   display: grid;
   gap: 8px;
   padding: 12px 13px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.analytics-map-node-popover-card *,
+.analytics-map-node-popover-card *::before,
+.analytics-map-node-popover-card *::after {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.analytics-map-node-popover-title,
+.analytics-map-node-popover-location,
+.analytics-map-node-popover-fact,
+.analytics-map-node-popover-fact strong,
+.analytics-map-node-popover-fact span {
+  cursor: text;
 }
 
 .analytics-map-node-popover-header {
