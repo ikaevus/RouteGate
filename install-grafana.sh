@@ -19,27 +19,18 @@ ROUTEGATE_GRAFANA_BOOTSTRAP_OVERRIDE="${ROUTEGATE_GRAFANA_BOOTSTRAP_OVERRIDE:-/e
 ROUTEGATE_GRAFANA_INSTALL_MASK="${ROUTEGATE_GRAFANA_INSTALL_MASK:-/etc/systemd/system/grafana-server.service}"
 ROUTEGATE_GRAFANA_SERVICE="grafana-server.service"
 ROUTEGATE_PROMETHEUS_URL="${ROUTEGATE_PROMETHEUS_URL:-http://127.0.0.1:9090}"
-ROUTEGATE_GRAFANA_URL=""
+ROUTEGATE_GRAFANA_KEY_FINGERPRINT="B53AE77BADB630A683046005963FA27710458545"
 ROUTEGATE_DOMAIN=""
+ROUTEGATE_GRAFANA_URL=""
 ROUTEGATE_GRAFANA_ADMIN_PASSWORD=""
 ROUTEGATE_BACKUP_DIR=""
 ROUTEGATE_BACKUPS_READY=0
 ROUTEGATE_MUTATED=0
 ROUTEGATE_SUCCESS=0
-ROUTEGATE_PACKAGE_INSTALLED_BY_US=0
 
-log() {
-  printf '[RouteGate Grafana] %s\n' "$*"
-}
-
-warn() {
-  printf '[RouteGate Grafana] WARNING: %s\n' "$*" >&2
-}
-
-die() {
-  printf '[RouteGate Grafana] ERROR: %s\n' "$*" >&2
-  exit 1
-}
+log() { printf '[RouteGate Grafana] %s\n' "$*"; }
+warn() { printf '[RouteGate Grafana] WARNING: %s\n' "$*" >&2; }
+die() { printf '[RouteGate Grafana] ERROR: %s\n' "$*" >&2; exit 1; }
 
 package_installed() {
   dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -qx 'install ok installed'
@@ -51,18 +42,28 @@ state_value() {
   sed -n "s/^${key}=//p" "$ROUTEGATE_STATE_FILE" | head -n1
 }
 
-wait_for_url() {
+wait_for_http_200() {
   local url=$1
   local attempts=${2:-30}
   local delay=${3:-1}
-  local i
+  local host_header=${4:-}
+  local code i
   for ((i = 1; i <= attempts; i++)); do
-    if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
-      return 0
+    if [[ -n "$host_header" ]]; then
+      code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: ${host_header}" "$url" 2>/dev/null || true)
+    else
+      code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)
     fi
+    [[ "$code" == "200" ]] && return 0
     sleep "$delay"
   done
   return 1
+}
+
+local_grafana_api() {
+  local path=$1
+  shift
+  curl -fsS --max-time 10 -H "Host: ${ROUTEGATE_DOMAIN}" "$@" "http://127.0.0.1:3000/grafana${path}"
 }
 
 require_root() {
@@ -76,11 +77,10 @@ validate_platform() {
   arch=$(dpkg --print-architecture 2>/dev/null || true)
   [[ "$os_id" == "ubuntu" && "$version_id" == "24.04" && "$arch" == "amd64" ]] \
     || die "Managed Grafana currently requires Ubuntu 24.04 LTS on amd64."
-  command -v systemctl >/dev/null 2>&1 || die "systemd is required."
-  command -v curl >/dev/null 2>&1 || die "curl is required."
-  command -v nginx >/dev/null 2>&1 || die "nginx is required."
-  command -v openssl >/dev/null 2>&1 || die "openssl is required."
-  command -v python3 >/dev/null 2>&1 || die "python3 is required."
+  local command
+  for command in systemctl curl nginx openssl python3 ss gpg; do
+    command -v "$command" >/dev/null 2>&1 || die "${command} is required."
+  done
 }
 
 load_routegate_identity() {
@@ -102,24 +102,19 @@ load_routegate_identity() {
     || die "Could not derive a valid RouteGate domain from ROUTEGATE_PUBLIC_URL."
   [[ -z "$state_domain" || "$state_domain" == "$ROUTEGATE_DOMAIN" ]] \
     || die "RouteGate state and Manager public URL refer to different domains."
-
   ROUTEGATE_GRAFANA_URL="https://${ROUTEGATE_DOMAIN}/grafana/"
 }
 
 verify_prometheus_dependency() {
-  local managed
-  managed=$(state_value PROMETHEUS_MANAGED || true)
-  [[ "$managed" == "1" ]] \
+  [[ "$(state_value PROMETHEUS_MANAGED || true)" == "1" ]] \
     || die "RouteGate-managed Prometheus is required before installing Grafana. Enable historical metrics first."
-  systemctl is-active --quiet prometheus.service \
-    || die "RouteGate-managed Prometheus is not active."
-  wait_for_url "${ROUTEGATE_PROMETHEUS_URL}/-/ready" 10 1 \
+  systemctl is-active --quiet prometheus.service || die "RouteGate-managed Prometheus is not active."
+  wait_for_http_200 "${ROUTEGATE_PROMETHEUS_URL}/-/ready" 10 1 \
     || die "RouteGate-managed Prometheus is not ready on 127.0.0.1:9090."
 }
 
 validate_loopback_listener() {
-  local port=$1
-  local service_name=$2
+  local port=$1 service_name=$2
   if ss -ltnH | awk '{print $4}' | grep -Eq "(^0\\.0\\.0\\.0:${port}$|^\\[::\\]:${port}$)"; then
     die "${service_name} is unexpectedly listening on a public wildcard address."
   fi
@@ -135,16 +130,14 @@ verify_existing_managed_install() {
   [[ "$managed" == "1" ]] || return 1
 
   package_installed grafana || die "RouteGate state claims Grafana ownership, but the grafana package is missing."
-  systemctl is-enabled --quiet "$ROUTEGATE_GRAFANA_SERVICE" \
-    || die "RouteGate-managed Grafana is not enabled."
-  systemctl is-active --quiet "$ROUTEGATE_GRAFANA_SERVICE" \
-    || die "RouteGate-managed Grafana is not active."
+  systemctl is-enabled --quiet "$ROUTEGATE_GRAFANA_SERVICE" || die "RouteGate-managed Grafana is not enabled."
+  systemctl is-active --quiet "$ROUTEGATE_GRAFANA_SERVICE" || die "RouteGate-managed Grafana is not active."
   validate_loopback_listener 3000 Grafana
-  wait_for_url "http://127.0.0.1:3000/grafana/api/health" 10 1 \
+  wait_for_http_200 "http://127.0.0.1:3000/grafana/api/health" 10 1 "$ROUTEGATE_DOMAIN" \
     || die "RouteGate-managed Grafana health endpoint is unavailable."
   grep -Fq '# BEGIN ROUTEGATE MANAGED GRAFANA' "$ROUTEGATE_NGINX_SITE" \
     || die "RouteGate-managed Grafana nginx gateway is missing."
-  wait_for_url "${ROUTEGATE_GRAFANA_URL}api/health" 10 1 \
+  wait_for_http_200 "${ROUTEGATE_GRAFANA_URL}api/health" 10 1 \
     || die "RouteGate-managed Grafana is not reachable through RouteGate HTTPS."
 
   log "Grafana is already installed and healthy."
@@ -188,11 +181,11 @@ rollback() {
     fi
 
     rm -f "$ROUTEGATE_GRAFANA_CREDENTIALS_FILE"
-    if [[ "$ROUTEGATE_PACKAGE_INSTALLED_BY_US" == "1" ]]; then
+    if package_installed grafana; then
       DEBIAN_FRONTEND=noninteractive apt-get purge -y grafana >/dev/null 2>&1 || true
-      rm -f "$ROUTEGATE_GRAFANA_APT_LIST" "$ROUTEGATE_GRAFANA_APT_KEY"
-      apt-get update >/dev/null 2>&1 || true
     fi
+    rm -f "$ROUTEGATE_GRAFANA_APT_LIST" "$ROUTEGATE_GRAFANA_APT_KEY"
+    apt-get update >/dev/null 2>&1 || true
     nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
   fi
   [[ -z "$ROUTEGATE_BACKUP_DIR" ]] || rm -rf "$ROUTEGATE_BACKUP_DIR"
@@ -206,14 +199,13 @@ install_grafana_package() {
   apt-get install -y apt-transport-https gnupg >/dev/null
 
   install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL --connect-timeout 15 --max-time 60 \
-    https://apt.grafana.com/gpg-full.key \
-    -o "$ROUTEGATE_GRAFANA_APT_KEY"
+  curl -fsSL --connect-timeout 15 --max-time 60 https://apt.grafana.com/gpg-full.key -o "$ROUTEGATE_GRAFANA_APT_KEY"
   chmod 0644 "$ROUTEGATE_GRAFANA_APT_KEY"
-  gpg --show-keys "$ROUTEGATE_GRAFANA_APT_KEY" >/dev/null 2>&1 \
-    || die "The downloaded Grafana APT signing key is invalid."
-  printf 'deb [signed-by=%s] https://apt.grafana.com stable main\n' "$ROUTEGATE_GRAFANA_APT_KEY" \
-    >"$ROUTEGATE_GRAFANA_APT_LIST"
+  gpg --batch --show-keys --with-colons "$ROUTEGATE_GRAFANA_APT_KEY" 2>/dev/null \
+    | awk -F: '$1 == "fpr" {print $10}' \
+    | grep -Fxq "$ROUTEGATE_GRAFANA_KEY_FINGERPRINT" \
+    || die "The Grafana APT signing key fingerprint is unexpected."
+  printf 'deb [signed-by=%s] https://apt.grafana.com stable main\n' "$ROUTEGATE_GRAFANA_APT_KEY" >"$ROUTEGATE_GRAFANA_APT_LIST"
   chmod 0644 "$ROUTEGATE_GRAFANA_APT_LIST"
 
   ln -s /dev/null "$ROUTEGATE_GRAFANA_INSTALL_MASK"
@@ -224,7 +216,6 @@ install_grafana_package() {
     systemctl daemon-reload >/dev/null 2>&1 || true
     die "Grafana package installation failed."
   fi
-  ROUTEGATE_PACKAGE_INSTALLED_BY_US=1
   rm -f "$ROUTEGATE_GRAFANA_INSTALL_MASK"
   systemctl daemon-reload
   package_installed grafana || die "Grafana package installation did not complete successfully."
@@ -322,15 +313,13 @@ write_routegate_dashboard() {
 {
   "annotations": {"list": []},
   "editable": false,
-  "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": null,
   "links": [],
   "panels": [
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
       "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
       "id": 1,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
       "targets": [{"editorMode": "code", "expr": "routegate_manager_up", "instant": true, "legendFormat": "Manager", "range": false, "refId": "A"}],
@@ -340,7 +329,7 @@ write_routegate_dashboard() {
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
       "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
       "id": 2,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
       "targets": [{"editorMode": "code", "expr": "routegate_postgresql_up", "instant": true, "legendFormat": "PostgreSQL", "range": false, "refId": "A"}],
@@ -350,7 +339,7 @@ write_routegate_dashboard() {
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
       "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
       "id": 3,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
       "targets": [{"editorMode": "code", "expr": "sum(routegate_agent_up)", "instant": true, "legendFormat": "Agents", "range": false, "refId": "A"}],
@@ -359,19 +348,9 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
-      "id": 4,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
-      "targets": [{"editorMode": "code", "expr": "sum(routegate_vpn_core_up)", "instant": true, "legendFormat": "VPN cores", "range": false, "refId": "A"}],
-      "title": "VPN cores up",
-      "type": "stat"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
       "fieldConfig": {"defaults": {"mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
-      "id": 5,
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "id": 4,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
       "targets": [{"editorMode": "code", "expr": "sum(routegate_alerts_active)", "instant": true, "legendFormat": "Alerts", "range": false, "refId": "A"}],
       "title": "Active alerts",
@@ -379,7 +358,7 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "unit": "percent"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
       "id": 10,
       "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -389,7 +368,7 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "unit": "percent"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
       "id": 11,
       "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -399,7 +378,7 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": []}, "overrides": []},
+      "fieldConfig": {"defaults": {}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "id": 12,
       "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -413,7 +392,7 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "id": 13,
       "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -423,7 +402,7 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "min": 0, "max": 1}, "overrides": []},
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []},
       "gridPos": {"h": 7, "w": 12, "x": 0, "y": 20},
       "id": 14,
       "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -433,7 +412,7 @@ write_routegate_dashboard() {
     },
     {
       "datasource": {"type": "prometheus", "uid": "routegate-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "min": 0, "max": 1}, "overrides": []},
+      "fieldConfig": {"defaults": {"min": 0, "max": 1}, "overrides": []},
       "gridPos": {"h": 7, "w": 12, "x": 12, "y": 20},
       "id": 15,
       "options": {"legend": {"calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -470,12 +449,10 @@ write_routegate_dashboard() {
   "timezone": "browser",
   "title": "RouteGate Fleet Overview",
   "uid": "routegate-fleet-overview",
-  "version": 1,
-  "weekStart": ""
+  "version": 1
 }
 EOF_DASHBOARD
-  python3 -m json.tool "$path" >/dev/null \
-    || die "Generated RouteGate Grafana dashboard is invalid JSON."
+  python3 -m json.tool "$path" >/dev/null || die "Generated RouteGate Grafana dashboard is invalid JSON."
 }
 
 write_bootstrap_override() {
@@ -498,7 +475,7 @@ start_grafana() {
   systemctl daemon-reload
   systemctl enable "$ROUTEGATE_GRAFANA_SERVICE" >/dev/null
   systemctl restart "$ROUTEGATE_GRAFANA_SERVICE"
-  wait_for_url "http://127.0.0.1:3000/grafana/api/health" 45 1 \
+  wait_for_http_200 "http://127.0.0.1:3000/grafana/api/health" 45 1 "$ROUTEGATE_DOMAIN" \
     || die "Grafana did not become healthy after first start."
   validate_loopback_listener 3000 Grafana
 
@@ -506,7 +483,7 @@ start_grafana() {
   rmdir /etc/systemd/system/grafana-server.service.d >/dev/null 2>&1 || true
   systemctl daemon-reload
   systemctl restart "$ROUTEGATE_GRAFANA_SERVICE"
-  wait_for_url "http://127.0.0.1:3000/grafana/api/health" 30 1 \
+  wait_for_http_200 "http://127.0.0.1:3000/grafana/api/health" 30 1 "$ROUTEGATE_DOMAIN" \
     || die "Grafana did not recover after removing the bootstrap secret from systemd."
 }
 
@@ -520,9 +497,14 @@ path = Path(sys.argv[1])
 text = path.read_text()
 if '# BEGIN ROUTEGATE MANAGED GRAFANA' in text:
     raise SystemExit(0)
+api_marker = '    location /api/ {\n'
+api_index = text.find(api_marker)
+if api_index < 0:
+    raise SystemExit('RouteGate nginx API proxy was not found; refusing to guess the server block.')
 needle = '    location / {\n'
-if needle not in text:
-    raise SystemExit('RouteGate nginx layout is not recognized; refusing to guess where to insert Grafana.')
+insert_index = text.find(needle, api_index)
+if insert_index < 0:
+    raise SystemExit('RouteGate nginx SPA location was not found after the API proxy.')
 block = '''    # BEGIN ROUTEGATE MANAGED GRAFANA
     location = /grafana {
         return 301 /grafana/;
@@ -554,26 +536,24 @@ block = '''    # BEGIN ROUTEGATE MANAGED GRAFANA
     # END ROUTEGATE MANAGED GRAFANA
 
 '''
-path.write_text(text.replace(needle, block + needle, 1))
+path.write_text(text[:insert_index] + block + text[insert_index:])
 PY_NGINX
+}
+
+verify_provisioning() {
+  local auth="admin:${ROUTEGATE_GRAFANA_ADMIN_PASSWORD}"
+  local_grafana_api "/api/datasources/uid/routegate-prometheus" -u "$auth" >/dev/null \
+    || die "Grafana did not provision the RouteGate Prometheus datasource."
+  local_grafana_api "/api/dashboards/uid/routegate-fleet-overview" -u "$auth" >/dev/null \
+    || die "Grafana did not provision the RouteGate Fleet Overview dashboard."
 }
 
 configure_https_gateway() {
   write_nginx_grafana_proxy "$ROUTEGATE_NGINX_SITE"
   nginx -t >/dev/null
   systemctl reload nginx
-  wait_for_url "${ROUTEGATE_GRAFANA_URL}api/health" 30 1 \
+  wait_for_http_200 "${ROUTEGATE_GRAFANA_URL}api/health" 30 1 \
     || die "Grafana is healthy locally but not reachable through RouteGate HTTPS."
-}
-
-verify_provisioning() {
-  local auth="admin:${ROUTEGATE_GRAFANA_ADMIN_PASSWORD}"
-  curl -fsS --max-time 10 -u "$auth" \
-    "http://127.0.0.1:3000/grafana/api/datasources/uid/routegate-prometheus" >/dev/null \
-    || die "Grafana did not provision the RouteGate Prometheus datasource."
-  curl -fsS --max-time 10 -u "$auth" \
-    "http://127.0.0.1:3000/grafana/api/dashboards/uid/routegate-fleet-overview" >/dev/null \
-    || die "Grafana did not provision the RouteGate Fleet Overview dashboard."
 }
 
 write_access_credentials() {
@@ -593,9 +573,6 @@ NEXT ACTION:
 2. Sign in and change the Grafana administrator password.
 3. Remove this root-only file after verifying the new password:
    sudo rm -f ${ROUTEGATE_GRAFANA_CREDENTIALS_FILE}
-
-If the password is lost later, use Grafana's local admin password reset command
-from the server console rather than exposing port 3000 publicly.
 EOF_ACCESS
   chmod 0600 "$ROUTEGATE_GRAFANA_CREDENTIALS_FILE"
 }
@@ -633,8 +610,10 @@ verify_final_state() {
   systemctl is-active --quiet "$ROUTEGATE_GRAFANA_SERVICE" || die "Grafana is not active."
   validate_loopback_listener 3000 Grafana
   validate_loopback_listener 9090 Prometheus
-  wait_for_url "http://127.0.0.1:3000/grafana/api/health" 10 1 || die "Final Grafana local health check failed."
-  wait_for_url "${ROUTEGATE_GRAFANA_URL}api/health" 10 1 || die "Final Grafana HTTPS gateway check failed."
+  wait_for_http_200 "http://127.0.0.1:3000/grafana/api/health" 10 1 "$ROUTEGATE_DOMAIN" \
+    || die "Final Grafana local health check failed."
+  wait_for_http_200 "${ROUTEGATE_GRAFANA_URL}api/health" 10 1 \
+    || die "Final Grafana HTTPS gateway check failed."
   [[ "$(state_value GRAFANA_MANAGED || true)" == "1" ]] || die "Final Grafana ownership state was not persisted."
 }
 
@@ -654,7 +633,6 @@ Security boundary:
 Provisioned automatically:
   - RouteGate Prometheus datasource
   - RouteGate Fleet Overview dashboard
-  - 30-second dashboard refresh floor
   - anonymous access disabled
 
 NEXT ACTION — Sign in to Grafana and change the initial administrator password.
@@ -671,7 +649,6 @@ main() {
   validate_platform
   load_routegate_identity
   verify_prometheus_dependency
-
   if verify_existing_managed_install; then
     return 0
   fi
