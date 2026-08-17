@@ -1,0 +1,331 @@
+/* RG-131 — User Portal mobile layout
+ * Keep the desktop portal unchanged while making profile/self-service content
+ * genuinely single-column and readable on phone-sized viewports.
+ */
+
+@media (max-width: 760px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .portal-app-shell,
+  .portal-main,
+  .portal-page,
+  .portal-layout,
+  .portal-profile-panels,
+  .portal-profile-grid,
+  .portal-instructions-panel,
+  .portal-instructions-layout {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .portal-main {
+    padding: 14px max(12px, env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  .portal-page .panel {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    padding: 16px;
+    width: 100%;
+  }
+
+  /* PortalPage currently has an inline desktop grid definition. This mobile
+   * rule intentionally wins over it so subscription content gets the full
+   * viewport width instead of being squeezed into the desktop side column. */
+  .portal-profile-grid {
+    display: grid !important;
+    gap: 14px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .portal-profile-grid > *,
+  .portal-profile-panels > *,
+  .portal-layout > * {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .portal-v2-overview {
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .portal-v2-hero {
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .portal-v2-hero-copy h1 {
+    font-size: clamp(27px, 8vw, 34px);
+    letter-spacing: -0.035em;
+    line-height: 1.08;
+  }
+
+  .portal-v2-hero-copy p {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .portal-v2-session {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .portal-v2-next {
+    padding: 16px;
+  }
+
+  .portal-v2-next h2 {
+    font-size: 20px;
+  }
+
+  .portal-v2-primary-action {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .portal-v2-metric {
+    padding: 15px;
+  }
+
+  .credentials-detail-list,
+  .detail-list {
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 4px 12px;
+    width: 100%;
+  }
+
+  .credentials-detail-list .detail-row,
+  .portal-page .detail-row {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .portal-page .detail-row > span,
+  .portal-page .detail-row > strong,
+  .portal-page .detail-row code {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .portal-page .detail-row > strong,
+  .portal-page .detail-row code {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .portal-page .detail-row code {
+    display: block;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: normal;
+  }
+
+  .subscription-panel .panel-header {
+    align-items: stretch;
+    display: grid;
+    gap: 12px;
+  }
+
+  .subscription-panel .panel-header .small-button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .subscription-result,
+  .subscription-self-service-card,
+  .subscription-status-row,
+  .subscription-url-stack,
+  .subscription-secondary-meta {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .subscription-self-service-card {
+    gap: 14px;
+  }
+
+  .subscription-status-row {
+    display: grid !important;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .subscription-status-summary {
+    display: grid !important;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .subscription-status-pill,
+  .subscription-compact-meta,
+  .subscription-meta-chip {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .subscription-status-pill strong,
+  .subscription-compact-meta strong,
+  .subscription-meta-chip strong {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .subscription-url-header {
+    align-items: stretch;
+    display: grid !important;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) !important;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .subscription-url-meta,
+  .subscription-url-helper {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .subscription-url-helper {
+    font-size: 13px !important;
+    line-height: 1.5;
+  }
+
+  .subscription-url-header .table-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .subscription-url-header .table-actions .small-button {
+    justify-content: center;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .subscription-url-value {
+    box-sizing: border-box;
+    display: block;
+    font-size: 11px;
+    line-height: 1.45;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 11px 12px;
+    scrollbar-width: thin;
+    white-space: nowrap;
+    width: 100%;
+    word-break: normal;
+  }
+
+  .subscription-secondary-meta {
+    display: grid !important;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .subscription-result .form-message,
+  .portal-notices .form-message {
+    box-sizing: border-box;
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    padding: 12px;
+    width: 100%;
+  }
+
+  .portal-instructions-layout {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .portal-instruction-buttons,
+  .portal-instruction-detail,
+  .portal-instruction-card,
+  .portal-instruction-button {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .portal-instruction-buttons {
+    gap: 10px;
+  }
+
+  .portal-instruction-button {
+    padding: 13px 14px;
+  }
+
+  .portal-instruction-detail {
+    padding: 14px;
+  }
+
+  .portal-step-list,
+  .portal-note-list {
+    font-size: 13px;
+    line-height: 1.5;
+    padding-left: 20px;
+  }
+
+  .portal-profiles-table {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .portal-profiles-table-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-width: 0;
+  }
+
+  .portal-topbar-actions {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .portal-main {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  .portal-page .panel {
+    padding: 14px;
+  }
+
+  .subscription-status-summary,
+  .subscription-url-header .table-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
