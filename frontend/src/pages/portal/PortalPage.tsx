@@ -14,8 +14,9 @@ import {
   type InstructionPlatform,
   type PortalProfile,
 } from '../../entities/portal/api/portalApi';
-import { t, translateStatus } from '../../shared/i18n/i18n';
+import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
+import './PortalPageV2.css';
 
 function formatDate(value?: string | null): string {
   if (!value) {
@@ -25,6 +26,38 @@ function formatDate(value?: string | null): string {
   const date = new Date(value);
 
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatShortDate(value?: string | null): string {
+  if (!value) {
+    return t('portalV2.noExpiration');
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(getCurrentLocale() === 'ru' ? 'ru-RU' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatBytes(value?: number | null): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const scaled = value / 1024 ** unitIndex;
+  const locale = getCurrentLocale() === 'ru' ? 'ru-RU' : 'en-US';
+
+  return `${new Intl.NumberFormat(locale, {
+    maximumFractionDigits: scaled >= 10 || unitIndex === 0 ? 0 : 1,
+  }).format(scaled)} ${units[unitIndex]}`;
 }
 
 function formatValue(value?: string | number | null): string {
@@ -181,6 +214,10 @@ export function PortalPage() {
   const subscription = subscriptionQuery.data?.subscription;
   const qr = qrQuery.data?.qr;
   const canGenerateSubscription = selectedProfile?.accessStatus === 'active';
+  const activeProfile = profiles.find((profile) => profile.accessStatus === 'active');
+  const accessReady = dashboard?.accessStatus === 'active';
+  const userDisplayName = portalUser?.displayName || portalUser?.username || portalUser?.email || t('common.unknown');
+  const trafficUsage = dashboard?.trafficUsage;
 
   const copyToClipboard = async (target: string, value?: string) => {
     if (!value || !navigator.clipboard) {
@@ -196,51 +233,86 @@ export function PortalPage() {
 
   return (
     <section className="page portal-page" style={{ overflowX: 'hidden' }}>
-      <div className="page-header">
-        <div>
-          <h1>{t('portal.title')}</h1>
-          <p>{t('portal.subtitle')}</p>
-        </div>
-
-        <div className="status-pill">
-          <span className={hasPortalLoadError ? 'status-dot status-dot-warn' : 'status-dot status-dot-ok'} />
-          {hasPortalLoadError ? t('portal.accessCheckFailed') : t('portal.session')}
-        </div>
-      </div>
-
       {hasPortalLoadError && (
         <div className="form-message form-message-error portal-message">
           {t('portal.loadError')}
         </div>
       )}
 
-      <div className="portal-card-grid">
-        <div className="card portal-card">
-          <div className="card-title">{t('portal.currentUser')}</div>
-          <div className="card-value card-value-small">
-            {meQuery.isLoading ? '...' : formatValue(portalUser?.displayName || portalUser?.username)}
+      <div className="portal-v2-overview">
+        <div className="portal-v2-hero">
+          <div className="portal-v2-hero-copy">
+            <div className="portal-v2-eyebrow">{t('portalV2.eyebrow')}</div>
+            <h1>
+              {dashboardQuery.isLoading
+                ? t('portal.title')
+                : accessReady
+                  ? t('portalV2.readyTitle')
+                  : t('portalV2.attentionTitle')}
+            </h1>
+            <p>{t('portalV2.greeting', { name: userDisplayName })}</p>
+            <div className="portal-v2-session status-pill">
+              <span className={hasPortalLoadError ? 'status-dot status-dot-warn' : 'status-dot status-dot-ok'} />
+              {hasPortalLoadError ? t('portal.accessCheckFailed') : t('portal.session')}
+            </div>
           </div>
-          <div className="card-meta">{formatValue(portalUser?.email)}</div>
-        </div>
 
-        <div className="card portal-card">
-          <div className="card-title">{t('portal.accessStatus')}</div>
-          <div className="card-value card-value-small">
-            {dashboardQuery.isLoading ? '...' : <StatusBadge status={dashboard?.accessStatus} />}
+          <div className="portal-v2-next">
+            <div className="portal-v2-next-label">{t('portalV2.nextAction')}</div>
+            <h2>{t('portalV2.connectDevice')}</h2>
+            <p>{activeProfile ? t('portalV2.connectDescription') : t('portalV2.noActiveProfile')}</p>
+            {activeProfile ? (
+              <Link className="portal-v2-primary-action" to={`/portal/profiles/${activeProfile.id}`}>
+                {t('portalV2.connectAction')} <span aria-hidden="true">→</span>
+              </Link>
+            ) : (
+              <span className="portal-v2-primary-action portal-v2-primary-action-disabled" aria-disabled="true">
+                {t('portalV2.connectAction')}
+              </span>
+            )}
           </div>
-          <div className="card-meta">{t('portal.accessStatusMeta')}</div>
         </div>
 
-        <div className="card portal-card">
-          <div className="card-title">{t('portal.vpnProfiles')}</div>
-          <div className="card-value">{profilesQuery.isLoading ? '...' : dashboard?.profilesTotal ?? profiles.length}</div>
-          <div className="card-meta">{t('portal.activeProfiles', { count: dashboard?.profilesActive ?? 0 })}</div>
-        </div>
+        <div className="portal-v2-metrics">
+          <div className="portal-v2-metric">
+            <span>{t('portalV2.access')}</span>
+            <strong>{dashboardQuery.isLoading ? '...' : <StatusBadge status={dashboard?.accessStatus} />}</strong>
+            <small>{t('portal.accessStatusMeta')}</small>
+          </div>
 
-        <div className="card portal-card">
-          <div className="card-title">{t('portal.nearestExpiration')}</div>
-          <div className="card-value card-value-small">{formatDate(dashboard?.nearestExpiration)}</div>
-          <div className="card-meta">{t('portal.trafficLater')}</div>
+          <div className="portal-v2-metric">
+            <span>{t('portalV2.profiles')}</span>
+            <strong>{profilesQuery.isLoading ? '...' : dashboard?.profilesTotal ?? profiles.length}</strong>
+            <small>
+              {t('portalV2.profilesValue', {
+                active: dashboard?.profilesActive ?? 0,
+                total: dashboard?.profilesTotal ?? profiles.length,
+              })}
+            </small>
+          </div>
+
+          <div className="portal-v2-metric">
+            <span>{t('portalV2.trafficThisMonth')}</span>
+            <strong>{dashboardQuery.isLoading ? '...' : formatBytes(trafficUsage?.totalBytes)}</strong>
+            <small className="portal-v2-traffic-split">
+              {trafficUsage?.enabled
+                ? t('portalV2.rxTx', {
+                    rx: formatBytes(trafficUsage.rxBytes),
+                    tx: formatBytes(trafficUsage.txBytes),
+                  })
+                : t('portalV2.noTrafficYet')}
+            </small>
+          </div>
+
+          <div className="portal-v2-metric">
+            <span>{t('portalV2.expires')}</span>
+            <strong>{dashboardQuery.isLoading ? '...' : formatShortDate(dashboard?.nearestExpiration)}</strong>
+            <small>
+              {trafficUsage?.lastObservedAt
+                ? t('portalV2.lastTraffic', { date: formatDate(trafficUsage.lastObservedAt) })
+                : t('portalV2.noTrafficYet')}
+            </small>
+          </div>
         </div>
       </div>
 
@@ -257,7 +329,6 @@ export function PortalPage() {
       <div className="portal-layout">
         <div className="panel admin-table-panel">
           <div className="panel-title">{t('portal.vpnProfiles')}</div>
-
           {profilesQuery.isLoading && <p className="empty-state">{t('portal.loadingProfiles')}</p>}
 
           {profilesQuery.isError && (
