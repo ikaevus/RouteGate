@@ -1,6 +1,7 @@
 name: Production-like SSH Check
 
-# RG-112 Phase 6 revalidates the canonical production-like SSH boundary alongside delivery E2E.
+# Revalidate the canonical production-like SSH boundary and the outbound SMTP path
+# required by managed Email Delivery.
 on:
   workflow_dispatch:
   pull_request:
@@ -46,3 +47,30 @@ jobs:
             -o ConnectTimeout=10 \
             "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
             'set -e; echo "user=$(whoami)"; echo "host=$(hostname)"; echo "sudo_user=$(sudo whoami)"; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
+
+      - name: Verify production-like SMTP egress
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'bash -s' <<'REMOTE'
+          set -euo pipefail
+          smtp_host=smtp.gmail.com
+          for port in 465 587; do
+            if timeout 10 bash -c "exec 3<>/dev/tcp/${smtp_host}/${port}"; then
+              echo "${smtp_host}:${port}=reachable"
+            else
+              echo "${smtp_host}:${port}=unreachable" >&2
+              exit 1
+            fi
+          done
+          REMOTE
