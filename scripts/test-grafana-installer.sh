@@ -123,6 +123,7 @@ EOF_NGINX
   assert_true "adds Grafana HTTPS gateway marker" grep -Fq '# BEGIN ROUTEGATE MANAGED GRAFANA' "$site"
   assert_true "proxies Grafana only to loopback" grep -Fq 'proxy_pass http://127.0.0.1:3000;' "$site"
   assert_true "proxies Grafana Live websocket path" grep -Fq 'location /grafana/api/live/' "$site"
+  # shellcheck disable=SC2016
   assert_true "keeps the RouteGate SPA fallback" grep -Fq 'try_files $uri $uri/ /index.html;' "$site"
 
   local first_hash second_hash
@@ -145,12 +146,14 @@ test_dashboard_contract() {
 
 test_security_contract() {
   assert_true "Grafana service binds to loopback in managed config" grep -Fq 'http_addr = 127.0.0.1' "$ROOT_DIR/install-grafana.sh"
+  # shellcheck disable=SC2016
   assert_true "Grafana is published only under the RouteGate subpath" grep -Fq 'root_url = ${ROUTEGATE_GRAFANA_URL}' "$ROOT_DIR/install-grafana.sh"
   assert_true "anonymous Grafana access is disabled" grep -A2 -F '[auth.anonymous]' "$ROOT_DIR/install-grafana.sh" | grep -Fq 'enabled = false'
   assert_true "Grafana session cookie is HTTPS-only" grep -Fq 'cookie_secure = true' "$ROOT_DIR/install-grafana.sh"
   assert_true "Grafana telemetry reporting is disabled" grep -Fq 'reporting_enabled = false' "$ROOT_DIR/install-grafana.sh"
   assert_true "Grafana datasource stays on local Prometheus" grep -Fq 'url: http://127.0.0.1:9090' "$ROOT_DIR/install-grafana.sh"
   assert_true "Grafana OSS comes from the official stable repository" grep -Fq 'https://apt.grafana.com stable main' "$ROOT_DIR/install-grafana.sh"
+  assert_true "Grafana signing key fingerprint is pinned" grep -Fq 'B53AE77BADB630A683046005963FA27710458545' "$ROOT_DIR/install-grafana.sh"
   assert_false "managed Grafana never enables anonymous Viewer access" grep -Fq 'org_role = Viewer' "$ROOT_DIR/install-grafana.sh"
 }
 
