@@ -13,6 +13,7 @@ import {
   telegramPairingRu,
   type TelegramPairingTranslationKey,
 } from './telegramPairingTranslations';
+import { portalV2En, portalV2Ru, type PortalV2TranslationKey } from './portalV2Translations';
 
 export type Locale = 'en' | 'ru';
 export type TranslationKey =
@@ -21,7 +22,8 @@ export type TranslationKey =
   | DeliveryTranslationKey
   | AnalyticsTranslationKey
   | DeploymentHistoryTranslationKey
-  | TelegramPairingTranslationKey;
+  | TelegramPairingTranslationKey
+  | PortalV2TranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
@@ -32,6 +34,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...analyticsEn,
     ...deploymentHistoryEn,
     ...telegramPairingEn,
+    ...portalV2En,
   },
   ru: {
     ...ru,
@@ -40,6 +43,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...analyticsRu,
     ...deploymentHistoryRu,
     ...telegramPairingRu,
+    ...portalV2Ru,
   },
 };
 
