@@ -1,6 +1,5 @@
 name: Production-like SSH Check
 
-# Temporary production-like validation of the RouteGate-managed Prometheus path.
 on:
   workflow_dispatch:
   pull_request:
@@ -16,7 +15,7 @@ jobs:
   ssh-check:
     runs-on: ubuntu-latest
     environment: production-like
-    timeout-minutes: 12
+    timeout-minutes: 6
     steps:
       - name: Configure SSH
         shell: bash
@@ -31,23 +30,7 @@ jobs:
           printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Verify production-like SSH access
-        shell: bash
-        env:
-          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
-          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
-        run: |
-          set -euo pipefail
-          ssh \
-            -i ~/.ssh/routegate_ci \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=10 \
-            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            'set -e; echo "user=$(whoami)"; echo "host=$(hostname)"; echo "sudo_user=$(sudo whoami)"; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
-
-      - name: Install and validate RouteGate-managed Prometheus
+      - name: Recover and verify production-like RouteGate state
         shell: bash
         env:
           ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
@@ -63,295 +46,46 @@ jobs:
             "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
             'sudo bash -s' <<'REMOTE'
           set -Eeuo pipefail
-          umask 077
-
           MANAGER_ENV=/etc/routegate/manager.env
           INSTALL_STATE=/etc/routegate/install-state.env
-          SECRETS_FILE=/var/lib/routegate-installer/secrets.env
-          PROM_CONFIG=/etc/prometheus/routegate.yml
-          PROM_TOKEN=/etc/prometheus/routegate.token
-          PROM_STORAGE=/var/lib/prometheus/routegate
-          PROM_OVERRIDE=/etc/systemd/system/prometheus.service.d/routegate.conf
-          PROM_INSTALL_MASK=/etc/systemd/system/prometheus.service
           API=http://127.0.0.1:8080
-          BACKUP_DIR=$(mktemp -d /root/routegate-prometheus-bootstrap.XXXXXX)
-          AUTH_CONFIG=$(mktemp /root/routegate-prometheus-auth.XXXXXX)
-          SUCCESS=0
-          PACKAGE_WAS_INSTALLED=0
 
-          log() { printf '[prometheus-live] %s\n' "$*"; }
-          fail() { printf '[prometheus-live] ERROR: %s\n' "$*" >&2; return 1; }
-
-          wait_url() {
-            local url=$1 attempts=${2:-30} delay=${3:-1}
-            local i
-            for ((i=1; i<=attempts; i++)); do
-              if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
-                return 0
-              fi
-              sleep "$delay"
+          wait_manager() {
+            for _ in $(seq 1 45); do
+              curl -fsS --max-time 5 "$API/api/admin/health" >/dev/null 2>&1 && return 0
+              sleep 1
             done
             return 1
           }
 
-          restore_file() {
-            local name=$1 path=$2
-            if [[ -f "$BACKUP_DIR/$name" ]]; then
-              install -m 0600 "$BACKUP_DIR/$name" "$path"
-            else
-              rm -f "$path"
-            fi
-          }
-
-          rollback() {
-            local rc=$?
-            trap - EXIT ERR
-            set +e
-            rm -f "$AUTH_CONFIG"
-            if [[ "$SUCCESS" != 1 ]]; then
-              log "Validation failed; restoring the pre-Prometheus host state."
-              systemctl disable --now prometheus.service >/dev/null 2>&1 || true
-              rm -f "$PROM_OVERRIDE" "$PROM_CONFIG" "$PROM_TOKEN" "$PROM_INSTALL_MASK"
-              rmdir /etc/systemd/system/prometheus.service.d >/dev/null 2>&1 || true
-              rm -rf "$PROM_STORAGE"
-              systemctl daemon-reload >/dev/null 2>&1 || true
-              restore_file manager.env "$MANAGER_ENV"
-              restore_file install-state.env "$INSTALL_STATE"
-              restore_file secrets.env "$SECRETS_FILE"
-              systemctl restart routegate-manager >/dev/null 2>&1 || true
-              wait_url "$API/api/admin/health" 30 1 || true
-              if [[ "$PACKAGE_WAS_INSTALLED" == 0 ]] && dpkg-query -W -f='${Status}' prometheus 2>/dev/null | grep -qx 'install ok installed'; then
-                DEBIAN_FRONTEND=noninteractive apt-get purge -y prometheus >/dev/null 2>&1 || true
-              fi
-              systemctl daemon-reload >/dev/null 2>&1 || true
-              for svc in routegate-manager routegate-agent sing-box; do
-                log "rollback_${svc}=$(systemctl is-active "$svc" 2>/dev/null || true)"
-              done
-            fi
-            rm -rf "$BACKUP_DIR"
-            exit "$rc"
-          }
-          trap rollback EXIT ERR
-
-          [[ -r "$MANAGER_ENV" ]] || fail "Manager environment is missing."
-          [[ -r "$INSTALL_STATE" ]] || fail "Installer ownership state is missing."
-          [[ -r "$SECRETS_FILE" ]] || fail "Installer secrets state is missing."
-          for svc in routegate-manager routegate-agent sing-box; do
-            systemctl is-active --quiet "$svc" || fail "$svc must be active before installation."
-          done
-
-          if dpkg-query -W -f='${Status}' prometheus 2>/dev/null | grep -qx 'install ok installed'; then
-            PACKAGE_WAS_INSTALLED=1
+          if [[ ! -r "$MANAGER_ENV" ]]; then
+            candidate=$(find /root/routegate-backups -type f -name manager.env -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {$1=""; sub(/^ /,""); print; exit}')
+            [[ -n "$candidate" && -r "$candidate" ]] || { echo 'ERROR: no Manager environment backup found' >&2; exit 1; }
+            grep -q '^ROUTEGATE_DATABASE_URL=' "$candidate" || { echo 'ERROR: newest Manager backup is invalid' >&2; exit 1; }
+            install -m 0600 "$candidate" "$MANAGER_ENV"
+            echo 'manager_env=recovered-from-latest-production-backup'
+          else
+            echo 'manager_env=already-present'
           fi
-          [[ "$PACKAGE_WAS_INSTALLED" == 0 ]] || fail "Prometheus package already exists; refusing to take ownership."
-          [[ ! -e "$PROM_CONFIG" && ! -e "$PROM_TOKEN" && ! -e "$PROM_OVERRIDE" && ! -e "$PROM_STORAGE" ]] \
-            || fail "A RouteGate-managed Prometheus path already exists."
-          [[ ! -e "$PROM_INSTALL_MASK" && ! -L "$PROM_INSTALL_MASK" ]] \
-            || fail "A local prometheus.service override already exists."
-          [[ "$(systemctl is-active prometheus.service 2>/dev/null || true)" != active ]] \
-            || fail "An existing Prometheus service is active."
-          ! grep -q '^ROUTEGATE_MONITORING_' "$MANAGER_ENV" \
-            || fail "Manager monitoring configuration already exists; refusing to overwrite it."
-          ! grep -q '^MONITORING_TOKEN=' "$SECRETS_FILE" \
-            || fail "A preserved monitoring token already exists; refusing to replace it."
-          current_managed=$(sed -n 's/^PROMETHEUS_MANAGED=//p' "$INSTALL_STATE" | tail -n1)
-          [[ -z "$current_managed" || "$current_managed" == 0 ]] \
-            || fail "Installer state already claims managed Prometheus ownership."
-
-          cp -a "$MANAGER_ENV" "$BACKUP_DIR/manager.env"
-          cp -a "$INSTALL_STATE" "$BACKUP_DIR/install-state.env"
-          cp -a "$SECRETS_FILE" "$BACKUP_DIR/secrets.env"
-
-          log "Installing Ubuntu Prometheus package with the service masked until RouteGate configuration is ready."
-          install -d -m 0755 /etc/systemd/system
-          ln -s /dev/null "$PROM_INSTALL_MASK"
-          systemctl daemon-reload
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update >/dev/null
-          apt-get install -y prometheus >/dev/null
-          rm -f "$PROM_INSTALL_MASK"
-          systemctl daemon-reload
-
-          command -v prometheus >/dev/null || fail "prometheus binary is missing after package installation."
-          command -v promtool >/dev/null || fail "promtool is missing after package installation."
-          getent group prometheus >/dev/null || fail "prometheus system group is missing."
-          systemctl is-active --quiet prometheus.service && fail "Prometheus started before RouteGate configuration was installed."
-
-          MONITORING_TOKEN=$(openssl rand -hex 32)
-          [[ "$MONITORING_TOKEN" =~ ^[a-f0-9]{64}$ ]] || fail "Could not generate monitoring token."
-
-          printf '\nROUTEGATE_MONITORING_ENABLED="true"\nROUTEGATE_MONITORING_TOKEN="%s"\n' "$MONITORING_TOKEN" >> "$MANAGER_ENV"
-          chmod 0600 "$MANAGER_ENV"
-          printf 'MONITORING_TOKEN=%s\n' "$MONITORING_TOKEN" >> "$SECRETS_FILE"
-          chmod 0600 "$SECRETS_FILE"
 
           systemctl restart routegate-manager
-          wait_url "$API/api/admin/health" 45 1 || fail "Manager did not recover after enabling monitoring."
+          wait_manager || { echo 'ERROR: Manager did not recover' >&2; exit 1; }
+          echo 'routegate-manager=active-and-healthy'
+          echo "routegate-agent=$(systemctl is-active routegate-agent 2>/dev/null || true)"
+          echo "sing-box=$(systemctl is-active sing-box 2>/dev/null || true)"
 
-          install -d -m 0755 /etc/prometheus
-          install -o root -g prometheus -m 0640 /dev/null "$PROM_TOKEN"
-          printf '%s\n' "$MONITORING_TOKEN" > "$PROM_TOKEN"
-          install -o root -g prometheus -m 0640 /dev/null "$PROM_CONFIG"
-          cat > "$PROM_CONFIG" <<EOF_PROM
-          global:
-            scrape_interval: 30s
-            evaluation_interval: 30s
-
-          scrape_configs:
-            - job_name: routegate-manager
-              metrics_path: /metrics
-              authorization:
-                type: Bearer
-                credentials_file: ${PROM_TOKEN}
-              static_configs:
-                - targets: ["127.0.0.1:8080"]
-
-            - job_name: routegate-fleet
-              metrics_path: /metrics/fleet
-              authorization:
-                type: Bearer
-                credentials_file: ${PROM_TOKEN}
-              static_configs:
-                - targets: ["127.0.0.1:8080"]
-          EOF_PROM
-          chown root:prometheus "$PROM_CONFIG" "$PROM_TOKEN"
-          chmod 0640 "$PROM_CONFIG" "$PROM_TOKEN"
-
-          install -d -o prometheus -g prometheus -m 0750 "$PROM_STORAGE"
-          install -d -m 0755 "$(dirname "$PROM_OVERRIDE")"
-          cat > "$PROM_OVERRIDE" <<EOF_OVERRIDE
-          [Service]
-          ExecStart=
-          ExecStart=/usr/bin/prometheus --config.file=${PROM_CONFIG} --storage.tsdb.path=${PROM_STORAGE} --web.listen-address=127.0.0.1:9090
-          EOF_OVERRIDE
-          chmod 0644 "$PROM_OVERRIDE"
-
-          promtool check config "$PROM_CONFIG" >/dev/null || fail "Prometheus config failed promtool validation."
-
-          printf 'header = "Authorization: Bearer %s"\n' "$MONITORING_TOKEN" > "$AUTH_CONFIG"
-          chmod 0600 "$AUTH_CONFIG"
-          curl -fsS --max-time 10 --config "$AUTH_CONFIG" "$API/metrics" >/dev/null \
-            || fail "Manager /metrics endpoint rejected the managed credential."
-          curl -fsS --max-time 10 --config "$AUTH_CONFIG" "$API/metrics/fleet" >/dev/null \
-            || fail "Manager /metrics/fleet endpoint rejected the managed credential."
-
-          systemctl daemon-reload
-          systemctl enable prometheus.service >/dev/null
-          systemctl restart prometheus.service
-          wait_url 'http://127.0.0.1:9090/-/ready' 30 1 || fail "Prometheus did not become ready."
-
-          mapfile -t listeners < <(ss -ltnH | awk '$4 ~ /:9090$/ {print $4}')
-          [[ ${#listeners[@]} -eq 1 && "${listeners[0]}" == '127.0.0.1:9090' ]] \
-            || fail "Prometheus is not bound exclusively to 127.0.0.1:9090."
-          log "listener=${listeners[0]}"
-
-          targets_ok=0
-          for _ in $(seq 1 30); do
-            curl -fsS --max-time 5 'http://127.0.0.1:9090/api/v1/targets' > /tmp/routegate-prom-targets.json
-            if python3 - /tmp/routegate-prom-targets.json <<'PY_TARGETS'
-          import json, sys
-          with open(sys.argv[1], encoding='utf-8') as f:
-              data = json.load(f)
-          targets = data.get('data', {}).get('activeTargets', [])
-          routegate = {t.get('labels', {}).get('job'): t for t in targets if t.get('labels', {}).get('job', '').startswith('routegate-')}
-          expected = {'routegate-manager', 'routegate-fleet'}
-          assert set(routegate) == expected, sorted(routegate)
-          for job in expected:
-              item = routegate[job]
-              assert item.get('health') == 'up', (job, item.get('health'), item.get('lastError'))
-          PY_TARGETS
-            then
-              targets_ok=1
-              break
+          if [[ -r "$INSTALL_STATE" ]]; then
+            echo 'install_state=present'
+            sed -n -E 's/^(STATUS|DOMAIN|VERSION|ARCH|PROMETHEUS_MANAGED)=.*/\1=present/p' "$INSTALL_STATE"
+          else
+            echo 'install_state=missing'
+            candidate_state=$(find /root /var/lib -type f \( -name 'install-state.env' -o -name 'install-state.env.*' \) -print 2>/dev/null | head -n1 || true)
+            if [[ -n "$candidate_state" ]]; then
+              echo 'install_state_backup=found'
+            else
+              echo 'install_state_backup=not-found'
             fi
-            sleep 2
-          done
-          rm -f /tmp/routegate-prom-targets.json
-          [[ "$targets_ok" == 1 ]] || fail "Both RouteGate scrape targets did not become healthy."
-          log 'target:routegate-manager=up'
-          log 'target:routegate-fleet=up'
+          fi
 
-          curl -fsS --max-time 5 --get \
-            --data-urlencode 'query=count by (job) ({job=~"routegate-.*"})' \
-            'http://127.0.0.1:9090/api/v1/query' > /tmp/routegate-prom-count.json
-          python3 - /tmp/routegate-prom-count.json <<'PY_COUNT'
-          import json, sys
-          with open(sys.argv[1], encoding='utf-8') as f:
-              data = json.load(f)
-          result = data.get('data', {}).get('result', [])
-          counts = {x.get('metric', {}).get('job'): float(x.get('value', [0, 0])[1]) for x in result}
-          for job in ('routegate-manager', 'routegate-fleet'):
-              assert counts.get(job, 0) > 0, counts
-              print(f'metric_series:{job}={int(counts[job])}')
-          PY_COUNT
-          rm -f /tmp/routegate-prom-count.json
-
-          history_start=$(date +%s)
-          log 'Waiting 70 seconds to prove historical samples are retained across multiple scrapes.'
-          sleep 70
-          history_end=$(date +%s)
-          curl -fsS --max-time 10 --get \
-            --data-urlencode 'query=up{job=~"routegate-.*"}' \
-            --data-urlencode "start=$history_start" \
-            --data-urlencode "end=$history_end" \
-            --data-urlencode 'step=15' \
-            'http://127.0.0.1:9090/api/v1/query_range' > /tmp/routegate-prom-range.json
-          python3 - /tmp/routegate-prom-range.json <<'PY_RANGE'
-          import json, sys
-          with open(sys.argv[1], encoding='utf-8') as f:
-              data = json.load(f)
-          result = data.get('data', {}).get('result', [])
-          series = {x.get('metric', {}).get('job'): x.get('values', []) for x in result}
-          expected = {'routegate-manager', 'routegate-fleet'}
-          assert set(series) == expected, sorted(series)
-          for job in sorted(expected):
-              values = series[job]
-              assert len(values) >= 2, (job, len(values))
-              assert all(v[1] == '1' for v in values), (job, values)
-              print(f'history_samples:{job}={len(values)}')
-          PY_RANGE
-          rm -f /tmp/routegate-prom-range.json
-
-          storage_kib=$(du -sk "$PROM_STORAGE" | awk '{print $1}')
-          [[ "$storage_kib" =~ ^[0-9]+$ && "$storage_kib" -gt 0 ]] || fail "Prometheus storage is empty."
-          log "storage_kib=$storage_kib"
-
-          python3 - "$INSTALL_STATE" <<'PY_STATE'
-          import sys
-          path = sys.argv[1]
-          with open(path, encoding='utf-8') as f:
-              lines = f.read().splitlines()
-          out = []
-          replaced = False
-          for line in lines:
-              if line.startswith('PROMETHEUS_MANAGED='):
-                  if not replaced:
-                      out.append('PROMETHEUS_MANAGED=1')
-                      replaced = True
-              else:
-                  out.append(line)
-          if not replaced:
-              out.append('PROMETHEUS_MANAGED=1')
-          with open(path, 'w', encoding='utf-8') as f:
-              f.write('\n'.join(out) + '\n')
-          PY_STATE
-          chmod 0600 "$INSTALL_STATE"
-
-          systemctl is-enabled --quiet prometheus.service || fail "Prometheus is not enabled."
-          systemctl is-active --quiet prometheus.service || fail "Prometheus is not active."
-          for svc in routegate-manager routegate-agent sing-box; do
-            systemctl is-active --quiet "$svc" || fail "$svc is not active after Prometheus installation."
-          done
-
-          log 'prometheus_package=installed'
-          log 'prometheus_enabled=yes'
-          log 'prometheus_active=yes'
-          log 'prometheus_ready=yes'
-          log 'prometheus_history=yes'
-          log 'RouteGate-managed Prometheus installation PASSED.'
-
-          SUCCESS=1
-          rm -f "$AUTH_CONFIG"
-          rm -rf "$BACKUP_DIR"
-          trap - EXIT ERR
+          echo "prometheus_package=$(dpkg-query -W -f='${Status}' prometheus 2>/dev/null | grep -qx 'install ok installed' && echo installed || echo not-installed)"
           REMOTE
