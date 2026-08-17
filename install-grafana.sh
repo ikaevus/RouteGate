@@ -77,9 +77,9 @@ validate_platform() {
   arch=$(dpkg --print-architecture 2>/dev/null || true)
   [[ "$os_id" == "ubuntu" && "$version_id" == "24.04" && "$arch" == "amd64" ]] \
     || die "Managed Grafana currently requires Ubuntu 24.04 LTS on amd64."
-  local command
-  for command in systemctl curl nginx openssl python3 ss gpg; do
-    command -v "$command" >/dev/null 2>&1 || die "${command} is required."
+  local required_command
+  for required_command in systemctl curl nginx openssl python3 ss apt-get; do
+    command -v "$required_command" >/dev/null 2>&1 || die "${required_command} is required."
   done
 }
 
@@ -186,7 +186,9 @@ rollback() {
     fi
     rm -f "$ROUTEGATE_GRAFANA_APT_LIST" "$ROUTEGATE_GRAFANA_APT_KEY"
     apt-get update >/dev/null 2>&1 || true
-    nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    if nginx -t >/dev/null 2>&1; then
+      systemctl reload nginx >/dev/null 2>&1 || true
+    fi
   fi
   [[ -z "$ROUTEGATE_BACKUP_DIR" ]] || rm -rf "$ROUTEGATE_BACKUP_DIR"
   exit "$rc"
@@ -197,6 +199,7 @@ install_grafana_package() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update >/dev/null
   apt-get install -y apt-transport-https gnupg >/dev/null
+  command -v gpg >/dev/null 2>&1 || die "gnupg installation did not provide gpg."
 
   install -d -m 0755 /etc/apt/keyrings
   curl -fsSL --connect-timeout 15 --max-time 60 https://apt.grafana.com/gpg-full.key -o "$ROUTEGATE_GRAFANA_APT_KEY"
