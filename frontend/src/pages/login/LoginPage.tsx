@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { login } from '../../entities/auth/api/authApi';
 import { setAuthToken } from '../../shared/api/client';
 import { t } from '../../shared/i18n/i18n';
@@ -9,19 +9,29 @@ interface LoginPageProps {
   onLogin?: () => void;
 }
 
+function safeReturnTo(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return '/';
+  }
+
+  return value;
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<'success' | 'error'>('success');
+  const returnTo = safeReturnTo(searchParams.get('returnTo'));
 
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: (response) => {
       setAuthToken(response.token);
       onLogin?.();
-      navigate('/', { replace: true });
+      navigate(returnTo, { replace: true });
     },
     onError: () => {
       setMessageTone('error');
