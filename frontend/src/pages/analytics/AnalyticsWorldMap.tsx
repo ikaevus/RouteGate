@@ -4,7 +4,6 @@ import {
   useState,
   type MouseEvent,
   type PointerEvent,
-  type WheelEvent,
 } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -445,6 +444,7 @@ function NodeDetailsPopover({
 export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: AnalyticsWorldMapProps) {
   const queryClient = useQueryClient();
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapSvgRef = useRef<SVGSVGElement>(null);
   const panGestureRef = useRef<PanGesture | null>(null);
   const suppressNextClickRef = useRef(false);
   const [placementTargetId, setPlacementTargetId] = useState<string>();
@@ -512,6 +512,31 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    const svg = mapSvgRef.current;
+    if (!svg) {
+      return;
+    }
+
+    const handleWheelZoom = (event: globalThis.WheelEvent) => {
+      const focus = screenToMapPoint(svg, event.clientX, event.clientY);
+      if (!focus) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setViewport((current) => {
+        const currentZoom = viewportZoom(current);
+        const zoomFactor = Math.exp(-event.deltaY * MAP_WHEEL_ZOOM_SENSITIVITY);
+        return zoomViewport(current, focus, currentZoom * zoomFactor);
+      });
+    };
+
+    svg.addEventListener('wheel', handleWheelZoom, { passive: false });
+    return () => svg.removeEventListener('wheel', handleWheelZoom);
+  }, []);
+
   const beginPlacement = () => {
     if (!placementCandidate) {
       return;
@@ -557,19 +582,6 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
       longitude: roundCoordinate(coordinates.longitude),
     });
     saveLocationMutation.reset();
-  };
-
-  const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
-    const focus = screenToMapPoint(event.currentTarget, event.clientX, event.clientY);
-    if (!focus) {
-      return;
-    }
-    event.preventDefault();
-    setViewport((current) => {
-      const currentZoom = viewportZoom(current);
-      const zoomFactor = Math.exp(-event.deltaY * MAP_WHEEL_ZOOM_SENSITIVITY);
-      return zoomViewport(current, focus, currentZoom * zoomFactor);
-    });
   };
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
@@ -687,9 +699,9 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
         <button
           className="analytics-map-navigation-button"
           type="button"
-          aria-label={t('analytics.mapNavigation')}
+          aria-label={t('analytics.mapPan')}
           aria-pressed={panEnabled}
-          title={t('analytics.mapNavigation')}
+          title={t('analytics.mapPan')}
           disabled={placementMode}
           onClick={() => setPanEnabled((value) => !value)}
         >
@@ -774,13 +786,13 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
       )}
 
       <svg
+        ref={mapSvgRef}
         className={canvasClasses}
         viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={t('analytics.worldMapSubtitle')}
         onClick={handleMapClick}
-        onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={(event) => finishPan(event)}
