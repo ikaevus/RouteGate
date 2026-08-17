@@ -44,6 +44,45 @@ func (r *Repository) GetProfileForUser(ctx context.Context, email string, profil
 	`, profileID, email))
 }
 
+func (r *Repository) GetTrafficUsageForUser(ctx context.Context, email string) (TrafficUsageSummary, error) {
+	now := time.Now().UTC()
+	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	periodEnd := periodStart.AddDate(0, 1, 0)
+
+	usage := TrafficUsageSummary{
+		Enabled:     true,
+		PeriodStart: periodStart,
+		PeriodEnd:   periodEnd,
+	}
+	var lastObservedAt sql.NullTime
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			COALESCE(SUM(e.rx_bytes), 0)::bigint,
+			COALESCE(SUM(e.tx_bytes), 0)::bigint,
+			MAX(e.observed_at)
+		FROM traffic_usage_events e
+		JOIN vpn_accounts a ON a.id = e.vpn_account_id
+		WHERE lower(COALESCE(a.email, '')) = lower($1)
+		  AND e.observed_at >= $2
+		  AND e.observed_at < $3
+	`, email, periodStart, periodEnd).Scan(
+		&usage.RXBytes,
+		&usage.TXBytes,
+		&lastObservedAt,
+	)
+	if err != nil {
+		return TrafficUsageSummary{}, err
+	}
+
+	usage.TotalBytes = usage.RXBytes + usage.TXBytes
+	if lastObservedAt.Valid {
+		value := lastObservedAt.Time.UTC()
+		usage.LastObservedAt = &value
+	}
+	return usage, nil
+}
+
 func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSubscriptionTokenInput) (PortalSubscriptionToken, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
