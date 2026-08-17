@@ -45,7 +45,13 @@ type PortalDashboard struct {
 }
 
 type TrafficUsageSummary struct {
-	Enabled bool `json:"enabled"`
+	Enabled        bool       `json:"enabled"`
+	RXBytes        int64      `json:"rxBytes"`
+	TXBytes        int64      `json:"txBytes"`
+	TotalBytes     int64      `json:"totalBytes"`
+	PeriodStart    time.Time  `json:"periodStart"`
+	PeriodEnd      time.Time  `json:"periodEnd"`
+	LastObservedAt *time.Time `json:"lastObservedAt,omitempty"`
 }
 
 type PortalNotice struct {
