@@ -76,7 +76,7 @@ export function PortalAccessGate({ children }: PortalAccessGateProps) {
       return (
         <div className="portal-access-gate-shell">
           <section className="portal-access-gate-card portal-access-gate-card-warning">
-            <div className="portal-access-gate-eyebrow">RouteGate User Portal</div>
+            <div className="portal-access-gate-eyebrow">{t('app.portalSubtitle')}</div>
             <h1>{t('portalV2.accessDeniedTitle')}</h1>
             <p>{t('portalV2.accessDeniedDescription')}</p>
             <button className="primary-button" type="button" onClick={signInAgain}>
@@ -90,7 +90,7 @@ export function PortalAccessGate({ children }: PortalAccessGateProps) {
     return (
       <div className="portal-access-gate-shell">
         <section className="portal-access-gate-card portal-access-gate-card-warning">
-          <div className="portal-access-gate-eyebrow">RouteGate User Portal</div>
+          <div className="portal-access-gate-eyebrow">{t('app.portalSubtitle')}</div>
           <h1>{t('portalV2.portalUnavailableTitle')}</h1>
           <p>{t('portalV2.portalUnavailableDescription')}</p>
           <button className="primary-button" type="button" onClick={() => portalMeQuery.refetch()}>
