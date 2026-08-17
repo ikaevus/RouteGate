@@ -310,6 +310,17 @@ function preferredClusterNode(cluster: NodeCluster): AnalyticsNode {
     .node;
 }
 
+function PanIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M7.5 12V7.2a1.45 1.45 0 0 1 2.9 0V11" />
+      <path d="M10.4 11V5.5a1.45 1.45 0 0 1 2.9 0V11" />
+      <path d="M13.3 11V6.7a1.45 1.45 0 0 1 2.9 0V12" />
+      <path d="M16.2 12V9a1.45 1.45 0 0 1 2.9 0v4.2c0 4.4-2.7 7.3-6.9 7.3h-.8c-2.3 0-3.8-.9-5-2.5l-2.3-3.2a1.55 1.55 0 0 1 2.3-2.1l1.1 1V12" />
+    </svg>
+  );
+}
+
 function ZoomInIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -440,6 +451,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   const [pendingPoint, setPendingPoint] = useState<PlacementPoint>();
   const [popoverNodeId, setPopoverNodeId] = useState<string>();
   const [viewport, setViewport] = useState<MapViewport>(INITIAL_VIEWPORT);
+  const [panEnabled, setPanEnabled] = useState(true);
   const [isPanning, setIsPanning] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const zoom = viewportZoom(viewport);
@@ -561,7 +573,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   };
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (placementMode || zoom <= MAP_MIN_ZOOM || event.button !== 0) {
+    if (!panEnabled || placementMode || zoom <= MAP_MIN_ZOOM || event.button !== 0) {
       return;
     }
     if (event.target instanceof Element && event.target.closest('.analytics-map-marker, .analytics-map-node-popover')) {
@@ -661,7 +673,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
   const canvasClasses = [
     'analytics-world-map-canvas',
     placementMode ? 'is-placement-mode' : '',
-    zoom > MAP_MIN_ZOOM && !placementMode ? 'is-pannable' : '',
+    panEnabled && zoom > MAP_MIN_ZOOM && !placementMode ? 'is-pannable' : '',
     isPanning ? 'is-panning' : '',
   ].filter(Boolean).join(' ');
 
@@ -672,6 +684,18 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
       aria-label={t('analytics.worldMap')}
     >
       <div className="analytics-map-navigation-controls" role="group" aria-label={t('analytics.mapNavigation')}>
+        <button
+          className="analytics-map-navigation-button"
+          type="button"
+          aria-label={t('analytics.mapNavigation')}
+          aria-pressed={panEnabled}
+          title={t('analytics.mapNavigation')}
+          disabled={placementMode}
+          onClick={() => setPanEnabled((value) => !value)}
+        >
+          <PanIcon />
+        </button>
+        <span className="analytics-map-navigation-separator" aria-hidden="true" />
         <button
           className="analytics-map-navigation-button"
           type="button"
