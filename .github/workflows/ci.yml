@@ -104,13 +104,27 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Validate shell syntax
-        run: bash -n install.sh scripts/build-release-bundle.sh scripts/test-clean-vps-installer.sh
+        run: |
+          bash -n \
+            install.sh \
+            install-grafana.sh \
+            scripts/build-release-bundle.sh \
+            scripts/test-clean-vps-installer.sh \
+            scripts/test-grafana-installer.sh
 
       - name: Run ShellCheck
-        run: shellcheck -x install.sh scripts/build-release-bundle.sh scripts/test-clean-vps-installer.sh
+        run: |
+          shellcheck -x \
+            install.sh \
+            install-grafana.sh \
+            scripts/build-release-bundle.sh \
+            scripts/test-clean-vps-installer.sh \
+            scripts/test-grafana-installer.sh
 
       - name: Run installer unit tests
-        run: scripts/test-clean-vps-installer.sh
+        run: |
+          scripts/test-clean-vps-installer.sh
+          scripts/test-grafana-installer.sh
 
       - name: Build and verify amd64 release bundle
         env:
