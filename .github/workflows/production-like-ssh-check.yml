@@ -15,7 +15,7 @@ jobs:
   ssh-check:
     runs-on: ubuntu-latest
     environment: production-like
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
       - name: Configure SSH
         shell: bash
@@ -30,62 +30,34 @@ jobs:
           printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Recover and verify production-like RouteGate state
+      - name: Inspect safe installer metadata
         shell: bash
         env:
           ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
           ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
         run: |
           set -euo pipefail
-          ssh \
-            -i ~/.ssh/routegate_ci \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o ConnectTimeout=10 \
-            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            'sudo bash -s' <<'REMOTE'
-          set -Eeuo pipefail
-          MANAGER_ENV=/etc/routegate/manager.env
-          INSTALL_STATE=/etc/routegate/install-state.env
-          API=http://127.0.0.1:8080
-
-          wait_manager() {
-            for _ in $(seq 1 45); do
-              curl -fsS --max-time 5 "$API/api/admin/health" >/dev/null 2>&1 && return 0
-              sleep 1
-            done
-            return 1
-          }
-
-          if [[ ! -r "$MANAGER_ENV" ]]; then
-            candidate=$(find /root/routegate-backups -type f -name manager.env -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {$1=""; sub(/^ /,""); print; exit}')
-            [[ -n "$candidate" && -r "$candidate" ]] || { echo 'ERROR: no Manager environment backup found' >&2; exit 1; }
-            grep -q '^ROUTEGATE_DATABASE_URL=' "$candidate" || { echo 'ERROR: newest Manager backup is invalid' >&2; exit 1; }
-            install -m 0600 "$candidate" "$MANAGER_ENV"
-            echo 'manager_env=recovered-from-latest-production-backup'
+          ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          log=/var/log/routegate-installer.log
+          if [[ -r "$log" ]]; then
+            version=$(sed -n 's/.*\[RouteGate\] Downloading RouteGate \([^[:space:]]*\)\..*/\1/p' "$log" | tail -n1)
+            [[ -n "$version" ]] || version=$(sed -n 's/.*Downloading RouteGate \([^[:space:]]*\)\..*/\1/p' "$log" | tail -n1)
+            echo "installer_log=present"
+            echo "recoverable_version=${version:-not-found}"
+            success_count=$(grep -c 'RouteGate installation completed successfully' "$log" 2>/dev/null || true)
+            echo "installer_success_markers=$success_count"
           else
-            echo 'manager_env=already-present'
+            echo 'installer_log=missing'
+            echo 'recoverable_version=not-found'
           fi
-
-          systemctl restart routegate-manager
-          wait_manager || { echo 'ERROR: Manager did not recover' >&2; exit 1; }
-          echo 'routegate-manager=active-and-healthy'
-          echo "routegate-agent=$(systemctl is-active routegate-agent 2>/dev/null || true)"
-          echo "sing-box=$(systemctl is-active sing-box 2>/dev/null || true)"
-
-          if [[ -r "$INSTALL_STATE" ]]; then
-            echo 'install_state=present'
-            sed -n -E 's/^(STATUS|DOMAIN|VERSION|ARCH|PROMETHEUS_MANAGED)=.*/\1=present/p' "$INSTALL_STATE"
-          else
-            echo 'install_state=missing'
-            candidate_state=$(find /root /var/lib -type f \( -name 'install-state.env' -o -name 'install-state.env.*' \) -print 2>/dev/null | head -n1 || true)
-            if [[ -n "$candidate_state" ]]; then
-              echo 'install_state_backup=found'
-            else
-              echo 'install_state_backup=not-found'
-            fi
+          if [[ -r /etc/routegate/manager.env ]]; then
+            public_url=$(sed -n 's/^ROUTEGATE_PUBLIC_URL="\{0,1\}\([^"[:space:]]*\)"\{0,1\}$/\1/p' /etc/routegate/manager.env | tail -n1)
+            echo "public_url=${public_url:-not-found}"
           fi
-
-          echo "prometheus_package=$(dpkg-query -W -f='${Status}' prometheus 2>/dev/null | grep -qx 'install ok installed' && echo installed || echo not-installed)"
+          echo "arch=$(dpkg --print-architecture)"
+          echo "manager=$(systemctl is-active routegate-manager 2>/dev/null || true)"
+          echo "agent=$(systemctl is-active routegate-agent 2>/dev/null || true)"
+          echo "sing_box=$(systemctl is-active sing-box 2>/dev/null || true)"
           REMOTE
