@@ -25,14 +25,22 @@ export interface PortalNotice {
   message: string;
 }
 
+export interface PortalTrafficUsage {
+  enabled: boolean;
+  rxBytes: number;
+  txBytes: number;
+  totalBytes: number;
+  periodStart: string;
+  periodEnd: string;
+  lastObservedAt?: string | null;
+}
+
 export interface PortalDashboard {
   accessStatus: string;
   profilesTotal: number;
   profilesActive: number;
   nearestExpiration?: string | null;
-  trafficUsage?: {
-    enabled: boolean;
-  } | null;
+  trafficUsage?: PortalTrafficUsage | null;
   notices: PortalNotice[];
 }
 
