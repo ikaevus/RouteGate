@@ -1,6 +1,6 @@
 name: Production-like SSH Check
 
-# RG-112 Phase 6 revalidates the canonical production-like SSH boundary alongside delivery E2E.
+# Temporary RG-136 production-like validation. Close without merge after the live result is known.
 on:
   workflow_dispatch:
   pull_request:
@@ -8,6 +8,7 @@ on:
       - main
     paths:
       - .github/workflows/production-like-ssh-check.yml
+      - install-grafana.sh
 
 permissions:
   contents: read
@@ -16,8 +17,11 @@ jobs:
   ssh-check:
     runs-on: ubuntu-latest
     environment: production-like
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
+      - name: Checkout RG-136 validation branch
+        uses: actions/checkout@v6
+
       - name: Configure SSH
         shell: bash
         env:
@@ -31,7 +35,7 @@ jobs:
           printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Verify production-like SSH access
+      - name: Verify Grafana live-install preconditions
         shell: bash
         env:
           ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
@@ -45,4 +49,163 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=10 \
             "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            'set -e; echo "user=$(whoami)"; echo "host=$(hostname)"; echo "sudo_user=$(sudo whoami)"; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
+            'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          state=/etc/routegate/install-state.env
+          [[ -r "$state" ]] || { echo 'ERROR: RouteGate installer state missing' >&2; exit 1; }
+          [[ "$(sed -n 's/^STATUS=//p' "$state" | tail -n1)" == complete ]] || { echo 'ERROR: RouteGate state is not complete' >&2; exit 1; }
+          [[ "$(sed -n 's/^PROMETHEUS_MANAGED=//p' "$state" | tail -n1)" == 1 ]] || { echo 'ERROR: managed Prometheus state is not enabled' >&2; exit 1; }
+          [[ "$(sed -n 's/^GRAFANA_MANAGED=//p' "$state" | tail -n1)" != 1 ]] || { echo 'ERROR: Grafana is already claimed as managed' >&2; exit 1; }
+
+          for svc in routegate-manager routegate-agent sing-box prometheus; do
+            systemctl is-active --quiet "$svc" || { echo "ERROR: $svc is not active" >&2; exit 1; }
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:9090/-/ready >/dev/null
+
+          if dpkg-query -W -f='${Status}' grafana 2>/dev/null | grep -qx 'install ok installed'; then
+            echo 'ERROR: unowned Grafana package already exists' >&2
+            exit 1
+          fi
+          if ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)3000$'; then
+            echo 'ERROR: TCP 3000 is already in use' >&2
+            exit 1
+          fi
+
+          echo 'preflight_routegate=healthy'
+          echo 'preflight_prometheus=managed-and-ready'
+          echo 'preflight_grafana=absent'
+          REMOTE
+
+      - name: Install RouteGate-managed Grafana through the product installer
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'sudo bash -s' < install-grafana.sh
+
+      - name: Prove managed Grafana is idempotent
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'sudo bash -s' < install-grafana.sh
+
+      - name: Validate Grafana end to end without exposing credentials
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'sudo bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          umask 077
+
+          state=/etc/routegate/install-state.env
+          credentials=/root/routegate-grafana-access.txt
+          domain=$(sed -n 's/^ROUTEGATE_PUBLIC_URL="\{0,1\}https:\/\/\([^"\/[:space:]]*\)\/?"\{0,1\}$/\1/p' /etc/routegate/manager.env | tail -n1)
+          [[ -n "$domain" ]] || { echo 'ERROR: RouteGate public domain unavailable' >&2; exit 1; }
+
+          [[ "$(sed -n 's/^GRAFANA_MANAGED=//p' "$state" | tail -n1)" == 1 ]] || { echo 'ERROR: Grafana ownership state missing' >&2; exit 1; }
+          dpkg-query -W -f='${Status}' grafana 2>/dev/null | grep -qx 'install ok installed'
+          systemctl is-enabled --quiet grafana-server.service
+          systemctl is-active --quiet grafana-server.service
+          systemctl is-active --quiet prometheus.service
+
+          mapfile -t grafana_listeners < <(ss -ltnH | awk '$4 ~ /:3000$/ {print $4}')
+          [[ ${#grafana_listeners[@]} -eq 1 && "${grafana_listeners[0]}" == 127.0.0.1:3000 ]] || {
+            printf 'ERROR: unexpected Grafana listener(s): %s\n' "${grafana_listeners[*]:-none}" >&2
+            exit 1
+          }
+          mapfile -t prometheus_listeners < <(ss -ltnH | awk '$4 ~ /:9090$/ {print $4}')
+          [[ ${#prometheus_listeners[@]} -eq 1 && "${prometheus_listeners[0]}" == 127.0.0.1:9090 ]] || {
+            printf 'ERROR: unexpected Prometheus listener(s): %s\n' "${prometheus_listeners[*]:-none}" >&2
+            exit 1
+          }
+
+          local_code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H "Host: $domain" http://127.0.0.1:3000/grafana/api/health)
+          public_code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://${domain}/grafana/api/health")
+          login_code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://${domain}/grafana/login")
+          [[ "$local_code" == 200 ]] || { echo "ERROR: local Grafana health HTTP $local_code" >&2; exit 1; }
+          [[ "$public_code" == 200 ]] || { echo "ERROR: public Grafana health HTTP $public_code" >&2; exit 1; }
+          [[ "$login_code" == 200 ]] || { echo "ERROR: public Grafana login HTTP $login_code" >&2; exit 1; }
+
+          [[ -r "$credentials" ]] || { echo 'ERROR: root-only Grafana access file missing' >&2; exit 1; }
+          [[ "$(stat -c '%a' "$credentials")" == 600 ]] || { echo 'ERROR: Grafana access file permissions are not 600' >&2; exit 1; }
+          username=$(sed -n 's/^Username: //p' "$credentials" | head -n1)
+          password=$(sed -n 's/^Initial password: //p' "$credentials" | head -n1)
+          [[ "$username" == admin && ${#password} -ge 30 ]] || { echo 'ERROR: Grafana bootstrap credential format invalid' >&2; exit 1; }
+
+          datasource_json=$(mktemp)
+          dashboard_json=$(mktemp)
+          trap 'rm -f "$datasource_json" "$dashboard_json"' EXIT
+          curl -fsS --max-time 10 -H "Host: $domain" -u "$username:$password" \
+            http://127.0.0.1:3000/grafana/api/datasources/uid/routegate-prometheus >"$datasource_json"
+          curl -fsS --max-time 10 -H "Host: $domain" -u "$username:$password" \
+            http://127.0.0.1:3000/grafana/api/dashboards/uid/routegate-fleet-overview >"$dashboard_json"
+
+          python3 - "$datasource_json" "$dashboard_json" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as f:
+              datasource = json.load(f)
+          with open(sys.argv[2], encoding='utf-8') as f:
+              dashboard = json.load(f)
+          assert datasource.get('uid') == 'routegate-prometheus', datasource.get('uid')
+          assert datasource.get('type') == 'prometheus', datasource.get('type')
+          assert datasource.get('url') == 'http://127.0.0.1:9090', datasource.get('url')
+          meta = dashboard.get('meta', {})
+          model = dashboard.get('dashboard', {})
+          assert model.get('uid') == 'routegate-fleet-overview', model.get('uid')
+          assert model.get('title') == 'RouteGate Fleet Overview', model.get('title')
+          assert meta.get('folderTitle') == 'RouteGate', meta.get('folderTitle')
+          PY
+
+          datasource_health=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -H "Host: $domain" -u "$username:$password" \
+            http://127.0.0.1:3000/grafana/api/datasources/uid/routegate-prometheus/health)
+          [[ "$datasource_health" == 200 ]] || { echo "ERROR: Grafana Prometheus datasource health HTTP $datasource_health" >&2; exit 1; }
+
+          for svc in routegate-manager routegate-agent sing-box prometheus grafana-server; do
+            systemctl is-active --quiet "$svc" || { echo "ERROR: $svc is not active after Grafana install" >&2; exit 1; }
+          done
+
+          echo 'grafana_package=installed'
+          echo 'grafana_enabled=yes'
+          echo 'grafana_active=yes'
+          echo 'grafana_listener=127.0.0.1:3000'
+          echo 'prometheus_listener=127.0.0.1:9090'
+          echo 'grafana_https_gateway=/grafana/'
+          echo 'grafana_public_health=200'
+          echo 'grafana_login=200'
+          echo 'grafana_datasource=routegate-prometheus'
+          echo 'grafana_datasource_health=200'
+          echo 'grafana_dashboard=routegate-fleet-overview'
+          echo 'grafana_managed_state=1'
+          echo 'routegate_services=healthy'
+          echo 'RG-136 managed Grafana live validation PASSED'
+          REMOTE
