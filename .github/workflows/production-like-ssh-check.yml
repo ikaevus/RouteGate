@@ -65,6 +65,7 @@ jobs:
             'bash -s' <<'REMOTE'
           set -euo pipefail
           smtp_host=smtp.gmail.com
+
           for port in 465 587; do
             if timeout 10 bash -c "exec 3<>/dev/tcp/${smtp_host}/${port}"; then
               echo "${smtp_host}:${port}=reachable"
@@ -73,4 +74,19 @@ jobs:
               exit 1
             fi
           done
+
+          timeout 15 openssl s_client \
+            -connect "${smtp_host}:465" \
+            -servername "$smtp_host" \
+            -brief \
+            </dev/null >/dev/null 2>&1
+          echo "${smtp_host}:465=tls-handshake-ok"
+
+          timeout 15 openssl s_client \
+            -starttls smtp \
+            -connect "${smtp_host}:587" \
+            -servername "$smtp_host" \
+            -brief \
+            </dev/null >/dev/null 2>&1
+          echo "${smtp_host}:587=starttls-handshake-ok"
           REMOTE
