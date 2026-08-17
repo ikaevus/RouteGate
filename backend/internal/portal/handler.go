@@ -24,16 +24,23 @@ type portalRepository interface {
 	CreateSubscriptionToken(context.Context, CreateSubscriptionTokenInput) (PortalSubscriptionToken, error)
 }
 
+type portalTrafficRepository interface {
+	GetTrafficUsageForUser(context.Context, string) (TrafficUsageSummary, error)
+}
+
 type Handler struct {
 	logger                    *slog.Logger
 	profiles                  portalRepository
+	traffic                   portalTrafficRepository
 	generateSubscriptionToken func() (string, error)
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
+	repository := NewRepository(pool)
 	return &Handler{
 		logger:                    logger,
-		profiles:                  NewRepository(pool),
+		profiles:                  repository,
+		traffic:                   repository,
 		generateSubscriptionToken: vpnaccounts.GenerateSubscriptionToken,
 	}
 }
@@ -59,7 +66,17 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, DashboardResponse{Dashboard: buildDashboard(profiles)})
+	dashboard := buildDashboard(profiles)
+	if h.traffic != nil {
+		trafficUsage, trafficErr := h.traffic.GetTrafficUsageForUser(r.Context(), user.Email)
+		if trafficErr != nil {
+			h.logger.Warn("load portal traffic usage failed", "user_email", user.Email, "error", trafficErr)
+		} else {
+			dashboard.TrafficUsage = &trafficUsage
+		}
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, DashboardResponse{Dashboard: dashboard})
 }
 
 func (h *Handler) ListProfiles(w http.ResponseWriter, r *http.Request) {
