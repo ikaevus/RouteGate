@@ -41,6 +41,21 @@ function providerReason(code?: string): string {
   }
 }
 
+function providerTestReason(code?: string): string {
+  switch (code) {
+    case 'smtp_not_configured':
+    case 'smtp_configuration_invalid':
+    case 'telegram_not_configured':
+    case 'telegram_configuration_invalid':
+      return providerReason(code);
+    case 'smtp_connect_failed': return t('settings.smtpTestConnectFailed');
+    case 'smtp_auth_failed': return t('settings.smtpTestAuthFailed');
+    case 'smtp_starttls_unavailable': return t('settings.smtpTestStartTLSUnavailable');
+    case 'smtp_tls_failed': return t('settings.smtpTestTLSFailed');
+    default: return t('delivery.settingsTestFailed');
+  }
+}
+
 function parseFocusedChannel(value: string | null): DeliveryChannel | null {
   return value === 'email' || value === 'telegram' ? value : null;
 }
@@ -315,21 +330,24 @@ function ProviderSettingsEditor({
       </label>
 
       {provider === 'smtp' && (
-        <div className="settings-delivery-form-grid">
-          <TextField label={t('delivery.settingsSmtpHost')} value={fields.host ?? ''} onChange={(value) => updateField('host', value)} placeholder="smtp.example.com" />
-          <TextField label={t('delivery.settingsSmtpPort')} value={fields.port ?? '587'} onChange={(value) => updateField('port', value)} inputMode="numeric" placeholder="587" />
-          <TextField label={t('delivery.settingsSmtpUsername')} value={fields.username ?? ''} onChange={(value) => updateField('username', value)} placeholder="routegate@example.com" />
-          <SecretField configured={settings.secretConfigured} label={t('delivery.settingsSmtpPassword')} value={secret} onChange={setSecret} />
-          <TextField label={t('delivery.settingsSmtpFromAddress')} value={fields.fromAddress ?? ''} onChange={(value) => updateField('fromAddress', value)} placeholder="routegate@example.com" />
-          <TextField label={t('delivery.settingsSmtpFromName')} value={fields.fromName ?? 'RouteGate'} onChange={(value) => updateField('fromName', value)} placeholder="RouteGate" />
-          <label className="field">
-            <span>{t('delivery.settingsSmtpSecurity')}</span>
-            <select value={fields.tlsMode ?? 'starttls'} onChange={(event) => updateField('tlsMode', event.target.value)}>
-              <option value="starttls">STARTTLS</option>
-              <option value="tls">TLS</option>
-            </select>
-          </label>
-        </div>
+        <>
+          <div className="settings-delivery-form-grid">
+            <TextField label={t('delivery.settingsSmtpHost')} value={fields.host ?? ''} onChange={(value) => updateField('host', value)} placeholder="smtp.example.com" />
+            <TextField label={t('delivery.settingsSmtpPort')} value={fields.port ?? '587'} onChange={(value) => updateField('port', value)} inputMode="numeric" placeholder="587" />
+            <TextField label={t('delivery.settingsSmtpUsername')} value={fields.username ?? ''} onChange={(value) => updateField('username', value)} placeholder="routegate@example.com" />
+            <SecretField configured={settings.secretConfigured} label={t('delivery.settingsSmtpPassword')} value={secret} onChange={setSecret} />
+            <TextField label={t('delivery.settingsSmtpFromAddress')} value={fields.fromAddress ?? ''} onChange={(value) => updateField('fromAddress', value)} placeholder="routegate@example.com" />
+            <TextField label={t('delivery.settingsSmtpFromName')} value={fields.fromName ?? 'RouteGate'} onChange={(value) => updateField('fromName', value)} placeholder="RouteGate" />
+            <label className="field">
+              <span>{t('delivery.settingsSmtpSecurity')}</span>
+              <select value={fields.tlsMode ?? 'starttls'} onChange={(event) => updateField('tlsMode', event.target.value)}>
+                <option value="starttls">STARTTLS</option>
+                <option value="tls">TLS</option>
+              </select>
+            </label>
+          </div>
+          <p className="settings-delivery-field-hint">{t('settings.smtpEgressHint')}</p>
+        </>
       )}
 
       {provider === 'telegram' && (
@@ -343,11 +361,7 @@ function ProviderSettingsEditor({
 
       {testResult === 'success' && <div className="form-message form-message-success">{t('delivery.settingsTestSuccess')}</div>}
       {testResult === 'failure' && (
-        <div className="form-message form-message-error">
-          {testErrorCode && ['smtp_not_configured', 'smtp_configuration_invalid', 'telegram_not_configured', 'telegram_configuration_invalid'].includes(testErrorCode)
-            ? providerReason(testErrorCode)
-            : t('delivery.settingsTestFailed')}
-        </div>
+        <div className="form-message form-message-error">{providerTestReason(testErrorCode)}</div>
       )}
       {savedNotice && <div className="form-message form-message-success">{t('delivery.settingsSaved')}</div>}
       {saveMutation.isError && <div className="form-message form-message-error">{safeMutationError(saveMutation.error)}</div>}

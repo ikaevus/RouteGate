@@ -124,15 +124,24 @@ func (p *SMTPProvider) connect(ctx context.Context) (*smtp.Client, error) {
 		ServerName: host,
 	}
 
+	connectCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+
 	var conn net.Conn
 	var err error
 	if p.config.TLSMode == smtpTLSModeTLS {
-		conn, err = p.tlsDial(ctx, "tcp", address, tlsConfig)
+		conn, err = p.tlsDial(connectCtx, "tcp", address, tlsConfig)
+		if err != nil {
+			if isSMTPDialError(err) {
+				return nil, err
+			}
+			return nil, Failure{Class: classifyTLSError(err), Code: "smtp_tls_failed"}
+		}
 	} else {
-		conn, err = p.dialContext(ctx, "tcp", address)
-	}
-	if err != nil {
-		return nil, err
+		conn, err = p.dialContext(connectCtx, "tcp", address)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	deadline := p.now().Add(p.timeout)
@@ -160,6 +169,18 @@ func (p *SMTPProvider) connect(ctx context.Context) (*smtp.Client, error) {
 		}
 	}
 	return client, nil
+}
+
+func isSMTPDialError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return true
+	}
+	var operationError *net.OpError
+	return errors.As(err, &operationError) && operationError.Op == "dial"
 }
 
 func validateSMTPConfig(cfg config.SMTPConfig) (string, string) {
