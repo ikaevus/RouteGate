@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './app/App';
 import { BrandHomeNavigation } from './app/BrandHomeNavigation';
 import { GlobalSearchController } from './app/GlobalSearchController';
+import { PortalAccessGate } from './app/PortalAccessGate';
 import { ScrollToTop } from './app/ScrollToTop';
 import './shared/styles.css';
 import './shared/rg45.css';
@@ -24,6 +25,7 @@ import './shared/rg80-light-canvas-trial.css';
 import './shared/rg80-light-polish.css';
 import './shared/rg-shell-cleanup.css';
 import './shared/rg-status-glass.css';
+import './shared/rg130-mobile-safe-area.css';
 
 const storedTheme = window.localStorage.getItem('routegate.admin.theme');
 document.documentElement.dataset.theme = storedTheme === 'light' ? 'light' : 'dark';
@@ -37,9 +39,11 @@ if (rootElement) {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <ScrollToTop />
-          <App />
-          <BrandHomeNavigation />
-          <GlobalSearchController />
+          <PortalAccessGate>
+            <App />
+            <BrandHomeNavigation />
+            <GlobalSearchController />
+          </PortalAccessGate>
         </BrowserRouter>
       </QueryClientProvider>
     </React.StrictMode>,
