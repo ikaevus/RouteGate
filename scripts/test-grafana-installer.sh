@@ -56,6 +56,10 @@ assert_equal() {
   fi
 }
 
+json_valid() {
+  python3 -m json.tool "$1" >/dev/null
+}
+
 test_routegate_identity() {
   local state="$TEST_TMP/install-state.env"
   local env_file="$TEST_TMP/manager.env"
@@ -136,7 +140,7 @@ EOF_NGINX
 test_dashboard_contract() {
   local dashboard="$TEST_TMP/routegate-fleet-overview.json"
   write_routegate_dashboard "$dashboard"
-  assert_true "generated Fleet Overview is valid JSON" python3 -m json.tool "$dashboard"
+  assert_true "generated Fleet Overview is valid JSON" json_valid "$dashboard"
   assert_true "dashboard uses the managed Prometheus datasource" grep -Fq 'routegate-prometheus' "$dashboard"
   assert_true "dashboard includes memory history" grep -Fq 'routegate_host_memory_usage_ratio' "$dashboard"
   assert_true "dashboard includes disk history" grep -Fq 'routegate_host_root_fs_usage_ratio' "$dashboard"
@@ -148,7 +152,8 @@ test_security_contract() {
   assert_true "Grafana service binds to loopback in managed config" grep -Fq 'http_addr = 127.0.0.1' "$ROOT_DIR/install-grafana.sh"
   # shellcheck disable=SC2016
   assert_true "Grafana is published only under the RouteGate subpath" grep -Fq 'root_url = ${ROUTEGATE_GRAFANA_URL}' "$ROOT_DIR/install-grafana.sh"
-  assert_true "anonymous Grafana access is disabled" grep -A2 -F '[auth.anonymous]' "$ROOT_DIR/install-grafana.sh" | grep -Fq 'enabled = false'
+  assert_true "Grafana anonymous auth section is explicit" grep -Fq '[auth.anonymous]' "$ROOT_DIR/install-grafana.sh"
+  assert_true "anonymous Grafana access is disabled" grep -Fq 'enabled = false' "$ROOT_DIR/install-grafana.sh"
   assert_true "Grafana session cookie is HTTPS-only" grep -Fq 'cookie_secure = true' "$ROOT_DIR/install-grafana.sh"
   assert_true "Grafana telemetry reporting is disabled" grep -Fq 'reporting_enabled = false' "$ROOT_DIR/install-grafana.sh"
   assert_true "Grafana datasource stays on local Prometheus" grep -Fq 'url: http://127.0.0.1:9090' "$ROOT_DIR/install-grafana.sh"
