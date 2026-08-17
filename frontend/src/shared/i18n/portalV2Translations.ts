@@ -17,6 +17,14 @@ export const portalV2En = {
   'portalV2.expires': 'Nearest expiration',
   'portalV2.noExpiration': 'No expiration date',
   'portalV2.rxTx': 'Received {rx} · Sent {tx}',
+  'portalV2.checkingAccess': 'Checking your portal access',
+  'portalV2.checkingAccessDescription': 'RouteGate is verifying your signed-in session before showing VPN access details.',
+  'portalV2.accessDeniedTitle': 'This account does not have User Portal access',
+  'portalV2.accessDeniedDescription': 'Sign in with an account that has portal access or ask your administrator to grant it.',
+  'portalV2.signInAnotherAccount': 'Sign in with another account',
+  'portalV2.portalUnavailableTitle': 'User Portal is temporarily unavailable',
+  'portalV2.portalUnavailableDescription': 'Your session exists, but RouteGate could not load the portal access check. Try again.',
+  'portalV2.retry': 'Try again',
 } as const;
 
 export type PortalV2TranslationKey = keyof typeof portalV2En;
@@ -40,4 +48,12 @@ export const portalV2Ru: Record<PortalV2TranslationKey, string> = {
   'portalV2.expires': 'Ближайшее окончание',
   'portalV2.noExpiration': 'Без срока действия',
   'portalV2.rxTx': 'Получено {rx} · Отправлено {tx}',
+  'portalV2.checkingAccess': 'Проверяем доступ к порталу',
+  'portalV2.checkingAccessDescription': 'RouteGate проверяет авторизованную сессию перед показом данных VPN-доступа.',
+  'portalV2.accessDeniedTitle': 'У этой учётной записи нет доступа к User Portal',
+  'portalV2.accessDeniedDescription': 'Войдите под учётной записью с доступом к порталу или попросите администратора выдать его.',
+  'portalV2.signInAnotherAccount': 'Войти под другой учётной записью',
+  'portalV2.portalUnavailableTitle': 'User Portal временно недоступен',
+  'portalV2.portalUnavailableDescription': 'Сессия существует, но RouteGate не смог проверить доступ к порталу. Попробуйте ещё раз.',
+  'portalV2.retry': 'Повторить',
 };
