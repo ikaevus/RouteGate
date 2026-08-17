@@ -1,0 +1,57 @@
+.portal-app-shell,
+.auth-app-shell {
+  min-height: 100dvh;
+}
+
+.portal-topbar {
+  padding-top: max(18px, env(safe-area-inset-top));
+  padding-right: max(32px, env(safe-area-inset-right));
+  padding-left: max(32px, env(safe-area-inset-left));
+}
+
+.portal-main {
+  padding-right: max(32px, env(safe-area-inset-right));
+  padding-bottom: max(32px, env(safe-area-inset-bottom));
+  padding-left: max(32px, env(safe-area-inset-left));
+}
+
+.auth-topbar {
+  padding-top: env(safe-area-inset-top);
+  padding-right: max(34px, env(safe-area-inset-right));
+  padding-left: max(34px, env(safe-area-inset-left));
+}
+
+.auth-main {
+  padding-right: max(28px, env(safe-area-inset-right));
+  padding-bottom: max(42px, env(safe-area-inset-bottom));
+  padding-left: max(28px, env(safe-area-inset-left));
+}
+
+@media (max-width: 720px) {
+  .portal-topbar {
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-right: max(18px, env(safe-area-inset-right));
+    padding-left: max(18px, env(safe-area-inset-left));
+  }
+
+  .portal-main {
+    padding-top: 20px;
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-topbar {
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+
+  .auth-main {
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+    padding-left: max(14px, env(safe-area-inset-left));
+  }
+}
