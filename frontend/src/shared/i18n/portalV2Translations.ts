@@ -1,0 +1,43 @@
+export const portalV2En = {
+  'portalV2.eyebrow': 'MY VPN ACCESS',
+  'portalV2.readyTitle': 'Your VPN access is ready',
+  'portalV2.attentionTitle': 'Your VPN access needs attention',
+  'portalV2.greeting': 'Signed in as {name}. Everything you need to connect is here.',
+  'portalV2.nextAction': 'NEXT ACTION',
+  'portalV2.connectDevice': 'Connect a device',
+  'portalV2.connectDescription': 'Open an active profile to get a subscription link, QR code, and setup instructions.',
+  'portalV2.noActiveProfile': 'There is no active VPN profile to connect yet. Contact your administrator.',
+  'portalV2.connectAction': 'Connect device',
+  'portalV2.access': 'Access',
+  'portalV2.profiles': 'Profiles',
+  'portalV2.profilesValue': '{active} of {total} active',
+  'portalV2.trafficThisMonth': 'Traffic this month',
+  'portalV2.noTrafficYet': 'No traffic reported yet',
+  'portalV2.lastTraffic': 'Last update {date}',
+  'portalV2.expires': 'Nearest expiration',
+  'portalV2.noExpiration': 'No expiration date',
+  'portalV2.rxTx': 'Received {rx} · Sent {tx}',
+} as const;
+
+export type PortalV2TranslationKey = keyof typeof portalV2En;
+
+export const portalV2Ru: Record<PortalV2TranslationKey, string> = {
+  'portalV2.eyebrow': 'МОЙ VPN-ДОСТУП',
+  'portalV2.readyTitle': 'VPN-доступ готов к работе',
+  'portalV2.attentionTitle': 'VPN-доступ требует внимания',
+  'portalV2.greeting': 'Вы вошли как {name}. Здесь есть всё необходимое для подключения.',
+  'portalV2.nextAction': 'СЛЕДУЮЩЕЕ ДЕЙСТВИЕ',
+  'portalV2.connectDevice': 'Подключить устройство',
+  'portalV2.connectDescription': 'Откройте активный профиль, чтобы получить ссылку подписки, QR-код и инструкцию по настройке.',
+  'portalV2.noActiveProfile': 'Сейчас нет активного VPN-профиля для подключения. Обратитесь к администратору.',
+  'portalV2.connectAction': 'Подключить устройство',
+  'portalV2.access': 'Доступ',
+  'portalV2.profiles': 'Профили',
+  'portalV2.profilesValue': 'Активно {active} из {total}',
+  'portalV2.trafficThisMonth': 'Трафик за месяц',
+  'portalV2.noTrafficYet': 'Трафик пока не зафиксирован',
+  'portalV2.lastTraffic': 'Обновлено {date}',
+  'portalV2.expires': 'Ближайшее окончание',
+  'portalV2.noExpiration': 'Без срока действия',
+  'portalV2.rxTx': 'Получено {rx} · Отправлено {tx}',
+};
