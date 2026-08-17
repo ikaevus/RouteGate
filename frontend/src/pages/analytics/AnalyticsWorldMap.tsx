@@ -72,7 +72,7 @@ interface PanGesture {
 }
 
 const MAP_WIDTH = 1000;
-const MAP_HEIGHT = 430;
+const MAP_HEIGHT = 560;
 const MAP_MIN_ZOOM = 1;
 const MAP_MAX_ZOOM = 8;
 const MAP_BUTTON_ZOOM_FACTOR = 1.45;
@@ -776,7 +776,7 @@ export function AnalyticsWorldMap({ nodes, selectedNodeId, onSelectNode }: Analy
           aria-hidden="true"
           href={worldMapUrl}
           height={MAP_HEIGHT}
-          preserveAspectRatio="xMidYMid meet"
+          preserveAspectRatio="none"
           width={MAP_WIDTH}
           x="0"
           y="0"
