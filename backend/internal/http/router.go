@@ -30,7 +30,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	healthHandler := health.NewHandler(logger)
 	authRepo := auth.NewRepository(pool)
 	authHandler := auth.NewHandler(logger, pool, cfg.AuthSessionTTL)
-	serversHandler := servers.NewHandler(logger, pool)
+	serversHandler := servers.NewHandler(logger, pool, cfg.PublicURL)
 	geoIPHandler := geoip.NewHandler(logger, pool, cfg.GeoIP.Enabled)
 	agentsHandler := agents.NewHandler(logger, pool)
 	configsHandler := configs.NewHandler(logger, pool)

@@ -208,6 +208,35 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/servers/{server_id}/registration-token:
+    post:
+      tags: [Servers, Agents]
+      summary: Create one-time Agent bootstrap material for a VPN or Hybrid Node
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: server_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Registration token and optional one-command Agent bootstrap instruction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: The selected node role does not host Agent or VPN Core
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/agents:
     get:
       tags: [Agents]
@@ -677,9 +706,57 @@ components:
         status:
           type: string
           example: online
+        agent:
+          allOf:
+            - $ref: "#/components/schemas/Agent"
+          nullable: true
+        inventory:
+          $ref: "#/components/schemas/NodeInventorySummary"
         createdAt:
           type: string
           format: date-time
+
+    NodeInventorySummary:
+      type: object
+      required: [connectionState, capabilityStatus, nextAction, managedAdapterCount]
+      properties:
+        connectionState:
+          type: string
+          enum: [not_applicable, awaiting_agent, online, offline]
+        capabilityStatus:
+          type: string
+          enum: [not_applicable, not_reported, compatible, incompatible]
+        nextAction:
+          type: string
+          enum: [none, install_agent, restore_connection, review_compatibility, review_capabilities]
+        capabilitySchemaVersion:
+          type: integer
+          example: 1
+        managedAdapterCount:
+          type: integer
+          minimum: 0
+          example: 1
+
+    RegistrationTokenResponse:
+      type: object
+      required: [serverId, registrationToken, expiresAt]
+      properties:
+        serverId:
+          type: string
+          format: uuid
+        registrationToken:
+          type: string
+          description: Raw one-time credential returned only by this request.
+        expiresAt:
+          type: string
+          format: date-time
+        managerUrl:
+          type: string
+          format: uri
+          example: https://manager.routegate.example
+        bootstrapCommand:
+          type: string
+          description: Copyable Agent-only installation command. Present when ROUTEGATE_PUBLIC_URL is a valid HTTPS origin.
 
     CreateServerRequest:
       type: object

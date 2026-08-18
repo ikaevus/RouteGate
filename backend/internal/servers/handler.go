@@ -35,6 +35,7 @@ type registrationTokenRepository interface {
 
 type Handler struct {
 	logger                    *slog.Logger
+	publicURL                 string
 	service                   *Service
 	servers                   serverRepository
 	registrationTokens        registrationTokenRepository
@@ -44,10 +45,11 @@ type Handler struct {
 	now                       func() time.Time
 }
 
-func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
+func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, publicURL string) *Handler {
 	repository := NewRepository(pool)
 	return &Handler{
 		logger:                    logger,
+		publicURL:                 publicURL,
 		service:                   NewService(repository),
 		servers:                   repository,
 		registrationTokens:        agents.NewRepository(pool),
@@ -121,7 +123,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 	responseItems := make([]ServerResponse, len(items))
 	for i := range items {
-		responseItems[i] = newServerResponse(items[i])
+		responseItems[i] = newServerResponse(items[i], h.now().UTC())
 	}
 	httpx.WriteJSON(w, http.StatusOK, ListServersResponse{Items: responseItems})
 }
@@ -190,7 +192,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, newServerResponse(server))
+	httpx.WriteJSON(w, http.StatusOK, newServerResponse(server, h.now().UTC()))
 }
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -329,14 +331,18 @@ func (h *Handler) CreateRegistrationToken(w http.ResponseWriter, r *http.Request
 		ResourceID:   serverID,
 		Result:       audit.ResultSuccess,
 		Metadata: map[string]any{
-			"token_preview": audit.MaskSecret(rawToken),
-			"expires_at":    expiresAt,
+			"token_preview":      audit.MaskSecret(rawToken),
+			"expires_at":         expiresAt,
+			"bootstrap_available": agentBootstrapAvailable(h.publicURL),
 		},
 	})
+	managerURL, bootstrapCommand := buildAgentBootstrapCommand(h.publicURL, rawToken)
 	httpx.WriteJSON(w, http.StatusCreated, RegistrationTokenResponse{
 		ServerID:          serverID,
 		RegistrationToken: rawToken,
 		ExpiresAt:         expiresAt,
+		ManagerURL:        managerURL,
+		BootstrapCommand:  bootstrapCommand,
 	})
 }
 

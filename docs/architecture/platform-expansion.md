@@ -59,8 +59,18 @@ The existing one-time token design remains the foundation:
 6. Agent continues to report heartbeat, capabilities, telemetry, and task
    results through the Manager API.
 
-The bootstrap command and transport hardening are follow-up implementation
-slices; no direct database access or arbitrary remote shell is introduced.
+RG-114B implements this sequence with the Agent-only `install-agent.sh`
+installer. Manager returns a copyable command containing its configured public
+HTTPS origin and the one-time token. The installer downloads a published
+release bundle, verifies `SHA256SUMS`, installs only Agent and its systemd unit,
+exchanges the token, and starts heartbeats. It does not install Manager,
+PostgreSQL, Web UI/nginx, or a VPN Core.
+
+Manager inventory responses aggregate assigned role, Agent heartbeat freshness,
+Agent protocol compatibility, and the versioned RouteGate capability block into
+`inventory.connectionState`, `inventory.capabilityStatus`, and
+`inventory.nextAction`. This is derived control-plane state; remote nodes still
+have no database access and Manager receives no arbitrary remote-shell channel.
 
 ## Protocol adapter contract
 

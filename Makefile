@@ -20,7 +20,7 @@ help:
 	@echo "  make frontend-install     Install frontend dependencies"
 	@echo "  make frontend-i18n-check  Run frontend localization QA check"
 	@echo "  make frontend-build       Build frontend"
-	@echo "  make installer-test       Validate and test the Clean VPS Installer"
+	@echo "  make installer-test       Validate and test the Clean VPS and Agent installers"
 	@echo "  make release-bundle       Build native bundles (requires VERSION)"
 	@echo "  make check                Run backend, Agent, frontend and installer checks"
 	@echo "  make db-reset             Stop stack and remove dev database volume"
@@ -64,7 +64,8 @@ frontend-build:
 	cd frontend && npm run build
 
 installer-test:
-	bash -n install.sh scripts/build-release-bundle.sh scripts/test-clean-vps-installer.sh
+	bash -n install.sh install-agent.sh scripts/build-release-bundle.sh scripts/test-agent-installer.sh scripts/test-clean-vps-installer.sh
+	bash scripts/test-agent-installer.sh
 	scripts/test-clean-vps-installer.sh
 
 release-bundle:

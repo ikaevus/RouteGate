@@ -179,6 +179,26 @@ record; Manager then creates a VPN Node.
 The Clean VPS All-in-One installer explicitly creates a Hybrid Node. A
 Management-only node cannot receive an Agent registration token or VPN config.
 
+Canonical `GET /api/v1/servers` and `GET /api/v1/servers/{server_id}` responses
+also include an `inventory` summary derived by Manager from the assigned role,
+heartbeat freshness, Agent protocol compatibility, and reported capabilities:
+
+```json
+{
+  "connectionState": "online",
+  "capabilityStatus": "compatible",
+  "nextAction": "none",
+  "capabilitySchemaVersion": 1,
+  "managedAdapterCount": 1
+}
+```
+
+For a VPN or Hybrid Node, `POST
+/api/v1/servers/{server_id}/registration-token` returns the raw one-time token
+once and, when `ROUTEGATE_PUBLIC_URL` is a valid HTTPS origin, a complete
+`bootstrapCommand`. The command installs only RouteGate Agent on the remote
+node. Management Nodes receive `409 node_role_incompatible`.
+
 `GET /api/v1/system/version` returns Manager, Web UI, database schema, Agent protocol compatibility, and manual-update metadata. It does not perform update network calls.
 
 Example response:

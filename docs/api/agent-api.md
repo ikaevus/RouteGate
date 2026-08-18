@@ -18,6 +18,13 @@ GET /api/v1/agents
 
 Registration uses a short-lived server registration token. A successful registration returns a persistent Agent credential, which is then used for heartbeat, task polling, task completion, and traffic reporting.
 
+For distributed VPN Nodes, administrators normally do not build or configure
+Agent manually. Manager returns a one-command Agent bootstrap instruction from
+`POST /api/v1/servers/{server_id}/registration-token`. The Agent-only installer
+validates the Ubuntu/systemd target, verifies the selected release bundle
+checksum, writes the token with mode `0600`, starts the systemd service, and
+waits for the token exchange. The raw token is never persisted by Manager.
+
 Registration and heartbeat include Agent build and protocol metadata:
 
 ```json

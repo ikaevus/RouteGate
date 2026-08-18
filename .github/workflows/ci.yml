@@ -107,8 +107,10 @@ jobs:
         run: |
           bash -n \
             install.sh \
+            install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh
 
@@ -116,13 +118,16 @@ jobs:
         run: |
           shellcheck -x \
             install.sh \
+            install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh
 
       - name: Run installer unit tests
         run: |
+          bash scripts/test-agent-installer.sh
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
 

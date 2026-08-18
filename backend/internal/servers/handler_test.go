@@ -214,6 +214,7 @@ func TestCreateRegistrationTokenStoresOnlyHash(t *testing.T) {
 	handler := testHandler(serverRepository, tokenRepository)
 	fixedNow := time.Date(2026, time.June, 11, 12, 0, 0, 0, time.UTC)
 	handler.now = func() time.Time { return fixedNow }
+	handler.publicURL = "https://manager.routegate.example"
 	handler.generateRegistrationToken = func() (string, error) { return "rg_reg_raw-secret", nil }
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/registration-token", nil)
 	request.SetPathValue("server_id", "server-id")
@@ -244,6 +245,9 @@ func TestCreateRegistrationTokenStoresOnlyHash(t *testing.T) {
 	}
 	if payload.ServerID != "server-id" || !payload.ExpiresAt.Equal(wantExpiry) {
 		t.Fatalf("unexpected response: %+v", payload)
+	}
+	if payload.ManagerURL != "https://manager.routegate.example" || !strings.Contains(payload.BootstrapCommand, "install-agent.sh") || !strings.Contains(payload.BootstrapCommand, "rg_reg_raw-secret") {
+		t.Fatalf("bootstrap response is incomplete: %+v", payload)
 	}
 }
 

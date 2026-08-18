@@ -49,7 +49,8 @@ type UpdateProtocolSettingsRequest struct {
 
 type ServerResponse struct {
 	Server
-	Agent *agents.Agent `json:"agent,omitempty"`
+	Agent     *agents.Agent         `json:"agent,omitempty"`
+	Inventory NodeInventorySummary `json:"inventory"`
 }
 
 type ListServersResponse struct {
@@ -64,6 +65,8 @@ type RegistrationTokenResponse struct {
 	ServerID          string    `json:"serverId"`
 	RegistrationToken string    `json:"registrationToken"`
 	ExpiresAt         time.Time `json:"expiresAt"`
+	ManagerURL        string    `json:"managerUrl,omitempty"`
+	BootstrapCommand  string    `json:"bootstrapCommand,omitempty"`
 }
 
 type ProtocolSettingsResponse struct {
@@ -83,10 +86,11 @@ type ProtocolSettingsResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-func newServerResponse(server ServerWithAgent) ServerResponse {
+func newServerResponse(server ServerWithAgent, now time.Time) ServerResponse {
 	return ServerResponse{
-		Server: server.Server,
-		Agent:  server.Agent,
+		Server:    server.Server,
+		Agent:     server.Agent,
+		Inventory: newNodeInventorySummary(server, now),
 	}
 }
 

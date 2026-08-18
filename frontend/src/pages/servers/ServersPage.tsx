@@ -34,6 +34,19 @@ function deploymentRoleLabel(role: Server['deploymentRole']): string {
   }
 }
 
+function connectionStateLabel(state: Server['inventory']['connectionState']): string {
+  switch (state) {
+    case 'not_applicable':
+      return t('servers.connection.notApplicable');
+    case 'awaiting_agent':
+      return t('servers.connection.awaitingAgent');
+    case 'online':
+      return t('servers.connection.online');
+    default:
+      return t('servers.connection.offline');
+  }
+}
+
 function isValidIpAddress(value: string): boolean {
   const candidate = value.trim();
   const ipv4Parts = candidate.split('.');
@@ -88,11 +101,10 @@ function ServerRow({ server }: { server: Server }) {
         <StatusBadge status={server.status} />
       </div>
       <div>
-        {server.agent ? (
-          <StatusBadge status={server.agent.status} />
-        ) : (
-          <span className="muted-text">{t('common.notAvailable')}</span>
-        )}
+        <StatusBadge
+          status={server.inventory.connectionState}
+          label={connectionStateLabel(server.inventory.connectionState)}
+        />
       </div>
       <div>{formatValue(server.agent?.agentVersion)}</div>
       <div>{formatDate(server.agent?.lastSeenAt)}</div>
@@ -316,7 +328,7 @@ export function ServersPage() {
               <div>{t('servers.location')}</div>
               <div>{t('servers.publicIp')}</div>
               <div>{t('servers.status')}</div>
-              <div>{t('servers.agent')}</div>
+              <div>{t('servers.connection')}</div>
               <div>{t('servers.version')}</div>
               <div>{t('servers.lastSeen')}</div>
               <div>{t('servers.created')}</div>
