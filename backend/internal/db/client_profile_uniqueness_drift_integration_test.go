@@ -122,7 +122,7 @@ func TestClientProfileUniquenessRepairMigrationRepairsHistoricalDrift(t *testing
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000123_server_geography" {
-		t.Fatalf("applied schema version = %q, want 000123_server_geography", version)
+	if version != "000124_node_deployment_roles" {
+		t.Fatalf("applied schema version = %q, want 000124_node_deployment_roles", version)
 	}
 }

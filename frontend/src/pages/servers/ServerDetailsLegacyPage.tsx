@@ -46,6 +46,19 @@ function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : '—';
 }
 
+function deploymentRoleLabel(role: string): string {
+  switch (role) {
+    case 'management':
+      return t('servers.deploymentRole.management');
+    case 'vpn':
+      return t('servers.deploymentRole.vpn');
+    case 'hybrid':
+      return t('servers.deploymentRole.hybrid');
+    default:
+      return formatValue(role);
+  }
+}
+
 function formatCapabilities(capabilities?: Record<string, unknown> | null): string {
   if (!capabilities || Object.keys(capabilities).length === 0) {
     return '—';
@@ -800,6 +813,7 @@ export function ServerDetailsPage() {
           ) : (
             <div className="detail-list">
               <DetailRow label={t('serverDetails.labelName')}>{formatValue(server.name)}</DetailRow>
+              <DetailRow label={t('serverDetails.labelDeploymentRole')}>{deploymentRoleLabel(server.deploymentRole)}</DetailRow>
               <DetailRow label={t('serverDetails.labelDescription')}>{formatValue(server.description)}</DetailRow>
               <DetailRow label={t('serverDetails.labelProvider')}>{formatValue(server.provider)}</DetailRow>
               <DetailRow label={t('serverDetails.labelLocation')}>{formatValue(server.location)}</DetailRow>

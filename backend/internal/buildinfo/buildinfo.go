@@ -4,7 +4,7 @@ const (
 	AgentProtocolVersion                  = 1
 	MinimumSupportedAgentProtocolVersion = 1
 	RecommendedAgentVersion              = "dev"
-	ExpectedDatabaseSchemaVersion        = 123
+	ExpectedDatabaseSchemaVersion        = 124
 	WebUIVersion                         = "dev"
 	UpdateStatus                         = "manual"
 	UpdateChannel                        = "development"

@@ -327,6 +327,12 @@ EOF_AGENT_TEST
   ROUTEGATE_AGENT_CONFIG="$original_config"
 }
 
+test_all_in_one_role_contract() {
+  assert_true \
+    "All-in-One installer creates a Hybrid Node" \
+    grep -Fq 'deploymentRole:"hybrid"' "$ROOT_DIR/install.sh"
+}
+
 test_conflict_recommendations() {
   local postgres nginx ports prometheus
   postgres=$(conflict_recommendations postgresql)
@@ -366,6 +372,7 @@ test_prometheus_dependency_and_security_contract
 test_confirmation_prompt
 test_success_output
 test_agent_credentials_detection
+test_all_in_one_role_contract
 test_conflict_recommendations
 test_conflict_collection
 printf '1..%d\n' "$TESTS_RUN"

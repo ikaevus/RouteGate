@@ -99,6 +99,20 @@ func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 	if got := vpnCore["type"]; got != "sing-box" {
 		t.Fatalf("expected sing-box core type, got %v", got)
 	}
+	routeGate, ok := capabilities["routegate"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected versioned RouteGate platform capability, got %#v", capabilities["routegate"])
+	}
+	if got := routeGate["schemaVersion"]; got != platformCapabilitySchemaVersion {
+		t.Fatalf("platform capability schemaVersion = %#v, want %d", got, platformCapabilitySchemaVersion)
+	}
+	adapters, ok := routeGate["vpnCoreAdapters"].([]map[string]any)
+	if !ok || len(adapters) != 1 {
+		t.Fatalf("unexpected managed VPN Core adapters: %#v", routeGate["vpnCoreAdapters"])
+	}
+	if adapters[0]["core"] != "sing-box" || adapters[0]["protocol"] != "vless" {
+		t.Fatalf("unexpected managed adapter: %#v", adapters[0])
+	}
 	operations, ok := capabilities["vpnCoreServiceOperations"].([]string)
 	if !ok || len(operations) != 3 || operations[0] != "start" || operations[1] != "stop" || operations[2] != "restart" {
 		t.Fatalf("unexpected VPN Core service operations capability: %#v", capabilities["vpnCoreServiceOperations"])

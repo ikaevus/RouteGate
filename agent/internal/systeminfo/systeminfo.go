@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	vpnCoreCheckTimeout   = 3 * time.Second
-	telemetrySchemaVersion = 1
+	vpnCoreCheckTimeout              = 3 * time.Second
+	telemetrySchemaVersion           = 1
+	platformCapabilitySchemaVersion = 1
 )
 
 type RuntimeMetrics struct {
@@ -219,17 +220,36 @@ func DetectCapabilities() map[string]any {
 
 func detectCapabilities(vpnCore map[string]any) map[string]any {
 	names := []string{"systemctl", "sing-box", "xray", "nft"}
-	caps := make(map[string]any, len(names)+3)
+	caps := make(map[string]any, len(names)+4)
 	for _, name := range names {
 		_, err := exec.LookPath(name)
 		caps[name] = err == nil
 	}
 	caps["vpnCore"] = vpnCore
+	caps["routegate"] = routeGatePlatformCapabilities()
 	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
 	if vpncoreinstall.SupportsCurrentPlatform() {
 		caps["vpnCoreInstallationOperations"] = []string{vpncoreinstall.OperationInstall}
 	}
 	return caps
+}
+
+// routeGatePlatformCapabilities reports what this Agent build can manage. It
+// intentionally differs from binary detection: an installed VPN Core may
+// support more protocols than RouteGate has safe render/apply adapters for.
+func routeGatePlatformCapabilities() map[string]any {
+	return map[string]any{
+		"schemaVersion":    platformCapabilitySchemaVersion,
+		"nodeCapabilities": []string{"vpn"},
+		"vpnCoreAdapters": []map[string]any{
+			{
+				"core":          "sing-box",
+				"protocol":      "vless",
+				"transports":    []string{"tcp"},
+				"securityModes": []string{"none", "reality"},
+			},
+		},
+	}
 }
 
 func detectVPNCore() map[string]any {

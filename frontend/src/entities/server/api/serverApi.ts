@@ -1,5 +1,7 @@
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../../shared/api/client';
 
+export type DeploymentRole = 'management' | 'vpn' | 'hybrid';
+
 export interface ServerAgent {
   id: string;
   hostname?: string | null;
@@ -123,6 +125,7 @@ export interface AssignServerRoutingProfileRequest {
 export interface Server {
   id: string;
   name: string;
+  deploymentRole: DeploymentRole;
   description?: string | null;
   location?: string | null;
   provider?: string | null;
@@ -140,6 +143,7 @@ export interface ListServersResponse {
 
 export interface CreateServerRequest {
   name: string;
+  deploymentRole?: DeploymentRole;
   description?: string;
   location?: string;
   provider?: string;

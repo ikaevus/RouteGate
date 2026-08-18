@@ -22,16 +22,17 @@ const (
 const defaultVLESSPort = 443
 
 type Server struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Location    string    `json:"location,omitempty"`
-	Provider    string    `json:"provider,omitempty"`
-	PublicIP    string    `json:"publicIp,omitempty"`
-	PrivateIP   string    `json:"privateIp,omitempty"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	DeploymentRole string    `json:"deploymentRole"`
+	Description    string    `json:"description,omitempty"`
+	Location       string    `json:"location,omitempty"`
+	Provider       string    `json:"provider,omitempty"`
+	PublicIP       string    `json:"publicIp,omitempty"`
+	PrivateIP      string    `json:"privateIp,omitempty"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 
 	LocationCountry   string   `json:"locationCountry,omitempty"`
 	LocationRegion    string   `json:"locationRegion,omitempty"`
@@ -62,13 +63,14 @@ type RealityKeypair struct {
 }
 
 type CreateServerInput struct {
-	Name        string
-	Description string
-	Location    string
-	Provider    string
-	PublicIP    string
-	PrivateIP   string
-	Status      string
+	Name           string
+	DeploymentRole string
+	Description    string
+	Location       string
+	Provider       string
+	PublicIP       string
+	PrivateIP      string
+	Status         string
 }
 
 type UpdateServerInput struct {
@@ -105,12 +107,13 @@ type UpdateRealityKeypairInput struct {
 }
 
 type ServerFilter struct {
-	Status   string
-	Provider string
-	Location string
-	Search   string
-	Limit    int
-	Offset   int
+	Status         string
+	DeploymentRole string
+	Provider       string
+	Location       string
+	Search         string
+	Limit          int
+	Offset         int
 }
 
 type ServerWithAgent struct {

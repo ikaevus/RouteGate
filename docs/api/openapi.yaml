@@ -650,7 +650,7 @@ components:
 
     Server:
       type: object
-      required: [id, name, hostname, publicIp, location, provider, status, createdAt]
+      required: [id, name, deploymentRole, status, createdAt]
       properties:
         id:
           type: string
@@ -658,6 +658,10 @@ components:
         name:
           type: string
           example: Demo Finland VPS
+        deploymentRole:
+          type: string
+          enum: [management, vpn, hybrid]
+          example: hybrid
         hostname:
           type: string
           example: fi-demo.routegate.local
@@ -684,6 +688,10 @@ components:
         name:
           type: string
           example: My VPS
+        deploymentRole:
+          type: string
+          enum: [management, vpn, hybrid]
+          default: vpn
         hostname:
           type: string
           example: vps.example.local
@@ -849,8 +857,8 @@ components:
         database:
           type: object
           properties:
-            expectedSchemaVersion: { type: integer, example: 102 }
-            appliedSchemaVersion: { type: string, example: "000102_agent_protocol_version" }
+            expectedSchemaVersion: { type: integer, example: 124 }
+            appliedSchemaVersion: { type: string, example: "000124_node_deployment_roles" }
         agentCompatibility:
           type: object
           properties:

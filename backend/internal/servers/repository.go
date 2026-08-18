@@ -27,28 +27,33 @@ func (r *Repository) CreateServer(ctx context.Context, input CreateServerInput) 
 	if status == "" {
 		status = StatusPending
 	}
+	deploymentRole := input.DeploymentRole
+	if deploymentRole == "" {
+		deploymentRole = "vpn"
+	}
 	return scanServer(r.pool.QueryRow(ctx, `
 		INSERT INTO servers (
-			name, description, location, provider, public_ip, private_ip, status
+			name, deployment_role, description, location, provider, public_ip, private_ip, status
 		)
 		VALUES (
-			$1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''),
-			NULLIF($5, '')::inet, NULLIF($6, '')::inet, $7
+			$1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''),
+			NULLIF($6, '')::inet, NULLIF($7, '')::inet, $8
 		)
 		RETURNING `+serverColumns+`
-	`, input.Name, input.Description, input.Location, input.Provider, input.PublicIP, input.PrivateIP, status))
+	`, input.Name, deploymentRole, input.Description, input.Location, input.Provider, input.PublicIP, input.PrivateIP, status))
 }
 
 func (r *Repository) ListServers(ctx context.Context, filter ServerFilter) ([]Server, error) {
 	rows, err := r.pool.Query(ctx, serverSelect+`
 		WHERE ($1 = '' OR status = $1)
-		  AND ($2 = '' OR provider = $2)
-		  AND ($3 = '' OR location = $3)
-		  AND ($4 = '' OR name ILIKE '%' || $4 || '%')
+		  AND ($2 = '' OR deployment_role = $2)
+		  AND ($3 = '' OR provider = $3)
+		  AND ($4 = '' OR location = $4)
+		  AND ($5 = '' OR name ILIKE '%' || $5 || '%')
 		ORDER BY created_at DESC
-		LIMIT CASE WHEN $5 > 0 THEN $5 ELSE 100 END
-		OFFSET CASE WHEN $6 > 0 THEN $6 ELSE 0 END
-	`, filter.Status, filter.Provider, filter.Location, filter.Search, filter.Limit, filter.Offset)
+		LIMIT CASE WHEN $6 > 0 THEN $6 ELSE 100 END
+		OFFSET CASE WHEN $7 > 0 THEN $7 ELSE 0 END
+	`, filter.Status, filter.DeploymentRole, filter.Provider, filter.Location, filter.Search, filter.Limit, filter.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -199,13 +204,14 @@ func (r *Repository) GetServerWithAgent(ctx context.Context, serverID string) (S
 func (r *Repository) ListServersWithAgent(ctx context.Context, filter ServerFilter) ([]ServerWithAgent, error) {
 	rows, err := r.pool.Query(ctx, serverWithAgentSelect+`
 		WHERE ($1 = '' OR s.status = $1)
-		  AND ($2 = '' OR s.provider = $2)
-		  AND ($3 = '' OR s.location = $3)
-		  AND ($4 = '' OR s.name ILIKE '%' || $4 || '%')
+		  AND ($2 = '' OR s.deployment_role = $2)
+		  AND ($3 = '' OR s.provider = $3)
+		  AND ($4 = '' OR s.location = $4)
+		  AND ($5 = '' OR s.name ILIKE '%' || $5 || '%')
 		ORDER BY s.created_at DESC
-		LIMIT CASE WHEN $5 > 0 THEN $5 ELSE 100 END
-		OFFSET CASE WHEN $6 > 0 THEN $6 ELSE 0 END
-	`, filter.Status, filter.Provider, filter.Location, filter.Search, filter.Limit, filter.Offset)
+		LIMIT CASE WHEN $6 > 0 THEN $6 ELSE 100 END
+		OFFSET CASE WHEN $7 > 0 THEN $7 ELSE 0 END
+	`, filter.Status, filter.DeploymentRole, filter.Provider, filter.Location, filter.Search, filter.Limit, filter.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +265,7 @@ func (r *Repository) SeedDemo(ctx context.Context) error {
 const serverColumns = `
 	id::text,
 	name,
+	deployment_role,
 	COALESCE(description, ''),
 	COALESCE(location, ''),
 	COALESCE(provider, ''),
@@ -281,6 +288,7 @@ const serverWithAgentSelect = `
 	SELECT
 		s.id::text,
 		s.name,
+		s.deployment_role,
 		COALESCE(s.description, ''),
 		COALESCE(s.location, ''),
 		COALESCE(s.provider, ''),
@@ -324,6 +332,7 @@ func scanServer(row scanner) (Server, error) {
 	err := row.Scan(
 		&server.ID,
 		&server.Name,
+		&server.DeploymentRole,
 		&server.Description,
 		&server.Location,
 		&server.Provider,
@@ -363,6 +372,7 @@ func scanServerWithAgent(row scanner) (ServerWithAgent, error) {
 	err := row.Scan(
 		&result.Server.ID,
 		&result.Server.Name,
+		&result.Server.DeploymentRole,
 		&result.Server.Description,
 		&result.Server.Location,
 		&result.Server.Provider,

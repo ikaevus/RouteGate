@@ -74,6 +74,7 @@ func TestCreateServerMapsAdminRequest(t *testing.T) {
 	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers", strings.NewReader(`{
 		"name":"  fi-01  ",
+		"deploymentRole":"vpn",
 		"description":"Finland VPS",
 		"location":"Finland",
 		"provider":"Hostkey",
@@ -90,11 +91,46 @@ func TestCreateServerMapsAdminRequest(t *testing.T) {
 	if repository.createInput.Name != "fi-01" {
 		t.Fatalf("name = %q, want fi-01", repository.createInput.Name)
 	}
+	if repository.createInput.DeploymentRole != "vpn" {
+		t.Fatalf("deployment role = %q, want vpn", repository.createInput.DeploymentRole)
+	}
 	if repository.createInput.Description != "Finland VPS" || repository.createInput.PrivateIP != "" {
 		t.Fatalf("unexpected create input: %+v", repository.createInput)
 	}
 	if repository.createInput.Status != "" {
 		t.Fatalf("status = %q, want empty so repository applies pending default", repository.createInput.Status)
+	}
+}
+
+func TestCreateServerDefaultsToVPNNode(t *testing.T) {
+	repository := &fakeServerRepository{created: Server{ID: "server-id", Name: "fi-01", DeploymentRole: "vpn", Status: StatusPending}}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers", strings.NewReader(`{"name":"fi-01","publicIp":"203.0.113.10"}`))
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusCreated, response.Body.String())
+	}
+	if repository.createInput.DeploymentRole != "vpn" {
+		t.Fatalf("deployment role = %q, want vpn", repository.createInput.DeploymentRole)
+	}
+}
+
+func TestCreateServerRejectsInvalidDeploymentRole(t *testing.T) {
+	repository := &fakeServerRepository{}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers", strings.NewReader(`{"name":"root-01","deploymentRole":"root","publicIp":"203.0.113.10"}`))
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+	if repository.createInput.Name != "" {
+		t.Fatalf("invalid role must not reach repository: %+v", repository.createInput)
 	}
 }
 
@@ -173,7 +209,7 @@ func TestLegacyGetReturnsNotFound(t *testing.T) {
 }
 
 func TestCreateRegistrationTokenStoresOnlyHash(t *testing.T) {
-	serverRepository := &fakeServerRepository{getByID: Server{ID: "server-id"}}
+	serverRepository := &fakeServerRepository{getByID: Server{ID: "server-id", DeploymentRole: "vpn"}}
 	tokenRepository := &fakeRegistrationTokenRepository{}
 	handler := testHandler(serverRepository, tokenRepository)
 	fixedNow := time.Date(2026, time.June, 11, 12, 0, 0, 0, time.UTC)
@@ -208,6 +244,24 @@ func TestCreateRegistrationTokenStoresOnlyHash(t *testing.T) {
 	}
 	if payload.ServerID != "server-id" || !payload.ExpiresAt.Equal(wantExpiry) {
 		t.Fatalf("unexpected response: %+v", payload)
+	}
+}
+
+func TestCreateRegistrationTokenRejectsManagementNode(t *testing.T) {
+	serverRepository := &fakeServerRepository{getByID: Server{ID: "server-id", DeploymentRole: "management"}}
+	tokenRepository := &fakeRegistrationTokenRepository{}
+	handler := testHandler(serverRepository, tokenRepository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/registration-token", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.CreateRegistrationToken(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusConflict, response.Body.String())
+	}
+	if tokenRepository.input.ServerID != "" {
+		t.Fatalf("management node must not receive an Agent registration token: %+v", tokenRepository.input)
 	}
 }
 
@@ -277,7 +331,7 @@ func testHandler(servers serverRepository, tokens registrationTokenRepository) *
 func TestListFlattensServerFieldsAndIncludesAgent(t *testing.T) {
 	repository := &fakeServerRepository{
 		list: []ServerWithAgent{{
-			Server: Server{ID: "server-id", Name: "fi-01", Status: StatusActive},
+			Server: Server{ID: "server-id", Name: "fi-01", DeploymentRole: "hybrid", Status: StatusActive},
 			Agent: &agents.Agent{
 				ID:           "agent-id",
 				Hostname:     "fi-01.example",
@@ -306,6 +360,9 @@ func TestListFlattensServerFieldsAndIncludesAgent(t *testing.T) {
 	}
 	if items[0]["id"] != "server-id" || items[0]["name"] != "fi-01" {
 		t.Fatalf("server fields are not at the item top level: %v", items[0])
+	}
+	if items[0]["deploymentRole"] != "hybrid" {
+		t.Fatalf("deployment role missing from response: %v", items[0])
 	}
 	if _, nested := items[0]["server"]; nested {
 		t.Fatalf("response unexpectedly nests server fields: %v", items[0])

@@ -66,6 +66,7 @@ type ValidationResult struct {
 type ServerConfigInfo struct {
 	ID                string
 	Name              string
+	DeploymentRole    string
 	Hostname          string
 	PublicIP          string
 	PrivateIP         string
@@ -136,14 +137,15 @@ type RenderedConfig struct {
 }
 
 type ConfigServer struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Hostname  string `json:"hostname,omitempty"`
-	PublicIP  string `json:"publicIp,omitempty"`
-	PrivateIP string `json:"privateIp,omitempty"`
-	Location  string `json:"location,omitempty"`
-	Provider  string `json:"provider,omitempty"`
-	Status    string `json:"status"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	DeploymentRole string `json:"deploymentRole"`
+	Hostname       string `json:"hostname,omitempty"`
+	PublicIP       string `json:"publicIp,omitempty"`
+	PrivateIP      string `json:"privateIp,omitempty"`
+	Location       string `json:"location,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	Status         string `json:"status"`
 }
 
 type ConfigAgent struct {

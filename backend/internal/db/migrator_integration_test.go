@@ -42,8 +42,20 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000123_server_geography" {
-		t.Fatalf("applied schema version = %q, want 000123_server_geography", version)
+	if version != "000124_node_deployment_roles" {
+		t.Fatalf("applied schema version = %q, want 000124_node_deployment_roles", version)
+	}
+
+	var deploymentRoleDefault string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO servers (name, status)
+		VALUES ('RG-114 role default fixture', 'pending')
+		RETURNING deployment_role
+	`).Scan(&deploymentRoleDefault); err != nil {
+		t.Fatalf("create default-role server: %v", err)
+	}
+	if deploymentRoleDefault != "vpn" {
+		t.Fatalf("new server deployment role = %q, want vpn", deploymentRoleDefault)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -308,12 +320,20 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 		t.Fatalf("runtime collectedAt = %s, want %s", runtimeTime.UTC().Format(time.RFC3339), collectedAt)
 	}
 
+	var migratedDeploymentRole string
+	if err := pool.QueryRow(ctx, `SELECT deployment_role FROM servers WHERE id = $1::uuid`, serverID).Scan(&migratedDeploymentRole); err != nil {
+		t.Fatalf("read migrated deployment role: %v", err)
+	}
+	if migratedDeploymentRole != "hybrid" {
+		t.Fatalf("pre-RG-114 server deployment role = %q, want hybrid", migratedDeploymentRole)
+	}
+
 	version, err := NewSchemaVersionRepository(pool).AppliedSchemaVersion(ctx)
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000123_server_geography" {
-		t.Fatalf("applied schema version = %q, want 000123_server_geography", version)
+	if version != "000124_node_deployment_roles" {
+		t.Fatalf("applied schema version = %q, want 000124_node_deployment_roles", version)
 	}
 }
 

@@ -23,6 +23,17 @@ function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : t('common.notAvailable');
 }
 
+function deploymentRoleLabel(role: Server['deploymentRole']): string {
+  switch (role) {
+    case 'management':
+      return t('servers.deploymentRole.management');
+    case 'hybrid':
+      return t('servers.deploymentRole.hybrid');
+    default:
+      return t('servers.deploymentRole.vpn');
+  }
+}
+
 function isValidIpAddress(value: string): boolean {
   const candidate = value.trim();
   const ipv4Parts = candidate.split('.');
@@ -69,6 +80,7 @@ function ServerRow({ server }: { server: Server }) {
         <strong className="text-link">{formatValue(server.name)}</strong>
         <span>{formatValue(server.description)}</span>
       </div>
+      <div>{deploymentRoleLabel(server.deploymentRole)}</div>
       <div>{formatValue(server.provider)}</div>
       <div>{formatValue(server.location)}</div>
       <div>{formatValue(server.publicIp)}</div>
@@ -112,6 +124,7 @@ export function ServersPage() {
   const createServerMutation = useMutation({
     mutationFn: () => createServer({
       name: name.trim(),
+      deploymentRole: 'vpn',
       provider: provider.trim() || undefined,
       location: location.trim() || undefined,
       publicIp: publicIp.trim(),
@@ -298,6 +311,7 @@ export function ServersPage() {
           <div className="table servers-table">
             <div className="table-row table-head servers-table-row">
               <div>{t('servers.name')}</div>
+              <div>{t('servers.deploymentRole')}</div>
               <div>{t('servers.provider')}</div>
               <div>{t('servers.location')}</div>
               <div>{t('servers.publicIp')}</div>

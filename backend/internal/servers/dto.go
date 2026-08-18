@@ -7,12 +7,13 @@ import (
 )
 
 type CreateServerRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Location    string `json:"location"`
-	Provider    string `json:"provider"`
-	PublicIP    string `json:"publicIp"`
-	PrivateIP   string `json:"privateIp"`
+	Name           string `json:"name"`
+	DeploymentRole string `json:"deploymentRole,omitempty"`
+	Description    string `json:"description"`
+	Location       string `json:"location"`
+	Provider       string `json:"provider"`
+	PublicIP       string `json:"publicIp"`
+	PrivateIP      string `json:"privateIp"`
 
 	// Hostname is accepted for backwards compatibility with the legacy admin API.
 	Hostname string `json:"hostname,omitempty"`
