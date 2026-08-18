@@ -54,6 +54,34 @@ func BuildClientConnection(ctx context.Context, source ClientConnectionSource, a
 			Network:      "quic",
 		}, nil
 	}
+	if subscription.Server.VPNProtocol == "shadowsocks" {
+		uri, renderErr := RenderShadowsocksClientURI(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format:       "shadowsocks-uri",
+			ShadowsocksURI: uri,
+			Profile:      profile,
+			Endpoint:     subscriptionServerEndpoint(subscription.Server),
+			Network:      "tcp",
+		}, nil
+	}
+	if subscription.Server.VPNProtocol == "mtproto" {
+		uri, renderErr := RenderMTProtoClientURI(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format:       "mtproto-uri",
+			MTProtoURI:   uri,
+			Profile:      profile,
+			Endpoint:     subscriptionServerEndpoint(subscription.Server),
+			Network:      "tcp",
+		}, nil
+	}
 	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)
 	if err != nil {
 		return ClientConnectionResponse{}, err

@@ -29,6 +29,15 @@ started without a validated config. The Hysteria2 adapter itself is restricted
 to dedicated VPN Nodes because the All-in-One Hybrid Node's nginx already owns
 the HTTP-01 listener on TCP 80.
 
+### RG-114G MTProto runtime
+
+The All-in-One and remote VPN Node installers also install the pinned mtg 2.2.8
+runtime for amd64 or arm64. They verify the upstream SHA-256 checksum before
+extraction, reject unsafe archive layouts, refuse to replace unmanaged mtg
+files, and install the hardened `routegate-mtproto.service`. The service is
+enabled but cannot start successfully until the Agent applies a validated
+`/etc/routegate-mtproto/config.toml`.
+
 ## Canonical product flow
 
 ```text

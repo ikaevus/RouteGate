@@ -6,10 +6,13 @@ const (
 	VPNCoreSingBox   = "sing-box"
 	VPNCoreWireGuard = "wireguard"
 	VPNCoreHysteria  = "hysteria"
+	VPNCoreMTG       = "mtg"
 
 	VPNProtocolVLESS     = "vless"
 	VPNProtocolWireGuard = "wireguard"
 	VPNProtocolHysteria2 = "hysteria2"
+	VPNProtocolShadowsocks = "shadowsocks"
+	VPNProtocolMTProto     = "mtproto"
 
 	VPNTransportTCP = "tcp"
 	VPNTransportUDP = "udp"
@@ -19,6 +22,8 @@ const (
 	VPNSecurityReality = "reality"
 	VPNSecurityWireGuard = "wireguard"
 	VPNSecurityTLS       = "tls"
+	VPNSecurityAEAD2022  = "aead-2022"
+	VPNSecurityFakeTLS   = "faketls"
 )
 
 // VPNCoreAdapterDescriptor is the Agent-side declaration of a complete
@@ -50,6 +55,18 @@ func ManagedVPNCoreAdapters() []VPNCoreAdapterDescriptor {
 			Protocol:      VPNProtocolHysteria2,
 			Transports:    []string{VPNTransportQUIC},
 			SecurityModes: []string{VPNSecurityTLS},
+		},
+		{
+			Core:          VPNCoreSingBox,
+			Protocol:      VPNProtocolShadowsocks,
+			Transports:    []string{VPNTransportTCP},
+			SecurityModes: []string{VPNSecurityAEAD2022},
+		},
+		{
+			Core:          VPNCoreMTG,
+			Protocol:      VPNProtocolMTProto,
+			Transports:    []string{VPNTransportTCP},
+			SecurityModes: []string{VPNSecurityFakeTLS},
 		},
 	}
 }

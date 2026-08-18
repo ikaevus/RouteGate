@@ -185,6 +185,20 @@ Hybrid-node certificate coordination remains explicit future work.
 8. **RG-114H — Node Groups, Balancing Targets & Routing Extensions**
 9. **RG-114I — Automatic Selection Foundation**
 
+## Native Shadowsocks and MTProto adapters
+
+RG-114G adds two explicit compositions to the same adapter boundary:
+
+- `sing-box / shadowsocks / tcp / aead-2022`, with a server PSK plus a distinct
+  account PSK and a standard `ss://` client representation;
+- `mtg / mtproto / tcp / faketls`, with a node-shared FakeTLS secret, dedicated
+  service/config ownership, and a standard Telegram `tg://proxy` link.
+
+The descriptors do not imply interchangeable runtimes. Shadowsocks deliberately
+reuses the sing-box storage and service lifecycle, while MTProto uses separate
+staging, active config, backups, binary detection, systemd service, and health
+checks. See [ADR-0007](../decisions/ADR-0007-shadowsocks-mtproto-adapters.md).
+
 Exact slice names may evolve, but dependency order should remain: role and
 capability contracts before distributed onboarding; adapter boundary before new
 protocol implementations; explicit health signals before automatic selection.

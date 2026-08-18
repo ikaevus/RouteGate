@@ -1,7 +1,10 @@
 package vpnaccounts
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -248,5 +251,49 @@ func TestRenderHysteria2ClientURI(t *testing.T) {
 	if err != nil { t.Fatalf("render Hysteria2 URI: %v", err) }
 	for _, expected := range []string{"hysteria2://", "22222222-2222-2222-2222-222222222222", "vpn.example.com:443", "sni=vpn.example.com"} {
 		if !strings.Contains(uri, expected) { t.Fatalf("Hysteria2 URI missing %q: %s", expected, uri) }
+	}
+}
+
+func TestRenderShadowsocksClientURI(t *testing.T) {
+	serverKey := base64.StdEncoding.EncodeToString([]byte("server-key-16byt"))
+	userKey := base64.StdEncoding.EncodeToString([]byte("user-key-16-byts"))
+	uri, err := RenderShadowsocksClientURI(SubscriptionProfile{
+		Account: Account{DisplayName: "Alice"},
+		Server: &SubscriptionServer{
+			VPNProtocol: "shadowsocks", PublicIP: "203.0.113.10", ShadowsocksPort: 8388,
+			ShadowsocksMethod: "2022-blake3-aes-128-gcm", ShadowsocksServerKey: serverKey,
+		},
+		Credentials: SubscriptionCredentials{Shadowsocks: ShadowsocksCredentials{UserKey: userKey}},
+	})
+	if err != nil {
+		t.Fatalf("render Shadowsocks URI: %v", err)
+	}
+	for _, expected := range []string{"ss://2022-blake3-aes-128-gcm:", "203.0.113.10:8388", "#Alice"} {
+		if !strings.Contains(uri, expected) {
+			t.Fatalf("Shadowsocks URI missing %q: %s", expected, uri)
+		}
+	}
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.User == nil {
+		t.Fatalf("parse Shadowsocks URI: %v", err)
+	}
+	password, ok := parsed.User.Password()
+	if !ok || password != serverKey+":"+userKey {
+		t.Fatalf("Shadowsocks URI does not contain the chained PSKs")
+	}
+}
+
+func TestRenderMTProtoClientURI(t *testing.T) {
+	secret := "ee" + strings.Repeat("ab", 16) + hex.EncodeToString([]byte("www.cloudflare.com"))
+	uri, err := RenderMTProtoClientURI(SubscriptionProfile{
+		Server: &SubscriptionServer{VPNProtocol: "mtproto", Hostname: "vpn.example.com", MTProtoPort: 8443, MTProtoSecret: secret},
+	})
+	if err != nil {
+		t.Fatalf("render MTProto URI: %v", err)
+	}
+	for _, expected := range []string{"tg://proxy?", "server=vpn.example.com", "port=8443", "secret=" + secret} {
+		if !strings.Contains(uri, expected) {
+			t.Fatalf("MTProto URI missing %q: %s", expected, uri)
+		}
 	}
 }

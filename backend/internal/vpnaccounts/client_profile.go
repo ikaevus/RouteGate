@@ -71,6 +71,8 @@ type ClientConnectionResponse struct {
 	VLESSLink    string        `json:"vlessLink,omitempty"`
 	WireGuardConfig string     `json:"wireGuardConfig,omitempty"`
 	Hysteria2URI string        `json:"hysteria2Uri,omitempty"`
+	ShadowsocksURI string      `json:"shadowsocksUri,omitempty"`
+	MTProtoURI string          `json:"mtprotoUri,omitempty"`
 	Profile      ClientProfile `json:"profile"`
 	Endpoint     string        `json:"endpoint"`
 	ServerName   string        `json:"serverName"`
@@ -280,6 +282,34 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 			Endpoint:     subscription.Server.Hysteria2Domain,
 			ServerName:   subscription.Server.Hysteria2Domain,
 			Network:      "quic",
+		}, nil
+	}
+	if subscription.Server.VPNProtocol == "shadowsocks" {
+		uri, renderErr := RenderShadowsocksClientURI(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format:       "shadowsocks-uri",
+			ShadowsocksURI: uri,
+			Profile:      profile,
+			Endpoint:     subscriptionServerEndpoint(subscription.Server),
+			Network:      "tcp",
+		}, nil
+	}
+	if subscription.Server.VPNProtocol == "mtproto" {
+		uri, renderErr := RenderMTProtoClientURI(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format:       "mtproto-uri",
+			MTProtoURI:   uri,
+			Profile:      profile,
+			Endpoint:     subscriptionServerEndpoint(subscription.Server),
+			Network:      "tcp",
 		}, nil
 	}
 	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)

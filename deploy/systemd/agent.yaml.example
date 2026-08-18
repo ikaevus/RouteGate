@@ -11,6 +11,27 @@ config_backup_dir: "/var/lib/routegate-agent/backups"
 
 sing_box_path: "/usr/bin/sing-box"
 sing_box_service_name: "sing-box"
+
+wireguard_staging_dir: "/var/lib/routegate-agent/wireguard-configs"
+wireguard_active_config_path: "/etc/wireguard/routegate-wg0.conf"
+wireguard_backup_dir: "/var/lib/routegate-agent/wireguard-backups"
+wg_quick_path: "/usr/bin/wg-quick"
+wg_path: "/usr/bin/wg"
+wireguard_service_name: "wg-quick@routegate-wg0"
+wireguard_interface: "routegate-wg0"
+
+hysteria2_staging_dir: "/var/lib/routegate-agent/hysteria2-configs"
+hysteria2_active_config_path: "/etc/hysteria/config.json"
+hysteria2_backup_dir: "/var/lib/routegate-agent/hysteria2-backups"
+hysteria2_path: "/usr/local/bin/hysteria"
+hysteria2_service_name: "hysteria-server"
+ss_path: "/usr/bin/ss"
+
+mtproto_staging_dir: "/var/lib/routegate-agent/mtproto-configs"
+mtproto_active_config_path: "/etc/routegate-mtproto/config.toml"
+mtproto_backup_dir: "/var/lib/routegate-agent/mtproto-backups"
+mtg_path: "/usr/local/bin/mtg"
+mtproto_service_name: "routegate-mtproto"
 service_control_enabled: true
 
 traffic_collection_enabled: false

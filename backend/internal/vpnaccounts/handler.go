@@ -450,7 +450,7 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request, status strin
 
 func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentialsResponse {
 	protocol := "vless"
-	if profile.Server != nil && (profile.Server.VPNProtocol == "wireguard" || profile.Server.VPNProtocol == "hysteria2") {
+	if profile.Server != nil && (profile.Server.VPNProtocol == "wireguard" || profile.Server.VPNProtocol == "hysteria2" || profile.Server.VPNProtocol == "shadowsocks" || profile.Server.VPNProtocol == "mtproto") {
 		protocol = profile.Server.VPNProtocol
 	}
 	response := VLESSRealityCredentialsResponse{
@@ -485,6 +485,23 @@ func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentia
 		response.Hysteria2.Domain = profile.Server.Hysteria2Domain
 		response.Hysteria2.Port = profile.Server.Hysteria2Port
 		response.Hysteria2.ACMEEmail = profile.Server.Hysteria2ACMEEmail
+		if protocol == "shadowsocks" {
+			response.Shadowsocks = AdminShadowsocksCredentials{
+				Username: profile.Credentials.Shadowsocks.Username,
+				Method: profile.Server.ShadowsocksMethod,
+				ServerKey: profile.Server.ShadowsocksServerKey,
+				UserKey: profile.Credentials.Shadowsocks.UserKey,
+				Port: profile.Server.ShadowsocksPort,
+			}
+		}
+		if protocol == "mtproto" {
+			response.MTProto = AdminMTProtoCredentials{
+				Secret: profile.Server.MTProtoSecret,
+				Port: profile.Server.MTProtoPort,
+				FrontingDomain: profile.Server.MTProtoFrontingDomain,
+				Shared: profile.Server.MTProtoSecret != "",
+			}
+		}
 		if profile.Server.VPNProtocol == "hysteria2" {
 			response.Endpoint = profile.Server.Hysteria2Domain
 		}

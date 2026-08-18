@@ -23,12 +23,6 @@ type VPNCoreAdapter interface {
 }
 
 func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter, additional ...VPNCoreAdapter) (VPNCoreAdapter, error) {
-	var hysteria2 VPNCoreAdapter
-	for _, adapter := range additional {
-		if adapter != nil && adapter.Descriptor().Core == platform.VPNCoreHysteria {
-			hysteria2 = adapter
-		}
-	}
 	var envelope struct {
 		Metadata struct {
 			VPNCore struct {
@@ -47,25 +41,35 @@ func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter, addi
 		if vless == nil { return nil, errors.New("VLESS VPN Core adapter is unavailable") }
 		return vless, nil
 	}
-	if descriptor.Core == platform.VPNCoreSingBox && descriptor.Protocol == platform.VPNProtocolVLESS && descriptor.Transport == platform.VPNTransportTCP && (descriptor.Security == platform.VPNSecurityNone || descriptor.Security == platform.VPNSecurityReality) {
-		if vless == nil { return nil, errors.New("VLESS VPN Core adapter is unavailable") }
-		return vless, nil
-	}
-	if descriptor.Core == platform.VPNCoreWireGuard && descriptor.Protocol == platform.VPNProtocolWireGuard && descriptor.Transport == platform.VPNTransportUDP && descriptor.Security == platform.VPNSecurityWireGuard {
-		if wireGuard == nil { return nil, errors.New("WireGuard VPN Core adapter is unavailable") }
-		return wireGuard, nil
-	}
-	if descriptor.Core == platform.VPNCoreHysteria && descriptor.Protocol == platform.VPNProtocolHysteria2 && descriptor.Transport == platform.VPNTransportQUIC && descriptor.Security == platform.VPNSecurityTLS {
-		if hysteria2 == nil { return nil, errors.New("Hysteria2 VPN Core adapter is unavailable") }
-		return hysteria2, nil
+	candidates := append([]VPNCoreAdapter{vless, wireGuard}, additional...)
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		managed := candidate.Descriptor()
+		if managed.Core == descriptor.Core && managed.Protocol == descriptor.Protocol &&
+			containsString(managed.Transports, descriptor.Transport) && containsString(managed.SecurityModes, descriptor.Security) {
+			return candidate, nil
+		}
 	}
 	return nil, errors.New("rendered config selects an unsupported VPN Core adapter")
+}
+
+func containsString(values []string, selected string) bool {
+	for _, value := range values {
+		if value == selected {
+			return true
+		}
+	}
+	return false
 }
 
 type singBoxVLESSAdapter struct {
 	stager    Stager
 	validator Validator
 	service   ServiceController
+	descriptor platform.VPNCoreAdapterDescriptor
+	inboundType string
 }
 
 var _ VPNCoreAdapter = singBoxVLESSAdapter{}
@@ -75,11 +79,21 @@ func NewSingBoxVLESSAdapter(stagingDir, binary, service string) VPNCoreAdapter {
 		stager:    NewStager(stagingDir),
 		validator: NewValidator(binary),
 		service:   NewServiceController(service),
+		descriptor: platform.ManagedVPNCoreAdapters()[0],
+		inboundType: platform.VPNProtocolVLESS,
 	}
 }
 
-func (singBoxVLESSAdapter) Descriptor() platform.VPNCoreAdapterDescriptor {
-	return platform.ManagedVPNCoreAdapters()[0]
+func NewSingBoxShadowsocksAdapter(stagingDir, binary, service string) VPNCoreAdapter {
+	return singBoxVLESSAdapter{
+		stager: NewStager(stagingDir), validator: NewValidator(binary),
+		service: NewServiceController(service), descriptor: platform.ManagedVPNCoreAdapters()[3],
+		inboundType: platform.VPNProtocolShadowsocks,
+	}
+}
+
+func (a singBoxVLESSAdapter) Descriptor() platform.VPNCoreAdapterDescriptor {
+	return a.descriptor
 }
 
 func (a singBoxVLESSAdapter) Stage(task ConfigTask) (StageResult, error) {
@@ -106,6 +120,6 @@ func (a singBoxVLESSAdapter) ExecuteServiceTask(ctx context.Context, task Config
 	return ExecuteServiceTask(ctx, a.service, task)
 }
 
-func (singBoxVLESSAdapter) CheckHealth(ctx context.Context, configPath string) (ListenerHealthResult, error) {
-	return CheckVLESSListener(ctx, configPath)
+func (a singBoxVLESSAdapter) CheckHealth(ctx context.Context, configPath string) (ListenerHealthResult, error) {
+	return CheckSingBoxTCPListener(ctx, configPath, a.inboundType)
 }

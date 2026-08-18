@@ -43,6 +43,8 @@ type VLESSRealityCredentialsResponse struct {
 	Reality     AdminRealityCredentials `json:"reality"`
 	WireGuard   AdminWireGuardCredentials `json:"wireGuard"`
 	Hysteria2   AdminHysteria2Credentials `json:"hysteria2"`
+	Shadowsocks AdminShadowsocksCredentials `json:"shadowsocks"`
+	MTProto     AdminMTProtoCredentials     `json:"mtproto"`
 }
 
 type AdminWireGuardCredentials struct {
@@ -59,6 +61,21 @@ type AdminHysteria2Credentials struct {
 	Domain     string `json:"domain,omitempty"`
 	Port       int    `json:"port,omitempty"`
 	ACMEEmail  string `json:"acmeEmail,omitempty"`
+}
+
+type AdminShadowsocksCredentials struct {
+	Username string `json:"username,omitempty"`
+	Method   string `json:"method,omitempty"`
+	ServerKey string `json:"serverKey,omitempty"`
+	UserKey   string `json:"userKey,omitempty"`
+	Port      int    `json:"port,omitempty"`
+}
+
+type AdminMTProtoCredentials struct {
+	Secret          string `json:"secret,omitempty"`
+	Port            int    `json:"port,omitempty"`
+	FrontingDomain  string `json:"frontingDomain,omitempty"`
+	Shared          bool   `json:"shared"`
 }
 
 type AdminVLESSCredentials struct {

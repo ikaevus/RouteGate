@@ -31,6 +31,8 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			hysteria2_domain = CASE WHEN $24 THEN $25 ELSE hysteria2_domain END,
 			hysteria2_acme_email = CASE WHEN $26 THEN $27 ELSE hysteria2_acme_email END,
 			hysteria2_masquerade_url = CASE WHEN $28 THEN $29 ELSE hysteria2_masquerade_url END,
+			shadowsocks_port = CASE WHEN $30 THEN $31 ELSE shadowsocks_port END,
+			mtproto_port = CASE WHEN $32 THEN $33 ELSE mtproto_port END,
 			protocol_updated_at = now(),
 			updated_at = now()
 		WHERE id = $1::uuid
@@ -51,6 +53,12 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			hysteria2_domain,
 			hysteria2_acme_email,
 			hysteria2_masquerade_url,
+			shadowsocks_port,
+			shadowsocks_method,
+			shadowsocks_server_key,
+			mtproto_port,
+			mtproto_secret,
+			mtproto_fronting_domain,
 			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`,
 		serverID,
@@ -68,6 +76,8 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 		input.Hysteria2Domain != nil, stringValue(input.Hysteria2Domain),
 		input.Hysteria2ACMEEmail != nil, stringValue(input.Hysteria2ACMEEmail),
 		input.Hysteria2MasqueradeURL != nil, stringValue(input.Hysteria2MasqueradeURL),
+		input.ShadowsocksPort != nil, input.ShadowsocksPort,
+		input.MTProtoPort != nil, input.MTProtoPort,
 	))
 }
 
@@ -97,6 +107,12 @@ func (r *Repository) UpdateRealityKeypair(ctx context.Context, serverID string, 
 			hysteria2_domain,
 			hysteria2_acme_email,
 			hysteria2_masquerade_url,
+			shadowsocks_port,
+			shadowsocks_method,
+			shadowsocks_server_key,
+			mtproto_port,
+			mtproto_secret,
+			mtproto_fronting_domain,
 			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
@@ -131,6 +147,12 @@ func (r *Repository) ConfigureRecommendedWireGuard(ctx context.Context, serverID
 			hysteria2_domain,
 			hysteria2_acme_email,
 			hysteria2_masquerade_url,
+			shadowsocks_port,
+			shadowsocks_method,
+			shadowsocks_server_key,
+			mtproto_port,
+			mtproto_secret,
+			mtproto_fronting_domain,
 			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
@@ -153,6 +175,12 @@ const protocolSettingsSelect = `
 		hysteria2_domain,
 		hysteria2_acme_email,
 		hysteria2_masquerade_url,
+		shadowsocks_port,
+		shadowsocks_method,
+		shadowsocks_server_key,
+		mtproto_port,
+		mtproto_secret,
+		mtproto_fronting_domain,
 		GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	FROM servers`
 
@@ -176,6 +204,12 @@ func scanProtocolSettings(row scanner) (ProtocolSettings, error) {
 		&settings.Hysteria2Domain,
 		&settings.Hysteria2ACMEEmail,
 		&settings.Hysteria2MasqueradeURL,
+		&settings.ShadowsocksPort,
+		&settings.ShadowsocksMethod,
+		&settings.ShadowsocksServerKey,
+		&settings.MTProtoPort,
+		&settings.MTProtoSecret,
+		&settings.MTProtoFrontingDomain,
 		&settings.UpdatedAt,
 	)
 	if err != nil {

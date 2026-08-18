@@ -117,11 +117,21 @@ export interface ProtocolSettingsResponse {
 		masqueradeUrl?: string;
 		ready: boolean;
 	};
+	shadowsocks: {
+		port: number;
+		method: string;
+		ready: boolean;
+	};
+	mtproto: {
+		port: number;
+		frontingDomain: string;
+		ready: boolean;
+	};
   updatedAt: string;
 }
 
 export interface UpdateProtocolSettingsRequest {
-	protocol?: 'vless' | 'wireguard' | 'hysteria2';
+	protocol?: 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
   vlessPort: number;
   vlessFlow: string;
   vlessNetwork: string;
@@ -135,6 +145,8 @@ export interface UpdateProtocolSettingsRequest {
 	hysteria2Domain?: string;
 	hysteria2AcmeEmail?: string;
 	hysteria2MasqueradeUrl?: string;
+	shadowsocksPort?: number;
+	mtprotoPort?: number;
 }
 
 export interface ServerRoutingProfile {

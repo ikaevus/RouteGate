@@ -22,9 +22,14 @@ type ListenerHealthResult struct {
 }
 
 func CheckVLESSListener(ctx context.Context, configPath string) (ListenerHealthResult, error) {
-	return checkVLESSListener(
+	return CheckSingBoxTCPListener(ctx, configPath, "vless")
+}
+
+func CheckSingBoxTCPListener(ctx context.Context, configPath, inboundType string) (ListenerHealthResult, error) {
+	return checkSingBoxTCPListener(
 		ctx,
 		configPath,
+		inboundType,
 		defaultListenerHealthTimeout,
 		defaultListenerHealthRetryInterval,
 	)
@@ -36,6 +41,20 @@ func checkVLESSListener(
 	timeout time.Duration,
 	retryInterval time.Duration,
 ) (ListenerHealthResult, error) {
+	return checkSingBoxTCPListener(ctx, configPath, "vless", timeout, retryInterval)
+}
+
+func checkSingBoxTCPListener(
+	ctx context.Context,
+	configPath string,
+	inboundType string,
+	timeout time.Duration,
+	retryInterval time.Duration,
+) (ListenerHealthResult, error) {
+	inboundType = strings.ToLower(strings.TrimSpace(inboundType))
+	if inboundType == "" {
+		return ListenerHealthResult{}, fmt.Errorf("sing-box inbound type is required")
+	}
 	payload, err := os.ReadFile(strings.TrimSpace(configPath))
 	if err != nil {
 		return ListenerHealthResult{}, fmt.Errorf("read active sing-box config: %w", err)
@@ -51,7 +70,7 @@ func checkVLESSListener(
 	port := 0
 	for _, inbound := range config.Inbounds {
 		typeName, _ := inbound["type"].(string)
-		if !strings.EqualFold(strings.TrimSpace(typeName), "vless") {
+		if !strings.EqualFold(strings.TrimSpace(typeName), inboundType) {
 			continue
 		}
 		switch value := inbound["listen_port"].(type) {
@@ -68,8 +87,12 @@ func checkVLESSListener(
 		break
 	}
 	if port < 1 || port > 65535 {
-		return ListenerHealthResult{}, fmt.Errorf("active sing-box config has no valid VLESS listen_port")
+		return ListenerHealthResult{}, fmt.Errorf("active sing-box config has no valid %s listen_port", inboundType)
 	}
+	return checkTCPListenerPort(ctx, port, inboundType, timeout, retryInterval)
+}
+
+func checkTCPListenerPort(ctx context.Context, port int, label string, timeout, retryInterval time.Duration) (ListenerHealthResult, error) {
 	if timeout <= 0 {
 		timeout = defaultListenerHealthTimeout
 	}
@@ -115,5 +138,5 @@ func checkVLESSListener(
 	if lastErr == nil {
 		lastErr = checkCtx.Err()
 	}
-	return ListenerHealthResult{Port: port}, fmt.Errorf("VLESS listener on port %d is unreachable: %w", port, lastErr)
+	return ListenerHealthResult{Port: port}, fmt.Errorf("%s listener on port %d is unreachable: %w", label, port, lastErr)
 }

@@ -1,0 +1,27 @@
+[Unit]
+Description=RouteGate managed MTProto proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mtg run /etc/routegate-mtproto/config.toml
+Restart=on-failure
+RestartSec=3s
+UMask=0077
+DynamicUser=true
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadOnlyPaths=/etc/routegate-mtproto
+
+[Install]
+WantedBy=multi-user.target

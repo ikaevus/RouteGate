@@ -25,6 +25,8 @@ type Runner struct {
 	vpnCoreAdapter    tasks.VPNCoreAdapter
 	wireGuardAdapter  tasks.VPNCoreAdapter
 	hysteria2Adapter  tasks.VPNCoreAdapter
+	shadowsocksAdapter tasks.VPNCoreAdapter
+	mtprotoAdapter tasks.VPNCoreAdapter
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -52,6 +54,16 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 			cfg.Hysteria2Path,
 			cfg.SSPath,
 			cfg.Hysteria2ServiceName,
+		),
+		shadowsocksAdapter: tasks.NewSingBoxShadowsocksAdapter(
+			cfg.ConfigStagingDir,
+			cfg.SingBoxPath,
+			cfg.SingBoxServiceName,
+		),
+		mtprotoAdapter: tasks.NewMTProtoAdapter(
+			cfg.MTProtoStagingDir,
+			cfg.MTGPath,
+			cfg.MTProtoServiceName,
 		),
 	}
 	if cfg.TrafficCollectionEnabled {
@@ -194,7 +206,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	adapter, err := tasks.SelectVPNCoreAdapter(*task, r.vpnCoreAdapter, r.wireGuardAdapter, r.hysteria2Adapter)
+	adapter, err := tasks.SelectVPNCoreAdapter(*task, r.vpnCoreAdapter, r.wireGuardAdapter, r.hysteria2Adapter, r.shadowsocksAdapter, r.mtprotoAdapter)
 	if err != nil {
 		report := map[string]any{"stage": "rejected", "configVersionId": task.ConfigVersionID, "configHash": task.ConfigHash}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
@@ -418,6 +430,9 @@ func (r *Runner) adapterStorage(adapter tasks.VPNCoreAdapter) (string, string) {
 	}
 	if adapter.Descriptor().Core == "hysteria" {
 		return r.cfg.Hysteria2ActiveConfigPath, r.cfg.Hysteria2BackupDir
+	}
+	if adapter.Descriptor().Core == "mtg" {
+		return r.cfg.MTProtoActiveConfigPath, r.cfg.MTProtoBackupDir
 	}
 	return r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir
 }

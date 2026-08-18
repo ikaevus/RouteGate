@@ -53,6 +53,8 @@ type UpdateProtocolSettingsRequest struct {
 	Hysteria2Domain     *string `json:"hysteria2Domain"`
 	Hysteria2ACMEEmail  *string `json:"hysteria2AcmeEmail"`
 	Hysteria2MasqueradeURL *string `json:"hysteria2MasqueradeUrl"`
+	ShadowsocksPort         *int    `json:"shadowsocksPort"`
+	MTProtoPort              *int    `json:"mtprotoPort"`
 }
 
 type ServerResponse struct {
@@ -105,6 +107,16 @@ type ProtocolSettingsResponse struct {
 		MasqueradeURL string `json:"masqueradeUrl,omitempty"`
 		Ready         bool   `json:"ready"`
 	} `json:"hysteria2"`
+	Shadowsocks struct {
+		Port   int    `json:"port"`
+		Method string `json:"method"`
+		Ready  bool   `json:"ready"`
+	} `json:"shadowsocks"`
+	MTProto struct {
+		Port            int    `json:"port"`
+		FrontingDomain  string `json:"frontingDomain"`
+		Ready           bool   `json:"ready"`
+	} `json:"mtproto"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
@@ -143,5 +155,11 @@ func newProtocolSettingsResponse(settings ProtocolSettings) ProtocolSettingsResp
 	response.Hysteria2.ACMEEmail = settings.Hysteria2ACMEEmail
 	response.Hysteria2.MasqueradeURL = settings.Hysteria2MasqueradeURL
 	response.Hysteria2.Ready = settings.Hysteria2Domain != "" && settings.Hysteria2ACMEEmail != ""
+	response.Shadowsocks.Port = settings.ShadowsocksPort
+	response.Shadowsocks.Method = settings.ShadowsocksMethod
+	response.Shadowsocks.Ready = settings.ShadowsocksServerKey != ""
+	response.MTProto.Port = settings.MTProtoPort
+	response.MTProto.FrontingDomain = settings.MTProtoFrontingDomain
+	response.MTProto.Ready = settings.MTProtoSecret != ""
 	return response
 }

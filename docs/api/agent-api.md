@@ -69,4 +69,11 @@ Hysteria2 config apply tasks use the `hysteria2` envelope field. Agent accepts
 only the strict RouteGate JSON schema, the fixed ACME and masquerade policy,
 UUID usernames, and 192-bit hexadecimal account passwords.
 
+Shadowsocks config apply tasks use the existing `singBox` envelope and select
+the `sing-box / shadowsocks / tcp / aead-2022` descriptor. MTProto tasks use the
+`mtproto` envelope field and select `mtg / mtproto / tcp / faketls`. The Agent
+rejects unknown MTProto TOML fields and policies, validates the mtg binary,
+promotes `/etc/routegate-mtproto/config.toml` atomically, checks service
+persistence and the TCP listener, and rolls back on failure.
+
 The old unversioned `/api/agent/*` compatibility endpoints and manual Agent registration UI are not part of the supported RouteGate runtime.

@@ -90,6 +90,12 @@ type ServerConfigInfo struct {
 	Hysteria2Domain     string
 	Hysteria2ACMEEmail  string
 	Hysteria2MasqueradeURL string
+	ShadowsocksPort      int
+	ShadowsocksMethod    string
+	ShadowsocksServerKey string
+	MTProtoPort           int
+	MTProtoSecret         string
+	MTProtoFrontingDomain string
 	Agent             *AgentConfigInfo
 	VPNAccounts       []VPNAccountConfigInfo
 	RoutingProfile    *RoutingProfileConfigInfo
@@ -115,6 +121,7 @@ type VPNAccountConfigInfo struct {
 	WireGuardPublicKey       string
 	WireGuardAddress         string
 	Hysteria2Password        string
+	ShadowsocksUserKey       string
 	TrafficEnforcementStatus string
 }
 
@@ -148,6 +155,7 @@ type RenderedConfig struct {
 	SingBox        SingBoxConfig         `json:"singBox"`
 	WireGuard      string                `json:"wireGuard,omitempty"`
 	Hysteria2      string                `json:"hysteria2,omitempty"`
+	MTProto        string                `json:"mtproto,omitempty"`
 	Metadata       ConfigMetadata        `json:"metadata"`
 }
 
@@ -181,6 +189,7 @@ type ConfigVPNAccount struct {
 	WireGuardPublicKey string `json:"wireGuardPublicKey,omitempty"`
 	WireGuardAddress   string `json:"wireGuardAddress,omitempty"`
 	Hysteria2Username  string `json:"hysteria2Username,omitempty"`
+	ShadowsocksUsername string `json:"shadowsocksUsername,omitempty"`
 }
 
 type ConfigRoutingProfile struct {

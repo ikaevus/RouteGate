@@ -40,6 +40,9 @@ func TestLoadTrafficCollectionDefaults(t *testing.T) {
 	if cfg.Hysteria2ActiveConfigPath != DefaultHysteria2ActiveConfigPath || cfg.Hysteria2Path != DefaultHysteria2Path || cfg.Hysteria2ServiceName != DefaultHysteria2ServiceName {
 		t.Fatalf("unexpected Hysteria2 defaults: %+v", cfg)
 	}
+	if cfg.MTProtoActiveConfigPath != DefaultMTProtoActiveConfigPath || cfg.MTGPath != DefaultMTGPath || cfg.MTProtoServiceName != DefaultMTProtoServiceName {
+		t.Fatalf("unexpected MTProto defaults: %+v", cfg)
+	}
 }
 
 func TestLoadTrafficCollectionSettings(t *testing.T) {

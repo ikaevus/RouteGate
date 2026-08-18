@@ -54,6 +54,15 @@ function protocolConfigured(settings?: ProtocolSettingsResponse): boolean {
 			&& textPresent(settings.wireGuard.address)
 			&& textPresent(settings.wireGuard.publicKey);
 	}
+	if (settings.protocol.trim().toLowerCase() === 'hysteria2') {
+		return settings.hysteria2.ready && settings.hysteria2.port >= 1 && settings.hysteria2.port <= 65535;
+	}
+	if (settings.protocol.trim().toLowerCase() === 'shadowsocks') {
+		return settings.shadowsocks.ready && settings.shadowsocks.port >= 1 && settings.shadowsocks.port <= 65535;
+	}
+	if (settings.protocol.trim().toLowerCase() === 'mtproto') {
+		return settings.mtproto.ready && settings.mtproto.port >= 1 && settings.mtproto.port <= 65535;
+	}
 
   return settings.protocol.trim().toLowerCase() === 'vless'
     && settings.vless.port >= 1
