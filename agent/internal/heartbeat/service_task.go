@@ -21,8 +21,7 @@ func (r *Runner) processVPNCoreServiceTask(ctx context.Context, task tasks.Confi
 		return err
 	}
 
-	controller := tasks.NewServiceController(r.cfg.SingBoxServiceName)
-	result, err := tasks.ExecuteServiceTask(ctx, controller, task)
+	result, err := r.vpnCoreAdapter.ExecuteServiceTask(ctx, task)
 	report := map[string]any{
 		"kind":      result.Kind,
 		"operation": result.Operation,

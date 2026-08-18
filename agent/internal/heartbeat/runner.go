@@ -22,6 +22,7 @@ type Runner struct {
 	trafficCollector  traffic.Collector
 	trafficTracker    *traffic.DeltaTracker
 	lastTrafficReport time.Time
+	vpnCoreAdapter    tasks.VPNCoreAdapter
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -32,6 +33,11 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 		logger:           logger,
 		trafficCollector: traffic.NoopCollector{},
 		trafficTracker:   traffic.NewDeltaTracker(),
+		vpnCoreAdapter: tasks.NewSingBoxVLESSAdapter(
+			cfg.ConfigStagingDir,
+			cfg.SingBoxPath,
+			cfg.SingBoxServiceName,
+		),
 	}
 	if cfg.TrafficCollectionEnabled {
 		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
@@ -173,7 +179,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	stageResult, err := tasks.NewStager(r.cfg.ConfigStagingDir).Stage(*task)
+	stageResult, err := r.vpnCoreAdapter.Stage(*task)
 	if err != nil {
 		report := map[string]any{
 			"stage":           "failed",
@@ -188,7 +194,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	validationResult, err := tasks.NewValidator(r.cfg.SingBoxPath).Check(ctx, stageResult.StagedPath)
+	validationResult, err := r.vpnCoreAdapter.Validate(ctx, stageResult.StagedPath)
 	if err != nil {
 		report := map[string]any{
 			"stage":           "succeeded",
@@ -247,8 +253,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return nil
 	}
 
-	service := tasks.NewServiceController(r.cfg.SingBoxServiceName)
-	restartResult, err := service.Restart(ctx)
+	restartResult, err := r.vpnCoreAdapter.Restart(ctx)
 	if err != nil {
 		rollbackStatus := r.rollbackAppliedConfig(applyResult)
 		report := map[string]any{
@@ -272,7 +277,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	healthResult, err := service.IsActive(ctx)
+	healthResult, err := r.vpnCoreAdapter.IsActive(ctx)
 	if err != nil {
 		rollbackStatus := r.rollbackAppliedConfig(applyResult)
 		report := map[string]any{
@@ -296,7 +301,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	persistenceResult, err := service.IsEnabled(ctx)
+	persistenceResult, err := r.vpnCoreAdapter.IsEnabled(ctx)
 	if err != nil {
 		rollbackStatus := r.rollbackAppliedConfig(applyResult)
 		report := map[string]any{
@@ -320,7 +325,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	listenerResult, err := tasks.CheckVLESSListener(ctx, applyResult.ActivePath)
+	listenerResult, err := r.vpnCoreAdapter.CheckHealth(ctx, applyResult.ActivePath)
 	if err != nil {
 		rollbackStatus := r.rollbackAppliedConfig(applyResult)
 		report := map[string]any{

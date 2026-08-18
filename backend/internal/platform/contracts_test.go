@@ -41,3 +41,24 @@ func TestDeploymentRoleCapabilities(t *testing.T) {
 		t.Fatal("hybrid role must host both planes")
 	}
 }
+
+func TestVPNCoreAdapterDescriptorSupportsDeclaredComposition(t *testing.T) {
+	descriptor := VPNCoreAdapterDescriptor{
+		Core:          VPNCoreSingBox,
+		Protocol:      VPNProtocolVLESS,
+		Transports:    []string{VPNTransportTCP},
+		SecurityModes: []string{VPNSecurityNone, VPNSecurityReality},
+	}
+
+	for _, security := range []string{VPNSecurityNone, VPNSecurityReality} {
+		if !descriptor.Supports(" SING-BOX ", "VLESS", "TCP", security) {
+			t.Fatalf("expected descriptor to support VLESS/TCP/%s", security)
+		}
+	}
+	if descriptor.Supports(VPNCoreSingBox, VPNProtocolVLESS, "quic", VPNSecurityReality) {
+		t.Fatal("descriptor must reject an undeclared transport")
+	}
+	if descriptor.Supports(VPNCoreSingBox, "hysteria2", VPNTransportTCP, VPNSecurityReality) {
+		t.Fatal("descriptor must reject another protocol")
+	}
+}

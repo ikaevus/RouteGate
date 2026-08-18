@@ -5,6 +5,46 @@ import (
 	"strings"
 )
 
+const (
+	VPNCoreSingBox = "sing-box"
+
+	VPNProtocolVLESS = "vless"
+
+	VPNTransportTCP = "tcp"
+
+	VPNSecurityNone    = "none"
+	VPNSecurityReality = "reality"
+)
+
+// VPNCoreAdapterDescriptor describes one RouteGate-managed protocol path.
+// Protocol, transport, and security remain separate so adapters can declare
+// only combinations whose complete lifecycle RouteGate can manage safely.
+type VPNCoreAdapterDescriptor struct {
+	Core          string
+	Protocol      string
+	Transports    []string
+	SecurityModes []string
+}
+
+// Supports reports whether this adapter owns the requested composition.
+func (d VPNCoreAdapterDescriptor) Supports(core, protocol, transport, security string) bool {
+	if !strings.EqualFold(strings.TrimSpace(d.Core), strings.TrimSpace(core)) ||
+		!strings.EqualFold(strings.TrimSpace(d.Protocol), strings.TrimSpace(protocol)) {
+		return false
+	}
+	return containsFold(d.Transports, transport) && containsFold(d.SecurityModes, security)
+}
+
+func containsFold(values []string, candidate string) bool {
+	candidate = strings.TrimSpace(candidate)
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), candidate) {
+			return true
+		}
+	}
+	return false
+}
+
 // DeploymentRole describes which RouteGate planes are intentionally hosted by
 // a node. It is an assigned deployment property, not a hierarchy between
 // nodes. Runtime capabilities are reported separately by RouteGate Agent.

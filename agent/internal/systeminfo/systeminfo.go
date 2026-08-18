@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/buildinfo"
+	"github.com/ikaevus/routegate/agent/internal/platform"
 	"github.com/ikaevus/routegate/agent/internal/vpncoreinstall"
 )
 
 const (
 	vpnCoreCheckTimeout              = 3 * time.Second
 	telemetrySchemaVersion           = 1
-	platformCapabilitySchemaVersion = 1
+	platformCapabilitySchemaVersion = platform.CapabilitySchemaVersion
 )
 
 type RuntimeMetrics struct {
@@ -238,17 +239,15 @@ func detectCapabilities(vpnCore map[string]any) map[string]any {
 // intentionally differs from binary detection: an installed VPN Core may
 // support more protocols than RouteGate has safe render/apply adapters for.
 func routeGatePlatformCapabilities() map[string]any {
+	managedAdapters := platform.ManagedVPNCoreAdapters()
+	adapterCapabilities := make([]map[string]any, 0, len(managedAdapters))
+	for _, adapter := range managedAdapters {
+		adapterCapabilities = append(adapterCapabilities, adapter.CapabilityMap())
+	}
 	return map[string]any{
 		"schemaVersion":    platformCapabilitySchemaVersion,
 		"nodeCapabilities": []string{"vpn"},
-		"vpnCoreAdapters": []map[string]any{
-			{
-				"core":          "sing-box",
-				"protocol":      "vless",
-				"transports":    []string{"tcp"},
-				"securityModes": []string{"none", "reality"},
-			},
-		},
+		"vpnCoreAdapters":  adapterCapabilities,
 	}
 }
 
