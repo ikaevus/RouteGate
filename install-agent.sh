@@ -12,6 +12,7 @@ ROUTEGATE_BUNDLE_FILE="${ROUTEGATE_BUNDLE_FILE:-}"
 ROUTEGATE_CHECKSUM_FILE="${ROUTEGATE_CHECKSUM_FILE:-}"
 ROUTEGATE_BUNDLE_URL="${ROUTEGATE_BUNDLE_URL:-}"
 ROUTEGATE_CHECKSUM_URL="${ROUTEGATE_CHECKSUM_URL:-}"
+ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.1}"
 
 ROUTEGATE_AGENT_CONFIG="${ROUTEGATE_AGENT_CONFIG:-/etc/routegate/agent.yaml}"
 ROUTEGATE_AGENT_BINARY="${ROUTEGATE_AGENT_BINARY:-/usr/local/bin/routegate-agent}"
@@ -166,7 +167,38 @@ install_dependencies() {
   log "Installing Agent bootstrap dependencies."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update >/dev/null
-	apt-get install -y ca-certificates curl iptables jq tar wireguard-tools >/dev/null
+	apt-get install -y ca-certificates curl iproute2 iptables jq tar wireguard-tools >/dev/null
+}
+
+install_hysteria2_runtime() {
+  local source_dir=$1
+  local asset="hysteria-linux-${ROUTEGATE_ARCH}"
+  local binary_path="$ROUTEGATE_WORK_DIR/$asset"
+  local hashes_path="$ROUTEGATE_WORK_DIR/hysteria-hashes.txt"
+  local release_base="https://github.com/apernet/hysteria/releases/download/app%2Fv${ROUTEGATE_HYSTERIA_VERSION}"
+  local expected actual
+
+  [[ "$ROUTEGATE_HYSTERIA_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "ROUTEGATE_HYSTERIA_VERSION must be a numeric semantic version."
+  [[ -f "$source_dir/systemd/hysteria-server.service" ]] \
+    || die "Release bundle is missing the Hysteria2 systemd unit."
+  if [[ -e /usr/local/bin/hysteria || -e /etc/systemd/system/hysteria-server.service ]]; then
+    grep -Fq "Description=RouteGate managed Hysteria2 server" /etc/systemd/system/hysteria-server.service 2>/dev/null \
+      || die "An unmanaged Hysteria installation already exists; RouteGate will not overwrite it."
+  fi
+
+  log "Installing checksum-verified Hysteria ${ROUTEGATE_HYSTERIA_VERSION}."
+  curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$binary_path" "$release_base/$asset"
+  curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$hashes_path" "$release_base/hashes.txt"
+  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name {print $1; exit}' "$hashes_path")
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "No valid Hysteria2 SHA-256 entry was found."
+  actual=$(sha256sum "$binary_path" | awk '{print $1}')
+  [[ "$actual" == "$expected" ]] || die "Hysteria2 binary checksum verification failed."
+
+  install -m 0755 "$binary_path" /usr/local/bin/hysteria
+  install -m 0644 "$source_dir/systemd/hysteria-server.service" /etc/systemd/system/hysteria-server.service
+  install -d -m 0700 /etc/hysteria /var/lib/hysteria /var/lib/hysteria/acme
+  systemctl enable hysteria-server.service >/dev/null
 }
 
 resolve_release_version() {
@@ -273,6 +305,12 @@ wg_quick_path: "/usr/bin/wg-quick"
 wg_path: "/usr/bin/wg"
 wireguard_service_name: "wg-quick@routegate-wg0"
 wireguard_interface: "routegate-wg0"
+hysteria2_staging_dir: "/var/lib/routegate-agent/hysteria2-configs"
+hysteria2_active_config_path: "/etc/hysteria/config.json"
+hysteria2_backup_dir: "/var/lib/routegate-agent/hysteria2-backups"
+hysteria2_path: "/usr/local/bin/hysteria"
+hysteria2_service_name: "hysteria-server"
+ss_path: "/usr/bin/ss"
 service_control_enabled: true
 traffic_collection_enabled: false
 traffic_collection_interval_seconds: 60
@@ -283,12 +321,13 @@ EOF_CONFIG
 
 install_agent() {
   local source_dir="$ROUTEGATE_WORK_DIR/extracted"
-	install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups
+	install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups
 	install -d -m 0700 /etc/wireguard
 	printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
 	sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >/dev/null
   install -m 0755 "$source_dir/bin/routegate-agent" "$ROUTEGATE_AGENT_BINARY"
   install -m 0644 "$source_dir/systemd/routegate-agent.service" "$ROUTEGATE_AGENT_SERVICE"
+  install_hysteria2_runtime "$source_dir"
 
   if [[ -r "$ROUTEGATE_AGENT_CONFIG" ]] && [[ $(config_value "$ROUTEGATE_AGENT_CONFIG" agent_token) == rg_agent_* ]]; then
     local configured_manager

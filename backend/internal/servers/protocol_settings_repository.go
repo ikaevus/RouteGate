@@ -27,6 +27,10 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			wireguard_port = CASE WHEN $16 THEN $17 ELSE wireguard_port END,
 			wireguard_address = CASE WHEN $18 THEN $19::inet ELSE wireguard_address END,
 			wireguard_dns = CASE WHEN $20 THEN $21::inet ELSE wireguard_dns END,
+			hysteria2_port = CASE WHEN $22 THEN $23 ELSE hysteria2_port END,
+			hysteria2_domain = CASE WHEN $24 THEN $25 ELSE hysteria2_domain END,
+			hysteria2_acme_email = CASE WHEN $26 THEN $27 ELSE hysteria2_acme_email END,
+			hysteria2_masquerade_url = CASE WHEN $28 THEN $29 ELSE hysteria2_masquerade_url END,
 			protocol_updated_at = now(),
 			updated_at = now()
 		WHERE id = $1::uuid
@@ -43,6 +47,10 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 			wireguard_address::text,
 			wireguard_dns::text,
 			COALESCE(wireguard_public_key, ''),
+			hysteria2_port,
+			hysteria2_domain,
+			hysteria2_acme_email,
+			hysteria2_masquerade_url,
 			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`,
 		serverID,
@@ -56,6 +64,10 @@ func (r *Repository) UpdateProtocolSettings(ctx context.Context, serverID string
 		input.WireGuardPort != nil, input.WireGuardPort,
 		input.WireGuardAddress != nil, stringValue(input.WireGuardAddress),
 		input.WireGuardDNS != nil, stringValue(input.WireGuardDNS),
+		input.Hysteria2Port != nil, input.Hysteria2Port,
+		input.Hysteria2Domain != nil, stringValue(input.Hysteria2Domain),
+		input.Hysteria2ACMEEmail != nil, stringValue(input.Hysteria2ACMEEmail),
+		input.Hysteria2MasqueradeURL != nil, stringValue(input.Hysteria2MasqueradeURL),
 	))
 }
 
@@ -81,6 +93,10 @@ func (r *Repository) UpdateRealityKeypair(ctx context.Context, serverID string, 
 			wireguard_address::text,
 			wireguard_dns::text,
 			COALESCE(wireguard_public_key, ''),
+			hysteria2_port,
+			hysteria2_domain,
+			hysteria2_acme_email,
+			hysteria2_masquerade_url,
 			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
@@ -111,6 +127,10 @@ func (r *Repository) ConfigureRecommendedWireGuard(ctx context.Context, serverID
 			wireguard_address::text,
 			wireguard_dns::text,
 			COALESCE(wireguard_public_key, ''),
+			hysteria2_port,
+			hysteria2_domain,
+			hysteria2_acme_email,
+			hysteria2_masquerade_url,
 			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
@@ -129,6 +149,10 @@ const protocolSettingsSelect = `
 		wireguard_address::text,
 		wireguard_dns::text,
 		COALESCE(wireguard_public_key, ''),
+		hysteria2_port,
+		hysteria2_domain,
+		hysteria2_acme_email,
+		hysteria2_masquerade_url,
 		GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
 	FROM servers`
 
@@ -148,6 +172,10 @@ func scanProtocolSettings(row scanner) (ProtocolSettings, error) {
 		&settings.WireGuardAddress,
 		&settings.WireGuardDNS,
 		&settings.WireGuardPublicKey,
+		&settings.Hysteria2Port,
+		&settings.Hysteria2Domain,
+		&settings.Hysteria2ACMEEmail,
+		&settings.Hysteria2MasqueradeURL,
 		&settings.UpdatedAt,
 	)
 	if err != nil {

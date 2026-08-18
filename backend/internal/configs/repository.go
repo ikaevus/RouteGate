@@ -45,6 +45,10 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 			s.wireguard_dns::text,
 			COALESCE(s.wireguard_private_key, ''),
 			COALESCE(s.wireguard_public_key, ''),
+			s.hysteria2_port,
+			s.hysteria2_domain,
+			s.hysteria2_acme_email,
+			s.hysteria2_masquerade_url,
 			a.id::text,
 			COALESCE(a.hostname, ''),
 			COALESCE(a.os, ''),
@@ -93,6 +97,7 @@ func (r *Repository) listServerVPNAccounts(ctx context.Context, serverID string)
 			COALESCE(s.vless_network, 'tcp'),
 			COALESCE(a.wireguard_public_key, ''),
 			COALESCE(a.wireguard_address::text, ''),
+			a.hysteria2_password,
 			COALESCE(tl.enforcement_status, 'not_enforced')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
@@ -477,6 +482,10 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 		&info.WireGuardDNS,
 		&info.WireGuardPrivateKey,
 		&info.WireGuardPublicKey,
+		&info.Hysteria2Port,
+		&info.Hysteria2Domain,
+		&info.Hysteria2ACMEEmail,
+		&info.Hysteria2MasqueradeURL,
 		&agentID,
 		&agentHostname,
 		&agentOS,
@@ -534,6 +543,7 @@ func scanVPNAccountConfigInfo(row scanner) (VPNAccountConfigInfo, error) {
 		&account.VLESSNetwork,
 		&account.WireGuardPublicKey,
 		&account.WireGuardAddress,
+		&account.Hysteria2Password,
 		&account.TrafficEnforcementStatus,
 	)
 	if err != nil {

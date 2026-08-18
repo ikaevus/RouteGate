@@ -49,6 +49,10 @@ type UpdateProtocolSettingsRequest struct {
 	WireGuardPort      *int    `json:"wireGuardPort"`
 	WireGuardAddress   *string `json:"wireGuardAddress"`
 	WireGuardDNS       *string `json:"wireGuardDns"`
+	Hysteria2Port       *int    `json:"hysteria2Port"`
+	Hysteria2Domain     *string `json:"hysteria2Domain"`
+	Hysteria2ACMEEmail  *string `json:"hysteria2AcmeEmail"`
+	Hysteria2MasqueradeURL *string `json:"hysteria2MasqueradeUrl"`
 }
 
 type ServerResponse struct {
@@ -94,6 +98,13 @@ type ProtocolSettingsResponse struct {
 		PublicKey string `json:"publicKey,omitempty"`
 		Ready     bool   `json:"ready"`
 	} `json:"wireGuard"`
+	Hysteria2 struct {
+		Port          int    `json:"port"`
+		Domain        string `json:"domain,omitempty"`
+		ACMEEmail     string `json:"acmeEmail,omitempty"`
+		MasqueradeURL string `json:"masqueradeUrl,omitempty"`
+		Ready         bool   `json:"ready"`
+	} `json:"hysteria2"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
@@ -127,5 +138,10 @@ func newProtocolSettingsResponse(settings ProtocolSettings) ProtocolSettingsResp
 	response.WireGuard.DNS = settings.WireGuardDNS
 	response.WireGuard.PublicKey = settings.WireGuardPublicKey
 	response.WireGuard.Ready = settings.WireGuardPublicKey != ""
+	response.Hysteria2.Port = settings.Hysteria2Port
+	response.Hysteria2.Domain = settings.Hysteria2Domain
+	response.Hysteria2.ACMEEmail = settings.Hysteria2ACMEEmail
+	response.Hysteria2.MasqueradeURL = settings.Hysteria2MasqueradeURL
+	response.Hysteria2.Ready = settings.Hysteria2Domain != "" && settings.Hysteria2ACMEEmail != ""
 	return response
 }

@@ -58,6 +58,7 @@ type SubscriptionCredentials struct {
 	VLESS   VLESSCredentials
 	Reality RealityCredentials
 	WireGuard WireGuardCredentials
+	Hysteria2 Hysteria2Credentials
 }
 
 type VLESSCredentials struct {
@@ -78,6 +79,11 @@ type WireGuardCredentials struct {
 	Address    string
 }
 
+type Hysteria2Credentials struct {
+	Username string
+	Password string
+}
+
 type SubscriptionServer struct {
 	ID                string
 	Name              string
@@ -96,6 +102,9 @@ type SubscriptionServer struct {
 	WireGuardAddress   string
 	WireGuardDNS       string
 	WireGuardPublicKey string
+	Hysteria2Port       int
+	Hysteria2Domain     string
+	Hysteria2ACMEEmail  string
 }
 
 type RoutingProfile struct {

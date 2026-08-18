@@ -27,6 +27,12 @@ const DefaultWGQuickPath = "wg-quick"
 const DefaultWGPath = "wg"
 const DefaultWireGuardServiceName = "wg-quick@routegate-wg0"
 const DefaultWireGuardInterface = "routegate-wg0"
+const DefaultHysteria2StagingDir = "/var/lib/routegate-agent/hysteria2-configs"
+const DefaultHysteria2ActiveConfigPath = "/etc/hysteria/config.json"
+const DefaultHysteria2BackupDir = "/var/lib/routegate-agent/hysteria2-backups"
+const DefaultHysteria2Path = "hysteria"
+const DefaultHysteria2ServiceName = "hysteria-server"
+const DefaultSSPath = "ss"
 
 type Config struct {
 	ManagerURL                       string
@@ -51,6 +57,12 @@ type Config struct {
 	WGPath                           string
 	WireGuardServiceName             string
 	WireGuardInterface               string
+	Hysteria2StagingDir              string
+	Hysteria2ActiveConfigPath        string
+	Hysteria2BackupDir               string
+	Hysteria2Path                    string
+	Hysteria2ServiceName             string
+	SSPath                           string
 }
 
 func Load(path string) (Config, error) {
@@ -145,6 +157,18 @@ func Load(path string) (Config, error) {
 			cfg.WireGuardServiceName = value
 		case "wireguard_interface":
 			cfg.WireGuardInterface = value
+		case "hysteria2_staging_dir":
+			cfg.Hysteria2StagingDir = value
+		case "hysteria2_active_config_path":
+			cfg.Hysteria2ActiveConfigPath = value
+		case "hysteria2_backup_dir":
+			cfg.Hysteria2BackupDir = value
+		case "hysteria2_path":
+			cfg.Hysteria2Path = value
+		case "hysteria2_service_name":
+			cfg.Hysteria2ServiceName = value
+		case "ss_path":
+			cfg.SSPath = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -168,6 +192,12 @@ func Load(path string) (Config, error) {
 	cfg.WGPath = strings.TrimSpace(cfg.WGPath)
 	cfg.WireGuardServiceName = strings.TrimSpace(cfg.WireGuardServiceName)
 	cfg.WireGuardInterface = strings.TrimSpace(cfg.WireGuardInterface)
+	cfg.Hysteria2StagingDir = strings.TrimSpace(cfg.Hysteria2StagingDir)
+	cfg.Hysteria2ActiveConfigPath = strings.TrimSpace(cfg.Hysteria2ActiveConfigPath)
+	cfg.Hysteria2BackupDir = strings.TrimSpace(cfg.Hysteria2BackupDir)
+	cfg.Hysteria2Path = strings.TrimSpace(cfg.Hysteria2Path)
+	cfg.Hysteria2ServiceName = strings.TrimSpace(cfg.Hysteria2ServiceName)
+	cfg.SSPath = strings.TrimSpace(cfg.SSPath)
 	if cfg.HeartbeatIntervalSeconds <= 0 {
 		cfg.HeartbeatIntervalSeconds = 30
 	}
@@ -199,6 +229,12 @@ func Load(path string) (Config, error) {
 	if cfg.WGPath == "" { cfg.WGPath = DefaultWGPath }
 	if cfg.WireGuardServiceName == "" { cfg.WireGuardServiceName = DefaultWireGuardServiceName }
 	if cfg.WireGuardInterface == "" { cfg.WireGuardInterface = DefaultWireGuardInterface }
+	if cfg.Hysteria2StagingDir == "" { cfg.Hysteria2StagingDir = DefaultHysteria2StagingDir }
+	if cfg.Hysteria2ActiveConfigPath == "" { cfg.Hysteria2ActiveConfigPath = DefaultHysteria2ActiveConfigPath }
+	if cfg.Hysteria2BackupDir == "" { cfg.Hysteria2BackupDir = DefaultHysteria2BackupDir }
+	if cfg.Hysteria2Path == "" { cfg.Hysteria2Path = DefaultHysteria2Path }
+	if cfg.Hysteria2ServiceName == "" { cfg.Hysteria2ServiceName = DefaultHysteria2ServiceName }
+	if cfg.SSPath == "" { cfg.SSPath = DefaultSSPath }
 	if cfg.ManagerURL == "" {
 		return Config{}, errors.New("manager_url is required")
 	}
@@ -253,6 +289,12 @@ func (c Config) Save(path string) error {
 	wgPath := defaultString(c.WGPath, DefaultWGPath)
 	wireGuardServiceName := defaultString(c.WireGuardServiceName, DefaultWireGuardServiceName)
 	wireGuardInterface := defaultString(c.WireGuardInterface, DefaultWireGuardInterface)
+	hysteria2StagingDir := defaultString(c.Hysteria2StagingDir, DefaultHysteria2StagingDir)
+	hysteria2ActiveConfigPath := defaultString(c.Hysteria2ActiveConfigPath, DefaultHysteria2ActiveConfigPath)
+	hysteria2BackupDir := defaultString(c.Hysteria2BackupDir, DefaultHysteria2BackupDir)
+	hysteria2Path := defaultString(c.Hysteria2Path, DefaultHysteria2Path)
+	hysteria2ServiceName := defaultString(c.Hysteria2ServiceName, DefaultHysteria2ServiceName)
+	ssPath := defaultString(c.SSPath, DefaultSSPath)
 
 	var output strings.Builder
 	fmt.Fprintf(&output, "manager_url: %q\n", c.ManagerURL)
@@ -265,6 +307,8 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&output, "sing_box_path: %q\nsing_box_service_name: %q\n", singBoxPath, serviceName)
 	fmt.Fprintf(&output, "wireguard_staging_dir: %q\nwireguard_active_config_path: %q\nwireguard_backup_dir: %q\n", wireGuardStagingDir, wireGuardActiveConfigPath, wireGuardBackupDir)
 	fmt.Fprintf(&output, "wg_quick_path: %q\nwg_path: %q\nwireguard_service_name: %q\nwireguard_interface: %q\n", wgQuickPath, wgPath, wireGuardServiceName, wireGuardInterface)
+	fmt.Fprintf(&output, "hysteria2_staging_dir: %q\nhysteria2_active_config_path: %q\nhysteria2_backup_dir: %q\n", hysteria2StagingDir, hysteria2ActiveConfigPath, hysteria2BackupDir)
+	fmt.Fprintf(&output, "hysteria2_path: %q\nhysteria2_service_name: %q\nss_path: %q\n", hysteria2Path, hysteria2ServiceName, ssPath)
 	fmt.Fprintf(&output, "service_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
 	data := output.String()
 

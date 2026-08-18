@@ -9,10 +9,13 @@ The remote host receives only:
 
 - RouteGate Agent;
 - the Agent systemd unit;
-- Agent state and configuration directories.
+- Agent state and configuration directories;
+- checksum-verified Hysteria plus its inactive RouteGate-owned systemd unit;
+- native WireGuard tooling.
 
-It does not receive Manager, PostgreSQL, the Admin UI, nginx, or VPN Core. VPN
-Core installation remains a separate allow-listed Manager → Agent operation.
+It does not receive Manager, PostgreSQL, the Admin UI, or nginx. sing-box
+installation remains a separate allow-listed Manager → Agent operation.
+Hysteria and WireGuard stay inactive until a validated config apply.
 
 ## Guided workflow
 
@@ -34,6 +37,7 @@ HTTPS origin without a path, query, or fragment.
 - the raw token appears only in the one-time Manager response and copied command;
 - the installer does not print the token;
 - release bundles are verified against the published `SHA256SUMS` file;
+- the pinned Hysteria binary is verified against its upstream `hashes.txt`;
 - Agent replaces the bootstrap token with its persistent dedicated credential
   and saves the config with mode `0600`;
 - only Manager connects to PostgreSQL;

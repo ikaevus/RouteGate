@@ -3,18 +3,22 @@ package platform
 const (
 	CapabilitySchemaVersion = 1
 
-	VPNCoreSingBox = "sing-box"
+	VPNCoreSingBox   = "sing-box"
 	VPNCoreWireGuard = "wireguard"
+	VPNCoreHysteria  = "hysteria"
 
-	VPNProtocolVLESS = "vless"
+	VPNProtocolVLESS     = "vless"
 	VPNProtocolWireGuard = "wireguard"
+	VPNProtocolHysteria2 = "hysteria2"
 
 	VPNTransportTCP = "tcp"
 	VPNTransportUDP = "udp"
+	VPNTransportQUIC = "quic"
 
 	VPNSecurityNone    = "none"
 	VPNSecurityReality = "reality"
 	VPNSecurityWireGuard = "wireguard"
+	VPNSecurityTLS       = "tls"
 )
 
 // VPNCoreAdapterDescriptor is the Agent-side declaration of a complete
@@ -40,6 +44,12 @@ func ManagedVPNCoreAdapters() []VPNCoreAdapterDescriptor {
 			Protocol:      VPNProtocolWireGuard,
 			Transports:    []string{VPNTransportUDP},
 			SecurityModes: []string{VPNSecurityWireGuard},
+		},
+		{
+			Core:          VPNCoreHysteria,
+			Protocol:      VPNProtocolHysteria2,
+			Transports:    []string{VPNTransportQUIC},
+			SecurityModes: []string{VPNSecurityTLS},
 		},
 	}
 }

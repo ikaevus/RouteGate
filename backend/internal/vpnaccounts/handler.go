@@ -450,8 +450,8 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request, status strin
 
 func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentialsResponse {
 	protocol := "vless"
-	if profile.Server != nil && profile.Server.VPNProtocol == "wireguard" {
-		protocol = "wireguard"
+	if profile.Server != nil && (profile.Server.VPNProtocol == "wireguard" || profile.Server.VPNProtocol == "hysteria2") {
+		protocol = profile.Server.VPNProtocol
 	}
 	response := VLESSRealityCredentialsResponse{
 		VPNAccountID: profile.Account.ID,
@@ -471,6 +471,10 @@ func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentia
 			PublicKey:  profile.Credentials.WireGuard.PublicKey,
 			Address:    profile.Credentials.WireGuard.Address,
 		},
+		Hysteria2: AdminHysteria2Credentials{
+			Username: profile.Credentials.Hysteria2.Username,
+			Password: profile.Credentials.Hysteria2.Password,
+		},
 	}
 	response.Reality.Enabled = response.Reality.PublicKey != ""
 	if profile.Server != nil {
@@ -478,6 +482,12 @@ func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentia
 		response.Endpoint = subscriptionServerEndpoint(profile.Server)
 		response.WireGuard.ServerPublicKey = profile.Server.WireGuardPublicKey
 		response.WireGuard.DNS = profile.Server.WireGuardDNS
+		response.Hysteria2.Domain = profile.Server.Hysteria2Domain
+		response.Hysteria2.Port = profile.Server.Hysteria2Port
+		response.Hysteria2.ACMEEmail = profile.Server.Hysteria2ACMEEmail
+		if profile.Server.VPNProtocol == "hysteria2" {
+			response.Endpoint = profile.Server.Hysteria2Domain
+		}
 	}
 	return response
 }
@@ -486,12 +496,16 @@ func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionSer
 	if server == nil {
 		return nil
 	}
+	endpoint := subscriptionServerEndpoint(server)
+	if server.VPNProtocol == "hysteria2" {
+		endpoint = server.Hysteria2Domain
+	}
 	return &PublicSubscriptionServer{
 		ID:       server.ID,
 		Name:     server.Name,
 		Hostname: server.Hostname,
 		PublicIP: server.PublicIP,
-		Endpoint: subscriptionServerEndpoint(server),
+		Endpoint: endpoint,
 		Location: server.Location,
 		Provider: server.Provider,
 	}

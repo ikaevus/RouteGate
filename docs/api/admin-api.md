@@ -5,8 +5,17 @@ RouteGate Manager API uses opaque bearer tokens for authenticated Manager reques
 ## VPN protocol settings
 
 `GET` and `PATCH /api/v1/servers/{server_id}/protocol-settings` expose the
-selected server protocol plus separate VLESS/Reality and WireGuard settings.
-RG-114E accepts `protocol: "vless"` or `protocol: "wireguard"` and adds:
+selected server protocol plus separate VLESS/Reality, WireGuard, and Hysteria2
+settings. RG-114F accepts `protocol: "vless"`, `protocol: "wireguard"`, or
+`protocol: "hysteria2"`. Hysteria2 adds:
+
+- `hysteria2.port`
+- `hysteria2.domain`
+- `hysteria2.acmeEmail`
+- `hysteria2.masqueradeUrl` (fixed safe target)
+- `hysteria2.ready`
+
+RG-114E adds:
 
 - `wireGuard.port`
 - `wireGuard.address`
@@ -23,6 +32,10 @@ shape from the assigned server protocol. WireGuard delivery returns the peer
 private/public keys, assigned address, server public key, DNS value, and a
 standard importable config. These responses grant VPN access and must be
 handled like the existing VLESS credential and QR responses.
+
+Hysteria2 delivery returns the UUID-derived username, random account password,
+dedicated TLS domain and UDP port, plus a standard `hysteria2://` URI. These
+credentials receive the same access controls as the VLESS and WireGuard paths.
 
 ## Authentication
 

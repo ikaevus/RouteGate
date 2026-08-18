@@ -24,6 +24,7 @@ type Runner struct {
 	lastTrafficReport time.Time
 	vpnCoreAdapter    tasks.VPNCoreAdapter
 	wireGuardAdapter  tasks.VPNCoreAdapter
+	hysteria2Adapter  tasks.VPNCoreAdapter
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -45,6 +46,12 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 			cfg.WGPath,
 			cfg.WireGuardServiceName,
 			cfg.WireGuardInterface,
+		),
+		hysteria2Adapter: tasks.NewHysteria2Adapter(
+			cfg.Hysteria2StagingDir,
+			cfg.Hysteria2Path,
+			cfg.SSPath,
+			cfg.Hysteria2ServiceName,
 		),
 	}
 	if cfg.TrafficCollectionEnabled {
@@ -187,7 +194,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	adapter, err := tasks.SelectVPNCoreAdapter(*task, r.vpnCoreAdapter, r.wireGuardAdapter)
+	adapter, err := tasks.SelectVPNCoreAdapter(*task, r.vpnCoreAdapter, r.wireGuardAdapter, r.hysteria2Adapter)
 	if err != nil {
 		report := map[string]any{"stage": "rejected", "configVersionId": task.ConfigVersionID, "configHash": task.ConfigHash}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
@@ -408,6 +415,9 @@ func (r *Runner) rollbackAppliedConfig(result tasks.ApplyResult, activeConfigPat
 func (r *Runner) adapterStorage(adapter tasks.VPNCoreAdapter) (string, string) {
 	if adapter.Descriptor().Core == "wireguard" {
 		return r.cfg.WireGuardActiveConfigPath, r.cfg.WireGuardBackupDir
+	}
+	if adapter.Descriptor().Core == "hysteria" {
+		return r.cfg.Hysteria2ActiveConfigPath, r.cfg.Hysteria2BackupDir
 	}
 	return r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir
 }

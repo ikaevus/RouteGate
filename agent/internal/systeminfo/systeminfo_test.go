@@ -107,7 +107,7 @@ func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 		t.Fatalf("platform capability schemaVersion = %#v, want %d", got, platformCapabilitySchemaVersion)
 	}
 	adapters, ok := routeGate["vpnCoreAdapters"].([]map[string]any)
-	if !ok || len(adapters) != 2 {
+	if !ok || len(adapters) != 3 {
 		t.Fatalf("unexpected managed VPN Core adapters: %#v", routeGate["vpnCoreAdapters"])
 	}
 	if adapters[0]["core"] != "sing-box" || adapters[0]["protocol"] != "vless" {
@@ -115,6 +115,9 @@ func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 	}
 	if adapters[1]["core"] != "wireguard" || adapters[1]["protocol"] != "wireguard" {
 		t.Fatalf("unexpected WireGuard managed adapter: %#v", adapters[1])
+	}
+	if adapters[2]["core"] != "hysteria" || adapters[2]["protocol"] != "hysteria2" {
+		t.Fatalf("unexpected Hysteria2 managed adapter: %#v", adapters[2])
 	}
 	operations, ok := capabilities["vpnCoreServiceOperations"].([]string)
 	if !ok || len(operations) != 3 || operations[0] != "start" || operations[1] != "stop" || operations[2] != "restart" {

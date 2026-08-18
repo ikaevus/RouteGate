@@ -2,10 +2,10 @@ package platform
 
 import "testing"
 
-func TestManagedVPNCoreAdaptersDeclareVLESSAndWireGuard(t *testing.T) {
+func TestManagedVPNCoreAdaptersDeclareVLESSWireGuardAndHysteria2(t *testing.T) {
 	adapters := ManagedVPNCoreAdapters()
-	if len(adapters) != 2 {
-		t.Fatalf("adapter count = %d, want 2", len(adapters))
+	if len(adapters) != 3 {
+		t.Fatalf("adapter count = %d, want 3", len(adapters))
 	}
 	descriptor := adapters[0]
 	if descriptor.Core != VPNCoreSingBox || descriptor.Protocol != VPNProtocolVLESS {
@@ -22,5 +22,9 @@ func TestManagedVPNCoreAdaptersDeclareVLESSAndWireGuard(t *testing.T) {
 	wireGuard := adapters[1]
 	if wireGuard.Core != VPNCoreWireGuard || wireGuard.Protocol != VPNProtocolWireGuard || wireGuard.Transports[0] != VPNTransportUDP || wireGuard.SecurityModes[0] != VPNSecurityWireGuard {
 		t.Fatalf("unexpected WireGuard adapter: %+v", wireGuard)
+	}
+	hysteria2 := adapters[2]
+	if hysteria2.Core != VPNCoreHysteria || hysteria2.Protocol != VPNProtocolHysteria2 || hysteria2.Transports[0] != VPNTransportQUIC || hysteria2.SecurityModes[0] != VPNSecurityTLS {
+		t.Fatalf("unexpected Hysteria2 adapter: %+v", hysteria2)
 	}
 }

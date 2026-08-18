@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -232,11 +233,16 @@ func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, toke
 }
 
 func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id string) (SubscriptionProfile, error) {
-	var serverID string
-	if err := r.pool.QueryRow(ctx, `SELECT COALESCE(server_id::text, '') FROM vpn_accounts WHERE id = $1::uuid`, id).Scan(&serverID); err != nil {
+	var serverID, serverProtocol string
+	if err := r.pool.QueryRow(ctx, `
+		SELECT COALESCE(a.server_id::text, ''), COALESCE(s.vpn_protocol, 'vless')
+		FROM vpn_accounts a
+		LEFT JOIN servers s ON s.id = a.server_id
+		WHERE a.id = $1::uuid
+	`, id).Scan(&serverID, &serverProtocol); err != nil {
 		return SubscriptionProfile{}, err
 	}
-	if serverID != "" {
+	if serverID != "" && serverProtocol == "wireguard" {
 		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.pool, serverID); err != nil {
 			return SubscriptionProfile{}, err
 		}
@@ -254,6 +260,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(a.wireguard_private_key, ''),
 			COALESCE(a.wireguard_public_key, ''),
 			COALESCE(a.wireguard_address::text, ''),
+			a.hysteria2_password,
 			a.created_at,
 			a.updated_at,
 			a.config_updated_at,
@@ -273,7 +280,10 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(s.wireguard_port, 51820),
 			COALESCE(s.wireguard_address::text, '10.66.0.1/24'),
 			COALESCE(s.wireguard_dns::text, '1.1.1.1'),
-			COALESCE(s.wireguard_public_key, '')
+			COALESCE(s.wireguard_public_key, ''),
+			s.hysteria2_port,
+			s.hysteria2_domain,
+			s.hysteria2_acme_email
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
 		WHERE a.id = $1::uuid
@@ -490,9 +500,11 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	var serverID, serverName, serverHostname, serverPublicIP, serverLocation, serverProvider sql.NullString
 	var vlessPort sql.NullInt32
 	var vlessFlow, vlessNetwork, realityPublicKey, realityShortID, realityServerName sql.NullString
-	var wireGuardPrivateKey, wireGuardPublicKey, wireGuardAddress sql.NullString
+	var wireGuardPrivateKey, wireGuardPublicKey, wireGuardAddress, hysteria2Password sql.NullString
 	var vpnProtocol, serverWireGuardAddress, wireGuardDNS, serverWireGuardPublicKey sql.NullString
 	var wireGuardPort sql.NullInt32
+	var hysteria2Port sql.NullInt32
+	var hysteria2Domain, hysteria2ACMEEmail sql.NullString
 
 	err := row.Scan(
 		&profile.Account.ID,
@@ -506,6 +518,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&wireGuardPrivateKey,
 		&wireGuardPublicKey,
 		&wireGuardAddress,
+		&hysteria2Password,
 		&profile.Account.CreatedAt,
 		&profile.Account.UpdatedAt,
 		&profile.Account.ConfigUpdatedAt,
@@ -526,6 +539,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&serverWireGuardAddress,
 		&wireGuardDNS,
 		&serverWireGuardPublicKey,
+		&hysteria2Port,
+		&hysteria2Domain,
+		&hysteria2ACMEEmail,
 	)
 	if err != nil {
 		return SubscriptionProfile{}, err
@@ -557,6 +573,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			WireGuardAddress:   serverWireGuardAddress.String,
 			WireGuardDNS:       wireGuardDNS.String,
 			WireGuardPublicKey: serverWireGuardPublicKey.String,
+			Hysteria2Port:       int(hysteria2Port.Int32),
+			Hysteria2Domain:     hysteria2Domain.String,
+			Hysteria2ACMEEmail:  hysteria2ACMEEmail.String,
 		}
 		if vlessPort.Valid {
 			server.VLESSPort = int(vlessPort.Int32)
@@ -573,6 +592,10 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			PrivateKey: wireGuardPrivateKey.String,
 			PublicKey:  wireGuardPublicKey.String,
 			Address:    wireGuardAddress.String,
+		}
+		profile.Credentials.Hysteria2 = Hysteria2Credentials{
+			Username: strings.ToLower(profile.Account.ID),
+			Password: hysteria2Password.String,
 		}
 	}
 	return profile, nil

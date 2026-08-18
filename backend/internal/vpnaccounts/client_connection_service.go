@@ -39,6 +39,21 @@ func BuildClientConnection(ctx context.Context, source ClientConnectionSource, a
 			Endpoint: subscriptionServerEndpoint(subscription.Server),
 		}, nil
 	}
+	if subscription.Server.VPNProtocol == "hysteria2" {
+		uri, renderErr := RenderHysteria2ClientURI(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format:       "hysteria2-uri",
+			Hysteria2URI: uri,
+			Profile:      profile,
+			Endpoint:     subscription.Server.Hysteria2Domain,
+			ServerName:   subscription.Server.Hysteria2Domain,
+			Network:      "quic",
+		}, nil
+	}
 	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)
 	if err != nil {
 		return ClientConnectionResponse{}, err

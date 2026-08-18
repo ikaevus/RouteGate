@@ -59,6 +59,10 @@ type ProtocolSettings struct {
 	WireGuardAddress   string    `json:"wireGuardAddress"`
 	WireGuardDNS       string    `json:"wireGuardDns"`
 	WireGuardPublicKey string    `json:"wireGuardPublicKey,omitempty"`
+	Hysteria2Port       int       `json:"hysteria2Port"`
+	Hysteria2Domain     string    `json:"hysteria2Domain,omitempty"`
+	Hysteria2ACMEEmail  string    `json:"hysteria2AcmeEmail,omitempty"`
+	Hysteria2MasqueradeURL string `json:"hysteria2MasqueradeUrl,omitempty"`
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
@@ -108,6 +112,10 @@ type UpdateProtocolSettingsInput struct {
 	WireGuardPort      *int
 	WireGuardAddress   *string
 	WireGuardDNS       *string
+	Hysteria2Port       *int
+	Hysteria2Domain     *string
+	Hysteria2ACMEEmail  *string
+	Hysteria2MasqueradeURL *string
 }
 
 type UpdateRealityKeypairInput struct {

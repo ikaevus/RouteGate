@@ -12,7 +12,7 @@ import {
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 
 interface ProtocolSettingsFormState {
-	protocol: 'vless' | 'wireguard';
+	protocol: 'vless' | 'wireguard' | 'hysteria2';
   vlessPort: string;
   vlessFlow: string;
   vlessNetwork: string;
@@ -22,6 +22,10 @@ interface ProtocolSettingsFormState {
 	wireGuardPort: string;
 	wireGuardAddress: string;
 	wireGuardDns: string;
+	hysteria2Port: string;
+	hysteria2Domain: string;
+	hysteria2AcmeEmail: string;
+	hysteria2MasqueradeUrl: string;
 }
 
 const emptyFormState: ProtocolSettingsFormState = {
@@ -35,6 +39,10 @@ const emptyFormState: ProtocolSettingsFormState = {
 	wireGuardPort: '51820',
 	wireGuardAddress: '10.66.0.1/24',
 	wireGuardDns: '1.1.1.1',
+	hysteria2Port: '443',
+	hysteria2Domain: '',
+	hysteria2AcmeEmail: '',
+	hysteria2MasqueradeUrl: 'https://www.cloudflare.com/',
 };
 
 function formatDate(value?: string | null): string {
@@ -49,7 +57,7 @@ function formatDate(value?: string | null): string {
 
 function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>): ProtocolSettingsFormState {
   return {
-		protocol: settings.protocol === 'wireguard' ? 'wireguard' : 'vless',
+		protocol: settings.protocol === 'wireguard' || settings.protocol === 'hysteria2' ? settings.protocol : 'vless',
     vlessPort: String(settings.vless.port),
     vlessFlow: settings.vless.flow ?? '',
     vlessNetwork: settings.vless.network ?? '',
@@ -59,6 +67,10 @@ function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>):
 		wireGuardPort: String(settings.wireGuard.port),
 		wireGuardAddress: settings.wireGuard.address,
 		wireGuardDns: settings.wireGuard.dns,
+		hysteria2Port: String(settings.hysteria2.port),
+		hysteria2Domain: settings.hysteria2.domain ?? '',
+		hysteria2AcmeEmail: settings.hysteria2.acmeEmail ?? '',
+		hysteria2MasqueradeUrl: settings.hysteria2.masqueradeUrl ?? 'https://www.cloudflare.com/',
   };
 }
 
@@ -76,6 +88,10 @@ function toRequest(
 		wireGuardPort: Number(form.wireGuardPort),
 		wireGuardAddress: form.wireGuardAddress.trim(),
 		wireGuardDns: form.wireGuardDns.trim(),
+		hysteria2Port: Number(form.hysteria2Port),
+		hysteria2Domain: form.hysteria2Domain.trim(),
+		hysteria2AcmeEmail: form.hysteria2AcmeEmail.trim(),
+		hysteria2MasqueradeUrl: form.hysteria2MasqueradeUrl.trim(),
   };
   const realityPublicKey = form.realityPublicKey.trim();
   if (realityPublicKey !== savedRealityPublicKey.trim()) {
@@ -101,6 +117,12 @@ function getRecommendedCopy() {
 		wireGuardDns: 'DNS для клиентов',
 		wireGuardPublicKey: 'Публичный ключ сервера WireGuard',
 		wireGuardProtocol: 'WireGuard',
+		hysteria2Protocol: 'Hysteria2',
+		hysteria2Port: 'UDP-порт Hysteria2',
+		hysteria2Domain: 'Домен TLS / ACME',
+		hysteria2AcmeEmail: 'Email для ACME',
+		hysteria2MasqueradeUrl: 'HTTPS-сайт маскировки',
+		hysteria2Hint: 'Домен должен указывать на этот VPN-узел. Hysteria получает и обновляет отдельный сертификат локально через ACME HTTP-01 (порт 80).',
       pending: 'Настраиваем…',
       configuredTitle: 'VLESS / Reality настроен',
       configuredDescription: 'Основные параметры готовы. Вернитесь в обзор, чтобы продолжить к созданию первого VPN-аккаунта.',
@@ -128,6 +150,12 @@ function getRecommendedCopy() {
 		wireGuardDns: 'Client DNS',
 		wireGuardPublicKey: 'WireGuard server public key',
 		wireGuardProtocol: 'WireGuard',
+		hysteria2Protocol: 'Hysteria2',
+		hysteria2Port: 'Hysteria2 UDP port',
+		hysteria2Domain: 'TLS / ACME domain',
+		hysteria2AcmeEmail: 'ACME email',
+		hysteria2MasqueradeUrl: 'Masquerade HTTPS site',
+		hysteria2Hint: 'The domain must resolve to this VPN node. Hysteria obtains and renews a separate certificate locally through ACME HTTP-01 (port 80).',
     pending: 'Configuring…',
     configuredTitle: 'VLESS / Reality configured',
     configuredDescription: 'The required protocol settings are ready. Return to Overview to continue with the first VPN account.',
@@ -208,11 +236,17 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
   const portNumber = Number(form.vlessPort);
 	const wireGuardPortNumber = Number(form.wireGuardPort);
+	const hysteria2PortNumber = Number(form.hysteria2Port);
   const realityValues = [form.realityPublicKey, form.realityShortId, form.realityServerName]
     .map((value) => value.trim());
   const realityTouched = realityValues.some(Boolean);
   const realityComplete = realityValues.every(Boolean);
-	const protocolConfigured = form.protocol === 'wireguard'
+	const protocolConfigured = form.protocol === 'hysteria2'
+		? Boolean(settingsQuery.data?.hysteria2.ready)
+			&& Number.isInteger(hysteria2PortNumber)
+			&& hysteria2PortNumber >= 1
+			&& hysteria2PortNumber <= 65535
+		: form.protocol === 'wireguard'
 		? Boolean(settingsQuery.data?.wireGuard.ready)
 			&& Number.isInteger(wireGuardPortNumber)
 			&& wireGuardPortNumber >= 1
@@ -226,7 +260,11 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 		|| recommendedSettingsMutation.isPending
 		|| wireGuardSettingsMutation.isPending;
   const canSave =
-		(form.protocol === 'wireguard'
+		(form.protocol === 'hysteria2'
+			? Number.isInteger(hysteria2PortNumber) && hysteria2PortNumber >= 1 && hysteria2PortNumber <= 65535
+				&& form.hysteria2Domain.trim() !== '' && form.hysteria2AcmeEmail.trim() !== ''
+				&& form.hysteria2MasqueradeUrl.trim() === 'https://www.cloudflare.com/'
+			: form.protocol === 'wireguard'
 			? Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
 			: Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535 && (!realityTouched || realityComplete)) &&
     !mutationPending;
@@ -342,9 +380,17 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 				<select value={form.protocol} onChange={(event) => updateField('protocol', event.target.value)}>
 				  <option value="vless">VLESS / Reality</option>
 				  <option value="wireguard">{copy.wireGuardProtocol}</option>
+				  <option value="hysteria2">{copy.hysteria2Protocol}</option>
 				</select>
               </label>
-			  {form.protocol === 'wireguard' ? (
+			  {form.protocol === 'hysteria2' ? (
+				<>
+				  <label className="field"><span>{copy.hysteria2Port}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.hysteria2Port} onChange={(event) => updateField('hysteria2Port', event.target.value)} /></label>
+				  <label className="field"><span>{copy.hysteria2Domain}</span><input value={form.hysteria2Domain} onChange={(event) => updateField('hysteria2Domain', event.target.value)} /></label>
+				  <label className="field"><span>{copy.hysteria2AcmeEmail}</span><input type="email" value={form.hysteria2AcmeEmail} onChange={(event) => updateField('hysteria2AcmeEmail', event.target.value)} /></label>
+				  <label className="field"><span>{copy.hysteria2MasqueradeUrl}</span><input type="url" value={form.hysteria2MasqueradeUrl} readOnly /><small>{copy.hysteria2Hint}</small></label>
+				</>
+			  ) : form.protocol === 'wireguard' ? (
 				<>
 				  <label className="field"><span>{copy.wireGuardPort}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.wireGuardPort} onChange={(event) => updateField('wireGuardPort', event.target.value)} /></label>
 				  <label className="field"><span>{copy.wireGuardAddress}</span><input value={form.wireGuardAddress} onChange={(event) => updateField('wireGuardAddress', event.target.value)} /></label>
