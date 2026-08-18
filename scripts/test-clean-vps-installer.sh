@@ -333,6 +333,24 @@ test_all_in_one_role_contract() {
     grep -Fq 'deploymentRole:"hybrid"' "$ROOT_DIR/install.sh"
 }
 
+test_certificate_and_recovery_contract() {
+  assert_true \
+    "installer enables the Certbot renewal timer" \
+    grep -Fq 'systemctl enable --now certbot.timer' "$ROOT_DIR/install.sh"
+  assert_true \
+    "certificate deploy hook validates nginx" \
+    grep -Fq '/usr/sbin/nginx -t' "$ROOT_DIR/install.sh"
+  assert_true \
+    "certificate deploy hook reloads nginx" \
+    grep -Fq '/usr/bin/systemctl reload nginx' "$ROOT_DIR/install.sh"
+  assert_true \
+    "installer installs the fixed recovery tool" \
+    grep -Fq '/usr/local/sbin/routegate-recovery' "$ROOT_DIR/install.sh"
+  assert_true \
+    "completion output includes the recovery status next action" \
+    grep -Fq 'sudo routegate-recovery status' < <(print_success)
+}
+
 test_conflict_recommendations() {
   local postgres nginx ports prometheus
   postgres=$(conflict_recommendations postgresql)
@@ -373,6 +391,7 @@ test_confirmation_prompt
 test_success_output
 test_agent_credentials_detection
 test_all_in_one_role_contract
+test_certificate_and_recovery_contract
 test_conflict_recommendations
 test_conflict_collection
 printf '1..%d\n' "$TESTS_RUN"

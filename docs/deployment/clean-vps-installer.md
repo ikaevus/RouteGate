@@ -131,13 +131,14 @@ The installer performs these stages in order:
 10. Generates a unique bootstrap administrator credential used only to initialize the first SuperAdmin and local platform workflow.
 11. Starts Manager on `127.0.0.1:8080` and verifies its health endpoint.
 12. Configures nginx, preserves the existing SSH firewall policy, and requests a Let's Encrypt certificate.
-13. Creates the local All-in-One Server through the authenticated Manager API.
-14. Creates a one-time Agent registration token, starts the local Agent, and verifies persistent Agent credentials.
-15. Creates a high-entropy, single-use administrator setup token and constructs `https://<domain>/setup#token=<token>`.
-16. Removes bootstrap administrator values from the Manager environment and restarts Manager.
-17. Writes root-only first-access/recovery information.
-18. Verifies PostgreSQL, nginx, Manager, Agent, HTTPS health, Agent credentials, and local PostgreSQL exposure.
-19. Marks installation state complete and prints the `/setup` next action.
+13. Enables `certbot.timer` and installs a RouteGate nginx validation/reload hook for certificate renewal.
+14. Creates the local All-in-One Server through the authenticated Manager API.
+15. Creates a one-time Agent registration token, starts the local Agent, and verifies persistent Agent credentials.
+16. Creates a high-entropy, single-use administrator setup token and constructs `https://<domain>/setup#token=<token>`.
+17. Removes bootstrap administrator values from the Manager environment and restarts Manager.
+18. Writes root-only first-access/recovery information and installs `routegate-recovery`.
+19. Verifies PostgreSQL, nginx, Manager, Agent, HTTPS health, Agent credentials, and local PostgreSQL exposure.
+20. Marks installation state complete and prints the `/setup` next action.
 
 ## First administrator activation
 
@@ -216,6 +217,15 @@ Interrupted-install secrets are temporarily stored under:
 These files are root-only. If a RouteGate-owned installation is marked `installing`, re-running the same command for the same domain resumes with preserved installer secrets. After successful verification, transient secrets are deleted and state becomes `complete`.
 
 When state is `complete`, running the installer again performs health/idempotency checks and exits without reinstalling the platform or rotating credentials.
+
+For supported post-install certificate, service, and VPN config recovery, use:
+
+```bash
+sudo routegate-recovery status
+```
+
+See [RouteGate Recovery Tool](../operations/recovery-tool.md) for the fixed
+operation allow-list and rollback behavior.
 
 The installer refuses to overwrite partial RouteGate files that do not have valid RouteGate ownership state.
 

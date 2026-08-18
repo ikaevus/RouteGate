@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+umask 077
+
+STATE_FILE="/etc/routegate/install-state.env"
+ACTIVE_CONFIG="/etc/sing-box/config.json"
+BACKUP_DIR="/var/lib/routegate-agent/backups"
+LOG_FILE="/var/log/routegate-recovery.log"
+LOCK_FILE="/run/lock/routegate-recovery.lock"
+
+log() {
+  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"
+}
+
+die() {
+  log "ERROR: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF_USAGE'
+Usage: routegate-recovery <command> [argument]
+
+Commands:
+  status                         Show RouteGate services and certificate state.
+  renew-certificate              Run the managed Certbot renewal and verify HTTPS.
+  restart-services               Restart Manager, Agent, and nginx in dependency order.
+  rollback-vpn-config <version>  Restore one UUID-named Agent config backup safely.
+
+This tool exposes fixed recovery operations only. It does not execute arbitrary
+commands, scripts, service names, certificate domains, or filesystem paths.
+EOF_USAGE
+}
+
+require_root() {
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run this command as root."
+}
+
+state_value() {
+  local key=$1
+  [[ -r "$STATE_FILE" ]] || return 1
+  sed -n "s/^${key}=//p" "$STATE_FILE" | head -n1
+}
+
+validate_domain() {
+  local domain=$1
+  [[ ${#domain} -le 253 ]] || return 1
+  [[ "$domain" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]
+}
+
+managed_domain() {
+  local domain status
+  status=$(state_value STATUS || true)
+  domain=$(state_value DOMAIN || true)
+  [[ "$status" == "complete" ]] || die "RouteGate install state is not complete."
+  validate_domain "$domain" || die "RouteGate install state contains an invalid domain."
+  printf '%s\n' "$domain"
+}
+
+service_status() {
+  local service=$1
+  local active enabled
+  active=$(systemctl is-active "$service" 2>/dev/null || true)
+  enabled=$(systemctl is-enabled "$service" 2>/dev/null || true)
+  printf 'service=%s active=%s enabled=%s\n' "$service" "${active:-unknown}" "${enabled:-unknown}"
+}
+
+certificate_status() {
+  local domain=$1
+  local certificate="/etc/letsencrypt/live/${domain}/fullchain.pem"
+  if [[ ! -r "$certificate" ]]; then
+    printf 'certificate=%s available=false\n' "$domain"
+    return 1
+  fi
+
+  local not_after epoch_now epoch_after days_remaining
+  not_after=$(openssl x509 -in "$certificate" -noout -enddate | sed 's/^notAfter=//') \
+    || die "Could not read the managed certificate."
+  epoch_now=$(date -u +%s)
+  epoch_after=$(date -u -d "$not_after" +%s) || die "Could not parse the managed certificate expiry."
+  days_remaining=$(((epoch_after - epoch_now) / 86400))
+  printf 'certificate=%s available=true not_after=%q days_remaining=%d\n' "$domain" "$not_after" "$days_remaining"
+  ((epoch_after > epoch_now))
+}
+
+show_status() {
+  local domain failed=0
+  domain=$(managed_domain)
+  printf 'routegate_state=complete domain=%s\n' "$domain"
+  local service
+  for service in postgresql routegate-manager.service routegate-agent.service nginx certbot.timer; do
+    service_status "$service"
+    systemctl is-active --quiet "$service" || failed=1
+  done
+  certificate_status "$domain" || failed=1
+  return "$failed"
+}
+
+renew_certificate() {
+  local domain
+  domain=$(managed_domain)
+  command -v certbot >/dev/null 2>&1 || die "Certbot is not installed."
+  command -v nginx >/dev/null 2>&1 || die "nginx is not installed."
+
+  log "Running managed certificate renewal for ${domain}."
+  certbot renew --cert-name "$domain" >>"$LOG_FILE" 2>&1 \
+    || die "Certbot renewal failed."
+  nginx -t >>"$LOG_FILE" 2>&1 || die "nginx validation failed after certificate renewal."
+  systemctl reload nginx >>"$LOG_FILE" 2>&1 || die "nginx reload failed after certificate renewal."
+  curl -fsS --max-time 15 "https://${domain}/api/admin/health" >/dev/null \
+    || die "Manager HTTPS health check failed after certificate renewal."
+  certificate_status "$domain" >/dev/null || die "Managed certificate is expired after renewal."
+  log "Certificate renewal verification succeeded."
+}
+
+restart_services() {
+  managed_domain >/dev/null
+  log "Restarting RouteGate Manager."
+  systemctl restart routegate-manager.service >>"$LOG_FILE" 2>&1 \
+    || die "RouteGate Manager restart failed."
+  systemctl is-active --quiet routegate-manager.service \
+    || die "RouteGate Manager is not active after restart."
+
+  log "Restarting RouteGate Agent."
+  systemctl restart routegate-agent.service >>"$LOG_FILE" 2>&1 \
+    || die "RouteGate Agent restart failed."
+  systemctl is-active --quiet routegate-agent.service \
+    || die "RouteGate Agent is not active after restart."
+
+  nginx -t >>"$LOG_FILE" 2>&1 || die "nginx configuration validation failed."
+  systemctl restart nginx >>"$LOG_FILE" 2>&1 || die "nginx restart failed."
+  systemctl is-active --quiet nginx || die "nginx is not active after restart."
+  log "RouteGate service recovery succeeded."
+}
+
+validate_version_id() {
+  [[ "$1" =~ ^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[1-5][a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$ ]]
+}
+
+rollback_vpn_config() {
+  local version_id=${1:-}
+  validate_version_id "$version_id" || die "Config version must be a UUID."
+  local backup="${BACKUP_DIR}/${version_id}.previous.json"
+  [[ -f "$backup" && ! -L "$backup" ]] || die "The requested config backup does not exist."
+  [[ -f "$ACTIVE_CONFIG" && ! -L "$ACTIVE_CONFIG" ]] || die "The active sing-box config is unavailable."
+  command -v sing-box >/dev/null 2>&1 || die "sing-box is not installed."
+
+  sing-box check -c "$backup" >>"$LOG_FILE" 2>&1 \
+    || die "The requested backup failed sing-box validation."
+
+  local rescue staged
+  rescue=$(mktemp "${BACKUP_DIR}/recovery-current.XXXXXX.json")
+  staged="${ACTIVE_CONFIG}.routegate-recovery"
+  install -m 0600 "$ACTIVE_CONFIG" "$rescue"
+  install -m 0600 "$backup" "$staged"
+  mv -f "$staged" "$ACTIVE_CONFIG"
+
+  if ! systemctl restart sing-box >>"$LOG_FILE" 2>&1 || ! systemctl is-active --quiet sing-box; then
+    install -m 0600 "$rescue" "$staged"
+    mv -f "$staged" "$ACTIVE_CONFIG"
+    systemctl restart sing-box >>"$LOG_FILE" 2>&1 || true
+    rm -f "$rescue"
+    die "Rollback health check failed; the previous active config was restored."
+  fi
+  rm -f "$rescue"
+  log "VPN config rollback to backup ${version_id} succeeded."
+}
+
+main() {
+  local command=${1:-}
+  case "$command" in
+    help|-h|--help)
+      usage
+      return 0
+      ;;
+  esac
+
+  require_root
+  install -d -m 0755 "$(dirname "$LOCK_FILE")"
+  if [[ ! -e "$LOG_FILE" ]]; then
+    install -m 0600 /dev/null "$LOG_FILE"
+  else
+    chmod 0600 "$LOG_FILE"
+  fi
+  exec 9>"$LOCK_FILE"
+  flock -n 9 || die "Another RouteGate recovery operation is running."
+
+  case "$command" in
+    status)
+      [[ $# -eq 1 ]] || die "status does not accept arguments."
+      show_status
+      ;;
+    renew-certificate)
+      [[ $# -eq 1 ]] || die "renew-certificate does not accept arguments."
+      renew_certificate
+      ;;
+    restart-services)
+      [[ $# -eq 1 ]] || die "restart-services does not accept arguments."
+      restart_services
+      ;;
+    rollback-vpn-config)
+      [[ $# -eq 2 ]] || die "rollback-vpn-config requires exactly one config version UUID."
+      rollback_vpn_config "$2"
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+  main "$@"
+fi

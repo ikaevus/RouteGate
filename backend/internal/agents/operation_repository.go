@@ -46,7 +46,7 @@ func ValidVPNCoreOperation(operation string) bool {
 
 func ValidDiagnosticOperation(operation string) bool {
 	switch strings.TrimSpace(operation) {
-	case DiagnosticOperationHostOverview, DiagnosticOperationVPNCoreStatus:
+	case DiagnosticOperationHostOverview, DiagnosticOperationVPNCoreStatus, DiagnosticOperationManagerCertificate:
 		return true
 	default:
 		return false

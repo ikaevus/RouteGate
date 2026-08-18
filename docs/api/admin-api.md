@@ -201,6 +201,20 @@ node. Management Nodes receive `409 node_role_incompatible`.
 
 `GET /api/v1/system/version` returns Manager, Web UI, database schema, Agent protocol compatibility, and manual-update metadata. It does not perform update network calls.
 
+Allow-listed node diagnostics are queued through:
+
+```http
+POST /api/v1/servers/{server_id}/diagnostics
+GET  /api/v1/servers/{server_id}/diagnostics
+GET  /api/v1/servers/{server_id}/diagnostics/{run_id}
+```
+
+The create body contains one registered `profileKey`: `host_overview`,
+`vpn_core_status`, or `manager_certificate`. Manager queues the operation only
+when the attached Agent advertised that exact profile. Agent evidence is
+treated as untrusted input; Manager derives state, reason code, summary, and
+recommended action before storing the diagnostic result.
+
 Example response:
 
 ```json

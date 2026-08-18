@@ -112,3 +112,9 @@ export function runHostDiagnostic(serverId: string): Promise<DiagnosticRun> {
     profileKey: 'host_overview',
   });
 }
+
+export function runManagerCertificateDiagnostic(serverId: string): Promise<DiagnosticRun> {
+  return apiPost<{ profileKey: string }, DiagnosticRun>(`/api/v1/servers/${serverId}/diagnostics`, {
+    profileKey: 'manager_certificate',
+  });
+}

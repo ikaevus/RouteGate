@@ -13,7 +13,7 @@ func (r *Runner) processDiagnosticTask(ctx context.Context, task tasks.ConfigTas
 		return fmt.Errorf("unsupported diagnostic task kind %q", task.EffectiveKind())
 	}
 
-	result, err := diagnostics.Execute(task.Operation)
+	result, err := diagnostics.ExecuteWithOptions(task.Operation, diagnostics.Options{ManagerURL: r.cfg.ManagerURL})
 	if err != nil {
 		report := map[string]any{
 			"schemaVersion": diagnostics.SchemaVersion,

@@ -42,4 +42,11 @@ lists the node capabilities and complete VPN Core adapters RouteGate can manage.
 This is separate from VPN Core binary detection and runtime telemetry. See
 `docs/architecture/platform-expansion.md` for the contract.
 
+Agent diagnostic profiles are compile-time allow-listed and advertised through
+`capabilities.diagnosticProfiles`. RG-114D adds `manager_certificate` alongside
+`host_overview` and `vpn_core_status`. The certificate profile always targets
+the configured Manager URL and returns only hostname, validity timestamps, and
+verification outcome. Certificate bytes, private keys, arbitrary target URLs,
+and raw command/network output are outside the Agent API contract.
+
 The old unversioned `/api/agent/*` compatibility endpoints and manual Agent registration UI are not part of the supported RouteGate runtime.

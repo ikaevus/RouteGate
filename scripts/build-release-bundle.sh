@@ -64,6 +64,7 @@ build_architecture() {
     "$stage_dir/frontend" \
     "$stage_dir/systemd" \
     "$stage_dir/nginx" \
+    "$stage_dir/tools" \
     "$stage_dir/metadata"
 
   log "Building Manager for linux/${arch}."
@@ -91,6 +92,7 @@ build_architecture() {
   cp "$ROOT_DIR/deploy/systemd/routegate-manager.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/systemd/routegate-agent.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/nginx/routegate.conf.example" "$stage_dir/nginx/"
+  cp "$ROOT_DIR/scripts/routegate-recovery" "$stage_dir/tools/"
 
   cat >"$stage_dir/metadata/manifest.env" <<EOF_MANIFEST
 FORMAT_VERSION=1
@@ -111,6 +113,7 @@ EOF_MANIFEST
   chmod 0755 "$stage_dir/bin/routegate-manager" "$stage_dir/bin/routegate-agent"
   find "$stage_dir" -type d -exec chmod 0755 {} +
   find "$stage_dir" -type f ! -path '*/bin/*' -exec chmod 0644 {} +
+  chmod 0755 "$stage_dir/tools/routegate-recovery"
 
   tar -C "$stage_dir" \
     --sort=name \

@@ -29,6 +29,14 @@ type vpnCoreDiagnosticEvidence struct {
 	VPNCore   AgentVPNCoreTelemetry `json:"vpnCore"`
 }
 
+type managerCertificateDiagnosticEvidence struct {
+	Available bool      `json:"available"`
+	Hostname  string    `json:"hostname"`
+	NotBefore time.Time `json:"notBefore"`
+	NotAfter  time.Time `json:"notAfter"`
+	Verified  bool      `json:"verified"`
+}
+
 // EvaluateDiagnosticPayload is the trust boundary between Agent observations
 // and RouteGate operational meaning. Agent may report facts, but it cannot set
 // health state, reason codes, summaries, or recommended actions.
@@ -57,9 +65,74 @@ func EvaluateDiagnosticPayload(profileKey string, payload map[string]any, resour
 		return evaluateHostDiagnostic(envelope, resource)
 	case DiagnosticProfileVPNCoreStatus:
 		return evaluateVPNCoreDiagnostic(envelope, resource)
+	case DiagnosticProfileManagerCertificate:
+		return evaluateManagerCertificateDiagnostic(envelope)
 	default:
 		return DiagnosticResult{}, nil, fmt.Errorf("unsupported diagnostic profile %q", profileKey)
 	}
+}
+
+func evaluateManagerCertificateDiagnostic(envelope diagnosticEnvelope) (DiagnosticResult, map[string]any, error) {
+	var evidence managerCertificateDiagnosticEvidence
+	if len(envelope.Evidence) == 0 || string(envelope.Evidence) == "null" {
+		return DiagnosticResult{}, nil, fmt.Errorf("manager certificate diagnostic evidence is required")
+	}
+	if err := json.Unmarshal(envelope.Evidence, &evidence); err != nil {
+		return DiagnosticResult{}, nil, fmt.Errorf("decode manager certificate diagnostic evidence: %w", err)
+	}
+	if !evidence.Available {
+		result := DiagnosticResult{
+			CheckKey:          DiagnosticProfileManagerCertificate,
+			State:             HealthUnknown,
+			ReasonCode:        "manager_certificate_unavailable",
+			Summary:           "Manager TLS certificate could not be inspected from this node.",
+			RecommendedAction: "check_manager_tls",
+			Evidence:          json.RawMessage(`{"available":false}`),
+		}
+		return result, diagnosticResultPayload(envelope, result, map[string]any{"available": false}), nil
+	}
+	if strings.TrimSpace(evidence.Hostname) == "" || evidence.NotBefore.IsZero() || evidence.NotAfter.IsZero() || !evidence.NotAfter.After(evidence.NotBefore) {
+		return DiagnosticResult{}, nil, fmt.Errorf("manager certificate diagnostic evidence is incomplete")
+	}
+
+	result := DiagnosticResult{CheckKey: DiagnosticProfileManagerCertificate}
+	switch {
+	case !envelope.CollectedAt.Before(evidence.NotAfter):
+		result.State = HealthUnhealthy
+		result.ReasonCode = "manager_certificate_expired"
+		result.Summary = "Manager TLS certificate has expired."
+		result.RecommendedAction = "renew_manager_certificate"
+	case envelope.CollectedAt.Before(evidence.NotBefore):
+		result.State = HealthUnhealthy
+		result.ReasonCode = "manager_certificate_not_yet_valid"
+		result.Summary = "Manager TLS certificate is not valid yet."
+		result.RecommendedAction = "check_manager_time_and_certificate"
+	case !evidence.Verified:
+		result.State = HealthUnhealthy
+		result.ReasonCode = "manager_certificate_untrusted"
+		result.Summary = "Manager TLS certificate chain or hostname could not be verified."
+		result.RecommendedAction = "repair_manager_certificate"
+	case evidence.NotAfter.Sub(envelope.CollectedAt) <= 30*24*time.Hour:
+		result.State = HealthDegraded
+		result.ReasonCode = "manager_certificate_expiring"
+		result.Summary = "Manager TLS certificate expires within 30 days."
+		result.RecommendedAction = "renew_manager_certificate"
+	default:
+		result.State = HealthHealthy
+		result.ReasonCode = "manager_certificate_valid"
+		result.Summary = "Manager TLS certificate is valid for more than 30 days."
+	}
+
+	safeEvidence := map[string]any{
+		"available": true,
+		"hostname":  boundedDiagnosticString(evidence.Hostname, 255),
+		"notBefore": evidence.NotBefore.UTC(),
+		"notAfter":  evidence.NotAfter.UTC(),
+		"verified":  evidence.Verified,
+	}
+	encodedEvidence, _ := json.Marshal(safeEvidence)
+	result.Evidence = encodedEvidence
+	return result, diagnosticResultPayload(envelope, result, safeEvidence), nil
 }
 
 func evaluateHostDiagnostic(envelope diagnosticEnvelope, resource ResourceRef) (DiagnosticResult, map[string]any, error) {

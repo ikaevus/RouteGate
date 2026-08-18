@@ -123,6 +123,29 @@ stable for identical input and render time, old plain sing-box apply tasks stay
 supported, and the Clean VPS path continues to select the default
 sing-box/VLESS adapter.
 
+## Certificate lifecycle and recovery
+
+RG-114D keeps certificate observation, operational meaning, and recovery
+authority separate:
+
+- Agent's allow-listed `manager_certificate` diagnostic inspects only the TLS
+  peer metadata of its configured Manager URL. It reports hostname, validity
+  window, and verification outcome; it never returns certificate bytes, private
+  keys, or raw network errors.
+- Manager validates that evidence and assigns the canonical health state. A
+  verified certificate with 30 days or less remaining is degraded; expired,
+  not-yet-valid, or untrusted certificates are unhealthy.
+- The All-in-One installer enables `certbot.timer` and installs a fixed deploy
+  hook that validates and reloads nginx after renewal.
+- The root-only `routegate-recovery` CLI exposes fixed status, certificate
+  renewal, service restart, and UUID-scoped VPN config rollback operations. It
+  accepts no arbitrary command, service name, domain, script, or file path.
+
+This slice manages the existing Manager HTTPS certificate lifecycle. Protocol
+adapters that require certificates, including Hysteria2, must add their own
+certificate ownership and distribution rules without reusing Manager private
+keys.
+
 ## Planned slices
 
 1. **RG-114A — Node Roles & Protocol Capability Foundation**

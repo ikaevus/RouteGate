@@ -32,6 +32,9 @@ func TestOperationCapabilityAllowsOnlyKnownKindOperationPairs(t *testing.T) {
 	if capability, err := operationCapability(AgentTaskKindVPNCoreInstall, VPNCoreOperationInstallSingBox); err != nil || capability != "vpnCoreInstallationOperations" {
 		t.Fatalf("installation capability = %q, err=%v", capability, err)
 	}
+	if capability, err := operationCapability(AgentTaskKindDiagnostic, DiagnosticOperationManagerCertificate); err != nil || capability != "diagnosticProfiles" {
+		t.Fatalf("certificate diagnostic capability = %q, err=%v", capability, err)
+	}
 	for _, test := range []struct{ kind, operation string }{
 		{AgentTaskKindVPNCoreInstall, "xray"},
 		{AgentTaskKindVPNCoreInstall, VPNCoreOperationStart},
