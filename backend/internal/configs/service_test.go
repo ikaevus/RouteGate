@@ -36,6 +36,9 @@ func TestBuildRenderedConfigIncludesServerAgentAndSingBoxSkeleton(t *testing.T) 
 	if config.Server.ID != "server-id" || config.Server.Name != "fi-01" {
 		t.Fatalf("unexpected server in rendered config: %+v", config.Server)
 	}
+	if config.Server.DeploymentRole != "vpn" {
+		t.Fatalf("deployment role = %q, want legacy-compatible vpn", config.Server.DeploymentRole)
+	}
 	if config.Agent == nil || config.Agent.ID != "agent-id" || config.Agent.AgentVersion != "0.1.0" {
 		t.Fatalf("unexpected agent in rendered config: %+v", config.Agent)
 	}
@@ -352,6 +355,23 @@ func TestValidateRenderedConfigRejectsMissingRequiredFields(t *testing.T) {
 	}
 	if len(result.Errors) == 0 {
 		t.Fatalf("expected validation errors: %+v", result)
+	}
+}
+
+func TestValidateRenderedConfigRejectsManagementNodeVPNConfig(t *testing.T) {
+	config := buildRenderedConfig(ServerConfigInfo{
+		ID:             "server-id",
+		Name:           "manager-01",
+		DeploymentRole: "management",
+		Status:         "active",
+	}, time.Now().UTC())
+
+	result := ValidateRenderedConfig(config)
+	if result.Valid {
+		t.Fatalf("management-only node config must be invalid: %+v", result)
+	}
+	if !strings.Contains(strings.Join(result.Errors, " "), "does not host the VPN plane") {
+		t.Fatalf("expected deployment-role validation error: %+v", result)
 	}
 }
 

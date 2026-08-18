@@ -1271,7 +1271,7 @@ find_or_create_local_server() {
     --arg name "$ROUTEGATE_SERVER_NAME" \
     --arg description "RouteGate All-in-One host installed by the Clean VPS Installer" \
     --arg public_ip "$ROUTEGATE_PUBLIC_IPV4" \
-    '{name:$name,description:$description,publicIp:$public_ip}' >"$body_file"
+    '{name:$name,deploymentRole:"hybrid",description:$description,publicIp:$public_ip}' >"$body_file"
   chmod 0600 "$body_file"
 
   server_response=$(curl -fsS --max-time 15 \

@@ -11,6 +11,13 @@ RouteGate starts as a modular monolith with a monorepository layout.
 - Frontend: React/TypeScript admin UI.
 - PostgreSQL: primary persistent storage.
 
+## Deployment roles
+
+RG-114 adds explicit Management, VPN, and Hybrid Node roles without changing
+the canonical `Manager -> Agent -> VPN Core` boundary. See
+[`platform-expansion.md`](platform-expansion.md) and
+[`ADR-0002`](../decisions/ADR-0002-node-roles-and-protocol-capabilities.md).
+
 ## API zones
 
 - `/api/admin/*` for admin UI.

@@ -164,6 +164,21 @@ GET  /api/v1/agents  # agents:read
 GET  /api/v1/system/version # agents:read
 ```
 
+Server inventory entries are RouteGate nodes. `deploymentRole` is one of
+`management`, `vpn`, or `hybrid`. Older clients may omit it when creating a
+record; Manager then creates a VPN Node.
+
+```json
+{
+  "name": "us-vpn-01",
+  "deploymentRole": "vpn",
+  "publicIp": "203.0.113.10"
+}
+```
+
+The Clean VPS All-in-One installer explicitly creates a Hybrid Node. A
+Management-only node cannot receive an Agent registration token or VPN config.
+
 `GET /api/v1/system/version` returns Manager, Web UI, database schema, Agent protocol compatibility, and manual-update metadata. It does not perform update network calls.
 
 Example response:
@@ -179,8 +194,8 @@ Example response:
     "version": "dev"
   },
   "database": {
-    "expectedSchemaVersion": 102,
-    "appliedSchemaVersion": "000102_agent_protocol_version"
+    "expectedSchemaVersion": 124,
+    "appliedSchemaVersion": "000124_node_deployment_roles"
   },
   "agentCompatibility": {
     "protocolVersion": 1,

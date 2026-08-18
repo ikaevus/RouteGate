@@ -17,6 +17,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/audit"
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/platform"
 )
 
 type serverRepository interface {
@@ -107,10 +108,11 @@ func (h *Handler) LegacyCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	items, err := h.servers.ListServersWithAgent(r.Context(), ServerFilter{
-		Status:   strings.TrimSpace(r.URL.Query().Get("status")),
-		Provider: strings.TrimSpace(r.URL.Query().Get("provider")),
-		Location: strings.TrimSpace(r.URL.Query().Get("location")),
-		Search:   strings.TrimSpace(r.URL.Query().Get("search")),
+		Status:         strings.TrimSpace(r.URL.Query().Get("status")),
+		DeploymentRole: strings.TrimSpace(r.URL.Query().Get("deploymentRole")),
+		Provider:       strings.TrimSpace(r.URL.Query().Get("provider")),
+		Location:       strings.TrimSpace(r.URL.Query().Get("location")),
+		Search:         strings.TrimSpace(r.URL.Query().Get("search")),
 	})
 	if err != nil {
 		h.databaseError(w, "list servers", err)
@@ -131,13 +133,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deploymentRole, err := platform.ParseDeploymentRole(request.DeploymentRole, platform.DeploymentRoleVPN)
+	if err != nil {
+		writeInvalidRequest(w, err.Error())
+		return
+	}
+
 	input := CreateServerInput{
-		Name:        strings.TrimSpace(request.Name),
-		Description: strings.TrimSpace(request.Description),
-		Location:    strings.TrimSpace(request.Location),
-		Provider:    strings.TrimSpace(request.Provider),
-		PublicIP:    strings.TrimSpace(request.PublicIP),
-		PrivateIP:   strings.TrimSpace(request.PrivateIP),
+		Name:           strings.TrimSpace(request.Name),
+		DeploymentRole: string(deploymentRole),
+		Description:    strings.TrimSpace(request.Description),
+		Location:       strings.TrimSpace(request.Location),
+		Provider:       strings.TrimSpace(request.Provider),
+		PublicIP:       strings.TrimSpace(request.PublicIP),
+		PrivateIP:      strings.TrimSpace(request.PrivateIP),
 	}
 	if input.Name == "" {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("name_required", "Server name is required."))
@@ -160,9 +169,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		ResourceID:   server.ID,
 		Result:       audit.ResultSuccess,
 		Metadata: map[string]any{
-			"server_name": server.Name,
-			"provider":    server.Provider,
-			"location":    server.Location,
+			"server_name":     server.Name,
+			"deployment_role": server.DeploymentRole,
+			"provider":        server.Provider,
+			"location":        server.Location,
 		},
 	})
 	h.logger.Info("server created", "id", server.ID, "name", server.Name)
@@ -276,11 +286,19 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateRegistrationToken(w http.ResponseWriter, r *http.Request) {
 	serverID := r.PathValue("server_id")
-	if _, err := h.servers.GetServerByID(r.Context(), serverID); errors.Is(err, pgx.ErrNoRows) {
+	server, err := h.servers.GetServerByID(r.Context(), serverID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		writeServerNotFound(w)
 		return
 	} else if err != nil {
 		h.databaseError(w, "get server for registration token", err)
+		return
+	}
+	if !platform.EffectiveDeploymentRole(server.DeploymentRole).HostsVPNPlane() {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(
+			"node_role_incompatible",
+			"A Management Node does not host RouteGate Agent or VPN Core. Choose a VPN or Hybrid Node.",
+		))
 		return
 	}
 

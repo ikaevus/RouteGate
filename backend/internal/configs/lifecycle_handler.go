@@ -30,6 +30,11 @@ func (h *Handler) Reapply(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("agent_missing", "Server must have a registered agent before config apply."))
 		return
 	}
+	if errors.Is(err, ErrNodeRoleNoVPN) {
+		h.recordApplyRejected(r, serverID, versionID, "node_role_incompatible")
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("node_role_incompatible", "This node role does not host the VPN plane."))
+		return
+	}
 	if errors.Is(err, ErrConfigApplyUnsafe) {
 		h.recordApplyRejected(r, serverID, versionID, "unsafe_config")
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("unsafe_config", "Config version is not safe to apply."))

@@ -50,6 +50,10 @@ func (h *Handler) Render(w http.ResponseWriter, r *http.Request) {
 		writeServerNotFound(w)
 		return
 	}
+	if errors.Is(err, ErrNodeRoleNoVPN) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("node_role_incompatible", "This node role does not host the VPN plane."))
+		return
+	}
 	if err != nil {
 		h.databaseError(w, "render config", err)
 		return
@@ -136,6 +140,11 @@ func (h *Handler) Apply(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, ErrConfigApplyAgentMissing) {
 		h.recordApplyRejected(r, serverID, versionID, "agent_missing")
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("agent_missing", "Server must have a registered agent before config apply."))
+		return
+	}
+	if errors.Is(err, ErrNodeRoleNoVPN) {
+		h.recordApplyRejected(r, serverID, versionID, "node_role_incompatible")
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("node_role_incompatible", "This node role does not host the VPN plane."))
 		return
 	}
 	if errors.Is(err, ErrConfigApplyUnsafe) {

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"github.com/ikaevus/routegate/backend/internal/platform"
 )
 
 var ErrConfigVersionCurrent = errors.New("current config version cannot be deleted")
@@ -91,6 +93,9 @@ func (s *Service) Reapply(ctx context.Context, serverID, versionID string, reque
 	info, err := s.repository.GetServerConfigInfo(ctx, serverID)
 	if err != nil {
 		return ApplyConfigResponse{}, err
+	}
+	if !platform.EffectiveDeploymentRole(info.DeploymentRole).HostsVPNPlane() {
+		return ApplyConfigResponse{}, ErrNodeRoleNoVPN
 	}
 	if info.Agent == nil {
 		return ApplyConfigResponse{}, ErrConfigApplyAgentMissing

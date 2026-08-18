@@ -457,11 +457,11 @@ a {
 }
 
 .servers-table {
-  min-width: 1120px;
+  min-width: 1240px;
 }
 
 .servers-table-row {
-  grid-template-columns: 1.5fr 0.9fr 0.9fr 1fr 0.8fr 0.8fr 0.8fr 1.2fr 1.2fr;
+  grid-template-columns: 1.5fr 0.9fr 0.9fr 0.9fr 1fr 0.8fr 0.8fr 0.8fr 1.2fr 1.2fr;
   padding-left: 12px;
   padding-right: 12px;
 }

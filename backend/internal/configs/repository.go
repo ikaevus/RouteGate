@@ -23,6 +23,7 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 		SELECT
 			s.id::text,
 			s.name,
+			s.deployment_role,
 			COALESCE(s.hostname, ''),
 			COALESCE(s.public_ip::text, ''),
 			COALESCE(s.private_ip::text, ''),
@@ -441,6 +442,7 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 	err := row.Scan(
 		&info.ID,
 		&info.Name,
+		&info.DeploymentRole,
 		&info.Hostname,
 		&info.PublicIP,
 		&info.PrivateIP,

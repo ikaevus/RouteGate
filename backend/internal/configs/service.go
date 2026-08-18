@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ikaevus/routegate/backend/internal/platform"
 	"github.com/ikaevus/routegate/backend/internal/traffic"
 )
 
@@ -17,6 +18,7 @@ var ErrConfigVersionNotValidated = errors.New("config version is not validated")
 var ErrConfigApplyAgentMissing = errors.New("server has no registered agent")
 var ErrConfigApplyUnsafe = errors.New("config version is unsafe to apply")
 var ErrConfigHashMismatch = errors.New("config version hash mismatch")
+var ErrNodeRoleNoVPN = errors.New("node deployment role does not host the VPN plane")
 
 const (
 	singBoxVLESSInboundTag = "vless-in"
@@ -59,6 +61,9 @@ func (s *Service) Render(ctx context.Context, serverID string) (RenderConfigResp
 	info, err := s.repository.GetServerConfigInfo(ctx, serverID)
 	if err != nil {
 		return RenderConfigResponse{}, err
+	}
+	if !platform.EffectiveDeploymentRole(info.DeploymentRole).HostsVPNPlane() {
+		return RenderConfigResponse{}, ErrNodeRoleNoVPN
 	}
 
 	rendered := buildRenderedConfig(info, s.now().UTC())
@@ -135,6 +140,9 @@ func (s *Service) Apply(ctx context.Context, serverID, versionID string, request
 	if err != nil {
 		return ApplyConfigResponse{}, err
 	}
+	if !platform.EffectiveDeploymentRole(info.DeploymentRole).HostsVPNPlane() {
+		return ApplyConfigResponse{}, ErrNodeRoleNoVPN
+	}
 	if info.Agent == nil {
 		return ApplyConfigResponse{}, ErrConfigApplyAgentMissing
 	}
@@ -168,14 +176,15 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 	config := RenderedConfig{
 		SchemaVersion: SchemaVersion,
 		Server: ConfigServer{
-			ID:        info.ID,
-			Name:      info.Name,
-			Hostname:  info.Hostname,
-			PublicIP:  info.PublicIP,
-			PrivateIP: info.PrivateIP,
-			Location:  info.Location,
-			Provider:  info.Provider,
-			Status:    info.Status,
+			ID:             info.ID,
+			Name:           info.Name,
+			DeploymentRole: string(platform.EffectiveDeploymentRole(info.DeploymentRole)),
+			Hostname:       info.Hostname,
+			PublicIP:       info.PublicIP,
+			PrivateIP:      info.PrivateIP,
+			Location:       info.Location,
+			Provider:       info.Provider,
+			Status:         info.Status,
 		},
 		VPNAccounts: []ConfigVPNAccount{},
 		SingBox: SingBoxConfig{
@@ -433,6 +442,16 @@ func ValidateRenderedConfig(config RenderedConfig) ValidationResult {
 	if config.Server.Name == "" {
 		result.Valid = false
 		result.Errors = append(result.Errors, "server.name is required.")
+	}
+	if role := strings.TrimSpace(config.Server.DeploymentRole); role != "" {
+		parsed, err := platform.ParseDeploymentRole(role, platform.DeploymentRoleVPN)
+		if err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, err.Error()+".")
+		} else if !parsed.HostsVPNPlane() {
+			result.Valid = false
+			result.Errors = append(result.Errors, "server.deploymentRole does not host the VPN plane.")
+		}
 	}
 	if len(config.SingBox.Outbounds) == 0 {
 		result.Valid = false
