@@ -6,18 +6,22 @@ import (
 )
 
 const (
-	VPNCoreSingBox = "sing-box"
+	VPNCoreSingBox   = "sing-box"
 	VPNCoreWireGuard = "wireguard"
+	VPNCoreHysteria  = "hysteria"
 
-	VPNProtocolVLESS = "vless"
+	VPNProtocolVLESS     = "vless"
 	VPNProtocolWireGuard = "wireguard"
+	VPNProtocolHysteria2 = "hysteria2"
 
 	VPNTransportTCP = "tcp"
 	VPNTransportUDP = "udp"
+	VPNTransportQUIC = "quic"
 
 	VPNSecurityNone    = "none"
 	VPNSecurityReality = "reality"
 	VPNSecurityWireGuard = "wireguard"
+	VPNSecurityTLS       = "tls"
 )
 
 // VPNCoreAdapterDescriptor describes one RouteGate-managed protocol path.

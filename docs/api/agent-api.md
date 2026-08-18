@@ -55,9 +55,18 @@ security. `capabilities.vpnCores` reports separate sing-box and WireGuard
 runtime states while the legacy singular `vpnCore` field remains available for
 compatibility.
 
+RG-114F adds a third managed adapter entry: `hysteria` core, `hysteria2`
+protocol, `quic` transport, and `tls` security. The separate Hysteria runtime
+state is appended to `capabilities.vpnCores`; credentials and ACME material are
+never reported.
+
 WireGuard config apply tasks use the existing `config_apply` kind and
 `routegate.config.v1` envelope. `metadata.vpnCore` selects the adapter and the
 `wireGuard` field carries the native config. Validation and result payloads do
 not contain native command output or private key material.
+
+Hysteria2 config apply tasks use the `hysteria2` envelope field. Agent accepts
+only the strict RouteGate JSON schema, the fixed ACME and masquerade policy,
+UUID usernames, and 192-bit hexadecimal account passwords.
 
 The old unversioned `/api/agent/*` compatibility endpoints and manual Agent registration UI are not part of the supported RouteGate runtime.

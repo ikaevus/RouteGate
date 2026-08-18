@@ -20,6 +20,15 @@ WireGuard Config Deploy owns enabling and starting the fixed
 `wg-quick@routegate-wg0` unit, just as the existing VLESS path defers sing-box
 startup until it has a valid config.
 
+### RG-114F Hysteria2 runtime
+
+RG-114F installs a pinned upstream Hysteria binary only after verifying its
+published SHA-256 value, installs a fixed hardened systemd unit, and creates
+mode-0700 config and ACME state directories. The unit is enabled but not
+started without a validated config. The Hysteria2 adapter itself is restricted
+to dedicated VPN Nodes because the All-in-One Hybrid Node's nginx already owns
+the HTTP-01 listener on TCP 80.
+
 ## Canonical product flow
 
 ```text

@@ -189,7 +189,15 @@ export function VpnAccountsPage() {
                   <DetailRow label={t('vpnAccounts.serverId')}>{formatValue(credentials.serverId)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.protocol')}>{formatValue(credentials.protocol)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.endpoint')}>{formatValue(credentials.endpoint)}</DetailRow>
-					{credentials.protocol === 'wireguard' ? (
+					{credentials.protocol === 'hysteria2' ? (
+						<>
+							<DetailRow label={t('vpnAccounts.hysteria2Username')}><code>{formatValue(credentials.hysteria2.username)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.hysteria2Password')}><code>{formatValue(credentials.hysteria2.password)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.hysteria2Domain')}>{formatValue(credentials.hysteria2.domain)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.hysteria2Port')}>{formatValue(credentials.hysteria2.port ? String(credentials.hysteria2.port) : undefined)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.hysteria2AcmeEmail')}>{formatValue(credentials.hysteria2.acmeEmail)}</DetailRow>
+						</>
+					) : credentials.protocol === 'wireguard' ? (
 						<>
 							<DetailRow label={t('vpnAccounts.wireGuardAddress')}>{formatValue(credentials.wireGuard.address)}</DetailRow>
 							<DetailRow label={t('vpnAccounts.wireGuardPublicKey')}><code>{formatValue(credentials.wireGuard.publicKey)}</code></DetailRow>

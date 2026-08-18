@@ -47,6 +47,13 @@ export interface VpnAccountCredentialsResponse {
     serverPublicKey?: string;
     dns?: string;
   };
+	hysteria2: {
+		username?: string;
+		password?: string;
+		domain?: string;
+		port?: number;
+		acmeEmail?: string;
+	};
 }
 
 export interface TrafficUsageSummaryResponse {
@@ -133,6 +140,7 @@ export interface VpnClientConnectionResponse {
   format: string;
   vlessLink?: string;
   wireGuardConfig?: string;
+	hysteria2Uri?: string;
   profile: VpnClientProfile;
   endpoint: string;
   serverName: string;
@@ -206,7 +214,7 @@ export interface PublicSubscriptionResponse {
     message?: string;
     rendered?: {
       format: string;
-		content: SingBoxClientConfig;
+		content?: SingBoxClientConfig;
 		text?: string;
     } | null;
   };
@@ -372,14 +380,15 @@ export async function getVpnAccountSubscriptionQRCode(
 
 	const renderedText = subscription.config.rendered?.text;
 	const isWireGuard = subscription.config.type === 'wireguard' && typeof renderedText === 'string';
+	const isHysteria2 = subscription.config.type === 'hysteria2' && typeof renderedText === 'string';
   return {
     vpnAccountId,
     subscriptionUrl: new URL(
       `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
       globalThis.location.origin,
     ).toString(),
-		qrText: isWireGuard ? renderedText : buildVlessRealityShareLink(subscription),
-		format: isWireGuard ? 'wireguard-config' : 'vless-reality-uri',
+		qrText: isWireGuard || isHysteria2 ? renderedText : buildVlessRealityShareLink(subscription),
+		format: isWireGuard ? 'wireguard-config' : isHysteria2 ? 'hysteria2-uri' : 'vless-reality-uri',
   };
 }
 

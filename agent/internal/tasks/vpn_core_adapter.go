@@ -22,7 +22,13 @@ type VPNCoreAdapter interface {
 	CheckHealth(context.Context, string) (ListenerHealthResult, error)
 }
 
-func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter) (VPNCoreAdapter, error) {
+func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter, additional ...VPNCoreAdapter) (VPNCoreAdapter, error) {
+	var hysteria2 VPNCoreAdapter
+	for _, adapter := range additional {
+		if adapter != nil && adapter.Descriptor().Core == platform.VPNCoreHysteria {
+			hysteria2 = adapter
+		}
+	}
 	var envelope struct {
 		Metadata struct {
 			VPNCore struct {
@@ -48,6 +54,10 @@ func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter) (VPN
 	if descriptor.Core == platform.VPNCoreWireGuard && descriptor.Protocol == platform.VPNProtocolWireGuard && descriptor.Transport == platform.VPNTransportUDP && descriptor.Security == platform.VPNSecurityWireGuard {
 		if wireGuard == nil { return nil, errors.New("WireGuard VPN Core adapter is unavailable") }
 		return wireGuard, nil
+	}
+	if descriptor.Core == platform.VPNCoreHysteria && descriptor.Protocol == platform.VPNProtocolHysteria2 && descriptor.Transport == platform.VPNTransportQUIC && descriptor.Security == platform.VPNSecurityTLS {
+		if hysteria2 == nil { return nil, errors.New("Hysteria2 VPN Core adapter is unavailable") }
+		return hysteria2, nil
 	}
 	return nil, errors.New("rendered config selects an unsupported VPN Core adapter")
 }

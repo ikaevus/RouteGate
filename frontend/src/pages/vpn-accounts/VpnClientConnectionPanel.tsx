@@ -48,6 +48,10 @@ function getCopy() {
 		wireGuardFormat: 'WireGuard',
 		wireGuardReadyDescription: 'QR-код содержит готовый конфиг WireGuard с приватным ключом этого профиля.',
 		wireGuardConfig: 'Конфиг WireGuard',
+		hysteria2Format: 'Hysteria2',
+		copyHysteria2: 'Скопировать Hysteria2 URI',
+		hysteria2ReadyDescription: 'QR-код содержит стандартный hysteria2:// URI с логином, паролем и проверяемым TLS SNI.',
+		hysteria2Uri: 'Hysteria2 URI',
       copy: 'Копировать',
       copied: 'Скопировано',
       credentialWarning: 'QR-код и VLESS-ссылка предоставляют доступ к VPN. Не публикуйте их.',
@@ -104,6 +108,10 @@ function getCopy() {
 		wireGuardFormat: 'WireGuard',
 		wireGuardReadyDescription: 'The QR code contains a ready-to-import WireGuard config with this profile’s private key.',
 		wireGuardConfig: 'WireGuard config',
+		hysteria2Format: 'Hysteria2',
+		copyHysteria2: 'Copy Hysteria2 URI',
+		hysteria2ReadyDescription: 'The QR code contains a standard hysteria2:// URI with userpass credentials and verified TLS SNI.',
+		hysteria2Uri: 'Hysteria2 URI',
     copy: 'Copy',
     copied: 'Copied',
     credentialWarning: 'The QR code and VLESS link grant VPN access. Do not publish them.',
@@ -230,7 +238,8 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
 
   const connection = connectionQuery.data;
 	const isWireGuard = connection?.format === 'wireguard-config';
-	const connectionText = connection?.wireGuardConfig ?? connection?.vlessLink ?? '';
+	const isHysteria2 = connection?.format === 'hysteria2-uri';
+	const connectionText = connection?.wireGuardConfig ?? connection?.hysteria2Uri ?? connection?.vlessLink ?? '';
 
   return (
     <div className="panel subscription-panel feature-detail-panel vpn-client-connection-panel">
@@ -256,9 +265,9 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             <div className="subscription-url-header">
               <div className="subscription-url-meta">
                 <div className="subscription-url-label">{copy.ready}</div>
-				<p className="subscription-url-helper">{isWireGuard ? copy.wireGuardReadyDescription : copy.readyDescription}</p>
+				<p className="subscription-url-helper">{isWireGuard ? copy.wireGuardReadyDescription : isHysteria2 ? copy.hysteria2ReadyDescription : copy.readyDescription}</p>
               </div>
-			  <span className="vpn-client-format-badge">{isWireGuard ? copy.wireGuardFormat : copy.format}</span>
+			  <span className="vpn-client-format-badge">{isWireGuard ? copy.wireGuardFormat : isHysteria2 ? copy.hysteria2Format : copy.format}</span>
             </div>
 
             <div className="vpn-client-primary-actions">
@@ -270,9 +279,9 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                 type="button"
 				onClick={() => void copyToClipboard('connection-config', connectionText)}
               >
-				{copiedTarget === 'connection-config' ? copy.copied : (isWireGuard ? copy.copyWireGuard : copy.copyVless)}
+				{copiedTarget === 'connection-config' ? copy.copied : (isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : copy.copyVless)}
               </button>
-			  {!isWireGuard && (
+			  {!isWireGuard && !isHysteria2 && (
 				<ShareAccessActions
 				  vlessLink={connection.vlessLink ?? ''}
 				  profileName={connection.profile.name}
@@ -286,7 +295,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
               <div><span>{copy.endpoint}</span><strong>{connection.endpoint}</strong></div>
 			  {!isWireGuard && <div><span>{copy.serverName}</span><strong>{connection.serverName}</strong></div>}
 			  {!isWireGuard && <div><span>{copy.network}</span><strong>{connection.network}</strong></div>}
-			  {!isWireGuard && <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>}
+			  {!isWireGuard && !isHysteria2 && <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>}
               <div><span>{copy.resolvedFingerprint}</span><strong>{connection.profile.resolvedFingerprint}</strong></div>
             </div>
           </div>
@@ -440,15 +449,15 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         qrTitle={copy.qrTitle}
         qrSubtitle={connection?.profile.resolvedFingerprint ?? copy.format}
 		url={connectionText}
-		urlLabel={isWireGuard ? copy.wireGuardConfig : copy.vlessLink}
+		urlLabel={isWireGuard ? copy.wireGuardConfig : isHysteria2 ? copy.hysteria2Uri : copy.vlessLink}
 		onCopyQrText={() => void copyToClipboard('qr-connection', connectionText)}
-		copyQrLabel={isWireGuard ? copy.copyWireGuard : copy.copyVless}
+		copyQrLabel={isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : copy.copyVless}
         copyCopiedLabel={copy.copied}
 		copied={copiedTarget === 'qr-connection'}
         closeLabel={copy.close}
         loadingLabel={copy.loading}
         unavailableLabel={copy.loadError}
-		footerActions={!isWireGuard ? (
+		footerActions={!isWireGuard && !isHysteria2 ? (
           <ShareAccessActions
 			vlessLink={connection?.vlessLink ?? ''}
             profileName={connection?.profile.name}

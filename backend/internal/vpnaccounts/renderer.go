@@ -2,10 +2,12 @@ package vpnaccounts
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"strings"
 )
 
@@ -13,6 +15,7 @@ const (
 	ClientConfigFormat        = "routegate.client_config.v1"
 	SingBoxClientConfigFormat = "sing-box.config.v1"
 	WireGuardClientConfigFormat = "wireguard.config.v1"
+	Hysteria2ClientURIFormat    = "hysteria2.uri.v1"
 
 	singBoxOutboundTag = "routegate-out"
 	singBoxInboundTag  = "mixed-in"
@@ -73,6 +76,19 @@ type SingBoxRoute struct {
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
+	if profile.Server != nil && profile.Server.VPNProtocol == "hysteria2" {
+		config := PublicSubscriptionConfig{Type: "hysteria2", Format: ClientConfigFormat}
+		rendered, err := RenderHysteria2ClientURI(profile)
+		if err != nil {
+			config.Status = "unavailable"
+			config.Message = err.Error()
+			return config
+		}
+		config.Status = "rendered"
+		config.Message = "Hysteria2 client URI generated."
+		config.Rendered = &PublicSubscriptionRenderedConfig{Format: Hysteria2ClientURIFormat, Text: rendered}
+		return config
+	}
 	if profile.Server != nil && profile.Server.VPNProtocol == "wireguard" {
 		config := PublicSubscriptionConfig{Type: "wireguard", Format: ClientConfigFormat}
 		rendered, err := RenderWireGuardClientConfig(profile)
@@ -105,6 +121,39 @@ func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscript
 		Content: rendered,
 	}
 	return config
+}
+
+func RenderHysteria2ClientURI(profile SubscriptionProfile) (string, error) {
+	if profile.Server == nil {
+		return "", errors.New("Server is required to render Hysteria2 client URI.")
+	}
+	username := strings.ToLower(strings.TrimSpace(profile.Credentials.Hysteria2.Username))
+	if len(username) != 36 || strings.ContainsAny(username, "@:/?#[]") {
+		return "", errors.New("Hysteria2 username is invalid.")
+	}
+	password := strings.TrimSpace(profile.Credentials.Hysteria2.Password)
+	decoded, err := hex.DecodeString(password)
+	if err != nil || len(decoded) != 24 {
+		return "", errors.New("Hysteria2 password is required to render client URI.")
+	}
+	domain := strings.ToLower(strings.TrimSpace(profile.Server.Hysteria2Domain))
+	if domain == "" || strings.ContainsAny(domain, " /:@\\\t\r\n") {
+		return "", errors.New("Hysteria2 TLS domain is required to render client URI.")
+	}
+	port := profile.Server.Hysteria2Port
+	if port < 1 || port > 65535 {
+		return "", errors.New("Hysteria2 server port is invalid.")
+	}
+	uri := &url.URL{
+		Scheme: "hysteria2",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(domain, fmt.Sprintf("%d", port)),
+		Path:   "/",
+	}
+	query := uri.Query()
+	query.Set("sni", domain)
+	uri.RawQuery = query.Encode()
+	return uri.String(), nil
 }
 
 func RenderWireGuardClientConfig(profile SubscriptionProfile) (string, error) {

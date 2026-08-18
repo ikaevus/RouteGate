@@ -161,6 +161,18 @@ pins the forwarding hooks, applies atomically, controls only the fixed
 are delivered through the existing authenticated/token-protected account paths
 and never through telemetry or task results.
 
+## Native Hysteria2 adapter
+
+RG-114F adds `hysteria` + `hysteria2` + `quic` + `tls`. The upstream Hysteria
+binary receives strict JSON rather than arbitrary YAML. Manager generates one
+random userpass credential per account, and protected client delivery renders
+standard `hysteria2://` URIs.
+
+TLS ownership remains on the VPN plane: Hysteria performs Let's Encrypt
+HTTP-01 and stores its own ACME material locally. No Manager nginx private key
+is reused or distributed. This slice supports dedicated VPN Nodes only;
+Hybrid-node certificate coordination remains explicit future work.
+
 ## Planned slices
 
 1. **RG-114A — Node Roles & Protocol Capability Foundation**

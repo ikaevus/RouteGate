@@ -110,11 +110,18 @@ export interface ProtocolSettingsResponse {
 		publicKey?: string;
 		ready: boolean;
 	};
+	hysteria2: {
+		port: number;
+		domain?: string;
+		acmeEmail?: string;
+		masqueradeUrl?: string;
+		ready: boolean;
+	};
   updatedAt: string;
 }
 
 export interface UpdateProtocolSettingsRequest {
-	protocol?: 'vless' | 'wireguard';
+	protocol?: 'vless' | 'wireguard' | 'hysteria2';
   vlessPort: number;
   vlessFlow: string;
   vlessNetwork: string;
@@ -124,6 +131,10 @@ export interface UpdateProtocolSettingsRequest {
 	wireGuardPort?: number;
 	wireGuardAddress?: string;
 	wireGuardDns?: string;
+	hysteria2Port?: number;
+	hysteria2Domain?: string;
+	hysteria2AcmeEmail?: string;
+	hysteria2MasqueradeUrl?: string;
 }
 
 export interface ServerRoutingProfile {

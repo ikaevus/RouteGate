@@ -70,6 +70,7 @@ type ClientConnectionResponse struct {
 	Format       string        `json:"format"`
 	VLESSLink    string        `json:"vlessLink,omitempty"`
 	WireGuardConfig string     `json:"wireGuardConfig,omitempty"`
+	Hysteria2URI string        `json:"hysteria2Uri,omitempty"`
 	Profile      ClientProfile `json:"profile"`
 	Endpoint     string        `json:"endpoint"`
 	ServerName   string        `json:"serverName"`
@@ -264,6 +265,21 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 			WireGuardConfig: config,
 			Profile: profile,
 			Endpoint: subscriptionServerEndpoint(subscription.Server),
+		}, nil
+	}
+	if subscription.Server.VPNProtocol == "hysteria2" {
+		uri, renderErr := RenderHysteria2ClientURI(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format:       "hysteria2-uri",
+			Hysteria2URI: uri,
+			Profile:      profile,
+			Endpoint:     subscription.Server.Hysteria2Domain,
+			ServerName:   subscription.Server.Hysteria2Domain,
+			Network:      "quic",
 		}, nil
 	}
 	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)

@@ -86,6 +86,10 @@ type ServerConfigInfo struct {
 	WireGuardDNS       string
 	WireGuardPrivateKey string
 	WireGuardPublicKey string
+	Hysteria2Port       int
+	Hysteria2Domain     string
+	Hysteria2ACMEEmail  string
+	Hysteria2MasqueradeURL string
 	Agent             *AgentConfigInfo
 	VPNAccounts       []VPNAccountConfigInfo
 	RoutingProfile    *RoutingProfileConfigInfo
@@ -110,6 +114,7 @@ type VPNAccountConfigInfo struct {
 	VLESSNetwork             string
 	WireGuardPublicKey       string
 	WireGuardAddress         string
+	Hysteria2Password        string
 	TrafficEnforcementStatus string
 }
 
@@ -142,6 +147,7 @@ type RenderedConfig struct {
 	RoutingProfile *ConfigRoutingProfile `json:"routingProfile,omitempty"`
 	SingBox        SingBoxConfig         `json:"singBox"`
 	WireGuard      string                `json:"wireGuard,omitempty"`
+	Hysteria2      string                `json:"hysteria2,omitempty"`
 	Metadata       ConfigMetadata        `json:"metadata"`
 }
 
@@ -174,6 +180,7 @@ type ConfigVPNAccount struct {
 	VLESSUUID   string `json:"vlessUuid"`
 	WireGuardPublicKey string `json:"wireGuardPublicKey,omitempty"`
 	WireGuardAddress   string `json:"wireGuardAddress,omitempty"`
+	Hysteria2Username  string `json:"hysteria2Username,omitempty"`
 }
 
 type ConfigRoutingProfile struct {

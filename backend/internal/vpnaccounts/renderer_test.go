@@ -235,3 +235,18 @@ func TestRenderWireGuardClientConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHysteria2ClientURI(t *testing.T) {
+	uri, err := RenderHysteria2ClientURI(SubscriptionProfile{
+		Account: Account{ID: "22222222-2222-2222-2222-222222222222", DisplayName: "Alice"},
+		Server: &SubscriptionServer{VPNProtocol: "hysteria2", Hysteria2Domain: "vpn.example.com", Hysteria2Port: 443},
+		Credentials: SubscriptionCredentials{Hysteria2: Hysteria2Credentials{
+			Username: "22222222-2222-2222-2222-222222222222",
+			Password: "0123456789abcdef0123456789abcdef0123456789abcdef",
+		}},
+	})
+	if err != nil { t.Fatalf("render Hysteria2 URI: %v", err) }
+	for _, expected := range []string{"hysteria2://", "22222222-2222-2222-2222-222222222222", "vpn.example.com:443", "sni=vpn.example.com"} {
+		if !strings.Contains(uri, expected) { t.Fatalf("Hysteria2 URI missing %q: %s", expected, uri) }
+	}
+}

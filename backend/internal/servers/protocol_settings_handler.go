@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/mail"
 	"net/netip"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -71,6 +73,9 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	trimStringPointer(request.RealityServerName)
 	trimStringPointer(request.WireGuardAddress)
 	trimStringPointer(request.WireGuardDNS)
+	trimStringPointer(request.Hysteria2Domain)
+	trimStringPointer(request.Hysteria2ACMEEmail)
+	trimStringPointer(request.Hysteria2MasqueradeURL)
 	if request.Protocol != nil {
 		*request.Protocol = strings.ToLower(*request.Protocol)
 	}
@@ -89,6 +94,10 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 		WireGuardPort:      request.WireGuardPort,
 		WireGuardAddress:   request.WireGuardAddress,
 		WireGuardDNS:       request.WireGuardDNS,
+		Hysteria2Port:       request.Hysteria2Port,
+		Hysteria2Domain:     request.Hysteria2Domain,
+		Hysteria2ACMEEmail:  request.Hysteria2ACMEEmail,
+		Hysteria2MasqueradeURL: request.Hysteria2MasqueradeURL,
 	}
 	if err := validateProtocolSettingsInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())
@@ -248,8 +257,8 @@ func (h *Handler) protocolSettingsRepository() (protocolSettingsRepository, bool
 }
 
 func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
-	if input.Protocol != nil && *input.Protocol != "vless" && *input.Protocol != "wireguard" {
-		return errors.New("protocol must be one of: vless, wireguard")
+	if input.Protocol != nil && *input.Protocol != "vless" && *input.Protocol != "wireguard" && *input.Protocol != "hysteria2" {
+		return errors.New("protocol must be one of: vless, wireguard, hysteria2")
 	}
 	if input.VLESSPort != nil && (*input.VLESSPort < 1 || *input.VLESSPort > 65535) {
 		return errors.New("vlessPort must be between 1 and 65535")
@@ -274,6 +283,18 @@ func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
 		if err != nil || !address.IsValid() {
 			return errors.New("wireGuardDns must be an IP address")
 		}
+	}
+	if input.Hysteria2Port != nil && (*input.Hysteria2Port < 1 || *input.Hysteria2Port > 65535) {
+		return errors.New("hysteria2Port must be between 1 and 65535")
+	}
+	if input.Hysteria2Domain != nil && !validHysteria2ServerName(*input.Hysteria2Domain) {
+		return errors.New("hysteria2Domain must be a valid DNS hostname")
+	}
+	if input.Hysteria2ACMEEmail != nil && !validHysteria2Email(*input.Hysteria2ACMEEmail) {
+		return errors.New("hysteria2AcmeEmail must be a valid email address")
+	}
+	if input.Hysteria2MasqueradeURL != nil && !validHysteria2MasqueradeURL(*input.Hysteria2MasqueradeURL) {
+		return errors.New("hysteria2MasqueradeUrl must match the fixed RouteGate masquerade target")
 	}
 	return nil
 }
@@ -316,4 +337,28 @@ func recommendedRealityServerName(server Server) string {
 
 func validRecommendedRealityServerName(value string) bool {
 	return strings.Contains(value, ".") && !strings.ContainsAny(value, " \t\r\n/:\\")
+}
+
+func validHysteria2ServerName(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	labels := strings.Split(value, ".")
+	if len(value) < 4 || len(value) > 253 || len(labels) < 2 { return false }
+	for _, label := range labels {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' { return false }
+		for _, char := range label {
+			if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') { return false }
+		}
+	}
+	return true
+}
+
+func validHysteria2Email(value string) bool {
+	value = strings.TrimSpace(value)
+	address, err := mail.ParseAddress(value)
+	return err == nil && address.Address == value
+}
+
+func validHysteria2MasqueradeURL(value string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	return err == nil && parsed.String() == "https://www.cloudflare.com/" && parsed.User == nil && parsed.Fragment == ""
 }

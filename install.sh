@@ -16,6 +16,7 @@ ROUTEGATE_BUNDLE_URL="${ROUTEGATE_BUNDLE_URL:-}"
 ROUTEGATE_CHECKSUM_URL="${ROUTEGATE_CHECKSUM_URL:-}"
 ROUTEGATE_ASSUME_YES="${ROUTEGATE_ASSUME_YES:-0}"
 ROUTEGATE_INSTALL_PROMETHEUS="${ROUTEGATE_INSTALL_PROMETHEUS:-}"
+ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.1}"
 
 ROUTEGATE_STATE_DIR="/var/lib/routegate-installer"
 ROUTEGATE_STATE_FILE="/etc/routegate/install-state.env"
@@ -478,11 +479,14 @@ collect_routegate_conflicts() {
   for path in \
     /usr/local/bin/routegate-manager \
     /usr/local/bin/routegate-agent \
+	/usr/local/bin/hysteria \
     /usr/local/sbin/routegate-recovery \
     /etc/routegate/manager.env \
     /etc/routegate/agent.yaml \
     /etc/systemd/system/routegate-manager.service \
     /etc/systemd/system/routegate-agent.service \
+	/etc/systemd/system/hysteria-server.service \
+	/etc/hysteria \
     /etc/nginx/sites-available/routegate \
     /etc/letsencrypt/renewal-hooks/deploy/routegate-nginx-reload \
     /etc/prometheus/routegate.yml \
@@ -503,6 +507,7 @@ platform_packages() {
     ca-certificates \
     certbot \
     curl \
+		iproute2 \
     jq \
 	iptables \
     nginx \
@@ -851,6 +856,37 @@ install_dependencies() {
   fi
 }
 
+install_hysteria2_runtime() {
+  local source_dir=$1
+  local asset="hysteria-linux-${ROUTEGATE_ARCH}"
+  local binary_path="$ROUTEGATE_WORK_DIR/$asset"
+  local hashes_path="$ROUTEGATE_WORK_DIR/hysteria-hashes.txt"
+  local release_base="https://github.com/apernet/hysteria/releases/download/app%2Fv${ROUTEGATE_HYSTERIA_VERSION}"
+  local expected actual
+
+  [[ "$ROUTEGATE_HYSTERIA_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "ROUTEGATE_HYSTERIA_VERSION must be a numeric semantic version."
+  [[ -f "$source_dir/systemd/hysteria-server.service" ]] \
+    || die "Release bundle is missing the Hysteria2 systemd unit."
+  if [[ -e /usr/local/bin/hysteria || -e /etc/systemd/system/hysteria-server.service ]]; then
+    grep -Fq "Description=RouteGate managed Hysteria2 server" /etc/systemd/system/hysteria-server.service 2>/dev/null \
+      || die "An unmanaged Hysteria installation already exists; RouteGate will not overwrite it."
+  fi
+
+  log "Installing checksum-verified Hysteria ${ROUTEGATE_HYSTERIA_VERSION}."
+  curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$binary_path" "$release_base/$asset"
+  curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$hashes_path" "$release_base/hashes.txt"
+  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name {print $1; exit}' "$hashes_path")
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "No valid Hysteria2 SHA-256 entry was found."
+  actual=$(sha256sum "$binary_path" | awk '{print $1}')
+  [[ "$actual" == "$expected" ]] || die "Hysteria2 binary checksum verification failed."
+
+  install -m 0755 "$binary_path" /usr/local/bin/hysteria
+  install -m 0644 "$source_dir/systemd/hysteria-server.service" /etc/systemd/system/hysteria-server.service
+  install -d -m 0700 /etc/hysteria /var/lib/hysteria /var/lib/hysteria/acme
+  systemctl enable hysteria-server.service >/dev/null
+}
+
 resolve_release_version() {
   if [[ "$ROUTEGATE_VERSION" != "latest" ]]; then
     ROUTEGATE_RESOLVED_VERSION="$ROUTEGATE_VERSION"
@@ -987,7 +1023,7 @@ install_files() {
   install -d -m 0755 -o routegate -g routegate /opt/routegate-manager
   install -d -m 0755 /var/www/routegate
   install -d -m 0700 /var/lib/routegate-agent
-	install -d -m 0700 /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups
+	install -d -m 0700 /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups
 	install -d -m 0700 /etc/wireguard
 	printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
 	sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >>"$ROUTEGATE_LOG_FILE" 2>&1
@@ -1009,6 +1045,7 @@ install_files() {
 
   install -m 0644 "$source_dir/systemd/routegate-manager.service" /etc/systemd/system/routegate-manager.service
   install -m 0644 "$source_dir/systemd/routegate-agent.service" /etc/systemd/system/routegate-agent.service
+  install_hysteria2_runtime "$source_dir"
 }
 
 configure_postgresql() {
@@ -1362,6 +1399,12 @@ wg_quick_path: "/usr/bin/wg-quick"
 wg_path: "/usr/bin/wg"
 wireguard_service_name: "wg-quick@routegate-wg0"
 wireguard_interface: "routegate-wg0"
+hysteria2_staging_dir: "/var/lib/routegate-agent/hysteria2-configs"
+hysteria2_active_config_path: "/etc/hysteria/config.json"
+hysteria2_backup_dir: "/var/lib/routegate-agent/hysteria2-backups"
+hysteria2_path: "/usr/local/bin/hysteria"
+hysteria2_service_name: "hysteria-server"
+ss_path: "/usr/bin/ss"
 service_control_enabled: true
 traffic_collection_enabled: false
 traffic_collection_interval_seconds: 60

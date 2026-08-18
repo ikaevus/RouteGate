@@ -72,13 +72,14 @@ func Collect() Info {
 	runtimeMetrics := collectRuntimeMetrics()
 	vpnCore := detectVPNCore()
 	wireGuardCore := detectWireGuardCore()
+	hysteria2Core := detectHysteria2Core()
 	return Info{
 		Hostname:        hostname,
 		AgentVersion:    info.Version,
 		ProtocolVersion: info.ProtocolVersion,
 		OS:              runtime.GOOS,
 		Arch:            runtime.GOARCH,
-		Capabilities:    detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore),
+		Capabilities:    detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore, hysteria2Core),
 		RuntimeMetrics:  runtimeMetrics,
 		Telemetry:       collectTelemetry(runtimeMetrics, vpnCore),
 	}
@@ -217,28 +218,75 @@ func collectRootFilesystem() (uint64, uint64, bool) {
 }
 
 func DetectCapabilities() map[string]any {
-	return detectCapabilitiesWithWireGuard(detectVPNCore(), detectWireGuardCore())
+	return detectCapabilitiesWithWireGuard(detectVPNCore(), detectWireGuardCore(), detectHysteria2Core())
 }
 
 func detectCapabilities(vpnCore map[string]any) map[string]any {
 	return detectCapabilitiesWithWireGuard(vpnCore, detectWireGuardCore())
 }
 
-func detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore map[string]any) map[string]any {
-	names := []string{"systemctl", "sing-box", "xray", "nft"}
+func detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore map[string]any, additional ...map[string]any) map[string]any {
+	names := []string{"systemctl", "sing-box", "xray", "hysteria", "nft", "ss"}
 	caps := make(map[string]any, len(names)+4)
 	for _, name := range names {
 		_, err := exec.LookPath(name)
 		caps[name] = err == nil
 	}
 	caps["vpnCore"] = vpnCore
-	caps["vpnCores"] = []map[string]any{vpnCore, wireGuardCore}
+	hysteria2Core := detectHysteria2Core()
+	if len(additional) > 0 && additional[0] != nil {
+		hysteria2Core = additional[0]
+	}
+	caps["vpnCores"] = []map[string]any{vpnCore, wireGuardCore, hysteria2Core}
 	caps["routegate"] = routeGatePlatformCapabilities()
 	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
 	if vpncoreinstall.SupportsCurrentPlatform() {
 		caps["vpnCoreInstallationOperations"] = []string{vpncoreinstall.OperationInstall}
 	}
 	return caps
+}
+
+func detectHysteria2Core() map[string]any {
+	status := map[string]any{
+		"type": "hysteria", "installed": false, "state": "not_installed",
+		"checkedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+	binaryPath, err := exec.LookPath("hysteria")
+	if err != nil {
+		return status
+	}
+	status["installed"] = true
+	status["binaryPath"] = binaryPath
+	status["state"] = "installed"
+	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
+		if version := firstNonEmptyLine(string(output)); version != "" { status["version"] = version }
+	} else if timedOut {
+		status["versionError"] = "version_check_timeout"
+	} else {
+		status["versionError"] = "version_check_failed"
+	}
+	if _, systemctlErr := exec.LookPath("systemctl"); systemctlErr != nil {
+		status["serviceState"] = "unknown"
+		return status
+	}
+	serviceOutput, serviceErr, timedOut := runCommand("systemctl", "is-active", "hysteria-server")
+	serviceState := strings.TrimSpace(string(serviceOutput))
+	if timedOut {
+		serviceState = "unknown"
+		status["serviceError"] = "service_check_timeout"
+	} else if serviceState == "" {
+		serviceState = "unknown"
+	}
+	status["serviceName"] = "hysteria-server.service"
+	status["serviceState"] = serviceState
+	switch serviceState {
+	case "active": status["state"] = "running"
+	case "inactive", "deactivating": status["state"] = "stopped"
+	case "failed": status["state"] = "failed"
+	default:
+		if serviceErr != nil { status["state"] = "unknown" }
+	}
+	return status
 }
 
 func detectWireGuardCore() map[string]any {

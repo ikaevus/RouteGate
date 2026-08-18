@@ -37,6 +37,9 @@ func TestLoadTrafficCollectionDefaults(t *testing.T) {
 	if cfg.TrafficUsageFilePath != DefaultTrafficUsageFilePath {
 		t.Fatalf("expected default traffic file path %q, got %q", DefaultTrafficUsageFilePath, cfg.TrafficUsageFilePath)
 	}
+	if cfg.Hysteria2ActiveConfigPath != DefaultHysteria2ActiveConfigPath || cfg.Hysteria2Path != DefaultHysteria2Path || cfg.Hysteria2ServiceName != DefaultHysteria2ServiceName {
+		t.Fatalf("unexpected Hysteria2 defaults: %+v", cfg)
+	}
 }
 
 func TestLoadTrafficCollectionSettings(t *testing.T) {
