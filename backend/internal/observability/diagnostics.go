@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	DiagnosticProfileHostOverview  = "host_overview"
-	DiagnosticProfileVPNCoreStatus = "vpn_core_status"
+	DiagnosticProfileHostOverview       = "host_overview"
+	DiagnosticProfileVPNCoreStatus      = "vpn_core_status"
+	DiagnosticProfileManagerCertificate = "manager_certificate"
 )
 
 type DiagnosticRunRecord struct {
@@ -45,7 +46,7 @@ func NewDiagnosticRepository(pool *pgxpool.Pool) *DiagnosticRepository {
 
 func ValidDiagnosticProfile(profileKey string) bool {
 	switch strings.TrimSpace(profileKey) {
-	case DiagnosticProfileHostOverview, DiagnosticProfileVPNCoreStatus:
+	case DiagnosticProfileHostOverview, DiagnosticProfileVPNCoreStatus, DiagnosticProfileManagerCertificate:
 		return true
 	default:
 		return false

@@ -9,14 +9,19 @@ import (
 )
 
 const (
-	ProfileHostOverview = "host_overview"
-	ProfileVPNCoreStatus = "vpn_core_status"
-	SchemaVersion        = 1
+	ProfileHostOverview       = "host_overview"
+	ProfileVPNCoreStatus      = "vpn_core_status"
+	ProfileManagerCertificate = "manager_certificate"
+	SchemaVersion             = 1
 )
+
+type Options struct {
+	ManagerURL string
+}
 
 func ValidProfile(profileKey string) bool {
 	switch strings.TrimSpace(profileKey) {
-	case ProfileHostOverview, ProfileVPNCoreStatus:
+	case ProfileHostOverview, ProfileVPNCoreStatus, ProfileManagerCertificate:
 		return true
 	default:
 		return false
@@ -26,17 +31,26 @@ func ValidProfile(profileKey string) bool {
 // Execute runs one compile-time allow-listed diagnostic collector. There is no
 // command, args, script, or arbitrary shell input in the diagnostic protocol.
 func Execute(profileKey string) (map[string]any, error) {
+	return ExecuteWithOptions(profileKey, Options{})
+}
+
+func ExecuteWithOptions(profileKey string, options Options) (map[string]any, error) {
 	profileKey = strings.TrimSpace(profileKey)
 	if !ValidProfile(profileKey) {
 		return nil, fmt.Errorf("unsupported diagnostic profile %q", profileKey)
 	}
 
-	info := systeminfo.Collect()
 	result := map[string]any{
 		"schemaVersion": SchemaVersion,
 		"profileKey":    profileKey,
 		"collectedAt":   time.Now().UTC(),
 	}
+	if profileKey == ProfileManagerCertificate {
+		result["evidence"] = collectManagerCertificate(options.ManagerURL)
+		return result, nil
+	}
+
+	info := systeminfo.Collect()
 	if info.Telemetry == nil {
 		result["evidence"] = map[string]any{"available": false}
 		return result, nil

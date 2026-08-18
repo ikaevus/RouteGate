@@ -103,3 +103,56 @@ func TestEvaluateVPNCoreDiagnosticUsesHealthSemantics(t *testing.T) {
 		t.Fatalf("unexpected evaluation: %+v", result)
 	}
 }
+
+func TestEvaluateManagerCertificateDiagnosticUsesManagerOwnedExpiryMeaning(t *testing.T) {
+	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
+	result, safePayload, err := EvaluateDiagnosticPayload(
+		DiagnosticProfileManagerCertificate,
+		map[string]any{
+			"schemaVersion": diagnosticPayloadSchemaVersion,
+			"profileKey":    DiagnosticProfileManagerCertificate,
+			"collectedAt":   now,
+			"state":         "healthy",
+			"evidence": map[string]any{
+				"available": true,
+				"hostname":  "manager.example",
+				"notBefore": now.Add(-60 * 24 * time.Hour),
+				"notAfter":  now.Add(14 * 24 * time.Hour),
+				"verified":  true,
+			},
+		},
+		ResourceRef{Type: "server", ID: "server-1"},
+	)
+	if err != nil {
+		t.Fatalf("evaluate manager certificate diagnostic: %v", err)
+	}
+	if result.State != HealthDegraded || result.ReasonCode != "manager_certificate_expiring" || result.RecommendedAction != "renew_manager_certificate" {
+		t.Fatalf("unexpected certificate evaluation: %+v", result)
+	}
+	if safePayload["state"] != HealthDegraded {
+		t.Fatalf("safe payload state=%v, want degraded", safePayload["state"])
+	}
+}
+
+func TestEvaluateManagerCertificateDiagnosticRejectsInvalidValidityWindow(t *testing.T) {
+	now := time.Now().UTC()
+	_, _, err := EvaluateDiagnosticPayload(
+		DiagnosticProfileManagerCertificate,
+		map[string]any{
+			"schemaVersion": diagnosticPayloadSchemaVersion,
+			"profileKey":    DiagnosticProfileManagerCertificate,
+			"collectedAt":   now,
+			"evidence": map[string]any{
+				"available": true,
+				"hostname":  "manager.example",
+				"notBefore": now,
+				"notAfter":  now.Add(-time.Hour),
+				"verified":  true,
+			},
+		},
+		ResourceRef{Type: "server", ID: "server-1"},
+	)
+	if err == nil {
+		t.Fatal("invalid certificate validity window must be rejected")
+	}
+}

@@ -46,7 +46,7 @@ func (h *DiagnosticHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	request.ProfileKey = strings.TrimSpace(request.ProfileKey)
 	if !ValidDiagnosticProfile(request.ProfileKey) {
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_diagnostic_profile", "Diagnostic profile must be one of: host_overview, vpn_core_status."))
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_diagnostic_profile", "Diagnostic profile must be one of: host_overview, vpn_core_status, manager_certificate."))
 		return
 	}
 

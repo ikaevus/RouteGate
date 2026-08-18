@@ -31,8 +31,9 @@ const (
 	VPNCoreOperationStop           = "stop"
 	VPNCoreOperationRestart        = "restart"
 	VPNCoreOperationInstallSingBox = "install_sing_box"
-	DiagnosticOperationHostOverview = "host_overview"
-	DiagnosticOperationVPNCoreStatus = "vpn_core_status"
+	DiagnosticOperationHostOverview       = "host_overview"
+	DiagnosticOperationVPNCoreStatus      = "vpn_core_status"
+	DiagnosticOperationManagerCertificate = "manager_certificate"
 )
 
 type Capabilities map[string]any

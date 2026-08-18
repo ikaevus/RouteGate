@@ -114,6 +114,7 @@ func advertisedCapabilities(info systeminfo.Info) map[string]any {
 	capabilities["diagnosticProfiles"] = []string{
 		diagnostics.ProfileHostOverview,
 		diagnostics.ProfileVPNCoreStatus,
+		diagnostics.ProfileManagerCertificate,
 	}
 	return capabilities
 }

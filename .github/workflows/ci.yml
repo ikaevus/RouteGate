@@ -110,9 +110,11 @@ jobs:
             install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/routegate-recovery \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
-            scripts/test-grafana-installer.sh
+            scripts/test-grafana-installer.sh \
+            scripts/test-recovery-tool.sh
 
       - name: Run ShellCheck
         run: |
@@ -121,15 +123,18 @@ jobs:
             install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/routegate-recovery \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
-            scripts/test-grafana-installer.sh
+            scripts/test-grafana-installer.sh \
+            scripts/test-recovery-tool.sh
 
       - name: Run installer unit tests
         run: |
           bash scripts/test-agent-installer.sh
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
+          bash scripts/test-recovery-tool.sh
 
       - name: Build and verify amd64 release bundle
         env:
@@ -146,6 +151,7 @@ jobs:
           grep -Fxq './bin/routegate-agent' bundle-files.txt
           grep -Fxq './frontend/index.html' bundle-files.txt
           grep -Fq './manager/migrations/' bundle-files.txt
+          grep -Fxq './tools/routegate-recovery' bundle-files.txt
           grep -Fxq './metadata/manifest.env' bundle-files.txt
 
       - name: Upload amd64 clean-host E2E bundle

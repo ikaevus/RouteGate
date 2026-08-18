@@ -5,6 +5,7 @@ import {
   autoDetectServerGeography,
   getAnalyticsOverview,
   runHostDiagnostic,
+  runManagerCertificateDiagnostic,
   updateServerGeography,
   type AnalyticsAlert,
   type AnalyticsNode,
@@ -265,10 +266,12 @@ function SelectedNodePanel({ node }: { node: AnalyticsNode }) {
   const navigate = useNavigate();
   const [editingLocation, setEditingLocation] = useState(false);
   const diagnosticMutation = useMutation({ mutationFn: () => runHostDiagnostic(node.id) });
+  const certificateDiagnosticMutation = useMutation({ mutationFn: () => runManagerCertificateDiagnostic(node.id) });
 
   useEffect(() => {
     setEditingLocation(false);
     diagnosticMutation.reset();
+    certificateDiagnosticMutation.reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.id]);
 
@@ -313,6 +316,8 @@ function SelectedNodePanel({ node }: { node: AnalyticsNode }) {
 
       {diagnosticMutation.isSuccess && <div className="form-message form-message-success">{t('analytics.diagnosticQueued')}</div>}
       {diagnosticMutation.isError && <div className="form-message form-message-error">{t('analytics.diagnosticError')}</div>}
+      {certificateDiagnosticMutation.isSuccess && <div className="form-message form-message-success">{t('analytics.certificateDiagnosticQueued')}</div>}
+      {certificateDiagnosticMutation.isError && <div className="form-message form-message-error">{t('analytics.certificateDiagnosticError')}</div>}
 
       <div className="analytics-node-actions">
         <button className="button button-primary" onClick={() => navigate(`/servers/${node.id}`)} type="button">
@@ -320,6 +325,9 @@ function SelectedNodePanel({ node }: { node: AnalyticsNode }) {
         </button>
         <button className="button button-secondary" disabled={diagnosticMutation.isPending} onClick={() => diagnosticMutation.mutate()} type="button">
           {t('analytics.runDiagnostics')}
+        </button>
+        <button className="button button-secondary" disabled={certificateDiagnosticMutation.isPending} onClick={() => certificateDiagnosticMutation.mutate()} type="button">
+          {t('analytics.checkManagerCertificate')}
         </button>
         <button className="button button-secondary" onClick={() => setEditingLocation(true)} type="button">
           {t('analytics.configureLocation')}

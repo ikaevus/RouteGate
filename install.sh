@@ -449,7 +449,7 @@ verify_existing_install() {
     || die "RouteGate state is unknown (${installed_status:-missing}); review ${ROUTEGATE_STATE_FILE}."
 
   log "Existing RouteGate-owned installation detected; running idempotency checks."
-  local services=(postgresql nginx routegate-manager routegate-agent)
+  local services=(postgresql nginx routegate-manager routegate-agent certbot.timer)
   if [[ "$installed_prometheus" == "1" ]]; then
     services+=(prometheus)
   fi
@@ -478,11 +478,13 @@ collect_routegate_conflicts() {
   for path in \
     /usr/local/bin/routegate-manager \
     /usr/local/bin/routegate-agent \
+    /usr/local/sbin/routegate-recovery \
     /etc/routegate/manager.env \
     /etc/routegate/agent.yaml \
     /etc/systemd/system/routegate-manager.service \
     /etc/systemd/system/routegate-agent.service \
     /etc/nginx/sites-available/routegate \
+    /etc/letsencrypt/renewal-hooks/deploy/routegate-nginx-reload \
     /etc/prometheus/routegate.yml \
     /etc/prometheus/routegate.token \
     /etc/systemd/system/prometheus.service \
@@ -941,6 +943,7 @@ extract_bundle() {
     systemd/routegate-manager.service \
     systemd/routegate-agent.service \
     nginx/routegate.conf.example \
+    tools/routegate-recovery \
     metadata/manifest.env; do
     [[ -e "$extract_dir/$required" ]] || die "Release bundle is missing ${required}."
   done
@@ -988,6 +991,7 @@ install_files() {
 
   install -m 0755 "$source_dir/bin/routegate-manager" /usr/local/bin/routegate-manager
   install -m 0755 "$source_dir/bin/routegate-agent" /usr/local/bin/routegate-agent
+  install -m 0755 "$source_dir/tools/routegate-recovery" /usr/local/sbin/routegate-recovery
 
   rm -rf /opt/routegate-manager/migrations
   cp -a "$source_dir/manager/migrations" /opt/routegate-manager/migrations
@@ -1221,6 +1225,20 @@ configure_nginx_and_tls() {
     --email "$ROUTEGATE_EMAIL" \
     -d "$ROUTEGATE_DOMAIN" >>"$ROUTEGATE_LOG_FILE" 2>&1
 
+  install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+  cat >/etc/letsencrypt/renewal-hooks/deploy/routegate-nginx-reload <<'EOF_CERTIFICATE_HOOK'
+#!/bin/sh
+set -eu
+/usr/sbin/nginx -t
+/usr/bin/systemctl reload nginx
+EOF_CERTIFICATE_HOOK
+  chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/routegate-nginx-reload
+  systemctl enable --now certbot.timer >>"$ROUTEGATE_LOG_FILE" 2>&1
+  systemctl is-enabled --quiet certbot.timer \
+    || die "Certbot renewal timer is not enabled."
+  systemctl is-active --quiet certbot.timer \
+    || die "Certbot renewal timer is not active."
+
   nginx -t >>"$ROUTEGATE_LOG_FILE" 2>&1
   systemctl reload nginx
   wait_for_url "https://${ROUTEGATE_DOMAIN}/api/admin/health" 30 2 \
@@ -1428,7 +1446,7 @@ EOF_CREDENTIALS
 
 verify_final_state() {
   log "Verifying the installed RouteGate stack."
-  local services=(postgresql nginx routegate-manager routegate-agent)
+  local services=(postgresql nginx routegate-manager routegate-agent certbot.timer)
   if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
     services+=(prometheus)
   fi
@@ -1440,6 +1458,9 @@ verify_final_state() {
   wait_for_url "https://${ROUTEGATE_DOMAIN}/api/admin/health" 10 2 \
     || die "Final public HTTPS health check failed."
   agent_has_credentials || die "Final Agent credential verification failed."
+  [[ -x /usr/local/sbin/routegate-recovery ]] || die "RouteGate recovery tool is not installed."
+  [[ -x /etc/letsencrypt/renewal-hooks/deploy/routegate-nginx-reload ]] \
+    || die "RouteGate certificate deploy hook is not installed."
 
   if ss -ltnH | awk '{print $4}' | grep -Eq '(^|:)5432$' \
     && ss -ltnH | awk '{print $4}' | grep -Eq '(^0\.0\.0\.0:5432$|^\[::\]:5432$)'; then
@@ -1506,6 +1527,10 @@ After administrator activation:
 
 Installer log:
   ${ROUTEGATE_LOG_FILE}
+
+Recovery toolkit:
+  sudo routegate-recovery status
+  sudo routegate-recovery renew-certificate
 EOF_SUCCESS
 }
 

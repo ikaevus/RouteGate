@@ -86,6 +86,23 @@ func TestHeartbeatSendsVersionProtocolAndRuntimeMetrics(t *testing.T) {
 	}
 }
 
+func TestAdvertisedCapabilitiesIncludeManagerCertificateDiagnostic(t *testing.T) {
+	capabilities := advertisedCapabilities(systeminfo.Info{Capabilities: map[string]any{}})
+	profiles, ok := capabilities["diagnosticProfiles"].([]string)
+	if !ok {
+		t.Fatalf("diagnosticProfiles = %#v, want []string", capabilities["diagnosticProfiles"])
+	}
+	found := false
+	for _, profile := range profiles {
+		if profile == "manager_certificate" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("manager certificate diagnostic is not advertised: %+v", profiles)
+	}
+}
+
 func TestReportTrafficUsageSendsEvents(t *testing.T) {
 	observedAt := time.Date(2026, time.June, 25, 10, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
