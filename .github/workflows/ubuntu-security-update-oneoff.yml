@@ -1,0 +1,72 @@
+name: One-off Ubuntu Security Update
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ubuntu-security-update-oneoff.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: routegate-production-like-maintenance
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 20
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Apply Ubuntu package updates
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'set -euo pipefail
+             echo "=== before ==="
+             . /etc/os-release
+             echo "os=$PRETTY_NAME"
+             uname -r
+             sudo apt-get update
+             sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -y upgrade
+             echo "=== services ==="
+             for svc in routegate-manager routegate-agent sing-box nginx postgresql; do
+               state=$(sudo systemctl is-active "$svc" 2>/dev/null || true)
+               echo "$svc=${state:-unknown}"
+             done
+             echo "=== reboot ==="
+             if [ -f /var/run/reboot-required ]; then
+               echo "reboot_required=yes"
+               cat /var/run/reboot-required.pkgs 2>/dev/null || true
+             else
+               echo "reboot_required=no"
+             fi
+             echo "=== after ==="
+             uname -r'
