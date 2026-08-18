@@ -1,14 +1,11 @@
 name: RG-113 Observability Production-like Validation
 
+# Production-like validation has SSH + sudo access to the validation host and
+# therefore must never execute unmerged pull-request code. Normal PRs are
+# validated by RouteGate CI; the canonical production-like deploy runs from
+# main after CI succeeds. Keep this workflow as an explicit revalidation tool.
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - .github/workflows/observability-production-like-validation.yml
-      - scripts/deploy-production-like-bundle.sh
-      - scripts/validate-observability-production-like.sh
 
 permissions:
   contents: read
@@ -23,13 +20,13 @@ jobs:
     environment: production-like
     timeout-minutes: 30
     env:
-      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      TARGET_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout exact target commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Setup Go
@@ -51,7 +48,7 @@ jobs:
         shell: bash
         env:
           VERSION: production-like
-          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          COMMIT: ${{ github.sha }}
           ARCHITECTURES: amd64
           OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
         run: |
