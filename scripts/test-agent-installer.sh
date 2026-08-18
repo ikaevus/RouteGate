@@ -34,10 +34,10 @@ assert_true "supports Ubuntu 24.04 arm64" platform_tuple_supported ubuntu 24.04 
 assert_false "rejects Ubuntu 22.04" platform_tuple_supported ubuntu 22.04 amd64 1
 
 ROUTEGATE_REPOSITORY=ikaevus/RouteGate
-urls=$(artifact_urls v1.2.3 arm64 | paste -sd '|')
+artifact_url_output=$(artifact_urls v1.2.3 arm64 | paste -sd '|')
 assert_equal "constructs versioned Agent bundle URLs" \
   "https://github.com/ikaevus/RouteGate/releases/download/v1.2.3/routegate-v1.2.3-linux-arm64.tar.gz|https://github.com/ikaevus/RouteGate/releases/download/v1.2.3/SHA256SUMS" \
-  "$urls"
+  "$artifact_url_output"
 
 ROUTEGATE_MANAGER_URL=https://manager.routegate.org
 ROUTEGATE_REGISTRATION_TOKEN=$valid_token

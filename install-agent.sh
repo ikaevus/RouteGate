@@ -295,8 +295,8 @@ install_agent() {
 }
 
 wait_for_registration() {
-  local attempt agent_token
-  for attempt in $(seq 1 30); do
+  local agent_token
+  for _ in {1..30}; do
     agent_token=$(config_value "$ROUTEGATE_AGENT_CONFIG" agent_token || true)
     if [[ "$agent_token" == rg_agent_* ]]; then
       log "VPN Node connected to ${ROUTEGATE_MANAGER_URL}."
