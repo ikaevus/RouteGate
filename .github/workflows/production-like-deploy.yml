@@ -28,13 +28,13 @@ jobs:
 
     steps:
       - name: Checkout exact target commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ env.TARGET_SHA }}
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26.x'
           cache-dependency-path: |
@@ -42,7 +42,7 @@ jobs:
             agent/go.sum
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
           cache: npm
@@ -92,40 +92,19 @@ jobs:
           ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
         run: |
           set -euo pipefail
-
-          SSH=(
-            ssh
-            -i ~/.ssh/routegate_ci
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ConnectTimeout=10
-          )
-          SCP=(
-            scp
-            -i ~/.ssh/routegate_ci
-            -o BatchMode=yes
-            -o IdentitiesOnly=yes
-            -o StrictHostKeyChecking=yes
-            -o ConnectTimeout=10
-          )
-
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
           bundle="${RUNNER_TEMP}/routegate-dist/routegate-production-like-linux-amd64.tar.gz"
           bundle_sha="$(sha256sum "$bundle" | awk '{print $1}')"
           remote_bundle="/tmp/routegate-deploy-${TARGET_SHA}.tar.gz"
           remote_deploy="/tmp/routegate-deploy-${TARGET_SHA}.sh"
           remote_validate="/tmp/routegate-deploy-validate-${TARGET_SHA}.sh"
-
           "${SCP[@]}" "$bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle"
           "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
           "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
-
           set +e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            "sudo bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate'"
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate'"
           rc=$?
           set -e
-
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            "rm -f '$remote_deploy' '$remote_validate' '$remote_bundle'" || true
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_deploy' '$remote_validate' '$remote_bundle'" || true
           exit "$rc"
