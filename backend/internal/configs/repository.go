@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
 type Repository struct {
@@ -37,6 +39,12 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 			COALESCE(s.reality_public_key, ''),
 			COALESCE(s.reality_short_id, ''),
 			COALESCE(s.reality_server_name, ''),
+			s.vpn_protocol,
+			s.wireguard_port,
+			s.wireguard_address::text,
+			s.wireguard_dns::text,
+			COALESCE(s.wireguard_private_key, ''),
+			COALESCE(s.wireguard_public_key, ''),
 			a.id::text,
 			COALESCE(a.hostname, ''),
 			COALESCE(a.os, ''),
@@ -50,6 +58,11 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 	`, serverID))
 	if err != nil {
 		return ServerConfigInfo{}, err
+	}
+	if info.VPNProtocol == "wireguard" {
+		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.pool, serverID); err != nil {
+			return ServerConfigInfo{}, err
+		}
 	}
 
 	accounts, err := r.listServerVPNAccounts(ctx, serverID)
@@ -78,6 +91,8 @@ func (r *Repository) listServerVPNAccounts(ctx context.Context, serverID string)
 			COALESCE(a.vless_uuid::text, ''),
 			COALESCE(s.vless_flow, ''),
 			COALESCE(s.vless_network, 'tcp'),
+			COALESCE(a.wireguard_public_key, ''),
+			COALESCE(a.wireguard_address::text, ''),
 			COALESCE(tl.enforcement_status, 'not_enforced')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
@@ -456,6 +471,12 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 		&info.RealityPublicKey,
 		&info.RealityShortID,
 		&info.RealityServerName,
+		&info.VPNProtocol,
+		&info.WireGuardPort,
+		&info.WireGuardAddress,
+		&info.WireGuardDNS,
+		&info.WireGuardPrivateKey,
+		&info.WireGuardPublicKey,
 		&agentID,
 		&agentHostname,
 		&agentOS,
@@ -511,6 +532,8 @@ func scanVPNAccountConfigInfo(row scanner) (VPNAccountConfigInfo, error) {
 		&account.VLESSUUID,
 		&account.VLESSFlow,
 		&account.VLESSNetwork,
+		&account.WireGuardPublicKey,
+		&account.WireGuardAddress,
 		&account.TrafficEnforcementStatus,
 	)
 	if err != nil {

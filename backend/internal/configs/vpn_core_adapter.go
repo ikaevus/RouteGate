@@ -14,7 +14,7 @@ type vpnCoreAdapterRegistry struct {
 }
 
 func defaultVPNCoreAdapterRegistry() vpnCoreAdapterRegistry {
-	return vpnCoreAdapterRegistry{adapters: []vpnCoreAdapter{singBoxVLESSAdapter{}}}
+	return vpnCoreAdapterRegistry{adapters: []vpnCoreAdapter{singBoxVLESSAdapter{}, wireGuardAdapter{}}}
 }
 
 func (r vpnCoreAdapterRegistry) Resolve(core, protocol, transport, security string) (vpnCoreAdapter, bool) {
@@ -26,7 +26,23 @@ func (r vpnCoreAdapterRegistry) Resolve(core, protocol, transport, security stri
 	return nil, false
 }
 
-func currentVPNCoreAdapter(realityEnabled bool) vpnCoreAdapter {
+func selectedVPNCoreAdapter(info ServerConfigInfo) vpnCoreAdapter {
+	if info.VPNProtocol == platform.VPNProtocolWireGuard {
+		adapter, ok := defaultVPNCoreAdapterRegistry().Resolve(
+			platform.VPNCoreWireGuard,
+			platform.VPNProtocolWireGuard,
+			platform.VPNTransportUDP,
+			platform.VPNSecurityWireGuard,
+		)
+		if !ok {
+			panic("default WireGuard adapter is not registered")
+		}
+		return adapter
+	}
+	return currentVLESSAdapter(realityRequested(info))
+}
+
+func currentVLESSAdapter(realityEnabled bool) vpnCoreAdapter {
 	security := platform.VPNSecurityNone
 	if realityEnabled {
 		security = platform.VPNSecurityReality
@@ -41,4 +57,12 @@ func currentVPNCoreAdapter(realityEnabled bool) vpnCoreAdapter {
 		panic("default sing-box VLESS adapter is not registered")
 	}
 	return adapter
+}
+
+func adapterForRenderedConfig(config RenderedConfig) (vpnCoreAdapter, bool) {
+	descriptor := config.Metadata.VPNCore
+	if descriptor.Core == "" {
+		return currentVLESSAdapter(config.Metadata.RealityEnabled), true
+	}
+	return defaultVPNCoreAdapterRegistry().Resolve(descriptor.Core, descriptor.Protocol, descriptor.Transport, descriptor.Security)
 }

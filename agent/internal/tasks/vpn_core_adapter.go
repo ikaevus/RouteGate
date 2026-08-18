@@ -2,6 +2,9 @@ package tasks
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"strings"
 
 	"github.com/ikaevus/routegate/agent/internal/platform"
 )
@@ -17,6 +20,36 @@ type VPNCoreAdapter interface {
 	IsEnabled(context.Context) (ServiceResult, error)
 	ExecuteServiceTask(context.Context, ConfigTask) (ServiceTaskReport, error)
 	CheckHealth(context.Context, string) (ListenerHealthResult, error)
+}
+
+func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter) (VPNCoreAdapter, error) {
+	var envelope struct {
+		Metadata struct {
+			VPNCore struct {
+				Core string `json:"core"`
+				Protocol string `json:"protocol"`
+				Transport string `json:"transport"`
+				Security string `json:"security"`
+			} `json:"vpnCore"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(task.RenderedConfig, &envelope); err != nil {
+		return nil, errors.New("rendered config must be valid JSON")
+	}
+	descriptor := envelope.Metadata.VPNCore
+	if strings.TrimSpace(descriptor.Core) == "" {
+		if vless == nil { return nil, errors.New("VLESS VPN Core adapter is unavailable") }
+		return vless, nil
+	}
+	if descriptor.Core == platform.VPNCoreSingBox && descriptor.Protocol == platform.VPNProtocolVLESS && descriptor.Transport == platform.VPNTransportTCP && (descriptor.Security == platform.VPNSecurityNone || descriptor.Security == platform.VPNSecurityReality) {
+		if vless == nil { return nil, errors.New("VLESS VPN Core adapter is unavailable") }
+		return vless, nil
+	}
+	if descriptor.Core == platform.VPNCoreWireGuard && descriptor.Protocol == platform.VPNProtocolWireGuard && descriptor.Transport == platform.VPNTransportUDP && descriptor.Security == platform.VPNSecurityWireGuard {
+		if wireGuard == nil { return nil, errors.New("WireGuard VPN Core adapter is unavailable") }
+		return wireGuard, nil
+	}
+	return nil, errors.New("rendered config selects an unsupported VPN Core adapter")
 }
 
 type singBoxVLESSAdapter struct {

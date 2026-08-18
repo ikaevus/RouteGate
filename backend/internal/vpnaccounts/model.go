@@ -57,6 +57,7 @@ type SubscriptionProfile struct {
 type SubscriptionCredentials struct {
 	VLESS   VLESSCredentials
 	Reality RealityCredentials
+	WireGuard WireGuardCredentials
 }
 
 type VLESSCredentials struct {
@@ -69,6 +70,12 @@ type RealityCredentials struct {
 	PublicKey  string
 	ShortID    string
 	ServerName string
+}
+
+type WireGuardCredentials struct {
+	PrivateKey string
+	PublicKey  string
+	Address    string
 }
 
 type SubscriptionServer struct {
@@ -84,6 +91,11 @@ type SubscriptionServer struct {
 	RealityPublicKey  string
 	RealityShortID    string
 	RealityServerName string
+	VPNProtocol        string
+	WireGuardPort      int
+	WireGuardAddress   string
+	WireGuardDNS       string
+	WireGuardPublicKey string
 }
 
 type RoutingProfile struct {

@@ -71,13 +71,14 @@ func Collect() Info {
 	info := buildinfo.Current()
 	runtimeMetrics := collectRuntimeMetrics()
 	vpnCore := detectVPNCore()
+	wireGuardCore := detectWireGuardCore()
 	return Info{
 		Hostname:        hostname,
 		AgentVersion:    info.Version,
 		ProtocolVersion: info.ProtocolVersion,
 		OS:              runtime.GOOS,
 		Arch:            runtime.GOARCH,
-		Capabilities:    detectCapabilities(vpnCore),
+		Capabilities:    detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore),
 		RuntimeMetrics:  runtimeMetrics,
 		Telemetry:       collectTelemetry(runtimeMetrics, vpnCore),
 	}
@@ -216,10 +217,14 @@ func collectRootFilesystem() (uint64, uint64, bool) {
 }
 
 func DetectCapabilities() map[string]any {
-	return detectCapabilities(detectVPNCore())
+	return detectCapabilitiesWithWireGuard(detectVPNCore(), detectWireGuardCore())
 }
 
 func detectCapabilities(vpnCore map[string]any) map[string]any {
+	return detectCapabilitiesWithWireGuard(vpnCore, detectWireGuardCore())
+}
+
+func detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore map[string]any) map[string]any {
 	names := []string{"systemctl", "sing-box", "xray", "nft"}
 	caps := make(map[string]any, len(names)+4)
 	for _, name := range names {
@@ -227,12 +232,51 @@ func detectCapabilities(vpnCore map[string]any) map[string]any {
 		caps[name] = err == nil
 	}
 	caps["vpnCore"] = vpnCore
+	caps["vpnCores"] = []map[string]any{vpnCore, wireGuardCore}
 	caps["routegate"] = routeGatePlatformCapabilities()
 	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
 	if vpncoreinstall.SupportsCurrentPlatform() {
 		caps["vpnCoreInstallationOperations"] = []string{vpncoreinstall.OperationInstall}
 	}
 	return caps
+}
+
+func detectWireGuardCore() map[string]any {
+	status := map[string]any{
+		"type": "wireguard", "installed": false, "state": "not_installed",
+		"checkedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+	wgPath, wgErr := exec.LookPath("wg")
+	wgQuickPath, wgQuickErr := exec.LookPath("wg-quick")
+	if wgErr != nil || wgQuickErr != nil {
+		return status
+	}
+	status["installed"] = true
+	status["binaryPath"] = wgPath
+	status["helperPath"] = wgQuickPath
+	status["state"] = "installed"
+	if _, systemctlErr := exec.LookPath("systemctl"); systemctlErr != nil {
+		status["serviceState"] = "unknown"
+		return status
+	}
+	serviceOutput, serviceErr, timedOut := runCommand("systemctl", "is-active", "wg-quick@routegate-wg0")
+	serviceState := strings.TrimSpace(string(serviceOutput))
+	if timedOut {
+		serviceState = "unknown"
+		status["serviceError"] = "service_check_timeout"
+	} else if serviceState == "" {
+		serviceState = "unknown"
+	}
+	status["serviceName"] = "wg-quick@routegate-wg0.service"
+	status["serviceState"] = serviceState
+	switch serviceState {
+	case "active": status["state"] = "running"
+	case "inactive", "deactivating": status["state"] = "stopped"
+	case "failed": status["state"] = "failed"
+	default:
+		if serviceErr != nil { status["state"] = "unknown" }
+	}
+	return status
 }
 
 // routeGatePlatformCapabilities reports what this Agent build can manage. It

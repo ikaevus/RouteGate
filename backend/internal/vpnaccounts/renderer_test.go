@@ -2,6 +2,7 @@ package vpnaccounts
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -216,5 +217,21 @@ func TestRenderSingBoxClientConfigRequiresVLESSUUID(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected missing VLESS UUID error")
+	}
+}
+
+func TestRenderWireGuardClientConfig(t *testing.T) {
+	key := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	config, err := RenderWireGuardClientConfig(SubscriptionProfile{
+		Server: &SubscriptionServer{PublicIP: "203.0.113.10", VPNProtocol: "wireguard", WireGuardPort: 51820, WireGuardDNS: "1.1.1.1", WireGuardPublicKey: key},
+		Credentials: SubscriptionCredentials{WireGuard: WireGuardCredentials{PrivateKey: key, PublicKey: key, Address: "10.66.0.2"}},
+	})
+	if err != nil {
+		t.Fatalf("render WireGuard client config: %v", err)
+	}
+	for _, expected := range []string{"Address = 10.66.0.2/32", "Endpoint = 203.0.113.10:51820", "AllowedIPs = 0.0.0.0/0, ::/0"} {
+		if !strings.Contains(config, expected) {
+			t.Fatalf("WireGuard config missing %q:\n%s", expected, config)
+		}
 	}
 }

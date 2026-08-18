@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   configureRecommendedProtocolSettings,
+	configureRecommendedWireGuard,
   generateRealityKeypair,
   getProtocolSettings,
   updateProtocolSettings,
@@ -11,21 +12,29 @@ import {
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 
 interface ProtocolSettingsFormState {
+	protocol: 'vless' | 'wireguard';
   vlessPort: string;
   vlessFlow: string;
   vlessNetwork: string;
   realityPublicKey: string;
   realityShortId: string;
   realityServerName: string;
+	wireGuardPort: string;
+	wireGuardAddress: string;
+	wireGuardDns: string;
 }
 
 const emptyFormState: ProtocolSettingsFormState = {
+	protocol: 'vless',
   vlessPort: '',
   vlessFlow: '',
   vlessNetwork: '',
   realityPublicKey: '',
   realityShortId: '',
   realityServerName: '',
+	wireGuardPort: '51820',
+	wireGuardAddress: '10.66.0.1/24',
+	wireGuardDns: '1.1.1.1',
 };
 
 function formatDate(value?: string | null): string {
@@ -40,12 +49,16 @@ function formatDate(value?: string | null): string {
 
 function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>): ProtocolSettingsFormState {
   return {
+		protocol: settings.protocol === 'wireguard' ? 'wireguard' : 'vless',
     vlessPort: String(settings.vless.port),
     vlessFlow: settings.vless.flow ?? '',
     vlessNetwork: settings.vless.network ?? '',
     realityPublicKey: settings.reality.publicKey ?? '',
     realityShortId: settings.reality.shortId ?? '',
     realityServerName: settings.reality.serverName ?? '',
+		wireGuardPort: String(settings.wireGuard.port),
+		wireGuardAddress: settings.wireGuard.address,
+		wireGuardDns: settings.wireGuard.dns,
   };
 }
 
@@ -54,11 +67,15 @@ function toRequest(
   savedRealityPublicKey: string,
 ): UpdateProtocolSettingsRequest {
   const request: UpdateProtocolSettingsRequest = {
+		protocol: form.protocol,
     vlessPort: Number(form.vlessPort),
     vlessFlow: form.vlessFlow.trim(),
     vlessNetwork: form.vlessNetwork.trim(),
     realityShortId: form.realityShortId.trim(),
     realityServerName: form.realityServerName.trim(),
+		wireGuardPort: Number(form.wireGuardPort),
+		wireGuardAddress: form.wireGuardAddress.trim(),
+		wireGuardDns: form.wireGuardDns.trim(),
   };
   const realityPublicKey = form.realityPublicKey.trim();
   if (realityPublicKey !== savedRealityPublicKey.trim()) {
@@ -76,6 +93,14 @@ function getRecommendedCopy() {
       values: 'VLESS 8443 · TCP · XTLS Vision · Reality',
       portReason: 'HTTPS панели RouteGate остаётся на 443, поэтому VPN получает отдельный порт 8443 без конфликта с nginx.',
       action: 'Настроить автоматически',
+		wireGuardAction: 'Настроить WireGuard',
+		wireGuardPending: 'Настраиваем WireGuard…',
+		protocol: 'Протокол VPN',
+		wireGuardPort: 'Порт WireGuard',
+		wireGuardAddress: 'Адрес интерфейса WireGuard',
+		wireGuardDns: 'DNS для клиентов',
+		wireGuardPublicKey: 'Публичный ключ сервера WireGuard',
+		wireGuardProtocol: 'WireGuard',
       pending: 'Настраиваем…',
       configuredTitle: 'VLESS / Reality настроен',
       configuredDescription: 'Основные параметры готовы. Вернитесь в обзор, чтобы продолжить к созданию первого VPN-аккаунта.',
@@ -95,6 +120,14 @@ function getRecommendedCopy() {
     values: 'VLESS 8443 · TCP · XTLS Vision · Reality',
     portReason: 'RouteGate HTTPS stays on 443, so VPN uses a separate 8443 port without conflicting with nginx.',
     action: 'Configure automatically',
+		wireGuardAction: 'Configure WireGuard',
+		wireGuardPending: 'Configuring WireGuard…',
+		protocol: 'VPN protocol',
+		wireGuardPort: 'WireGuard port',
+		wireGuardAddress: 'WireGuard interface address',
+		wireGuardDns: 'Client DNS',
+		wireGuardPublicKey: 'WireGuard server public key',
+		wireGuardProtocol: 'WireGuard',
     pending: 'Configuring…',
     configuredTitle: 'VLESS / Reality configured',
     configuredDescription: 'The required protocol settings are ready. Return to Overview to continue with the first VPN account.',
@@ -141,6 +174,14 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
     },
   });
 
+	const wireGuardSettingsMutation = useMutation({
+		mutationFn: () => configureRecommendedWireGuard(serverId),
+		onSuccess: async (response) => {
+			setForm(toFormState(response));
+			await queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', serverId] });
+		},
+	});
+
   const realityKeypairMutation = useMutation({
     mutationFn: () => generateRealityKeypair(serverId),
     onSuccess: (response) => {
@@ -166,22 +207,28 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   }
 
   const portNumber = Number(form.vlessPort);
+	const wireGuardPortNumber = Number(form.wireGuardPort);
   const realityValues = [form.realityPublicKey, form.realityShortId, form.realityServerName]
     .map((value) => value.trim());
   const realityTouched = realityValues.some(Boolean);
   const realityComplete = realityValues.every(Boolean);
-  const protocolConfigured = realityComplete
-    && Number.isInteger(portNumber)
-    && portNumber >= 1
-    && portNumber <= 65535;
+	const protocolConfigured = form.protocol === 'wireguard'
+		? Boolean(settingsQuery.data?.wireGuard.ready)
+			&& Number.isInteger(wireGuardPortNumber)
+			&& wireGuardPortNumber >= 1
+			&& wireGuardPortNumber <= 65535
+		: realityComplete
+			&& Number.isInteger(portNumber)
+			&& portNumber >= 1
+			&& portNumber <= 65535;
   const mutationPending = updateSettingsMutation.isPending
     || realityKeypairMutation.isPending
-    || recommendedSettingsMutation.isPending;
+		|| recommendedSettingsMutation.isPending
+		|| wireGuardSettingsMutation.isPending;
   const canSave =
-    Number.isInteger(portNumber) &&
-    portNumber >= 1 &&
-    portNumber <= 65535 &&
-    (!realityTouched || realityComplete) &&
+		(form.protocol === 'wireguard'
+			? Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
+			: Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535 && (!realityTouched || realityComplete)) &&
     !mutationPending;
   const translatedKeypairActionLabel = form.realityPublicKey.trim() === ''
     ? t('protocolSettings.generateRealityKeypair')
@@ -219,14 +266,24 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             {protocolConfigured ? (
               <Link className="small-button" to="/">{copy.continue}</Link>
             ) : (
-              <button
-                className="primary-button"
-                type="button"
-                disabled={mutationPending}
-                onClick={() => recommendedSettingsMutation.mutate()}
-              >
-                {recommendedSettingsMutation.isPending ? copy.pending : copy.action}
-              </button>
+			  <>
+				<button
+				  className="primary-button"
+				  type="button"
+				  disabled={mutationPending}
+				  onClick={() => recommendedSettingsMutation.mutate()}
+				>
+				  {recommendedSettingsMutation.isPending ? copy.pending : copy.action}
+				</button>
+				<button
+				  className="small-button"
+				  type="button"
+				  disabled={mutationPending}
+				  onClick={() => wireGuardSettingsMutation.mutate()}
+				>
+				  {wireGuardSettingsMutation.isPending ? copy.wireGuardPending : copy.wireGuardAction}
+				</button>
+			  </>
             )}
           </div>
         </div>
@@ -239,6 +296,14 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
       {recommendedSettingsMutation.isSuccess && (
         <div className="form-message">{t('protocolSettings.saved')}</div>
       )}
+
+	  {wireGuardSettingsMutation.isError && (
+		<div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>
+	  )}
+
+	  {wireGuardSettingsMutation.isSuccess && (
+		<div className="form-message">{t('protocolSettings.saved')}</div>
+	  )}
 
       <details className="protocol-advanced-settings">
         <summary>{copy.advanced}</summary>
@@ -273,76 +338,40 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
             <div className="protocol-settings-grid">
               <label className="field">
-                <span>{t('protocolSettings.vlessPort')}</span>
-                <input
-                  inputMode="numeric"
-                  min="1"
-                  max="65535"
-                  type="number"
-                  value={form.vlessPort}
-                  onChange={(event) => updateField('vlessPort', event.target.value)}
-                />
+				<span>{copy.protocol}</span>
+				<select value={form.protocol} onChange={(event) => updateField('protocol', event.target.value)}>
+				  <option value="vless">VLESS / Reality</option>
+				  <option value="wireguard">{copy.wireGuardProtocol}</option>
+				</select>
               </label>
-
-              <label className="field">
-                <span>{t('protocolSettings.vlessFlow')}</span>
-                <select
-                  value={form.vlessFlow}
-                  onChange={(event) => updateField('vlessFlow', event.target.value)}
-                >
-                  <option value="">{t('protocolSettings.default')}</option>
-                  <option value="xtls-rprx-vision">xtls-rprx-vision</option>
-                </select>
-              </label>
-
-              <label className="field">
-                <span>{t('protocolSettings.vlessNetwork')}</span>
-                <select
-                  value={form.vlessNetwork}
-                  onChange={(event) => updateField('vlessNetwork', event.target.value)}
-                >
-                  <option value="">{t('protocolSettings.default')}</option>
-                  <option value="tcp">tcp</option>
-                  <option value="ws">ws</option>
-                  <option value="grpc">grpc</option>
-                  <option value="http">http</option>
-                </select>
-              </label>
-
-              <label className="field">
-                <span>{t('protocolSettings.realityPublicKey')}</span>
-                <input
-                  value={form.realityPublicKey}
-                  onChange={(event) => updateField('realityPublicKey', event.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>{t('protocolSettings.realityShortId')}</span>
-                <input
-                  value={form.realityShortId}
-                  onChange={(event) => updateField('realityShortId', event.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>{t('protocolSettings.realityServerName')}</span>
-                <input
-                  value={form.realityServerName}
-                  onChange={(event) => updateField('realityServerName', event.target.value)}
-                />
-              </label>
+			  {form.protocol === 'wireguard' ? (
+				<>
+				  <label className="field"><span>{copy.wireGuardPort}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.wireGuardPort} onChange={(event) => updateField('wireGuardPort', event.target.value)} /></label>
+				  <label className="field"><span>{copy.wireGuardAddress}</span><input value={form.wireGuardAddress} onChange={(event) => updateField('wireGuardAddress', event.target.value)} /></label>
+				  <label className="field"><span>{copy.wireGuardDns}</span><input value={form.wireGuardDns} onChange={(event) => updateField('wireGuardDns', event.target.value)} /></label>
+				  <label className="field"><span>{copy.wireGuardPublicKey}</span><input value={settingsQuery.data.wireGuard.publicKey ?? ''} readOnly /></label>
+				</>
+			  ) : (
+				<>
+				  <label className="field"><span>{t('protocolSettings.vlessPort')}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.vlessPort} onChange={(event) => updateField('vlessPort', event.target.value)} /></label>
+				  <label className="field"><span>{t('protocolSettings.vlessFlow')}</span><select value={form.vlessFlow} onChange={(event) => updateField('vlessFlow', event.target.value)}><option value="">{t('protocolSettings.default')}</option><option value="xtls-rprx-vision">xtls-rprx-vision</option></select></label>
+				  <label className="field"><span>{t('protocolSettings.vlessNetwork')}</span><select value={form.vlessNetwork} onChange={(event) => updateField('vlessNetwork', event.target.value)}><option value="">{t('protocolSettings.default')}</option><option value="tcp">tcp</option><option value="ws">ws</option><option value="grpc">grpc</option><option value="http">http</option></select></label>
+				  <label className="field"><span>{t('protocolSettings.realityPublicKey')}</span><input value={form.realityPublicKey} onChange={(event) => updateField('realityPublicKey', event.target.value)} /></label>
+				  <label className="field"><span>{t('protocolSettings.realityShortId')}</span><input value={form.realityShortId} onChange={(event) => updateField('realityShortId', event.target.value)} /></label>
+				  <label className="field"><span>{t('protocolSettings.realityServerName')}</span><input value={form.realityServerName} onChange={(event) => updateField('realityServerName', event.target.value)} /></label>
+				</>
+			  )}
             </div>
 
             <div className="protocol-advanced-actions">
-              <button
+			  {form.protocol === 'vless' && <button
                 className="small-button"
                 type="button"
                 disabled={mutationPending || !settingsQuery.data}
                 onClick={() => realityKeypairMutation.mutate()}
               >
                 {realityKeypairMutation.isPending ? t('protocolSettings.generating') : translatedKeypairActionLabel}
-              </button>
+			  </button>}
               <button className="small-button" type="submit" disabled={!canSave}>
                 {updateSettingsMutation.isPending ? t('protocolSettings.saving') : t('protocolSettings.saveSettings')}
               </button>

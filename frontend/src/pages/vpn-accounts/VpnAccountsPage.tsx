@@ -189,13 +189,25 @@ export function VpnAccountsPage() {
                   <DetailRow label={t('vpnAccounts.serverId')}>{formatValue(credentials.serverId)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.protocol')}>{formatValue(credentials.protocol)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.endpoint')}>{formatValue(credentials.endpoint)}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.vlessUuid')}><code>{formatValue(credentials.vless.uuid)}</code></DetailRow>
-                  <DetailRow label={t('vpnAccounts.flow')}>{formatValue(credentials.vless.flow)}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.network')}>{formatValue(credentials.vless.network)}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.realityEnabled')}>{credentials.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.realityPublicKey')}><code>{formatValue(credentials.reality.publicKey)}</code></DetailRow>
-                  <DetailRow label={t('vpnAccounts.realityShortId')}><code>{formatValue(credentials.reality.shortId)}</code></DetailRow>
-                  <DetailRow label={t('vpnAccounts.realityServerName')}>{formatValue(credentials.reality.serverName)}</DetailRow>
+					{credentials.protocol === 'wireguard' ? (
+						<>
+							<DetailRow label={t('vpnAccounts.wireGuardAddress')}>{formatValue(credentials.wireGuard.address)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.wireGuardPublicKey')}><code>{formatValue(credentials.wireGuard.publicKey)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.wireGuardPrivateKey')}><code>{formatValue(credentials.wireGuard.privateKey)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.wireGuardServerKey')}><code>{formatValue(credentials.wireGuard.serverPublicKey)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.wireGuardDns')}>{formatValue(credentials.wireGuard.dns)}</DetailRow>
+						</>
+					) : (
+						<>
+							<DetailRow label={t('vpnAccounts.vlessUuid')}><code>{formatValue(credentials.vless.uuid)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.flow')}>{formatValue(credentials.vless.flow)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.network')}>{formatValue(credentials.vless.network)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.realityEnabled')}>{credentials.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</DetailRow>
+							<DetailRow label={t('vpnAccounts.realityPublicKey')}><code>{formatValue(credentials.reality.publicKey)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.realityShortId')}><code>{formatValue(credentials.reality.shortId)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.realityServerName')}>{formatValue(credentials.reality.serverName)}</DetailRow>
+						</>
+					)}
                 </div>
               )}
             </div>

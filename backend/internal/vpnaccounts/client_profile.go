@@ -68,7 +68,8 @@ type UpdateClientProfileRequest struct {
 type ClientConnectionResponse struct {
 	VPNAccountID string        `json:"vpnAccountId"`
 	Format       string        `json:"format"`
-	VLESSLink    string        `json:"vlessLink"`
+	VLESSLink    string        `json:"vlessLink,omitempty"`
+	WireGuardConfig string     `json:"wireGuardConfig,omitempty"`
 	Profile      ClientProfile `json:"profile"`
 	Endpoint     string        `json:"endpoint"`
 	ServerName   string        `json:"serverName"`
@@ -251,6 +252,19 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	profile, err := repository.GetOrCreateClientProfile(ctx, accountID)
 	if err != nil {
 		return ClientConnectionResponse{}, err
+	}
+	if subscription.Server.VPNProtocol == "wireguard" {
+		config, renderErr := RenderWireGuardClientConfig(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format: "wireguard-config",
+			WireGuardConfig: config,
+			Profile: profile,
+			Endpoint: subscriptionServerEndpoint(subscription.Server),
+		}, nil
 	}
 	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)
 	if err != nil {

@@ -2,6 +2,28 @@
 
 RouteGate Manager API uses opaque bearer tokens for authenticated Manager requests. Public endpoints are limited to health checks and login.
 
+## VPN protocol settings
+
+`GET` and `PATCH /api/v1/servers/{server_id}/protocol-settings` expose the
+selected server protocol plus separate VLESS/Reality and WireGuard settings.
+RG-114E accepts `protocol: "vless"` or `protocol: "wireguard"` and adds:
+
+- `wireGuard.port`
+- `wireGuard.address`
+- `wireGuard.dns`
+- `wireGuard.publicKey`
+- `wireGuard.ready`
+
+`POST /api/v1/servers/{server_id}/protocol-settings/wireguard-recommended`
+generates a new server keypair and selects the recommended native WireGuard
+settings. The server private key is never returned by the Admin API.
+
+VPN account credential and token-protected subscription responses select their
+shape from the assigned server protocol. WireGuard delivery returns the peer
+private/public keys, assigned address, server public key, DNS value, and a
+standard importable config. These responses grant VPN access and must be
+handled like the existing VLESS credential and QR responses.
+
 ## Authentication
 
 ### Bootstrap first SuperAdmin

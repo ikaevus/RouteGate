@@ -504,12 +504,14 @@ platform_packages() {
     certbot \
     curl \
     jq \
+	iptables \
     nginx \
     openssl \
     postgresql \
     postgresql-client \
     python3-certbot-nginx \
     tar
+	printf '%s\n' wireguard-tools
   if [[ "$ROUTEGATE_INSTALL_PROMETHEUS" == "1" ]]; then
     printf '%s\n' prometheus
   fi
@@ -985,8 +987,10 @@ install_files() {
   install -d -m 0755 -o routegate -g routegate /opt/routegate-manager
   install -d -m 0755 /var/www/routegate
   install -d -m 0700 /var/lib/routegate-agent
-  install -d -m 0700 /var/lib/routegate-agent/configs
-  install -d -m 0700 /var/lib/routegate-agent/backups
+	install -d -m 0700 /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups
+	install -d -m 0700 /etc/wireguard
+	printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
+	sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >>"$ROUTEGATE_LOG_FILE" 2>&1
   install -d -m 0700 "$ROUTEGATE_STATE_DIR"
 
   install -m 0755 "$source_dir/bin/routegate-manager" /usr/local/bin/routegate-manager
@@ -1351,6 +1355,13 @@ active_config_path: "/etc/sing-box/config.json"
 config_backup_dir: "/var/lib/routegate-agent/backups"
 sing_box_path: "/usr/bin/sing-box"
 sing_box_service_name: "sing-box"
+wireguard_staging_dir: "/var/lib/routegate-agent/wireguard-configs"
+wireguard_active_config_path: "/etc/wireguard/routegate-wg0.conf"
+wireguard_backup_dir: "/var/lib/routegate-agent/wireguard-backups"
+wg_quick_path: "/usr/bin/wg-quick"
+wg_path: "/usr/bin/wg"
+wireguard_service_name: "wg-quick@routegate-wg0"
+wireguard_interface: "routegate-wg0"
 service_control_enabled: true
 traffic_collection_enabled: false
 traffic_collection_interval_seconds: 60

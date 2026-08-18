@@ -146,6 +146,21 @@ adapters that require certificates, including Hysteria2, must add their own
 certificate ownership and distribution rules without reusing Manager private
 keys.
 
+## Native WireGuard adapter
+
+RG-114E adds `wireguard` + `wireguard` + `udp` + `wireguard` as the second
+managed composition. It uses native `wireguard-tools`/`wg-quick`, not the
+removed legacy sing-box WireGuard outbound. Nodes keep a single explicit active
+server protocol in this slice; existing nodes default to VLESS.
+
+Manager owns the server and account keypairs plus peer address allocation.
+Agent receives only the server private key and peer public keys in the normal
+config apply payload. It validates a strict allow-listed WireGuard grammar,
+pins the forwarding hooks, applies atomically, controls only the fixed
+`wg-quick@routegate-wg0` unit, and checks its listen port. Client private keys
+are delivered through the existing authenticated/token-protected account paths
+and never through telemetry or task results.
+
 ## Planned slices
 
 1. **RG-114A — Node Roles & Protocol Capability Foundation**

@@ -166,7 +166,7 @@ install_dependencies() {
   log "Installing Agent bootstrap dependencies."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update >/dev/null
-  apt-get install -y ca-certificates curl jq tar >/dev/null
+	apt-get install -y ca-certificates curl iptables jq tar wireguard-tools >/dev/null
 }
 
 resolve_release_version() {
@@ -266,6 +266,13 @@ active_config_path: "/etc/sing-box/config.json"
 config_backup_dir: "/var/lib/routegate-agent/backups"
 sing_box_path: "sing-box"
 sing_box_service_name: "sing-box"
+wireguard_staging_dir: "/var/lib/routegate-agent/wireguard-configs"
+wireguard_active_config_path: "/etc/wireguard/routegate-wg0.conf"
+wireguard_backup_dir: "/var/lib/routegate-agent/wireguard-backups"
+wg_quick_path: "/usr/bin/wg-quick"
+wg_path: "/usr/bin/wg"
+wireguard_service_name: "wg-quick@routegate-wg0"
+wireguard_interface: "routegate-wg0"
 service_control_enabled: true
 traffic_collection_enabled: false
 traffic_collection_interval_seconds: 60
@@ -276,7 +283,10 @@ EOF_CONFIG
 
 install_agent() {
   local source_dir="$ROUTEGATE_WORK_DIR/extracted"
-  install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups
+	install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups
+	install -d -m 0700 /etc/wireguard
+	printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
+	sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >/dev/null
   install -m 0755 "$source_dir/bin/routegate-agent" "$ROUTEGATE_AGENT_BINARY"
   install -m 0644 "$source_dir/systemd/routegate-agent.service" "$ROUTEGATE_AGENT_SERVICE"
 

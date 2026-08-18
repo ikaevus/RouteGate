@@ -41,6 +41,15 @@ type VLESSRealityCredentialsResponse struct {
 	Protocol     string                  `json:"protocol"`
 	VLESS       AdminVLESSCredentials   `json:"vless"`
 	Reality     AdminRealityCredentials `json:"reality"`
+	WireGuard   AdminWireGuardCredentials `json:"wireGuard"`
+}
+
+type AdminWireGuardCredentials struct {
+	PrivateKey     string `json:"privateKey,omitempty"`
+	PublicKey      string `json:"publicKey,omitempty"`
+	Address        string `json:"address,omitempty"`
+	ServerPublicKey string `json:"serverPublicKey,omitempty"`
+	DNS            string `json:"dns,omitempty"`
 }
 
 type AdminVLESSCredentials struct {
@@ -109,5 +118,6 @@ type PublicSubscriptionConfig struct {
 
 type PublicSubscriptionRenderedConfig struct {
 	Format  string              `json:"format"`
-	Content SingBoxClientConfig `json:"content"`
+	Content SingBoxClientConfig `json:"content,omitempty"`
+	Text    string              `json:"text,omitempty"`
 }

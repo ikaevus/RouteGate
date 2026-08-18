@@ -164,6 +164,8 @@ func (s *Service) GetApplyJob(ctx context.Context, serverID, jobID string) (Conf
 
 func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedConfig {
 	realityEnabled := realityRequested(info)
+	adapter := selectedVPNCoreAdapter(info)
+	descriptor := adapter.Descriptor()
 	config := RenderedConfig{
 		SchemaVersion: SchemaVersion,
 		Server: ConfigServer{
@@ -182,6 +184,12 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 			Source:         "routegate-manager",
 			RenderedAt:     renderedAt,
 			RealityEnabled: realityEnabled,
+			VPNCore: ConfigVPNCore{
+				Core: descriptor.Core,
+				Protocol: descriptor.Protocol,
+				Transport: descriptor.Transports[0],
+				Security: selectedAdapterSecurity(descriptor, realityEnabled),
+			},
 		},
 	}
 
@@ -201,7 +209,7 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 	}
 
 	applyServerRoutingProfile(&config, info.RoutingProfile)
-	currentVPNCoreAdapter(realityEnabled).Render(&config, info)
+	adapter.Render(&config, info)
 
 	return config
 }
@@ -286,7 +294,13 @@ func ValidateRenderedConfig(config RenderedConfig) ValidationResult {
 			result.Errors = append(result.Errors, "server.deploymentRole does not host the VPN plane.")
 		}
 	}
-	currentVPNCoreAdapter(config.Metadata.RealityEnabled).Validate(config, &result)
+	adapter, ok := adapterForRenderedConfig(config)
+	if !ok {
+		result.Valid = false
+		result.Errors = append(result.Errors, "metadata.vpnCore selects an unsupported adapter composition.")
+	} else {
+		adapter.Validate(config, &result)
+	}
 	if config.Agent == nil {
 		result.Warnings = append(result.Warnings, "No registered agent is attached to this server yet; the config can be rendered but cannot be applied.")
 	}
@@ -318,7 +332,21 @@ func ensureConfigVersionSafeForApply(version ConfigVersion) error {
 }
 
 func vpnServiceReady(config RenderedConfig) bool {
-	return currentVPNCoreAdapter(config.Metadata.RealityEnabled).Ready(config)
+	adapter, ok := adapterForRenderedConfig(config)
+	return ok && adapter.Ready(config)
+}
+
+func selectedAdapterSecurity(descriptor platform.VPNCoreAdapterDescriptor, realityEnabled bool) string {
+	if descriptor.Protocol == platform.VPNProtocolVLESS {
+		if realityEnabled {
+			return platform.VPNSecurityReality
+		}
+		return platform.VPNSecurityNone
+	}
+	if len(descriptor.SecurityModes) > 0 {
+		return descriptor.SecurityModes[0]
+	}
+	return ""
 }
 
 func hashRenderedConfig(config RenderedConfig) (string, error) {

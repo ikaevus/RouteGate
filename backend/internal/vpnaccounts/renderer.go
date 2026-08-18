@@ -1,7 +1,10 @@
 package vpnaccounts
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"net"
 	"net/netip"
 	"strings"
 )
@@ -9,6 +12,7 @@ import (
 const (
 	ClientConfigFormat        = "routegate.client_config.v1"
 	SingBoxClientConfigFormat = "sing-box.config.v1"
+	WireGuardClientConfigFormat = "wireguard.config.v1"
 
 	singBoxOutboundTag = "routegate-out"
 	singBoxInboundTag  = "mixed-in"
@@ -69,6 +73,19 @@ type SingBoxRoute struct {
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
+	if profile.Server != nil && profile.Server.VPNProtocol == "wireguard" {
+		config := PublicSubscriptionConfig{Type: "wireguard", Format: ClientConfigFormat}
+		rendered, err := RenderWireGuardClientConfig(profile)
+		if err != nil {
+			config.Status = "unavailable"
+			config.Message = err.Error()
+			return config
+		}
+		config.Status = "rendered"
+		config.Message = "WireGuard client config generated."
+		config.Rendered = &PublicSubscriptionRenderedConfig{Format: WireGuardClientConfigFormat, Text: rendered}
+		return config
+	}
 	config := PublicSubscriptionConfig{
 		Type:   "sing-box",
 		Format: ClientConfigFormat,
@@ -88,6 +105,51 @@ func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscript
 		Content: rendered,
 	}
 	return config
+}
+
+func RenderWireGuardClientConfig(profile SubscriptionProfile) (string, error) {
+	if profile.Server == nil {
+		return "", errors.New("Server is required to render WireGuard client config.")
+	}
+	credentials := profile.Credentials.WireGuard
+	if err := validateWireGuardClientKey(credentials.PrivateKey); err != nil {
+		return "", errors.New("WireGuard client private key is required to render client config.")
+	}
+	if err := validateWireGuardClientKey(profile.Server.WireGuardPublicKey); err != nil {
+		return "", errors.New("WireGuard server public key is required to render client config.")
+	}
+	address, err := netip.ParseAddr(strings.TrimSpace(credentials.Address))
+	if err != nil {
+		if prefix, prefixErr := netip.ParsePrefix(strings.TrimSpace(credentials.Address)); prefixErr == nil {
+			address, err = prefix.Addr(), nil
+		}
+	}
+	if err != nil || !address.Is4() {
+		return "", errors.New("WireGuard client IPv4 address is required to render client config.")
+	}
+	endpoint := subscriptionServerEndpoint(profile.Server)
+	if endpoint == "" {
+		return "", errors.New("Server endpoint is required to render WireGuard client config.")
+	}
+	port := profile.Server.WireGuardPort
+	if port < 1 || port > 65535 {
+		return "", errors.New("WireGuard server port is invalid.")
+	}
+	dns := strings.TrimSpace(profile.Server.WireGuardDNS)
+	if _, err := netip.ParseAddr(dns); err != nil {
+		return "", errors.New("WireGuard DNS address is invalid.")
+	}
+	return fmt.Sprintf("[Interface]\nPrivateKey = %s\nAddress = %s/32\nDNS = %s\n\n[Peer]\nPublicKey = %s\nEndpoint = %s\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = 25\n",
+		strings.TrimSpace(credentials.PrivateKey), address.String(), dns,
+		strings.TrimSpace(profile.Server.WireGuardPublicKey), net.JoinHostPort(endpoint, fmt.Sprintf("%d", port))), nil
+}
+
+func validateWireGuardClientKey(value string) error {
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil || len(decoded) != 32 {
+		return errors.New("invalid WireGuard key")
+	}
+	return nil
 }
 
 func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig, error) {

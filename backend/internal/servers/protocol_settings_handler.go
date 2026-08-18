@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
 const (
@@ -25,6 +27,7 @@ type protocolSettingsRepository interface {
 	GetProtocolSettings(context.Context, string) (ProtocolSettings, error)
 	UpdateProtocolSettings(context.Context, string, UpdateProtocolSettingsInput) (ProtocolSettings, error)
 	UpdateRealityKeypair(context.Context, string, UpdateRealityKeypairInput) (ProtocolSettings, error)
+	ConfigureRecommendedWireGuard(context.Context, string, UpdateWireGuardKeypairInput) (ProtocolSettings, error)
 }
 
 func (h *Handler) GetProtocolSettings(w http.ResponseWriter, r *http.Request) {
@@ -62,20 +65,30 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 
 	trimStringPointer(request.VLESSFlow)
 	trimStringPointer(request.VLESSNetwork)
+	trimStringPointer(request.Protocol)
 	trimStringPointer(request.RealityPublicKey)
 	trimStringPointer(request.RealityShortID)
 	trimStringPointer(request.RealityServerName)
+	trimStringPointer(request.WireGuardAddress)
+	trimStringPointer(request.WireGuardDNS)
+	if request.Protocol != nil {
+		*request.Protocol = strings.ToLower(*request.Protocol)
+	}
 	if request.VLESSNetwork != nil {
 		*request.VLESSNetwork = strings.ToLower(*request.VLESSNetwork)
 	}
 
 	input := UpdateProtocolSettingsInput{
+		Protocol:          request.Protocol,
 		VLESSPort:         request.VLESSPort,
 		VLESSFlow:         request.VLESSFlow,
 		VLESSNetwork:      request.VLESSNetwork,
 		RealityPublicKey:  request.RealityPublicKey,
 		RealityShortID:    request.RealityShortID,
 		RealityServerName: request.RealityServerName,
+		WireGuardPort:      request.WireGuardPort,
+		WireGuardAddress:   request.WireGuardAddress,
+		WireGuardDNS:       request.WireGuardDNS,
 	}
 	if err := validateProtocolSettingsInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())
@@ -148,7 +161,9 @@ func (h *Handler) ConfigureRecommendedProtocolSettings(w http.ResponseWriter, r 
 	port := recommendedVLESSPort
 	flow := recommendedVLESSFlow
 	network := recommendedVLESSNetwork
+	protocol := "vless"
 	settings, err := repository.UpdateProtocolSettings(r.Context(), serverID, UpdateProtocolSettingsInput{
+		Protocol:          &protocol,
 		VLESSPort:         &port,
 		VLESSFlow:         &flow,
 		VLESSNetwork:      &network,
@@ -197,12 +212,45 @@ func (h *Handler) GenerateRealityKeypair(w http.ResponseWriter, r *http.Request)
 	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
 }
 
+func (h *Handler) ConfigureRecommendedWireGuard(w http.ResponseWriter, r *http.Request) {
+	repository, ok := h.protocolSettingsRepository()
+	if !ok {
+		h.databaseError(w, "get protocol settings repository", errors.New("protocol settings repository is unavailable"))
+		return
+	}
+
+	keypair, err := wgcredentials.GenerateKeypair()
+	if err != nil {
+		h.logger.Error("generate WireGuard keypair failed", "server_id", r.PathValue("server_id"), "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("keypair_generation_failed", "Failed to generate WireGuard keypair."))
+		return
+	}
+
+	settings, err := repository.ConfigureRecommendedWireGuard(r.Context(), r.PathValue("server_id"), UpdateWireGuardKeypairInput{
+		PrivateKey: keypair.PrivateKey,
+		PublicKey:  keypair.PublicKey,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeServerNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "configure recommended WireGuard settings", err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
+}
+
 func (h *Handler) protocolSettingsRepository() (protocolSettingsRepository, bool) {
 	repository, ok := h.servers.(protocolSettingsRepository)
 	return repository, ok
 }
 
 func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
+	if input.Protocol != nil && *input.Protocol != "vless" && *input.Protocol != "wireguard" {
+		return errors.New("protocol must be one of: vless, wireguard")
+	}
 	if input.VLESSPort != nil && (*input.VLESSPort < 1 || *input.VLESSPort > 65535) {
 		return errors.New("vlessPort must be between 1 and 65535")
 	}
@@ -211,6 +259,21 @@ func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
 	}
 	if input.VLESSFlow != nil && !validVLESSFlow(*input.VLESSFlow) {
 		return errors.New("vlessFlow must be empty or xtls-rprx-vision")
+	}
+	if input.WireGuardPort != nil && (*input.WireGuardPort < 1 || *input.WireGuardPort > 65535) {
+		return errors.New("wireGuardPort must be between 1 and 65535")
+	}
+	if input.WireGuardAddress != nil {
+		prefix, err := netip.ParsePrefix(*input.WireGuardAddress)
+		if err != nil || !prefix.Addr().Is4() || prefix.Bits() > 30 {
+			return errors.New("wireGuardAddress must be an IPv4 prefix with room for peers")
+		}
+	}
+	if input.WireGuardDNS != nil {
+		address, err := netip.ParseAddr(*input.WireGuardDNS)
+		if err != nil || !address.IsValid() {
+			return errors.New("wireGuardDns must be an IP address")
+		}
 	}
 	return nil
 }

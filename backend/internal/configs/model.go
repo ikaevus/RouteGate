@@ -80,6 +80,12 @@ type ServerConfigInfo struct {
 	RealityPublicKey  string
 	RealityShortID    string
 	RealityServerName string
+	VPNProtocol        string
+	WireGuardPort      int
+	WireGuardAddress   string
+	WireGuardDNS       string
+	WireGuardPrivateKey string
+	WireGuardPublicKey string
 	Agent             *AgentConfigInfo
 	VPNAccounts       []VPNAccountConfigInfo
 	RoutingProfile    *RoutingProfileConfigInfo
@@ -102,6 +108,8 @@ type VPNAccountConfigInfo struct {
 	VLESSUUID                string
 	VLESSFlow                string
 	VLESSNetwork             string
+	WireGuardPublicKey       string
+	WireGuardAddress         string
 	TrafficEnforcementStatus string
 }
 
@@ -133,6 +141,7 @@ type RenderedConfig struct {
 	VPNAccounts    []ConfigVPNAccount    `json:"vpnAccounts"`
 	RoutingProfile *ConfigRoutingProfile `json:"routingProfile,omitempty"`
 	SingBox        SingBoxConfig         `json:"singBox"`
+	WireGuard      string                `json:"wireGuard,omitempty"`
 	Metadata       ConfigMetadata        `json:"metadata"`
 }
 
@@ -163,6 +172,8 @@ type ConfigVPNAccount struct {
 	DisplayName string `json:"displayName"`
 	Status      string `json:"status"`
 	VLESSUUID   string `json:"vlessUuid"`
+	WireGuardPublicKey string `json:"wireGuardPublicKey,omitempty"`
+	WireGuardAddress   string `json:"wireGuardAddress,omitempty"`
 }
 
 type ConfigRoutingProfile struct {
@@ -191,6 +202,14 @@ type ConfigMetadata struct {
 	Source         string    `json:"source"`
 	RenderedAt     time.Time `json:"renderedAt"`
 	RealityEnabled bool      `json:"realityEnabled"`
+	VPNCore        ConfigVPNCore `json:"vpnCore"`
+}
+
+type ConfigVPNCore struct {
+	Core      string `json:"core"`
+	Protocol  string `json:"protocol"`
+	Transport string `json:"transport"`
+	Security  string `json:"security"`
 }
 
 type SingBoxConfig struct {
