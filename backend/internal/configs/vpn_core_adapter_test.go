@@ -9,10 +9,10 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/platform"
 )
 
-func TestDefaultVPNCoreAdapterRegistryExposesVLESSAndWireGuardPaths(t *testing.T) {
+func TestDefaultVPNCoreAdapterRegistryExposesManagedProtocolPaths(t *testing.T) {
 	registry := defaultVPNCoreAdapterRegistry()
-	if len(registry.adapters) != 2 {
-		t.Fatalf("adapter count = %d, want 2", len(registry.adapters))
+	if len(registry.adapters) != 3 {
+		t.Fatalf("adapter count = %d, want 3", len(registry.adapters))
 	}
 	descriptor := registry.adapters[0].Descriptor()
 	if descriptor.Core != platform.VPNCoreSingBox || descriptor.Protocol != platform.VPNProtocolVLESS {
@@ -25,6 +25,18 @@ func TestDefaultVPNCoreAdapterRegistryExposesVLESSAndWireGuardPaths(t *testing.T
 		descriptor.SecurityModes[0] != platform.VPNSecurityNone ||
 		descriptor.SecurityModes[1] != platform.VPNSecurityReality {
 		t.Fatalf("unexpected security modes: %+v", descriptor.SecurityModes)
+	}
+	wireGuard := registry.adapters[1].Descriptor()
+	if wireGuard.Core != platform.VPNCoreWireGuard || wireGuard.Protocol != platform.VPNProtocolWireGuard ||
+		len(wireGuard.Transports) != 1 || wireGuard.Transports[0] != platform.VPNTransportUDP ||
+		len(wireGuard.SecurityModes) != 1 || wireGuard.SecurityModes[0] != platform.VPNSecurityWireGuard {
+		t.Fatalf("unexpected WireGuard adapter: %+v", wireGuard)
+	}
+	hysteria2 := registry.adapters[2].Descriptor()
+	if hysteria2.Core != platform.VPNCoreHysteria || hysteria2.Protocol != platform.VPNProtocolHysteria2 ||
+		len(hysteria2.Transports) != 1 || hysteria2.Transports[0] != platform.VPNTransportQUIC ||
+		len(hysteria2.SecurityModes) != 1 || hysteria2.SecurityModes[0] != platform.VPNSecurityTLS {
+		t.Fatalf("unexpected Hysteria2 adapter: %+v", hysteria2)
 	}
 }
 
