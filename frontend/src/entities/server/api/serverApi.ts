@@ -17,6 +17,19 @@ export interface RegistrationTokenResponse {
   serverId: string;
   registrationToken: string;
   expiresAt: string;
+  managerUrl?: string;
+  bootstrapCommand?: string;
+}
+
+export type NodeConnectionState = 'not_applicable' | 'awaiting_agent' | 'online' | 'offline';
+export type NodeCapabilityStatus = 'not_applicable' | 'not_reported' | 'compatible' | 'incompatible';
+
+export interface NodeInventorySummary {
+  connectionState: NodeConnectionState;
+  capabilityStatus: NodeCapabilityStatus;
+  nextAction: 'none' | 'install_agent' | 'restore_connection' | 'review_compatibility' | 'review_capabilities';
+  capabilitySchemaVersion?: number;
+  managedAdapterCount: number;
 }
 
 export interface ValidationResult {
@@ -135,6 +148,7 @@ export interface Server {
   createdAt: string;
   updatedAt: string;
   agent?: ServerAgent | null;
+  inventory: NodeInventorySummary;
 }
 
 export interface ListServersResponse {

@@ -91,6 +91,10 @@ The installer downloads the published RouteGate release bundle and verifies it a
 
 After installation, open the single-use `/setup` link printed by the installer, choose the administrator password, and continue through the guided Dashboard workflow.
 
+Additional VPN Nodes are attached from the Manager UI. Create a VPN Node, choose
+**Connect server**, and copy the generated one-command Agent installer to the
+target Ubuntu 24.04 host. See the [Remote VPN Node guide](docs/deployment/remote-vpn-node.md).
+
 In the canonical All-in-One layout, nginx/HTTPS owns TCP `443`; the recommended VLESS / Reality listener uses TCP `8443`.
 
 ## Product principles

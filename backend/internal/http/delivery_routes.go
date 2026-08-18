@@ -23,7 +23,7 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	deliveryHandler := delivery.NewHandler(logger, pool, cfg)
 	diagnosticHandler := observability.NewDiagnosticHandler(logger, pool)
 	analyticsHandler := analytics.NewHandler(logger, pool)
-	serversHandler := servers.NewHandler(logger, pool)
+	serversHandler := servers.NewHandler(logger, pool, cfg.PublicURL)
 	prometheusHandler := observability.NewPrometheusHandler(
 		observability.NewPrometheusRepository(pool),
 		cfg.Monitoring.Enabled,

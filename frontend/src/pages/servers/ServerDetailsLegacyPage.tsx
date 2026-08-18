@@ -132,7 +132,11 @@ function ConnectionStatusBadge({ status }: { status?: string | null }) {
     ? t('serverDetails.connectionOnline')
     : normalizedStatus === 'offline'
       ? t('serverDetails.connectionOffline')
-      : translateStatus(normalizedStatus);
+      : normalizedStatus === 'awaiting_agent'
+        ? t('serverDetails.connectionAwaitingAgent')
+        : normalizedStatus === 'not_applicable'
+          ? t('serverDetails.connectionNotApplicable')
+          : translateStatus(normalizedStatus);
   const statusClassName = normalizedStatus.replace(/[^a-z0-9-]/g, '-');
 
   return <span className={`badge badge-${statusClassName}`}>{label}</span>;
@@ -647,13 +651,14 @@ export function ServerDetailsPage() {
     : Math.min((applyJobsQuery.data?.offset ?? 0) + applyJobs.length, applyJobsTotal);
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
   const currentConfigVersionId = configVersionsQuery.data?.currentConfigVersionId ?? null;
-  const managerBaseUrl = getManagerBaseUrl();
+  const managerBaseUrl = registrationToken?.managerUrl || getManagerBaseUrl();
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
     : '';
-  const setupCommand = configSnippet
+  const manualSetupCommand = configSnippet
     ? `sudo install -d -m 0755 /etc/routegate\nsudo tee /etc/routegate/agent.yaml >/dev/null <<'ROUTEGATE_AGENT_CONFIG'\n${configSnippet}\nROUTEGATE_AGENT_CONFIG\nsudo chmod 0600 /etc/routegate/agent.yaml`
     : '';
+  const setupCommand = registrationToken?.bootstrapCommand || manualSetupCommand;
 
   return (
     <section className="page server-details-page">
@@ -828,11 +833,17 @@ export function ServerDetailsPage() {
 
         <div className="panel server-connection-panel">
           <div className="panel-title">{t('serverDetails.routeGateConnectionTitle')}</div>
-          {agent ? (
+          {server.deploymentRole === 'management' ? (
+            <div className="empty-state empty-state-card agent-registration-empty-state">
+              <strong>{t('serverDetails.managementNodeNoAgent')}</strong>
+              <span>{t('serverDetails.managementNodeNoAgentDescription')}</span>
+              <ConnectionStatusBadge status={server.inventory.connectionState} />
+            </div>
+          ) : agent ? (
             <div className="server-connection-state">
               <div className="server-connection-summary">
                 <strong>{t('serverDetails.serverConnected')}</strong>
-                <ConnectionStatusBadge status={agent.status} />
+                <ConnectionStatusBadge status={server.inventory.connectionState} />
               </div>
               <div className="detail-list server-connection-primary-details">
                 <DetailRow label={t('serverDetails.lastContact')}>{formatDate(agent.lastSeenAt)}</DetailRow>
@@ -852,6 +863,8 @@ export function ServerDetailsPage() {
                   <DetailRow label={t('serverDetails.labelCapabilities')}>
                     <pre className="inline-code">{formatCapabilities(agent.capabilities)}</pre>
                   </DetailRow>
+                  <DetailRow label={t('serverDetails.capabilityStatus')}><StatusBadge status={server.inventory.capabilityStatus} /></DetailRow>
+                  <DetailRow label={t('serverDetails.managedAdapters')}>{server.inventory.managedAdapterCount}</DetailRow>
                   <DetailRow label={t('serverDetails.labelLastSeenAt')}>{formatDate(agent.lastSeenAt)}</DetailRow>
                 </div>
               </details>
@@ -948,7 +961,7 @@ export function ServerDetailsPage() {
         </form>
       </div>
 
-      <div className="panel token-panel">
+      {server.deploymentRole !== 'management' && <div className="panel token-panel">
         <div className="panel-title">{t('serverDetails.registrationTokenTitle')}</div>
         <p className="muted-text">
           {t('serverDetails.registrationTokenSubtitle')}
@@ -972,7 +985,7 @@ export function ServerDetailsPage() {
             configSnippet={configSnippet}
           />
         )}
-      </div>
+      </div>}
 
       <div className="panel admin-table-panel">
         <div className="panel-header">
@@ -1313,9 +1326,7 @@ export function ServerDetailsPage() {
                   </div>
                   <ol className="agent-onboarding-steps">
                     <li><strong>{t('serverDetails.agentStepPrepareTitle')}</strong><span>{t('serverDetails.agentStepPrepareDescription')}</span></li>
-                    <li><strong>{t('serverDetails.agentStepInstallTitle')}</strong><span>{t('serverDetails.agentStepInstallDescription')}</span><pre className="code-block">cd agent{`\n`}go build -o routegate-agent ./cmd/routegate-agent{`\n`}sudo install -m 0755 routegate-agent /usr/local/bin/routegate-agent</pre></li>
-                    <li><strong>{t('serverDetails.agentStepConfigureTitle')}</strong><span>{t('serverDetails.agentStepConfigureDescription')}</span><pre className="code-block agent-setup-command">{setupCommand}</pre><div className="agent-setup-actions"><button className="primary-button" type="button" aria-label={t('serverDetails.copySetupCommand')} onClick={() => void copySetupCommand(setupCommand)}>{t('serverDetails.copySetupCommand')}</button>{isSetupCommandCopied && <span role="status" aria-live="polite">{t('serverDetails.setupCommandCopied')}</span>}</div></li>
-                    <li><strong>{t('serverDetails.agentStepStartTitle')}</strong><span>{t('serverDetails.agentStepStartDescription')}</span><pre className="code-block">sudo /usr/local/bin/routegate-agent -config /etc/routegate/agent.yaml</pre></li>
+                    <li><strong>{t('serverDetails.agentStepInstallTitle')}</strong><span>{t('serverDetails.agentStepInstallDescription')}</span><pre className="code-block agent-setup-command">{setupCommand}</pre><div className="agent-setup-actions"><button className="primary-button" type="button" aria-label={t('serverDetails.copySetupCommand')} onClick={() => void copySetupCommand(setupCommand)}>{t('serverDetails.copySetupCommand')}</button>{isSetupCommandCopied && <span role="status" aria-live="polite">{t('serverDetails.setupCommandCopied')}</span>}</div></li>
                     <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>
                   </ol>
 
