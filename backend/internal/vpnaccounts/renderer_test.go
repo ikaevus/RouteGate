@@ -273,8 +273,13 @@ func TestRenderShadowsocksClientURI(t *testing.T) {
 			t.Fatalf("Shadowsocks URI missing %q: %s", expected, uri)
 		}
 	}
-	if !strings.Contains(uri, url.QueryEscape(serverKey+":"+userKey)) {
-		t.Fatalf("Shadowsocks URI does not contain the chained PSKs: %s", uri)
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.User == nil {
+		t.Fatalf("parse Shadowsocks URI: %v", err)
+	}
+	password, ok := parsed.User.Password()
+	if !ok || password != serverKey+":"+userKey {
+		t.Fatalf("Shadowsocks URI does not contain the chained PSKs")
 	}
 }
 
