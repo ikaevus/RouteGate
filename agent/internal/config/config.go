@@ -33,6 +33,11 @@ const DefaultHysteria2BackupDir = "/var/lib/routegate-agent/hysteria2-backups"
 const DefaultHysteria2Path = "hysteria"
 const DefaultHysteria2ServiceName = "hysteria-server"
 const DefaultSSPath = "ss"
+const DefaultMTProtoStagingDir = "/var/lib/routegate-agent/mtproto-configs"
+const DefaultMTProtoActiveConfigPath = "/etc/routegate-mtproto/config.toml"
+const DefaultMTProtoBackupDir = "/var/lib/routegate-agent/mtproto-backups"
+const DefaultMTGPath = "mtg"
+const DefaultMTProtoServiceName = "routegate-mtproto"
 
 type Config struct {
 	ManagerURL                       string
@@ -63,6 +68,11 @@ type Config struct {
 	Hysteria2Path                    string
 	Hysteria2ServiceName             string
 	SSPath                           string
+	MTProtoStagingDir                string
+	MTProtoActiveConfigPath          string
+	MTProtoBackupDir                 string
+	MTGPath                          string
+	MTProtoServiceName               string
 }
 
 func Load(path string) (Config, error) {
@@ -169,6 +179,16 @@ func Load(path string) (Config, error) {
 			cfg.Hysteria2ServiceName = value
 		case "ss_path":
 			cfg.SSPath = value
+		case "mtproto_staging_dir":
+			cfg.MTProtoStagingDir = value
+		case "mtproto_active_config_path":
+			cfg.MTProtoActiveConfigPath = value
+		case "mtproto_backup_dir":
+			cfg.MTProtoBackupDir = value
+		case "mtg_path":
+			cfg.MTGPath = value
+		case "mtproto_service_name":
+			cfg.MTProtoServiceName = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -198,6 +218,11 @@ func Load(path string) (Config, error) {
 	cfg.Hysteria2Path = strings.TrimSpace(cfg.Hysteria2Path)
 	cfg.Hysteria2ServiceName = strings.TrimSpace(cfg.Hysteria2ServiceName)
 	cfg.SSPath = strings.TrimSpace(cfg.SSPath)
+	cfg.MTProtoStagingDir = strings.TrimSpace(cfg.MTProtoStagingDir)
+	cfg.MTProtoActiveConfigPath = strings.TrimSpace(cfg.MTProtoActiveConfigPath)
+	cfg.MTProtoBackupDir = strings.TrimSpace(cfg.MTProtoBackupDir)
+	cfg.MTGPath = strings.TrimSpace(cfg.MTGPath)
+	cfg.MTProtoServiceName = strings.TrimSpace(cfg.MTProtoServiceName)
 	if cfg.HeartbeatIntervalSeconds <= 0 {
 		cfg.HeartbeatIntervalSeconds = 30
 	}
@@ -235,6 +260,11 @@ func Load(path string) (Config, error) {
 	if cfg.Hysteria2Path == "" { cfg.Hysteria2Path = DefaultHysteria2Path }
 	if cfg.Hysteria2ServiceName == "" { cfg.Hysteria2ServiceName = DefaultHysteria2ServiceName }
 	if cfg.SSPath == "" { cfg.SSPath = DefaultSSPath }
+	if cfg.MTProtoStagingDir == "" { cfg.MTProtoStagingDir = DefaultMTProtoStagingDir }
+	if cfg.MTProtoActiveConfigPath == "" { cfg.MTProtoActiveConfigPath = DefaultMTProtoActiveConfigPath }
+	if cfg.MTProtoBackupDir == "" { cfg.MTProtoBackupDir = DefaultMTProtoBackupDir }
+	if cfg.MTGPath == "" { cfg.MTGPath = DefaultMTGPath }
+	if cfg.MTProtoServiceName == "" { cfg.MTProtoServiceName = DefaultMTProtoServiceName }
 	if cfg.ManagerURL == "" {
 		return Config{}, errors.New("manager_url is required")
 	}
@@ -295,6 +325,11 @@ func (c Config) Save(path string) error {
 	hysteria2Path := defaultString(c.Hysteria2Path, DefaultHysteria2Path)
 	hysteria2ServiceName := defaultString(c.Hysteria2ServiceName, DefaultHysteria2ServiceName)
 	ssPath := defaultString(c.SSPath, DefaultSSPath)
+	mtprotoStagingDir := defaultString(c.MTProtoStagingDir, DefaultMTProtoStagingDir)
+	mtprotoActiveConfigPath := defaultString(c.MTProtoActiveConfigPath, DefaultMTProtoActiveConfigPath)
+	mtprotoBackupDir := defaultString(c.MTProtoBackupDir, DefaultMTProtoBackupDir)
+	mtgPath := defaultString(c.MTGPath, DefaultMTGPath)
+	mtprotoServiceName := defaultString(c.MTProtoServiceName, DefaultMTProtoServiceName)
 
 	var output strings.Builder
 	fmt.Fprintf(&output, "manager_url: %q\n", c.ManagerURL)
@@ -309,6 +344,8 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&output, "wg_quick_path: %q\nwg_path: %q\nwireguard_service_name: %q\nwireguard_interface: %q\n", wgQuickPath, wgPath, wireGuardServiceName, wireGuardInterface)
 	fmt.Fprintf(&output, "hysteria2_staging_dir: %q\nhysteria2_active_config_path: %q\nhysteria2_backup_dir: %q\n", hysteria2StagingDir, hysteria2ActiveConfigPath, hysteria2BackupDir)
 	fmt.Fprintf(&output, "hysteria2_path: %q\nhysteria2_service_name: %q\nss_path: %q\n", hysteria2Path, hysteria2ServiceName, ssPath)
+	fmt.Fprintf(&output, "mtproto_staging_dir: %q\nmtproto_active_config_path: %q\nmtproto_backup_dir: %q\n", mtprotoStagingDir, mtprotoActiveConfigPath, mtprotoBackupDir)
+	fmt.Fprintf(&output, "mtg_path: %q\nmtproto_service_name: %q\n", mtgPath, mtprotoServiceName)
 	fmt.Fprintf(&output, "service_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
 	data := output.String()
 

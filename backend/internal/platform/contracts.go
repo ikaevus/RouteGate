@@ -9,10 +9,13 @@ const (
 	VPNCoreSingBox   = "sing-box"
 	VPNCoreWireGuard = "wireguard"
 	VPNCoreHysteria  = "hysteria"
+	VPNCoreMTG       = "mtg"
 
 	VPNProtocolVLESS     = "vless"
 	VPNProtocolWireGuard = "wireguard"
 	VPNProtocolHysteria2 = "hysteria2"
+	VPNProtocolShadowsocks = "shadowsocks"
+	VPNProtocolMTProto     = "mtproto"
 
 	VPNTransportTCP = "tcp"
 	VPNTransportUDP = "udp"
@@ -22,6 +25,8 @@ const (
 	VPNSecurityReality = "reality"
 	VPNSecurityWireGuard = "wireguard"
 	VPNSecurityTLS       = "tls"
+	VPNSecurityAEAD2022  = "aead-2022"
+	VPNSecurityFakeTLS   = "faketls"
 )
 
 // VPNCoreAdapterDescriptor describes one RouteGate-managed protocol path.

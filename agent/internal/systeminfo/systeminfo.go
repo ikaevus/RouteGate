@@ -73,13 +73,14 @@ func Collect() Info {
 	vpnCore := detectVPNCore()
 	wireGuardCore := detectWireGuardCore()
 	hysteria2Core := detectHysteria2Core()
+	mtprotoCore := detectMTProtoCore()
 	return Info{
 		Hostname:        hostname,
 		AgentVersion:    info.Version,
 		ProtocolVersion: info.ProtocolVersion,
 		OS:              runtime.GOOS,
 		Arch:            runtime.GOARCH,
-		Capabilities:    detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore, hysteria2Core),
+		Capabilities:    detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore, hysteria2Core, mtprotoCore),
 		RuntimeMetrics:  runtimeMetrics,
 		Telemetry:       collectTelemetry(runtimeMetrics, vpnCore),
 	}
@@ -218,7 +219,7 @@ func collectRootFilesystem() (uint64, uint64, bool) {
 }
 
 func DetectCapabilities() map[string]any {
-	return detectCapabilitiesWithWireGuard(detectVPNCore(), detectWireGuardCore(), detectHysteria2Core())
+	return detectCapabilitiesWithWireGuard(detectVPNCore(), detectWireGuardCore(), detectHysteria2Core(), detectMTProtoCore())
 }
 
 func detectCapabilities(vpnCore map[string]any) map[string]any {
@@ -226,7 +227,7 @@ func detectCapabilities(vpnCore map[string]any) map[string]any {
 }
 
 func detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore map[string]any, additional ...map[string]any) map[string]any {
-	names := []string{"systemctl", "sing-box", "xray", "hysteria", "nft", "ss"}
+	names := []string{"systemctl", "sing-box", "xray", "hysteria", "mtg", "nft", "ss"}
 	caps := make(map[string]any, len(names)+4)
 	for _, name := range names {
 		_, err := exec.LookPath(name)
@@ -237,13 +238,43 @@ func detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore map[string]any, addi
 	if len(additional) > 0 && additional[0] != nil {
 		hysteria2Core = additional[0]
 	}
-	caps["vpnCores"] = []map[string]any{vpnCore, wireGuardCore, hysteria2Core}
+	mtprotoCore := detectMTProtoCore()
+	if len(additional) > 1 && additional[1] != nil {
+		mtprotoCore = additional[1]
+	}
+	caps["vpnCores"] = []map[string]any{vpnCore, wireGuardCore, hysteria2Core, mtprotoCore}
 	caps["routegate"] = routeGatePlatformCapabilities()
 	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
 	if vpncoreinstall.SupportsCurrentPlatform() {
 		caps["vpnCoreInstallationOperations"] = []string{vpncoreinstall.OperationInstall}
 	}
 	return caps
+}
+
+func detectMTProtoCore() map[string]any {
+	status := map[string]any{
+		"type": "mtg", "installed": false, "state": "not_installed",
+		"checkedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+	binaryPath, err := exec.LookPath("mtg")
+	if err != nil { return status }
+	status["installed"], status["binaryPath"], status["state"] = true, binaryPath, "installed"
+	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
+		if version := firstNonEmptyLine(string(output)); version != "" { status["version"] = version }
+	} else if timedOut { status["versionError"] = "version_check_timeout" } else { status["versionError"] = "version_check_failed" }
+	if _, systemctlErr := exec.LookPath("systemctl"); systemctlErr != nil { status["serviceState"] = "unknown"; return status }
+	serviceOutput, serviceErr, timedOut := runCommand("systemctl", "is-active", "routegate-mtproto")
+	serviceState := strings.TrimSpace(string(serviceOutput))
+	if timedOut { serviceState, status["serviceError"] = "unknown", "service_check_timeout" } else if serviceState == "" { serviceState = "unknown" }
+	status["serviceName"], status["serviceState"] = "routegate-mtproto.service", serviceState
+	switch serviceState {
+	case "active": status["state"] = "running"
+	case "inactive", "deactivating": status["state"] = "stopped"
+	case "failed": status["state"] = "failed"
+	default:
+		if serviceErr != nil { status["state"] = "unknown" }
+	}
+	return status
 }
 
 func detectHysteria2Core() map[string]any {

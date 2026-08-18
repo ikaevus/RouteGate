@@ -63,6 +63,12 @@ type ProtocolSettings struct {
 	Hysteria2Domain     string    `json:"hysteria2Domain,omitempty"`
 	Hysteria2ACMEEmail  string    `json:"hysteria2AcmeEmail,omitempty"`
 	Hysteria2MasqueradeURL string `json:"hysteria2MasqueradeUrl,omitempty"`
+	ShadowsocksPort      int    `json:"shadowsocksPort"`
+	ShadowsocksMethod    string `json:"shadowsocksMethod"`
+	ShadowsocksServerKey string `json:"-"`
+	MTProtoPort           int    `json:"mtprotoPort"`
+	MTProtoSecret         string `json:"-"`
+	MTProtoFrontingDomain string `json:"mtprotoFrontingDomain"`
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
@@ -116,6 +122,8 @@ type UpdateProtocolSettingsInput struct {
 	Hysteria2Domain     *string
 	Hysteria2ACMEEmail  *string
 	Hysteria2MasqueradeURL *string
+	ShadowsocksPort         *int
+	MTProtoPort              *int
 }
 
 type UpdateRealityKeypairInput struct {

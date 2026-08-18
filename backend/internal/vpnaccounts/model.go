@@ -59,6 +59,7 @@ type SubscriptionCredentials struct {
 	Reality RealityCredentials
 	WireGuard WireGuardCredentials
 	Hysteria2 Hysteria2Credentials
+	Shadowsocks ShadowsocksCredentials
 }
 
 type VLESSCredentials struct {
@@ -84,6 +85,11 @@ type Hysteria2Credentials struct {
 	Password string
 }
 
+type ShadowsocksCredentials struct {
+	Username string
+	UserKey  string
+}
+
 type SubscriptionServer struct {
 	ID                string
 	Name              string
@@ -105,6 +111,12 @@ type SubscriptionServer struct {
 	Hysteria2Port       int
 	Hysteria2Domain     string
 	Hysteria2ACMEEmail  string
+	ShadowsocksPort      int
+	ShadowsocksMethod    string
+	ShadowsocksServerKey string
+	MTProtoPort           int
+	MTProtoSecret         string
+	MTProtoFrontingDomain string
 }
 
 type RoutingProfile struct {

@@ -261,6 +261,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(a.wireguard_public_key, ''),
 			COALESCE(a.wireguard_address::text, ''),
 			a.hysteria2_password,
+			a.shadowsocks_user_key,
 			a.created_at,
 			a.updated_at,
 			a.config_updated_at,
@@ -283,7 +284,13 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(s.wireguard_public_key, ''),
 			s.hysteria2_port,
 			s.hysteria2_domain,
-			s.hysteria2_acme_email
+			s.hysteria2_acme_email,
+			s.shadowsocks_port,
+			s.shadowsocks_method,
+			s.shadowsocks_server_key,
+			s.mtproto_port,
+			s.mtproto_secret,
+			s.mtproto_fronting_domain
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
 		WHERE a.id = $1::uuid
@@ -500,11 +507,13 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	var serverID, serverName, serverHostname, serverPublicIP, serverLocation, serverProvider sql.NullString
 	var vlessPort sql.NullInt32
 	var vlessFlow, vlessNetwork, realityPublicKey, realityShortID, realityServerName sql.NullString
-	var wireGuardPrivateKey, wireGuardPublicKey, wireGuardAddress, hysteria2Password sql.NullString
+	var wireGuardPrivateKey, wireGuardPublicKey, wireGuardAddress, hysteria2Password, shadowsocksUserKey sql.NullString
 	var vpnProtocol, serverWireGuardAddress, wireGuardDNS, serverWireGuardPublicKey sql.NullString
 	var wireGuardPort sql.NullInt32
 	var hysteria2Port sql.NullInt32
 	var hysteria2Domain, hysteria2ACMEEmail sql.NullString
+	var shadowsocksMethod, shadowsocksServerKey, mtprotoSecret, mtprotoFrontingDomain sql.NullString
+	var shadowsocksPort, mtprotoPort sql.NullInt32
 
 	err := row.Scan(
 		&profile.Account.ID,
@@ -519,6 +528,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&wireGuardPublicKey,
 		&wireGuardAddress,
 		&hysteria2Password,
+		&shadowsocksUserKey,
 		&profile.Account.CreatedAt,
 		&profile.Account.UpdatedAt,
 		&profile.Account.ConfigUpdatedAt,
@@ -542,6 +552,12 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&hysteria2Port,
 		&hysteria2Domain,
 		&hysteria2ACMEEmail,
+		&shadowsocksPort,
+		&shadowsocksMethod,
+		&shadowsocksServerKey,
+		&mtprotoPort,
+		&mtprotoSecret,
+		&mtprotoFrontingDomain,
 	)
 	if err != nil {
 		return SubscriptionProfile{}, err
@@ -576,6 +592,12 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			Hysteria2Port:       int(hysteria2Port.Int32),
 			Hysteria2Domain:     hysteria2Domain.String,
 			Hysteria2ACMEEmail:  hysteria2ACMEEmail.String,
+			ShadowsocksPort:      int(shadowsocksPort.Int32),
+			ShadowsocksMethod:    shadowsocksMethod.String,
+			ShadowsocksServerKey: shadowsocksServerKey.String,
+			MTProtoPort:           int(mtprotoPort.Int32),
+			MTProtoSecret:         mtprotoSecret.String,
+			MTProtoFrontingDomain: mtprotoFrontingDomain.String,
 		}
 		if vlessPort.Valid {
 			server.VLESSPort = int(vlessPort.Int32)
@@ -596,6 +618,10 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		profile.Credentials.Hysteria2 = Hysteria2Credentials{
 			Username: strings.ToLower(profile.Account.ID),
 			Password: hysteria2Password.String,
+		}
+		profile.Credentials.Shadowsocks = ShadowsocksCredentials{
+			Username: strings.ToLower(profile.Account.ID),
+			UserKey:  shadowsocksUserKey.String,
 		}
 	}
 	return profile, nil

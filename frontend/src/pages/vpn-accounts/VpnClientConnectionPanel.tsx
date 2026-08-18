@@ -52,6 +52,14 @@ function getCopy() {
 		copyHysteria2: 'Скопировать Hysteria2 URI',
 		hysteria2ReadyDescription: 'QR-код содержит стандартный hysteria2:// URI с логином, паролем и проверяемым TLS SNI.',
 		hysteria2Uri: 'Hysteria2 URI',
+		shadowsocksFormat: 'Shadowsocks 2022',
+		copyShadowsocks: 'Скопировать Shadowsocks URI',
+		shadowsocksReadyDescription: 'QR-код содержит стандартный ss:// URI с цепочкой серверного и пользовательского ключей.',
+		shadowsocksUri: 'Shadowsocks URI',
+		mtprotoFormat: 'MTProto / FakeTLS',
+		copyMTProto: 'Скопировать MTProto URI',
+		mtprotoReadyDescription: 'QR-код содержит стандартную Telegram-ссылку tg://proxy с общим секретом этого узла.',
+		mtprotoUri: 'MTProto URI',
       copy: 'Копировать',
       copied: 'Скопировано',
       credentialWarning: 'QR-код и VLESS-ссылка предоставляют доступ к VPN. Не публикуйте их.',
@@ -112,6 +120,14 @@ function getCopy() {
 		copyHysteria2: 'Copy Hysteria2 URI',
 		hysteria2ReadyDescription: 'The QR code contains a standard hysteria2:// URI with userpass credentials and verified TLS SNI.',
 		hysteria2Uri: 'Hysteria2 URI',
+		shadowsocksFormat: 'Shadowsocks 2022',
+		copyShadowsocks: 'Copy Shadowsocks URI',
+		shadowsocksReadyDescription: 'The QR code contains a standard ss:// URI with the chained server and per-user keys.',
+		shadowsocksUri: 'Shadowsocks URI',
+		mtprotoFormat: 'MTProto / FakeTLS',
+		copyMTProto: 'Copy MTProto URI',
+		mtprotoReadyDescription: 'The QR code contains a standard Telegram tg://proxy link with this node’s shared secret.',
+		mtprotoUri: 'MTProto URI',
     copy: 'Copy',
     copied: 'Copied',
     credentialWarning: 'The QR code and VLESS link grant VPN access. Do not publish them.',
@@ -239,7 +255,14 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   const connection = connectionQuery.data;
 	const isWireGuard = connection?.format === 'wireguard-config';
 	const isHysteria2 = connection?.format === 'hysteria2-uri';
-	const connectionText = connection?.wireGuardConfig ?? connection?.hysteria2Uri ?? connection?.vlessLink ?? '';
+	const isShadowsocks = connection?.format === 'shadowsocks-uri';
+	const isMTProto = connection?.format === 'mtproto-uri';
+	const connectionText = connection?.wireGuardConfig ?? connection?.hysteria2Uri ?? connection?.shadowsocksUri ?? connection?.mtprotoUri ?? connection?.vlessLink ?? '';
+	const readyDescription = isWireGuard ? copy.wireGuardReadyDescription : isHysteria2 ? copy.hysteria2ReadyDescription : isShadowsocks ? copy.shadowsocksReadyDescription : isMTProto ? copy.mtprotoReadyDescription : copy.readyDescription;
+	const formatLabel = isWireGuard ? copy.wireGuardFormat : isHysteria2 ? copy.hysteria2Format : isShadowsocks ? copy.shadowsocksFormat : isMTProto ? copy.mtprotoFormat : copy.format;
+	const copyLabel = isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : isShadowsocks ? copy.copyShadowsocks : isMTProto ? copy.copyMTProto : copy.copyVless;
+	const uriLabel = isWireGuard ? copy.wireGuardConfig : isHysteria2 ? copy.hysteria2Uri : isShadowsocks ? copy.shadowsocksUri : isMTProto ? copy.mtprotoUri : copy.vlessLink;
+	const isNonVLESS = isWireGuard || isHysteria2 || isShadowsocks || isMTProto;
 
   return (
     <div className="panel subscription-panel feature-detail-panel vpn-client-connection-panel">
@@ -265,9 +288,9 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             <div className="subscription-url-header">
               <div className="subscription-url-meta">
                 <div className="subscription-url-label">{copy.ready}</div>
-				<p className="subscription-url-helper">{isWireGuard ? copy.wireGuardReadyDescription : isHysteria2 ? copy.hysteria2ReadyDescription : copy.readyDescription}</p>
+				<p className="subscription-url-helper">{readyDescription}</p>
               </div>
-			  <span className="vpn-client-format-badge">{isWireGuard ? copy.wireGuardFormat : isHysteria2 ? copy.hysteria2Format : copy.format}</span>
+			  <span className="vpn-client-format-badge">{formatLabel}</span>
             </div>
 
             <div className="vpn-client-primary-actions">
@@ -279,9 +302,9 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                 type="button"
 				onClick={() => void copyToClipboard('connection-config', connectionText)}
               >
-				{copiedTarget === 'connection-config' ? copy.copied : (isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : copy.copyVless)}
+				{copiedTarget === 'connection-config' ? copy.copied : copyLabel}
               </button>
-			  {!isWireGuard && !isHysteria2 && (
+			  {!isNonVLESS && (
 				<ShareAccessActions
 				  vlessLink={connection.vlessLink ?? ''}
 				  profileName={connection.profile.name}
@@ -449,15 +472,15 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         qrTitle={copy.qrTitle}
         qrSubtitle={connection?.profile.resolvedFingerprint ?? copy.format}
 		url={connectionText}
-		urlLabel={isWireGuard ? copy.wireGuardConfig : isHysteria2 ? copy.hysteria2Uri : copy.vlessLink}
+		urlLabel={uriLabel}
 		onCopyQrText={() => void copyToClipboard('qr-connection', connectionText)}
-		copyQrLabel={isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : copy.copyVless}
+		copyQrLabel={copyLabel}
         copyCopiedLabel={copy.copied}
 		copied={copiedTarget === 'qr-connection'}
         closeLabel={copy.close}
         loadingLabel={copy.loading}
         unavailableLabel={copy.loadError}
-		footerActions={!isWireGuard && !isHysteria2 ? (
+		footerActions={!isNonVLESS ? (
           <ShareAccessActions
 			vlessLink={connection?.vlessLink ?? ''}
             profileName={connection?.profile.name}

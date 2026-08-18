@@ -92,6 +92,7 @@ build_architecture() {
   cp "$ROOT_DIR/deploy/systemd/routegate-manager.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/systemd/routegate-agent.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/systemd/hysteria-server.service" "$stage_dir/systemd/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-mtproto.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/nginx/routegate.conf.example" "$stage_dir/nginx/"
   cp "$ROOT_DIR/scripts/routegate-recovery" "$stage_dir/tools/"
 

@@ -49,6 +49,12 @@ func (r *Repository) GetServerConfigInfo(ctx context.Context, serverID string) (
 			s.hysteria2_domain,
 			s.hysteria2_acme_email,
 			s.hysteria2_masquerade_url,
+			s.shadowsocks_port,
+			s.shadowsocks_method,
+			s.shadowsocks_server_key,
+			s.mtproto_port,
+			s.mtproto_secret,
+			s.mtproto_fronting_domain,
 			a.id::text,
 			COALESCE(a.hostname, ''),
 			COALESCE(a.os, ''),
@@ -98,6 +104,7 @@ func (r *Repository) listServerVPNAccounts(ctx context.Context, serverID string)
 			COALESCE(a.wireguard_public_key, ''),
 			COALESCE(a.wireguard_address::text, ''),
 			a.hysteria2_password,
+			a.shadowsocks_user_key,
 			COALESCE(tl.enforcement_status, 'not_enforced')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
@@ -486,6 +493,12 @@ func scanServerConfigInfo(row pgx.Row) (ServerConfigInfo, error) {
 		&info.Hysteria2Domain,
 		&info.Hysteria2ACMEEmail,
 		&info.Hysteria2MasqueradeURL,
+		&info.ShadowsocksPort,
+		&info.ShadowsocksMethod,
+		&info.ShadowsocksServerKey,
+		&info.MTProtoPort,
+		&info.MTProtoSecret,
+		&info.MTProtoFrontingDomain,
 		&agentID,
 		&agentHostname,
 		&agentOS,
@@ -544,6 +557,7 @@ func scanVPNAccountConfigInfo(row scanner) (VPNAccountConfigInfo, error) {
 		&account.WireGuardPublicKey,
 		&account.WireGuardAddress,
 		&account.Hysteria2Password,
+		&account.ShadowsocksUserKey,
 		&account.TrafficEnforcementStatus,
 	)
 	if err != nil {

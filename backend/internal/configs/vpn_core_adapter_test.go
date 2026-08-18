@@ -11,8 +11,8 @@ import (
 
 func TestDefaultVPNCoreAdapterRegistryExposesManagedProtocolPaths(t *testing.T) {
 	registry := defaultVPNCoreAdapterRegistry()
-	if len(registry.adapters) != 3 {
-		t.Fatalf("adapter count = %d, want 3", len(registry.adapters))
+	if len(registry.adapters) != 5 {
+		t.Fatalf("adapter count = %d, want 5", len(registry.adapters))
 	}
 	descriptor := registry.adapters[0].Descriptor()
 	if descriptor.Core != platform.VPNCoreSingBox || descriptor.Protocol != platform.VPNProtocolVLESS {
@@ -37,6 +37,18 @@ func TestDefaultVPNCoreAdapterRegistryExposesManagedProtocolPaths(t *testing.T) 
 		len(hysteria2.Transports) != 1 || hysteria2.Transports[0] != platform.VPNTransportQUIC ||
 		len(hysteria2.SecurityModes) != 1 || hysteria2.SecurityModes[0] != platform.VPNSecurityTLS {
 		t.Fatalf("unexpected Hysteria2 adapter: %+v", hysteria2)
+	}
+	shadowsocks := registry.adapters[3].Descriptor()
+	if shadowsocks.Core != platform.VPNCoreSingBox || shadowsocks.Protocol != platform.VPNProtocolShadowsocks ||
+		len(shadowsocks.Transports) != 1 || shadowsocks.Transports[0] != platform.VPNTransportTCP ||
+		len(shadowsocks.SecurityModes) != 1 || shadowsocks.SecurityModes[0] != platform.VPNSecurityAEAD2022 {
+		t.Fatalf("unexpected Shadowsocks adapter: %+v", shadowsocks)
+	}
+	mtproto := registry.adapters[4].Descriptor()
+	if mtproto.Core != platform.VPNCoreMTG || mtproto.Protocol != platform.VPNProtocolMTProto ||
+		len(mtproto.Transports) != 1 || mtproto.Transports[0] != platform.VPNTransportTCP ||
+		len(mtproto.SecurityModes) != 1 || mtproto.SecurityModes[0] != platform.VPNSecurityFakeTLS {
+		t.Fatalf("unexpected MTProto adapter: %+v", mtproto)
 	}
 }
 

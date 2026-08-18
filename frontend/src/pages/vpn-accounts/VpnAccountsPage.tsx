@@ -189,7 +189,22 @@ export function VpnAccountsPage() {
                   <DetailRow label={t('vpnAccounts.serverId')}>{formatValue(credentials.serverId)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.protocol')}>{formatValue(credentials.protocol)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.endpoint')}>{formatValue(credentials.endpoint)}</DetailRow>
-					{credentials.protocol === 'hysteria2' ? (
+					{credentials.protocol === 'mtproto' ? (
+						<>
+							<DetailRow label={t('vpnAccounts.mtprotoSecret')}><code>{formatValue(credentials.mtproto.secret)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.mtprotoPort')}>{formatValue(credentials.mtproto.port ? String(credentials.mtproto.port) : undefined)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.mtprotoDomain')}>{formatValue(credentials.mtproto.frontingDomain)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.credentialScope')}>{credentials.mtproto.shared ? t('vpnAccounts.nodeShared') : t('vpnAccounts.accountSpecific')}</DetailRow>
+						</>
+					) : credentials.protocol === 'shadowsocks' ? (
+						<>
+							<DetailRow label={t('vpnAccounts.shadowsocksUsername')}><code>{formatValue(credentials.shadowsocks.username)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.shadowsocksMethod')}>{formatValue(credentials.shadowsocks.method)}</DetailRow>
+							<DetailRow label={t('vpnAccounts.shadowsocksServerKey')}><code>{formatValue(credentials.shadowsocks.serverKey)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.shadowsocksUserKey')}><code>{formatValue(credentials.shadowsocks.userKey)}</code></DetailRow>
+							<DetailRow label={t('vpnAccounts.shadowsocksPort')}>{formatValue(credentials.shadowsocks.port ? String(credentials.shadowsocks.port) : undefined)}</DetailRow>
+						</>
+					) : credentials.protocol === 'hysteria2' ? (
 						<>
 							<DetailRow label={t('vpnAccounts.hysteria2Username')}><code>{formatValue(credentials.hysteria2.username)}</code></DetailRow>
 							<DetailRow label={t('vpnAccounts.hysteria2Password')}><code>{formatValue(credentials.hysteria2.password)}</code></DetailRow>

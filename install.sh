@@ -17,6 +17,7 @@ ROUTEGATE_CHECKSUM_URL="${ROUTEGATE_CHECKSUM_URL:-}"
 ROUTEGATE_ASSUME_YES="${ROUTEGATE_ASSUME_YES:-0}"
 ROUTEGATE_INSTALL_PROMETHEUS="${ROUTEGATE_INSTALL_PROMETHEUS:-}"
 ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.1}"
+ROUTEGATE_MTG_VERSION="${ROUTEGATE_MTG_VERSION:-2.2.8}"
 
 ROUTEGATE_STATE_DIR="/var/lib/routegate-installer"
 ROUTEGATE_STATE_FILE="/etc/routegate/install-state.env"
@@ -480,6 +481,7 @@ collect_routegate_conflicts() {
     /usr/local/bin/routegate-manager \
     /usr/local/bin/routegate-agent \
 	/usr/local/bin/hysteria \
+    /usr/local/bin/mtg \
     /usr/local/sbin/routegate-recovery \
     /etc/routegate/manager.env \
     /etc/routegate/agent.yaml \
@@ -487,6 +489,8 @@ collect_routegate_conflicts() {
     /etc/systemd/system/routegate-agent.service \
 	/etc/systemd/system/hysteria-server.service \
 	/etc/hysteria \
+    /etc/systemd/system/routegate-mtproto.service \
+    /etc/routegate-mtproto \
     /etc/nginx/sites-available/routegate \
     /etc/letsencrypt/renewal-hooks/deploy/routegate-nginx-reload \
     /etc/prometheus/routegate.yml \
@@ -887,6 +891,49 @@ install_hysteria2_runtime() {
   systemctl enable hysteria-server.service >/dev/null
 }
 
+install_mtproto_runtime() {
+  local source_dir=$1
+  local asset="mtg-${ROUTEGATE_MTG_VERSION}-linux-${ROUTEGATE_ARCH}.tar.gz"
+  local archive_path="$ROUTEGATE_WORK_DIR/$asset"
+  local checksums_path="$ROUTEGATE_WORK_DIR/mtg-checksums.txt"
+  local release_base="https://github.com/9seconds/mtg/releases/download/v${ROUTEGATE_MTG_VERSION}"
+  local extract_dir="$ROUTEGATE_WORK_DIR/mtg-extracted"
+  local expected actual binary_path
+
+  [[ "$ROUTEGATE_MTG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "ROUTEGATE_MTG_VERSION must be a numeric semantic version."
+  [[ -f "$source_dir/systemd/routegate-mtproto.service" ]] \
+    || die "Release bundle is missing the MTProto systemd unit."
+  if [[ -e /usr/local/bin/mtg || -e /etc/systemd/system/routegate-mtproto.service ]]; then
+    grep -Fq "Description=RouteGate managed MTProto proxy" /etc/systemd/system/routegate-mtproto.service 2>/dev/null \
+      || die "An unmanaged mtg installation already exists; RouteGate will not overwrite it."
+  fi
+
+  log "Installing checksum-verified mtg ${ROUTEGATE_MTG_VERSION}."
+  curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$archive_path" "$release_base/$asset"
+  curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$checksums_path" "$release_base/mtg-${ROUTEGATE_MTG_VERSION}-checksums.txt"
+  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name {print $1; exit}' "$checksums_path")
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "No valid mtg SHA-256 entry was found."
+  actual=$(sha256sum "$archive_path" | awk '{print $1}')
+  [[ "$actual" == "$expected" ]] || die "mtg archive checksum verification failed."
+  if tar -tzf "$archive_path" | awk '$0 ~ /^\// || $0 ~ /(^|\/)\.\.(\/|$)/ {found=1} END {exit !found}'; then
+    die "mtg archive contains an unsafe path."
+  fi
+  if tar -tvzf "$archive_path" | awk '$1 ~ /^[lh]/ {found=1} END {exit !found}'; then
+    die "mtg archive contains a symbolic or hard link."
+  fi
+  mkdir -p "$extract_dir"
+  tar -xzf "$archive_path" -C "$extract_dir"
+	binary_path="$extract_dir/mtg-${ROUTEGATE_MTG_VERSION}-linux-${ROUTEGATE_ARCH}/mtg"
+	[[ -f "$binary_path" ]] || die "mtg archive does not contain the expected versioned binary path."
+  [[ $(find "$extract_dir" -type f -name mtg | wc -l) -eq 1 ]] || die "mtg archive contains an ambiguous binary layout."
+
+  install -m 0755 "$binary_path" /usr/local/bin/mtg
+  install -m 0644 "$source_dir/systemd/routegate-mtproto.service" /etc/systemd/system/routegate-mtproto.service
+  install -d -m 0700 /etc/routegate-mtproto
+  systemctl enable routegate-mtproto.service >/dev/null
+}
+
 resolve_release_version() {
   if [[ "$ROUTEGATE_VERSION" != "latest" ]]; then
     ROUTEGATE_RESOLVED_VERSION="$ROUTEGATE_VERSION"
@@ -1023,7 +1070,7 @@ install_files() {
   install -d -m 0755 -o routegate -g routegate /opt/routegate-manager
   install -d -m 0755 /var/www/routegate
   install -d -m 0700 /var/lib/routegate-agent
-	install -d -m 0700 /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups
+	install -d -m 0700 /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups /var/lib/routegate-agent/mtproto-configs /var/lib/routegate-agent/mtproto-backups
 	install -d -m 0700 /etc/wireguard
 	printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
 	sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >>"$ROUTEGATE_LOG_FILE" 2>&1
@@ -1046,6 +1093,7 @@ install_files() {
   install -m 0644 "$source_dir/systemd/routegate-manager.service" /etc/systemd/system/routegate-manager.service
   install -m 0644 "$source_dir/systemd/routegate-agent.service" /etc/systemd/system/routegate-agent.service
   install_hysteria2_runtime "$source_dir"
+  install_mtproto_runtime "$source_dir"
 }
 
 configure_postgresql() {
@@ -1405,6 +1453,11 @@ hysteria2_backup_dir: "/var/lib/routegate-agent/hysteria2-backups"
 hysteria2_path: "/usr/local/bin/hysteria"
 hysteria2_service_name: "hysteria-server"
 ss_path: "/usr/bin/ss"
+mtproto_staging_dir: "/var/lib/routegate-agent/mtproto-configs"
+mtproto_active_config_path: "/etc/routegate-mtproto/config.toml"
+mtproto_backup_dir: "/var/lib/routegate-agent/mtproto-backups"
+mtg_path: "/usr/local/bin/mtg"
+mtproto_service_name: "routegate-mtproto"
 service_control_enabled: true
 traffic_collection_enabled: false
 traffic_collection_interval_seconds: 60

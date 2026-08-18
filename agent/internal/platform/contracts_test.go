@@ -2,10 +2,10 @@ package platform
 
 import "testing"
 
-func TestManagedVPNCoreAdaptersDeclareVLESSWireGuardAndHysteria2(t *testing.T) {
+func TestManagedVPNCoreAdaptersDeclareManagedCompositions(t *testing.T) {
 	adapters := ManagedVPNCoreAdapters()
-	if len(adapters) != 3 {
-		t.Fatalf("adapter count = %d, want 3", len(adapters))
+	if len(adapters) != 5 {
+		t.Fatalf("adapter count = %d, want 5", len(adapters))
 	}
 	descriptor := adapters[0]
 	if descriptor.Core != VPNCoreSingBox || descriptor.Protocol != VPNProtocolVLESS {
@@ -26,5 +26,13 @@ func TestManagedVPNCoreAdaptersDeclareVLESSWireGuardAndHysteria2(t *testing.T) {
 	hysteria2 := adapters[2]
 	if hysteria2.Core != VPNCoreHysteria || hysteria2.Protocol != VPNProtocolHysteria2 || hysteria2.Transports[0] != VPNTransportQUIC || hysteria2.SecurityModes[0] != VPNSecurityTLS {
 		t.Fatalf("unexpected Hysteria2 adapter: %+v", hysteria2)
+	}
+	shadowsocks := adapters[3]
+	if shadowsocks.Core != VPNCoreSingBox || shadowsocks.Protocol != VPNProtocolShadowsocks || shadowsocks.Transports[0] != VPNTransportTCP || shadowsocks.SecurityModes[0] != VPNSecurityAEAD2022 {
+		t.Fatalf("unexpected Shadowsocks adapter: %+v", shadowsocks)
+	}
+	mtproto := adapters[4]
+	if mtproto.Core != VPNCoreMTG || mtproto.Protocol != VPNProtocolMTProto || mtproto.Transports[0] != VPNTransportTCP || mtproto.SecurityModes[0] != VPNSecurityFakeTLS {
+		t.Fatalf("unexpected MTProto adapter: %+v", mtproto)
 	}
 }

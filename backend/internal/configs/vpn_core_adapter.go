@@ -14,7 +14,7 @@ type vpnCoreAdapterRegistry struct {
 }
 
 func defaultVPNCoreAdapterRegistry() vpnCoreAdapterRegistry {
-	return vpnCoreAdapterRegistry{adapters: []vpnCoreAdapter{singBoxVLESSAdapter{}, wireGuardAdapter{}, hysteria2Adapter{}}}
+	return vpnCoreAdapterRegistry{adapters: []vpnCoreAdapter{singBoxVLESSAdapter{}, wireGuardAdapter{}, hysteria2Adapter{}, shadowsocksAdapter{}, mtprotoAdapter{}}}
 }
 
 func (r vpnCoreAdapterRegistry) Resolve(core, protocol, transport, security string) (vpnCoreAdapter, bool) {
@@ -27,6 +27,30 @@ func (r vpnCoreAdapterRegistry) Resolve(core, protocol, transport, security stri
 }
 
 func selectedVPNCoreAdapter(info ServerConfigInfo) vpnCoreAdapter {
+	if info.VPNProtocol == platform.VPNProtocolMTProto {
+		adapter, ok := defaultVPNCoreAdapterRegistry().Resolve(
+			platform.VPNCoreMTG,
+			platform.VPNProtocolMTProto,
+			platform.VPNTransportTCP,
+			platform.VPNSecurityFakeTLS,
+		)
+		if !ok {
+			panic("default MTProto adapter is not registered")
+		}
+		return adapter
+	}
+	if info.VPNProtocol == platform.VPNProtocolShadowsocks {
+		adapter, ok := defaultVPNCoreAdapterRegistry().Resolve(
+			platform.VPNCoreSingBox,
+			platform.VPNProtocolShadowsocks,
+			platform.VPNTransportTCP,
+			platform.VPNSecurityAEAD2022,
+		)
+		if !ok {
+			panic("default Shadowsocks adapter is not registered")
+		}
+		return adapter
+	}
 	if info.VPNProtocol == platform.VPNProtocolHysteria2 {
 		adapter, ok := defaultVPNCoreAdapterRegistry().Resolve(
 			platform.VPNCoreHysteria,

@@ -98,6 +98,8 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 		Hysteria2Domain:     request.Hysteria2Domain,
 		Hysteria2ACMEEmail:  request.Hysteria2ACMEEmail,
 		Hysteria2MasqueradeURL: request.Hysteria2MasqueradeURL,
+		ShadowsocksPort:         request.ShadowsocksPort,
+		MTProtoPort:              request.MTProtoPort,
 	}
 	if err := validateProtocolSettingsInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())
@@ -257,8 +259,8 @@ func (h *Handler) protocolSettingsRepository() (protocolSettingsRepository, bool
 }
 
 func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
-	if input.Protocol != nil && *input.Protocol != "vless" && *input.Protocol != "wireguard" && *input.Protocol != "hysteria2" {
-		return errors.New("protocol must be one of: vless, wireguard, hysteria2")
+	if input.Protocol != nil && *input.Protocol != "vless" && *input.Protocol != "wireguard" && *input.Protocol != "hysteria2" && *input.Protocol != "shadowsocks" && *input.Protocol != "mtproto" {
+		return errors.New("protocol must be one of: vless, wireguard, hysteria2, shadowsocks, mtproto")
 	}
 	if input.VLESSPort != nil && (*input.VLESSPort < 1 || *input.VLESSPort > 65535) {
 		return errors.New("vlessPort must be between 1 and 65535")
@@ -295,6 +297,12 @@ func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
 	}
 	if input.Hysteria2MasqueradeURL != nil && !validHysteria2MasqueradeURL(*input.Hysteria2MasqueradeURL) {
 		return errors.New("hysteria2MasqueradeUrl must match the fixed RouteGate masquerade target")
+	}
+	if input.ShadowsocksPort != nil && (*input.ShadowsocksPort < 1 || *input.ShadowsocksPort > 65535) {
+		return errors.New("shadowsocksPort must be between 1 and 65535")
+	}
+	if input.MTProtoPort != nil && (*input.MTProtoPort < 1 || *input.MTProtoPort > 65535) {
+		return errors.New("mtprotoPort must be between 1 and 65535")
 	}
 	return nil
 }

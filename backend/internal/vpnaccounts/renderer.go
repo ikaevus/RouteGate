@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +17,8 @@ const (
 	SingBoxClientConfigFormat = "sing-box.config.v1"
 	WireGuardClientConfigFormat = "wireguard.config.v1"
 	Hysteria2ClientURIFormat    = "hysteria2.uri.v1"
+	ShadowsocksClientURIFormat  = "shadowsocks.uri.v1"
+	MTProtoClientURIFormat      = "mtproto.uri.v1"
 
 	singBoxOutboundTag = "routegate-out"
 	singBoxInboundTag  = "mixed-in"
@@ -76,6 +79,32 @@ type SingBoxRoute struct {
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
+	if profile.Server != nil && profile.Server.VPNProtocol == "mtproto" {
+		config := PublicSubscriptionConfig{Type: "mtproto", Format: ClientConfigFormat}
+		rendered, err := RenderMTProtoClientURI(profile)
+		if err != nil {
+			config.Status = "unavailable"
+			config.Message = err.Error()
+			return config
+		}
+		config.Status = "rendered"
+		config.Message = "MTProto proxy URI generated."
+		config.Rendered = &PublicSubscriptionRenderedConfig{Format: MTProtoClientURIFormat, Text: rendered}
+		return config
+	}
+	if profile.Server != nil && profile.Server.VPNProtocol == "shadowsocks" {
+		config := PublicSubscriptionConfig{Type: "shadowsocks", Format: ClientConfigFormat}
+		rendered, err := RenderShadowsocksClientURI(profile)
+		if err != nil {
+			config.Status = "unavailable"
+			config.Message = err.Error()
+			return config
+		}
+		config.Status = "rendered"
+		config.Message = "Shadowsocks client URI generated."
+		config.Rendered = &PublicSubscriptionRenderedConfig{Format: ShadowsocksClientURIFormat, Text: rendered}
+		return config
+	}
 	if profile.Server != nil && profile.Server.VPNProtocol == "hysteria2" {
 		config := PublicSubscriptionConfig{Type: "hysteria2", Format: ClientConfigFormat}
 		rendered, err := RenderHysteria2ClientURI(profile)
@@ -121,6 +150,66 @@ func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscript
 		Content: rendered,
 	}
 	return config
+}
+
+func RenderShadowsocksClientURI(profile SubscriptionProfile) (string, error) {
+	if profile.Server == nil {
+		return "", errors.New("Server is required to render Shadowsocks client URI.")
+	}
+	endpoint := subscriptionServerEndpoint(profile.Server)
+	if endpoint == "" {
+		return "", errors.New("Server endpoint is required to render Shadowsocks client URI.")
+	}
+	port := profile.Server.ShadowsocksPort
+	if port < 1 || port > 65535 {
+		return "", errors.New("Shadowsocks server port is invalid.")
+	}
+	method := strings.TrimSpace(profile.Server.ShadowsocksMethod)
+	if method != "2022-blake3-aes-128-gcm" {
+		return "", errors.New("Shadowsocks method must match the RouteGate AEAD-2022 policy.")
+	}
+	serverKey := strings.TrimSpace(profile.Server.ShadowsocksServerKey)
+	userKey := strings.TrimSpace(profile.Credentials.Shadowsocks.UserKey)
+	if !validShadowsocksClientKey(serverKey) || !validShadowsocksClientKey(userKey) {
+		return "", errors.New("Shadowsocks server and user keys are required to render client URI.")
+	}
+	uri := &url.URL{
+		Scheme:   "ss",
+		User:     url.UserPassword(method, serverKey+":"+userKey),
+		Host:     net.JoinHostPort(endpoint, strconv.Itoa(port)),
+		Path:     "/",
+		Fragment: strings.TrimSpace(profile.Account.DisplayName),
+	}
+	return uri.String(), nil
+}
+
+func RenderMTProtoClientURI(profile SubscriptionProfile) (string, error) {
+	if profile.Server == nil {
+		return "", errors.New("Server is required to render MTProto proxy URI.")
+	}
+	endpoint := subscriptionServerEndpoint(profile.Server)
+	if endpoint == "" {
+		return "", errors.New("Server endpoint is required to render MTProto proxy URI.")
+	}
+	port := profile.Server.MTProtoPort
+	if port < 1 || port > 65535 {
+		return "", errors.New("MTProto server port is invalid.")
+	}
+	secret := strings.ToLower(strings.TrimSpace(profile.Server.MTProtoSecret))
+	decoded, err := hex.DecodeString(secret)
+	if err != nil || len(decoded) != 35 || !strings.HasPrefix(secret, "ee") || string(decoded[17:]) != "www.cloudflare.com" {
+		return "", errors.New("MTProto FakeTLS secret is invalid.")
+	}
+	parameters := url.Values{}
+	parameters.Set("server", endpoint)
+	parameters.Set("port", strconv.Itoa(port))
+	parameters.Set("secret", secret)
+	return (&url.URL{Scheme: "tg", Host: "proxy", RawQuery: parameters.Encode()}).String(), nil
+}
+
+func validShadowsocksClientKey(value string) bool {
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(value))
+	return err == nil && len(decoded) == 16
 }
 
 func RenderHysteria2ClientURI(profile SubscriptionProfile) (string, error) {

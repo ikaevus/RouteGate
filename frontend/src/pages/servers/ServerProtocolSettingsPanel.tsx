@@ -12,7 +12,7 @@ import {
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 
 interface ProtocolSettingsFormState {
-	protocol: 'vless' | 'wireguard' | 'hysteria2';
+	protocol: 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
   vlessPort: string;
   vlessFlow: string;
   vlessNetwork: string;
@@ -26,6 +26,8 @@ interface ProtocolSettingsFormState {
 	hysteria2Domain: string;
 	hysteria2AcmeEmail: string;
 	hysteria2MasqueradeUrl: string;
+	shadowsocksPort: string;
+	mtprotoPort: string;
 }
 
 const emptyFormState: ProtocolSettingsFormState = {
@@ -43,6 +45,8 @@ const emptyFormState: ProtocolSettingsFormState = {
 	hysteria2Domain: '',
 	hysteria2AcmeEmail: '',
 	hysteria2MasqueradeUrl: 'https://www.cloudflare.com/',
+	shadowsocksPort: '8388',
+	mtprotoPort: '8443',
 };
 
 function formatDate(value?: string | null): string {
@@ -57,7 +61,7 @@ function formatDate(value?: string | null): string {
 
 function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>): ProtocolSettingsFormState {
   return {
-		protocol: settings.protocol === 'wireguard' || settings.protocol === 'hysteria2' ? settings.protocol : 'vless',
+		protocol: ['wireguard', 'hysteria2', 'shadowsocks', 'mtproto'].includes(settings.protocol) ? settings.protocol as ProtocolSettingsFormState['protocol'] : 'vless',
     vlessPort: String(settings.vless.port),
     vlessFlow: settings.vless.flow ?? '',
     vlessNetwork: settings.vless.network ?? '',
@@ -71,6 +75,8 @@ function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>):
 		hysteria2Domain: settings.hysteria2.domain ?? '',
 		hysteria2AcmeEmail: settings.hysteria2.acmeEmail ?? '',
 		hysteria2MasqueradeUrl: settings.hysteria2.masqueradeUrl ?? 'https://www.cloudflare.com/',
+		shadowsocksPort: String(settings.shadowsocks.port),
+		mtprotoPort: String(settings.mtproto.port),
   };
 }
 
@@ -92,6 +98,8 @@ function toRequest(
 		hysteria2Domain: form.hysteria2Domain.trim(),
 		hysteria2AcmeEmail: form.hysteria2AcmeEmail.trim(),
 		hysteria2MasqueradeUrl: form.hysteria2MasqueradeUrl.trim(),
+		shadowsocksPort: Number(form.shadowsocksPort),
+		mtprotoPort: Number(form.mtprotoPort),
   };
   const realityPublicKey = form.realityPublicKey.trim();
   if (realityPublicKey !== savedRealityPublicKey.trim()) {
@@ -123,6 +131,14 @@ function getRecommendedCopy() {
 		hysteria2AcmeEmail: 'Email для ACME',
 		hysteria2MasqueradeUrl: 'HTTPS-сайт маскировки',
 		hysteria2Hint: 'Домен должен указывать на этот VPN-узел. Hysteria получает и обновляет отдельный сертификат локально через ACME HTTP-01 (порт 80).',
+		shadowsocksProtocol: 'Shadowsocks 2022',
+		shadowsocksPort: 'TCP-порт Shadowsocks',
+		shadowsocksHint: 'RouteGate использует фиксированный AEAD-2022 метод и отдельный ключ каждого аккаунта.',
+		mtprotoProtocol: 'MTProto / FakeTLS',
+		mtprotoPort: 'TCP-порт MTProto',
+		mtprotoHint: 'FakeTLS-домен фиксирован: www.cloudflare.com. Секрет общий для узла и отображается только в защищённых данных доступа.',
+		securityLabel: 'Защита',
+		methodLabel: 'Метод',
       pending: 'Настраиваем…',
       configuredTitle: 'VLESS / Reality настроен',
       configuredDescription: 'Основные параметры готовы. Вернитесь в обзор, чтобы продолжить к созданию первого VPN-аккаунта.',
@@ -156,6 +172,14 @@ function getRecommendedCopy() {
 		hysteria2AcmeEmail: 'ACME email',
 		hysteria2MasqueradeUrl: 'Masquerade HTTPS site',
 		hysteria2Hint: 'The domain must resolve to this VPN node. Hysteria obtains and renews a separate certificate locally through ACME HTTP-01 (port 80).',
+		shadowsocksProtocol: 'Shadowsocks 2022',
+		shadowsocksPort: 'Shadowsocks TCP port',
+		shadowsocksHint: 'RouteGate uses a fixed AEAD-2022 method and a separate key for every account.',
+		mtprotoProtocol: 'MTProto / FakeTLS',
+		mtprotoPort: 'MTProto TCP port',
+		mtprotoHint: 'The FakeTLS domain is fixed to www.cloudflare.com. The node-shared secret is exposed only through protected access data.',
+		securityLabel: 'Security',
+		methodLabel: 'Method',
     pending: 'Configuring…',
     configuredTitle: 'VLESS / Reality configured',
     configuredDescription: 'The required protocol settings are ready. Return to Overview to continue with the first VPN account.',
@@ -237,11 +261,17 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   const portNumber = Number(form.vlessPort);
 	const wireGuardPortNumber = Number(form.wireGuardPort);
 	const hysteria2PortNumber = Number(form.hysteria2Port);
+	const shadowsocksPortNumber = Number(form.shadowsocksPort);
+	const mtprotoPortNumber = Number(form.mtprotoPort);
   const realityValues = [form.realityPublicKey, form.realityShortId, form.realityServerName]
     .map((value) => value.trim());
   const realityTouched = realityValues.some(Boolean);
   const realityComplete = realityValues.every(Boolean);
-	const protocolConfigured = form.protocol === 'hysteria2'
+	const protocolConfigured = form.protocol === 'mtproto'
+		? Boolean(settingsQuery.data?.mtproto.ready) && Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
+		: form.protocol === 'shadowsocks'
+		? Boolean(settingsQuery.data?.shadowsocks.ready) && Number.isInteger(shadowsocksPortNumber) && shadowsocksPortNumber >= 1 && shadowsocksPortNumber <= 65535
+		: form.protocol === 'hysteria2'
 		? Boolean(settingsQuery.data?.hysteria2.ready)
 			&& Number.isInteger(hysteria2PortNumber)
 			&& hysteria2PortNumber >= 1
@@ -260,7 +290,11 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 		|| recommendedSettingsMutation.isPending
 		|| wireGuardSettingsMutation.isPending;
   const canSave =
-		(form.protocol === 'hysteria2'
+		(form.protocol === 'mtproto'
+			? Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
+			: form.protocol === 'shadowsocks'
+			? Number.isInteger(shadowsocksPortNumber) && shadowsocksPortNumber >= 1 && shadowsocksPortNumber <= 65535
+			: form.protocol === 'hysteria2'
 			? Number.isInteger(hysteria2PortNumber) && hysteria2PortNumber >= 1 && hysteria2PortNumber <= 65535
 				&& form.hysteria2Domain.trim() !== '' && form.hysteria2AcmeEmail.trim() !== ''
 				&& form.hysteria2MasqueradeUrl.trim() === 'https://www.cloudflare.com/'
@@ -381,9 +415,21 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 				  <option value="vless">VLESS / Reality</option>
 				  <option value="wireguard">{copy.wireGuardProtocol}</option>
 				  <option value="hysteria2">{copy.hysteria2Protocol}</option>
+				  <option value="shadowsocks">{copy.shadowsocksProtocol}</option>
+				  <option value="mtproto">{copy.mtprotoProtocol}</option>
 				</select>
               </label>
-			  {form.protocol === 'hysteria2' ? (
+			  {form.protocol === 'mtproto' ? (
+				<>
+				  <label className="field"><span>{copy.mtprotoPort}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.mtprotoPort} onChange={(event) => updateField('mtprotoPort', event.target.value)} /><small>{copy.mtprotoHint}</small></label>
+				  <label className="field"><span>{copy.securityLabel}</span><input value={settingsQuery.data.mtproto.frontingDomain} readOnly /></label>
+				</>
+			  ) : form.protocol === 'shadowsocks' ? (
+				<>
+				  <label className="field"><span>{copy.shadowsocksPort}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.shadowsocksPort} onChange={(event) => updateField('shadowsocksPort', event.target.value)} /><small>{copy.shadowsocksHint}</small></label>
+				  <label className="field"><span>{copy.methodLabel}</span><input value={settingsQuery.data.shadowsocks.method} readOnly /></label>
+				</>
+			  ) : form.protocol === 'hysteria2' ? (
 				<>
 				  <label className="field"><span>{copy.hysteria2Port}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.hysteria2Port} onChange={(event) => updateField('hysteria2Port', event.target.value)} /></label>
 				  <label className="field"><span>{copy.hysteria2Domain}</span><input value={form.hysteria2Domain} onChange={(event) => updateField('hysteria2Domain', event.target.value)} /></label>

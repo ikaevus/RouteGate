@@ -5,9 +5,10 @@ RouteGate Manager API uses opaque bearer tokens for authenticated Manager reques
 ## VPN protocol settings
 
 `GET` and `PATCH /api/v1/servers/{server_id}/protocol-settings` expose the
-selected server protocol plus separate VLESS/Reality, WireGuard, and Hysteria2
-settings. RG-114F accepts `protocol: "vless"`, `protocol: "wireguard"`, or
-`protocol: "hysteria2"`. Hysteria2 adds:
+selected server protocol plus separate VLESS/Reality, WireGuard, Hysteria2,
+Shadowsocks, and MTProto
+settings. The accepted values are `vless`, `wireguard`, `hysteria2`,
+`shadowsocks`, and `mtproto`. Hysteria2 adds:
 
 - `hysteria2.port`
 - `hysteria2.domain`
@@ -36,6 +37,13 @@ handled like the existing VLESS credential and QR responses.
 Hysteria2 delivery returns the UUID-derived username, random account password,
 dedicated TLS domain and UDP port, plus a standard `hysteria2://` URI. These
 credentials receive the same access controls as the VLESS and WireGuard paths.
+
+Shadowsocks protocol settings expose only port, fixed method, and readiness;
+the server PSK is intentionally omitted. Protected account credentials include
+the server and user PSKs, while client connection and subscription responses
+provide a standard `ss://` URI. MTProto settings expose port, fixed FakeTLS
+domain, and readiness but not the secret. Protected credentials mark the secret
+as node-shared, and client responses provide a standard `tg://proxy` URI.
 
 ## Authentication
 
