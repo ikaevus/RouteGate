@@ -26,6 +26,19 @@ func BuildClientConnection(ctx context.Context, source ClientConnectionSource, a
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
+	if subscription.Server.VPNProtocol == "wireguard" {
+		config, renderErr := RenderWireGuardClientConfig(subscription)
+		if renderErr != nil {
+			return ClientConnectionResponse{}, renderErr
+		}
+		return ClientConnectionResponse{
+			VPNAccountID: accountID,
+			Format: "wireguard-config",
+			WireGuardConfig: config,
+			Profile: profile,
+			Endpoint: subscriptionServerEndpoint(subscription.Server),
+		}, nil
+	}
 	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)
 	if err != nil {
 		return ClientConnectionResponse{}, err

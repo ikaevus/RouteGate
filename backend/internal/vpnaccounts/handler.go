@@ -449,9 +449,13 @@ func (h *Handler) setStatus(w http.ResponseWriter, r *http.Request, status strin
 }
 
 func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentialsResponse {
+	protocol := "vless"
+	if profile.Server != nil && profile.Server.VPNProtocol == "wireguard" {
+		protocol = "wireguard"
+	}
 	response := VLESSRealityCredentialsResponse{
 		VPNAccountID: profile.Account.ID,
-		Protocol:     "vless",
+		Protocol:     protocol,
 		VLESS: AdminVLESSCredentials{
 			UUID:    profile.Credentials.VLESS.UUID,
 			Flow:    profile.Credentials.VLESS.Flow,
@@ -462,11 +466,18 @@ func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentia
 			ShortID:    profile.Credentials.Reality.ShortID,
 			ServerName: profile.Credentials.Reality.ServerName,
 		},
+		WireGuard: AdminWireGuardCredentials{
+			PrivateKey: profile.Credentials.WireGuard.PrivateKey,
+			PublicKey:  profile.Credentials.WireGuard.PublicKey,
+			Address:    profile.Credentials.WireGuard.Address,
+		},
 	}
 	response.Reality.Enabled = response.Reality.PublicKey != ""
 	if profile.Server != nil {
 		response.ServerID = profile.Server.ID
 		response.Endpoint = subscriptionServerEndpoint(profile.Server)
+		response.WireGuard.ServerPublicKey = profile.Server.WireGuardPublicKey
+		response.WireGuard.DNS = profile.Server.WireGuardDNS
 	}
 	return response
 }

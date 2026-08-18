@@ -92,6 +92,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/servers/{server_id}/protocol-settings", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.UpdateProtocolSettings))))
 	mux.Handle("POST /api/v1/servers/{server_id}/protocol-settings/recommended", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.ConfigureRecommendedProtocolSettings))))
 	mux.Handle("POST /api/v1/servers/{server_id}/protocol-settings/reality-keypair", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.GenerateRealityKeypair))))
+	mux.Handle("POST /api/v1/servers/{server_id}/protocol-settings/wireguard-recommended", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.ConfigureRecommendedWireGuard))))
 	mux.Handle("GET /api/v1/servers/{server_id}/routing-profile", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.GetServerAssignment))))
 	mux.Handle("PUT /api/v1/servers/{server_id}/routing-profile", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.AssignServerProfile))))
 	mux.Handle("DELETE /api/v1/servers/{server_id}/routing-profile", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteServerAssignment))))

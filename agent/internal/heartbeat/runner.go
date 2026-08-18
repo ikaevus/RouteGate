@@ -23,6 +23,7 @@ type Runner struct {
 	trafficTracker    *traffic.DeltaTracker
 	lastTrafficReport time.Time
 	vpnCoreAdapter    tasks.VPNCoreAdapter
+	wireGuardAdapter  tasks.VPNCoreAdapter
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -37,6 +38,13 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 			cfg.ConfigStagingDir,
 			cfg.SingBoxPath,
 			cfg.SingBoxServiceName,
+		),
+		wireGuardAdapter: tasks.NewWireGuardAdapter(
+			cfg.WireGuardStagingDir,
+			cfg.WGQuickPath,
+			cfg.WGPath,
+			cfg.WireGuardServiceName,
+			cfg.WireGuardInterface,
 		),
 	}
 	if cfg.TrafficCollectionEnabled {
@@ -179,7 +187,17 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	stageResult, err := r.vpnCoreAdapter.Stage(*task)
+	adapter, err := tasks.SelectVPNCoreAdapter(*task, r.vpnCoreAdapter, r.wireGuardAdapter)
+	if err != nil {
+		report := map[string]any{"stage": "rejected", "configVersionId": task.ConfigVersionID, "configHash": task.ConfigHash}
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
+			return fmt.Errorf("select VPN Core adapter failed: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+	activeConfigPath, backupDir := r.adapterStorage(adapter)
+
+	stageResult, err := adapter.Stage(*task)
 	if err != nil {
 		report := map[string]any{
 			"stage":           "failed",
@@ -194,7 +212,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	validationResult, err := r.vpnCoreAdapter.Validate(ctx, stageResult.StagedPath)
+	validationResult, err := adapter.Validate(ctx, stageResult.StagedPath)
 	if err != nil {
 		report := map[string]any{
 			"stage":           "succeeded",
@@ -212,7 +230,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return err
 	}
 
-	applyResult, err := tasks.NewApplier(r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir).Apply(stageResult.StagedPath, stageResult.ConfigVersionID)
+	applyResult, err := tasks.NewApplier(activeConfigPath, backupDir).Apply(stageResult.StagedPath, stageResult.ConfigVersionID)
 	if err != nil {
 		report := map[string]any{
 			"stage":           "succeeded",
@@ -253,9 +271,9 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return nil
 	}
 
-	restartResult, err := r.vpnCoreAdapter.Restart(ctx)
+	restartResult, err := adapter.Restart(ctx)
 	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
 		report := map[string]any{
 			"stage":           "succeeded",
 			"validate":        "succeeded",
@@ -272,14 +290,14 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"output":          restartResult.Output,
 		}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("restart sing-box failed: %v; report failure: %w", err, completeErr)
+			return fmt.Errorf("restart VPN Core failed: %v; report failure: %w", err, completeErr)
 		}
 		return err
 	}
 
-	healthResult, err := r.vpnCoreAdapter.IsActive(ctx)
+	healthResult, err := adapter.IsActive(ctx)
 	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
 		report := map[string]any{
 			"stage":           "succeeded",
 			"validate":        "succeeded",
@@ -296,14 +314,14 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"output":          healthResult.Output,
 		}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("sing-box healthcheck failed: %v; report failure: %w", err, completeErr)
+			return fmt.Errorf("VPN Core healthcheck failed: %v; report failure: %w", err, completeErr)
 		}
 		return err
 	}
 
-	persistenceResult, err := r.vpnCoreAdapter.IsEnabled(ctx)
+	persistenceResult, err := adapter.IsEnabled(ctx)
 	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
 		report := map[string]any{
 			"stage":           "succeeded",
 			"validate":        "succeeded",
@@ -320,14 +338,14 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"output":          persistenceResult.Output,
 		}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("sing-box persistence check failed: %v; report failure: %w", err, completeErr)
+			return fmt.Errorf("VPN Core persistence check failed: %v; report failure: %w", err, completeErr)
 		}
 		return err
 	}
 
-	listenerResult, err := r.vpnCoreAdapter.CheckHealth(ctx, applyResult.ActivePath)
+	listenerResult, err := adapter.CheckHealth(ctx, applyResult.ActivePath)
 	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult)
+		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
 		report := map[string]any{
 			"stage":           "succeeded",
 			"validate":        "succeeded",
@@ -343,7 +361,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 			"listenerPort":    listenerResult.Port,
 		}
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("sing-box listener healthcheck failed: %v; report failure: %w", err, completeErr)
+			return fmt.Errorf("VPN Core listener healthcheck failed: %v; report failure: %w", err, completeErr)
 		}
 		return err
 	}
@@ -375,14 +393,21 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runner) rollbackAppliedConfig(result tasks.ApplyResult) string {
+func (r *Runner) rollbackAppliedConfig(result tasks.ApplyResult, activeConfigPath, backupDir string) string {
 	if result.BackupPath == "" {
 		return "skipped_no_backup"
 	}
-	if err := tasks.NewApplier(r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir).Rollback(result.BackupPath); err != nil {
+	if err := tasks.NewApplier(activeConfigPath, backupDir).Rollback(result.BackupPath); err != nil {
 		r.logger.Warn("rollback active config failed", "error", err, "backup_path", result.BackupPath, "active_path", result.ActivePath)
 		return "failed"
 	}
 	r.logger.Warn("rolled back active config", "backup_path", result.BackupPath, "active_path", result.ActivePath)
 	return "succeeded"
+}
+
+func (r *Runner) adapterStorage(adapter tasks.VPNCoreAdapter) (string, string) {
+	if adapter.Descriptor().Core == "wireguard" {
+		return r.cfg.WireGuardActiveConfigPath, r.cfg.WireGuardBackupDir
+	}
+	return r.cfg.ActiveConfigPath, r.cfg.ConfigBackupDir
 }

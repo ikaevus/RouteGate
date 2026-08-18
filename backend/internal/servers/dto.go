@@ -39,12 +39,16 @@ type UpdateServerGeographyRequest struct {
 }
 
 type UpdateProtocolSettingsRequest struct {
+	Protocol          *string `json:"protocol"`
 	VLESSPort         *int    `json:"vlessPort"`
 	VLESSFlow         *string `json:"vlessFlow"`
 	VLESSNetwork      *string `json:"vlessNetwork"`
 	RealityPublicKey  *string `json:"realityPublicKey"`
 	RealityShortID    *string `json:"realityShortId"`
 	RealityServerName *string `json:"realityServerName"`
+	WireGuardPort      *int    `json:"wireGuardPort"`
+	WireGuardAddress   *string `json:"wireGuardAddress"`
+	WireGuardDNS       *string `json:"wireGuardDns"`
 }
 
 type ServerResponse struct {
@@ -83,6 +87,13 @@ type ProtocolSettingsResponse struct {
 		ShortID    string `json:"shortId,omitempty"`
 		ServerName string `json:"serverName,omitempty"`
 	} `json:"reality"`
+	WireGuard struct {
+		Port      int    `json:"port"`
+		Address   string `json:"address"`
+		DNS       string `json:"dns"`
+		PublicKey string `json:"publicKey,omitempty"`
+		Ready     bool   `json:"ready"`
+	} `json:"wireGuard"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
@@ -95,9 +106,13 @@ func newServerResponse(server ServerWithAgent, now time.Time) ServerResponse {
 }
 
 func newProtocolSettingsResponse(settings ProtocolSettings) ProtocolSettingsResponse {
+	protocol := settings.Protocol
+	if protocol == "" {
+		protocol = "vless"
+	}
 	response := ProtocolSettingsResponse{
 		ServerID:  settings.ServerID,
-		Protocol:  "vless",
+		Protocol:  protocol,
 		UpdatedAt: settings.UpdatedAt,
 	}
 	response.VLESS.Port = settings.VLESSPort
@@ -107,5 +122,10 @@ func newProtocolSettingsResponse(settings ProtocolSettings) ProtocolSettingsResp
 	response.Reality.ShortID = settings.RealityShortID
 	response.Reality.ServerName = settings.RealityServerName
 	response.Reality.Enabled = settings.RealityPublicKey != ""
+	response.WireGuard.Port = settings.WireGuardPort
+	response.WireGuard.Address = settings.WireGuardAddress
+	response.WireGuard.DNS = settings.WireGuardDNS
+	response.WireGuard.PublicKey = settings.WireGuardPublicKey
+	response.WireGuard.Ready = settings.WireGuardPublicKey != ""
 	return response
 }

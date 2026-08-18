@@ -10,6 +10,16 @@
 
 The Clean VPS Installer is the canonical public installation boundary for the RouteGate MVP. The operator supplies a supported Ubuntu host, DNS, and working SSH/sudo access. RouteGate owns the management-platform installation from that point forward.
 
+### RG-114E WireGuard runtime
+
+Post-MVP RG-114E adds `wireguard-tools` and `iptables` to the supported
+installer dependencies, creates dedicated mode-0700 WireGuard Agent storage,
+and installs a RouteGate-owned sysctl setting for IPv4 forwarding. It does not
+start a WireGuard interface during platform installation. The first validated
+WireGuard Config Deploy owns enabling and starting the fixed
+`wg-quick@routegate-wg0` unit, just as the existing VLESS path defers sing-box
+startup until it has a valid config.
+
 ## Canonical product flow
 
 ```text

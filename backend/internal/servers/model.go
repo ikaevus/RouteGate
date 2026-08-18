@@ -48,12 +48,17 @@ type Server struct {
 
 type ProtocolSettings struct {
 	ServerID          string    `json:"serverId"`
+	Protocol          string    `json:"protocol"`
 	VLESSPort         int       `json:"vlessPort"`
 	VLESSFlow         string    `json:"vlessFlow,omitempty"`
 	VLESSNetwork      string    `json:"vlessNetwork,omitempty"`
 	RealityPublicKey  string    `json:"realityPublicKey,omitempty"`
 	RealityShortID    string    `json:"realityShortId,omitempty"`
 	RealityServerName string    `json:"realityServerName,omitempty"`
+	WireGuardPort      int       `json:"wireGuardPort"`
+	WireGuardAddress   string    `json:"wireGuardAddress"`
+	WireGuardDNS       string    `json:"wireGuardDns"`
+	WireGuardPublicKey string    `json:"wireGuardPublicKey,omitempty"`
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
@@ -93,15 +98,24 @@ type UpdateServerGeographyInput struct {
 }
 
 type UpdateProtocolSettingsInput struct {
+	Protocol          *string
 	VLESSPort         *int
 	VLESSFlow         *string
 	VLESSNetwork      *string
 	RealityPublicKey  *string
 	RealityShortID    *string
 	RealityServerName *string
+	WireGuardPort      *int
+	WireGuardAddress   *string
+	WireGuardDNS       *string
 }
 
 type UpdateRealityKeypairInput struct {
+	PrivateKey string
+	PublicKey  string
+}
+
+type UpdateWireGuardKeypairInput struct {
 	PrivateKey string
 	PublicKey  string
 }

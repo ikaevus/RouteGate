@@ -103,16 +103,27 @@ export interface ProtocolSettingsResponse {
     shortId?: string;
     serverName?: string;
   };
+	wireGuard: {
+		port: number;
+		address: string;
+		dns: string;
+		publicKey?: string;
+		ready: boolean;
+	};
   updatedAt: string;
 }
 
 export interface UpdateProtocolSettingsRequest {
+	protocol?: 'vless' | 'wireguard';
   vlessPort: number;
   vlessFlow: string;
   vlessNetwork: string;
   realityPublicKey?: string;
   realityShortId: string;
   realityServerName: string;
+	wireGuardPort?: number;
+	wireGuardAddress?: string;
+	wireGuardDns?: string;
 }
 
 export interface ServerRoutingProfile {
@@ -234,6 +245,14 @@ export function generateRealityKeypair(serverId: string): Promise<ProtocolSettin
   return apiPost<undefined, ProtocolSettingsResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/reality-keypair`,
   );
+}
+
+export function configureRecommendedWireGuard(
+	serverId: string,
+): Promise<ProtocolSettingsResponse> {
+	return apiPost<undefined, ProtocolSettingsResponse>(
+		`/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/wireguard-recommended`,
+	);
 }
 
 export function getServerRoutingProfile(

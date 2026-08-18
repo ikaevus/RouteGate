@@ -7,6 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
 type Repository struct {
@@ -230,6 +232,15 @@ func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, toke
 }
 
 func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id string) (SubscriptionProfile, error) {
+	var serverID string
+	if err := r.pool.QueryRow(ctx, `SELECT COALESCE(server_id::text, '') FROM vpn_accounts WHERE id = $1::uuid`, id).Scan(&serverID); err != nil {
+		return SubscriptionProfile{}, err
+	}
+	if serverID != "" {
+		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.pool, serverID); err != nil {
+			return SubscriptionProfile{}, err
+		}
+	}
 	profile, err := scanSubscriptionProfile(r.pool.QueryRow(ctx, `
 		SELECT
 			a.id::text,
@@ -240,6 +251,9 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			a.max_devices,
 			COALESCE(a.server_id::text, ''),
 			COALESCE(a.vless_uuid::text, ''),
+			COALESCE(a.wireguard_private_key, ''),
+			COALESCE(a.wireguard_public_key, ''),
+			COALESCE(a.wireguard_address::text, ''),
 			a.created_at,
 			a.updated_at,
 			a.config_updated_at,
@@ -254,7 +268,12 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(s.vless_network, ''),
 			COALESCE(s.reality_public_key, ''),
 			COALESCE(s.reality_short_id, ''),
-			COALESCE(s.reality_server_name, '')
+			COALESCE(s.reality_server_name, ''),
+			COALESCE(s.vpn_protocol, 'vless'),
+			COALESCE(s.wireguard_port, 51820),
+			COALESCE(s.wireguard_address::text, '10.66.0.1/24'),
+			COALESCE(s.wireguard_dns::text, '1.1.1.1'),
+			COALESCE(s.wireguard_public_key, '')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
 		WHERE a.id = $1::uuid
@@ -471,6 +490,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	var serverID, serverName, serverHostname, serverPublicIP, serverLocation, serverProvider sql.NullString
 	var vlessPort sql.NullInt32
 	var vlessFlow, vlessNetwork, realityPublicKey, realityShortID, realityServerName sql.NullString
+	var wireGuardPrivateKey, wireGuardPublicKey, wireGuardAddress sql.NullString
+	var vpnProtocol, serverWireGuardAddress, wireGuardDNS, serverWireGuardPublicKey sql.NullString
+	var wireGuardPort sql.NullInt32
 
 	err := row.Scan(
 		&profile.Account.ID,
@@ -481,6 +503,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&maxDevices,
 		&profile.Account.ServerID,
 		&profile.Account.VLESSUUID,
+		&wireGuardPrivateKey,
+		&wireGuardPublicKey,
+		&wireGuardAddress,
 		&profile.Account.CreatedAt,
 		&profile.Account.UpdatedAt,
 		&profile.Account.ConfigUpdatedAt,
@@ -496,6 +521,11 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&realityPublicKey,
 		&realityShortID,
 		&realityServerName,
+		&vpnProtocol,
+		&wireGuardPort,
+		&serverWireGuardAddress,
+		&wireGuardDNS,
+		&serverWireGuardPublicKey,
 	)
 	if err != nil {
 		return SubscriptionProfile{}, err
@@ -522,6 +552,11 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			RealityPublicKey:  realityPublicKey.String,
 			RealityShortID:    realityShortID.String,
 			RealityServerName: realityServerName.String,
+			VPNProtocol:        vpnProtocol.String,
+			WireGuardPort:      int(wireGuardPort.Int32),
+			WireGuardAddress:   serverWireGuardAddress.String,
+			WireGuardDNS:       wireGuardDNS.String,
+			WireGuardPublicKey: serverWireGuardPublicKey.String,
 		}
 		if vlessPort.Valid {
 			server.VLESSPort = int(vlessPort.Int32)
@@ -533,6 +568,11 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			PublicKey:  server.RealityPublicKey,
 			ShortID:    server.RealityShortID,
 			ServerName: server.RealityServerName,
+		}
+		profile.Credentials.WireGuard = WireGuardCredentials{
+			PrivateKey: wireGuardPrivateKey.String,
+			PublicKey:  wireGuardPublicKey.String,
+			Address:    wireGuardAddress.String,
 		}
 	}
 	return profile, nil

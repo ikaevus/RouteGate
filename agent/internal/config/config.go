@@ -20,6 +20,13 @@ const DefaultSingBoxServiceName = "sing-box"
 const DefaultServiceControlEnabled = true
 const DefaultTrafficCollectionIntervalSeconds = 60
 const DefaultTrafficUsageFilePath = "/var/lib/routegate-agent/traffic-usage.json"
+const DefaultWireGuardStagingDir = "/var/lib/routegate-agent/wireguard-configs"
+const DefaultWireGuardActiveConfigPath = "/etc/wireguard/routegate-wg0.conf"
+const DefaultWireGuardBackupDir = "/var/lib/routegate-agent/wireguard-backups"
+const DefaultWGQuickPath = "wg-quick"
+const DefaultWGPath = "wg"
+const DefaultWireGuardServiceName = "wg-quick@routegate-wg0"
+const DefaultWireGuardInterface = "routegate-wg0"
 
 type Config struct {
 	ManagerURL                       string
@@ -37,6 +44,13 @@ type Config struct {
 	TrafficCollectionEnabled         bool
 	TrafficCollectionIntervalSeconds int
 	TrafficUsageFilePath             string
+	WireGuardStagingDir              string
+	WireGuardActiveConfigPath        string
+	WireGuardBackupDir               string
+	WGQuickPath                      string
+	WGPath                           string
+	WireGuardServiceName             string
+	WireGuardInterface               string
 }
 
 func Load(path string) (Config, error) {
@@ -117,6 +131,20 @@ func Load(path string) (Config, error) {
 			cfg.TrafficCollectionIntervalSeconds = parsed
 		case "traffic_usage_file_path":
 			cfg.TrafficUsageFilePath = value
+		case "wireguard_staging_dir":
+			cfg.WireGuardStagingDir = value
+		case "wireguard_active_config_path":
+			cfg.WireGuardActiveConfigPath = value
+		case "wireguard_backup_dir":
+			cfg.WireGuardBackupDir = value
+		case "wg_quick_path":
+			cfg.WGQuickPath = value
+		case "wg_path":
+			cfg.WGPath = value
+		case "wireguard_service_name":
+			cfg.WireGuardServiceName = value
+		case "wireguard_interface":
+			cfg.WireGuardInterface = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -133,6 +161,13 @@ func Load(path string) (Config, error) {
 	cfg.SingBoxPath = strings.TrimSpace(cfg.SingBoxPath)
 	cfg.SingBoxServiceName = strings.TrimSpace(cfg.SingBoxServiceName)
 	cfg.TrafficUsageFilePath = strings.TrimSpace(cfg.TrafficUsageFilePath)
+	cfg.WireGuardStagingDir = strings.TrimSpace(cfg.WireGuardStagingDir)
+	cfg.WireGuardActiveConfigPath = strings.TrimSpace(cfg.WireGuardActiveConfigPath)
+	cfg.WireGuardBackupDir = strings.TrimSpace(cfg.WireGuardBackupDir)
+	cfg.WGQuickPath = strings.TrimSpace(cfg.WGQuickPath)
+	cfg.WGPath = strings.TrimSpace(cfg.WGPath)
+	cfg.WireGuardServiceName = strings.TrimSpace(cfg.WireGuardServiceName)
+	cfg.WireGuardInterface = strings.TrimSpace(cfg.WireGuardInterface)
 	if cfg.HeartbeatIntervalSeconds <= 0 {
 		cfg.HeartbeatIntervalSeconds = 30
 	}
@@ -157,6 +192,13 @@ func Load(path string) (Config, error) {
 	if cfg.TrafficUsageFilePath == "" {
 		cfg.TrafficUsageFilePath = DefaultTrafficUsageFilePath
 	}
+	if cfg.WireGuardStagingDir == "" { cfg.WireGuardStagingDir = DefaultWireGuardStagingDir }
+	if cfg.WireGuardActiveConfigPath == "" { cfg.WireGuardActiveConfigPath = DefaultWireGuardActiveConfigPath }
+	if cfg.WireGuardBackupDir == "" { cfg.WireGuardBackupDir = DefaultWireGuardBackupDir }
+	if cfg.WGQuickPath == "" { cfg.WGQuickPath = DefaultWGQuickPath }
+	if cfg.WGPath == "" { cfg.WGPath = DefaultWGPath }
+	if cfg.WireGuardServiceName == "" { cfg.WireGuardServiceName = DefaultWireGuardServiceName }
+	if cfg.WireGuardInterface == "" { cfg.WireGuardInterface = DefaultWireGuardInterface }
 	if cfg.ManagerURL == "" {
 		return Config{}, errors.New("manager_url is required")
 	}
@@ -204,15 +246,39 @@ func (c Config) Save(path string) error {
 	if trafficUsageFilePath == "" {
 		trafficUsageFilePath = DefaultTrafficUsageFilePath
 	}
-	data := fmt.Sprintf("manager_url: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\nservice_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", c.ManagerURL, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName, serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
+	wireGuardStagingDir := defaultString(c.WireGuardStagingDir, DefaultWireGuardStagingDir)
+	wireGuardActiveConfigPath := defaultString(c.WireGuardActiveConfigPath, DefaultWireGuardActiveConfigPath)
+	wireGuardBackupDir := defaultString(c.WireGuardBackupDir, DefaultWireGuardBackupDir)
+	wgQuickPath := defaultString(c.WGQuickPath, DefaultWGQuickPath)
+	wgPath := defaultString(c.WGPath, DefaultWGPath)
+	wireGuardServiceName := defaultString(c.WireGuardServiceName, DefaultWireGuardServiceName)
+	wireGuardInterface := defaultString(c.WireGuardInterface, DefaultWireGuardInterface)
+
+	var output strings.Builder
+	fmt.Fprintf(&output, "manager_url: %q\n", c.ManagerURL)
 	if c.RegistrationToken != "" {
-		data = fmt.Sprintf("manager_url: %q\nregistration_token: %q\nagent_id: %q\nserver_id: %q\nagent_token: %q\nheartbeat_interval_seconds: %d\nconfig_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\nsing_box_path: %q\nsing_box_service_name: %q\nservice_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", c.ManagerURL, c.RegistrationToken, c.AgentID, c.ServerID, c.AgentToken, c.HeartbeatIntervalSeconds, stagingDir, activeConfigPath, backupDir, singBoxPath, serviceName, serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
+		fmt.Fprintf(&output, "registration_token: %q\n", c.RegistrationToken)
 	}
+	fmt.Fprintf(&output, "agent_id: %q\nserver_id: %q\nagent_token: %q\n", c.AgentID, c.ServerID, c.AgentToken)
+	fmt.Fprintf(&output, "heartbeat_interval_seconds: %d\n", c.HeartbeatIntervalSeconds)
+	fmt.Fprintf(&output, "config_staging_dir: %q\nactive_config_path: %q\nconfig_backup_dir: %q\n", stagingDir, activeConfigPath, backupDir)
+	fmt.Fprintf(&output, "sing_box_path: %q\nsing_box_service_name: %q\n", singBoxPath, serviceName)
+	fmt.Fprintf(&output, "wireguard_staging_dir: %q\nwireguard_active_config_path: %q\nwireguard_backup_dir: %q\n", wireGuardStagingDir, wireGuardActiveConfigPath, wireGuardBackupDir)
+	fmt.Fprintf(&output, "wg_quick_path: %q\nwg_path: %q\nwireguard_service_name: %q\nwireguard_interface: %q\n", wgQuickPath, wgPath, wireGuardServiceName, wireGuardInterface)
+	fmt.Fprintf(&output, "service_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
+	data := output.String()
 
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
+}
+
+func defaultString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
 }
 
 func (c Config) HasAgentCredentials() bool  { return c.AgentToken != "" }

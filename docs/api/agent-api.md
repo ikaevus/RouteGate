@@ -49,4 +49,15 @@ the configured Manager URL and returns only hostname, validity timestamps, and
 verification outcome. Certificate bytes, private keys, arbitrary target URLs,
 and raw command/network output are outside the Agent API contract.
 
+RG-114E adds a second entry to `capabilities.routegate.vpnCoreAdapters`:
+`wireguard` core, `wireguard` protocol, `udp` transport, and `wireguard`
+security. `capabilities.vpnCores` reports separate sing-box and WireGuard
+runtime states while the legacy singular `vpnCore` field remains available for
+compatibility.
+
+WireGuard config apply tasks use the existing `config_apply` kind and
+`routegate.config.v1` envelope. `metadata.vpnCore` selects the adapter and the
+`wireGuard` field carries the native config. Validation and result payloads do
+not contain native command output or private key material.
+
 The old unversioned `/api/agent/*` compatibility endpoints and manual Agent registration UI are not part of the supported RouteGate runtime.

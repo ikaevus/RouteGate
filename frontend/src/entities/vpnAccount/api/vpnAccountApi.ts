@@ -40,6 +40,13 @@ export interface VpnAccountCredentialsResponse {
     shortId?: string;
     serverName?: string;
   };
+  wireGuard: {
+    privateKey?: string;
+    publicKey?: string;
+    address?: string;
+    serverPublicKey?: string;
+    dns?: string;
+  };
 }
 
 export interface TrafficUsageSummaryResponse {
@@ -124,7 +131,8 @@ export interface VpnClientProfile {
 export interface VpnClientConnectionResponse {
   vpnAccountId: string;
   format: string;
-  vlessLink: string;
+  vlessLink?: string;
+  wireGuardConfig?: string;
   profile: VpnClientProfile;
   endpoint: string;
   serverName: string;
@@ -198,7 +206,8 @@ export interface PublicSubscriptionResponse {
     message?: string;
     rendered?: {
       format: string;
-      content: SingBoxClientConfig;
+		content: SingBoxClientConfig;
+		text?: string;
     } | null;
   };
 }
@@ -222,7 +231,8 @@ export function buildVlessRealityShareLink(
   subscription: PublicSubscriptionResponse,
   fingerprint = 'firefox',
 ): string {
-  const outbound = subscription.config.rendered?.content.outbounds?.find(
+	const content = subscription.config.rendered?.content;
+  const outbound = content?.outbounds?.find(
     (candidate) => candidate.type?.trim().toLowerCase() === 'vless',
   );
   if (!outbound) {
@@ -360,14 +370,16 @@ export async function getVpnAccountSubscriptionQRCode(
     throw new Error('Subscription belongs to a different VPN account.');
   }
 
+	const renderedText = subscription.config.rendered?.text;
+	const isWireGuard = subscription.config.type === 'wireguard' && typeof renderedText === 'string';
   return {
     vpnAccountId,
     subscriptionUrl: new URL(
       `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
       globalThis.location.origin,
     ).toString(),
-    qrText: buildVlessRealityShareLink(subscription),
-    format: 'vless-reality-uri',
+		qrText: isWireGuard ? renderedText : buildVlessRealityShareLink(subscription),
+		format: isWireGuard ? 'wireguard-config' : 'vless-reality-uri',
   };
 }
 

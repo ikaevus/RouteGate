@@ -54,6 +54,10 @@ func (f *fakeServerRepository) UpdateRealityKeypair(_ context.Context, serverID 
 	return result, nil
 }
 
+func (f *fakeServerRepository) ConfigureRecommendedWireGuard(_ context.Context, serverID string, input UpdateWireGuardKeypairInput) (ProtocolSettings, error) {
+	return ProtocolSettings{ServerID: serverID, Protocol: "wireguard", WireGuardPort: 51820, WireGuardAddress: "10.66.0.1/24", WireGuardDNS: "1.1.1.1", WireGuardPublicKey: input.PublicKey}, nil
+}
+
 func TestGetProtocolSettingsReturnsVLESSRealityPayload(t *testing.T) {
 	fakeProtocolSettingsResult = ProtocolSettings{
 		ServerID:          "server-id",

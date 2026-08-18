@@ -47,12 +47,18 @@ function readState(value: unknown): VPNCoreState {
 
 export function parseVPNCoreStatus(
   capabilities?: Record<string, unknown> | null,
+	desiredType?: string | null,
 ): VPNCoreStatus | null {
-  if (!capabilities || !isRecord(capabilities.vpnCore)) {
-    return null;
+	if (!capabilities) {
+		return null;
   }
-
-  const raw = capabilities.vpnCore;
+	const normalizedType = desiredType?.trim().toLowerCase();
+	const cores = Array.isArray(capabilities.vpnCores) ? capabilities.vpnCores.filter(isRecord) : [];
+	const selected = normalizedType
+		? cores.find((candidate) => readString(candidate.type)?.toLowerCase() === normalizedType)
+		: undefined;
+	const raw = selected ?? (isRecord(capabilities.vpnCore) ? capabilities.vpnCore : undefined);
+	if (!raw) return null;
   const installed = raw.installed === true;
   const reportedState = readState(raw.state);
   const state = !installed && reportedState !== 'unknown'
@@ -60,7 +66,7 @@ export function parseVPNCoreStatus(
     : reportedState;
 
   return {
-    type: readString(raw.type) ?? 'sing-box',
+		type: readString(raw.type) ?? normalizedType ?? 'sing-box',
     installed,
     state,
     version: readString(raw.version),

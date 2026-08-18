@@ -4,13 +4,17 @@ const (
 	CapabilitySchemaVersion = 1
 
 	VPNCoreSingBox = "sing-box"
+	VPNCoreWireGuard = "wireguard"
 
 	VPNProtocolVLESS = "vless"
+	VPNProtocolWireGuard = "wireguard"
 
 	VPNTransportTCP = "tcp"
+	VPNTransportUDP = "udp"
 
 	VPNSecurityNone    = "none"
 	VPNSecurityReality = "reality"
+	VPNSecurityWireGuard = "wireguard"
 )
 
 // VPNCoreAdapterDescriptor is the Agent-side declaration of a complete
@@ -30,6 +34,12 @@ func ManagedVPNCoreAdapters() []VPNCoreAdapterDescriptor {
 			Protocol:      VPNProtocolVLESS,
 			Transports:    []string{VPNTransportTCP},
 			SecurityModes: []string{VPNSecurityNone, VPNSecurityReality},
+		},
+		{
+			Core:          VPNCoreWireGuard,
+			Protocol:      VPNProtocolWireGuard,
+			Transports:    []string{VPNTransportUDP},
+			SecurityModes: []string{VPNSecurityWireGuard},
 		},
 	}
 }
