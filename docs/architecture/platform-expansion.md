@@ -74,8 +74,21 @@ have no database access and Manager receives no arbitrary remote-shell channel.
 
 ## Protocol adapter contract
 
-The current code renders `singBox` directly inside `routegate.config.v1`.
-RG-114 will move this behavior behind an adapter contract in compatible steps.
+`routegate.config.v1` remains the Manager-to-Agent compatibility envelope.
+RG-114C moves its existing `singBox` VLESS/TCP render, validation, and apply
+lifecycle behind explicit Manager and Agent adapter contracts without changing
+the serialized envelope. Atomic file promotion and rollback remain shared Agent
+behavior; VPN Core payload extraction, binary validation, service control, and
+listener health belong to the Agent adapter.
+
+Manager resolves an adapter from four separate values: VPN Core, protocol,
+transport, and security mode. The first registered adapter declares exactly
+`sing-box` + `vless` + `tcp` with `none` or `reality`. Unsupported combinations
+are rejected by the registry instead of falling through to a generic renderer.
+Agent capability reporting is generated from the same Agent-side managed
+adapter descriptors used by its apply path, preventing binary detection and
+managed lifecycle claims from drifting apart.
+
 An adapter is not complete until it provides:
 
 - settings schema and validation;
@@ -103,6 +116,12 @@ RG-114A advertises only the path RouteGate already manages end to end:
 
 Other sing-box features and detected binaries remain unadvertised as managed
 adapters until their full lifecycle is implemented.
+
+RG-114C is intentionally behavior-preserving. It adds no protocol, database
+migration, public API field, or deployment setting. Existing config hashes stay
+stable for identical input and render time, old plain sing-box apply tasks stay
+supported, and the Clean VPS path continues to select the default
+sing-box/VLESS adapter.
 
 ## Planned slices
 
