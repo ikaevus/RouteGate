@@ -43,13 +43,40 @@ when no prior config exists.
 This is a per-node transaction boundary. Atomic deployment across multiple VPN
 nodes remains explicitly out of scope for RG-114.
 
+## Client and API contract
+
+The authenticated account connection read model returns both values explicitly:
+
+- `profile.protocol` — the stored preference, including `auto`;
+- `protocol` — the resolved effective protocol used to render the current
+  connection material.
+
+The frontend uses the same protocol union as the backend contract instead of
+maintaining a separate cast-based representation. Credentials, QR/URI output,
+access delivery, and the client connection panel therefore resolve the same
+account-level protocol.
+
 ## UX
 
-The protocol selector lives in the VPN account's client profile settings. After
-an explicit protocol change, RouteGate exposes config deployment as the next
-action. Protocol-specific VLESS/Reality controls are hidden when the selected
-profile does not use VLESS.
+The **Connect VPN client** panel is part of the primary VPN-account workflow and
+appears immediately after account management, before routing, delivery,
+credentials, and traffic details. The protocol selector is expanded by default
+inside the client profile settings so it is discoverable without scanning the
+bottom of a long account page.
+
+After an explicit protocol change, RouteGate exposes config deployment as the
+next action. Protocol-specific VLESS/Reality controls are hidden when the
+selected profile does not use VLESS. Account-page and credentials copy is
+protocol-neutral rather than describing every account as VLESS/Reality.
 
 Hysteria2 keeps the RG-114F dedicated-VPN-node certificate constraint; selecting
 it on an incompatible node will not produce an apply-safe configuration until
 that node satisfies the adapter requirements.
+
+## Compatibility
+
+Existing accounts continue to resolve through `auto` and the node-level
+`vpn_protocol` default. Existing `metadata.vpnCore` consumers remain supported,
+while newer Agents use `metadata.vpnCores` to select every required managed
+runtime. The clean-host VLESS/Reality path remains valid without requiring an
+administrator to choose a new protocol explicitly.
