@@ -64,41 +64,41 @@ type ValidationResult struct {
 }
 
 type ServerConfigInfo struct {
-	ID                string
-	Name              string
-	DeploymentRole    string
-	Hostname          string
-	PublicIP          string
-	PrivateIP         string
-	Location          string
-	Provider          string
-	Status            string
-	VLESSPort         int
-	VLESSFlow         string
-	VLESSNetwork      string
-	RealityPrivateKey string
-	RealityPublicKey  string
-	RealityShortID    string
-	RealityServerName string
-	VPNProtocol        string
-	WireGuardPort      int
-	WireGuardAddress   string
-	WireGuardDNS       string
-	WireGuardPrivateKey string
-	WireGuardPublicKey string
-	Hysteria2Port       int
-	Hysteria2Domain     string
-	Hysteria2ACMEEmail  string
+	ID                     string
+	Name                   string
+	DeploymentRole         string
+	Hostname               string
+	PublicIP               string
+	PrivateIP              string
+	Location               string
+	Provider               string
+	Status                 string
+	VLESSPort              int
+	VLESSFlow              string
+	VLESSNetwork           string
+	RealityPrivateKey      string
+	RealityPublicKey       string
+	RealityShortID         string
+	RealityServerName      string
+	VPNProtocol            string
+	WireGuardPort          int
+	WireGuardAddress       string
+	WireGuardDNS           string
+	WireGuardPrivateKey    string
+	WireGuardPublicKey     string
+	Hysteria2Port          int
+	Hysteria2Domain        string
+	Hysteria2ACMEEmail     string
 	Hysteria2MasqueradeURL string
-	ShadowsocksPort      int
-	ShadowsocksMethod    string
-	ShadowsocksServerKey string
-	MTProtoPort           int
-	MTProtoSecret         string
-	MTProtoFrontingDomain string
-	Agent             *AgentConfigInfo
-	VPNAccounts       []VPNAccountConfigInfo
-	RoutingProfile    *RoutingProfileConfigInfo
+	ShadowsocksPort        int
+	ShadowsocksMethod      string
+	ShadowsocksServerKey   string
+	MTProtoPort            int
+	MTProtoSecret          string
+	MTProtoFrontingDomain  string
+	Agent                  *AgentConfigInfo
+	VPNAccounts            []VPNAccountConfigInfo
+	RoutingProfile         *RoutingProfileConfigInfo
 }
 
 type AgentConfigInfo struct {
@@ -115,6 +115,7 @@ type VPNAccountConfigInfo struct {
 	ID                       string
 	DisplayName              string
 	Status                   string
+	VPNProtocol              string
 	VLESSUUID                string
 	VLESSFlow                string
 	VLESSNetwork             string
@@ -182,13 +183,14 @@ type ConfigAgent struct {
 }
 
 type ConfigVPNAccount struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	Status      string `json:"status"`
-	VLESSUUID   string `json:"vlessUuid"`
-	WireGuardPublicKey string `json:"wireGuardPublicKey,omitempty"`
-	WireGuardAddress   string `json:"wireGuardAddress,omitempty"`
-	Hysteria2Username  string `json:"hysteria2Username,omitempty"`
+	ID                  string `json:"id"`
+	DisplayName         string `json:"displayName"`
+	Status              string `json:"status"`
+	Protocol            string `json:"protocol"`
+	VLESSUUID           string `json:"vlessUuid,omitempty"`
+	WireGuardPublicKey  string `json:"wireGuardPublicKey,omitempty"`
+	WireGuardAddress    string `json:"wireGuardAddress,omitempty"`
+	Hysteria2Username   string `json:"hysteria2Username,omitempty"`
 	ShadowsocksUsername string `json:"shadowsocksUsername,omitempty"`
 }
 
@@ -215,10 +217,11 @@ type ConfigRoutingProfileRule struct {
 }
 
 type ConfigMetadata struct {
-	Source         string    `json:"source"`
-	RenderedAt     time.Time `json:"renderedAt"`
-	RealityEnabled bool      `json:"realityEnabled"`
-	VPNCore        ConfigVPNCore `json:"vpnCore"`
+	Source         string          `json:"source"`
+	RenderedAt     time.Time       `json:"renderedAt"`
+	RealityEnabled bool            `json:"realityEnabled"`
+	VPNCore        ConfigVPNCore   `json:"vpnCore"`
+	VPNCores       []ConfigVPNCore `json:"vpnCores,omitempty"`
 }
 
 type ConfigVPNCore struct {
