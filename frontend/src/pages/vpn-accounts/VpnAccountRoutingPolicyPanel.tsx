@@ -14,7 +14,7 @@ import {
   updateVpnAccountAutomaticSelection,
   type RoutingProfileSource,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
-import { t } from '../../shared/i18n/i18n';
+import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import './vpnAccountRoutingPolicy.css';
 
 function selectionStatusLabel(status: 'selected' | 'current' | 'no_eligible_candidates' | 'node_group_required' | 'cooldown'): string {
@@ -36,8 +36,36 @@ function sourceLabel(source: RoutingProfileSource): string {
   }
 }
 
+function protocolDisplayName(protocol: string): string {
+  switch (protocol.trim().toLowerCase()) {
+    case 'vless': return 'VLESS / Reality';
+    case 'wireguard': return 'WireGuard';
+    case 'hysteria2': return 'Hysteria2';
+    case 'shadowsocks': return 'Shadowsocks 2022';
+    case 'mtproto': return 'MTProto / FakeTLS';
+    default: return protocol;
+  }
+}
+
+function getCopy() {
+  if (getCurrentLocale() === 'ru') {
+    return {
+      unsavedNodeGroup: 'Группа узлов изменена, но ещё не сохранена.',
+      saveNodeGroupFirst: 'Сначала сохраните выбранную группу узлов. Предпросмотр и применение используют только сохранённую группу.',
+      savePolicyFirst: 'Настройки автоматического выбора изменены. Сначала сохраните их, чтобы предпросмотр и применение использовали именно эти значения.',
+    } as const;
+  }
+
+  return {
+    unsavedNodeGroup: 'The node group has changed but is not saved yet.',
+    saveNodeGroupFirst: 'Save the selected node group first. Preview and Apply use only the persisted group.',
+    savePolicyFirst: 'Automatic-selection settings have changed. Save them first so Preview and Apply use these exact values.',
+  } as const;
+}
+
 export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string }) {
   const queryClient = useQueryClient();
+  const copy = getCopy();
   const [routingProfileId, setRoutingProfileId] = useState('');
   const [nodeGroupId, setNodeGroupId] = useState('');
   const [automaticSelectionEnabled, setAutomaticSelectionEnabled] = useState(false);
@@ -50,10 +78,20 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   });
   const profilesQuery = useQuery({ queryKey: ['routing-profiles'], queryFn: getRoutingProfiles });
   const groupsQuery = useQuery({ queryKey: ['node-groups'], queryFn: getNodeGroups });
+
+  const savedNodeGroupId = policyQuery.data?.nodeGroup?.id ?? '';
+  const savedSelectionPolicy = policyQuery.data?.automaticSelectionPolicy;
+  const nodeGroupDirty = Boolean(policyQuery.data) && nodeGroupId !== savedNodeGroupId;
+  const selectionPolicyDirty = Boolean(savedSelectionPolicy)
+    && (automaticSelectionEnabled !== savedSelectionPolicy?.enabled
+      || allowDegraded !== savedSelectionPolicy?.allowDegraded
+      || cooldownSeconds !== savedSelectionPolicy?.cooldownSeconds);
+  const automaticSelectionDirty = nodeGroupDirty || selectionPolicyDirty;
+
   const selectionPreviewQuery = useQuery({
     queryKey: ['vpn-account-automatic-selection-preview', accountId],
     queryFn: () => previewVpnAccountAutomaticSelection(accountId),
-    enabled: Boolean(policyQuery.data?.nodeGroup),
+    enabled: Boolean(policyQuery.data?.nodeGroup) && !automaticSelectionDirty,
   });
 
   useEffect(() => {
@@ -156,11 +194,12 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
                 {(groupsQuery.data?.items ?? []).map((group) => <option key={group.id} value={group.id}>{group.name} · {group.memberCount}</option>)}
               </select>
             </label>
-            {policy.nodeGroup && (
+            {policy.nodeGroup && !nodeGroupDirty && (
               <div className={`form-message ${policy.currentServerInGroup ? 'form-message-success' : 'form-message-warning'}`}>
                 {policy.currentServerInGroup ? t('routingPolicy.currentInGroup') : t('routingPolicy.currentOutsideGroup')}
               </div>
             )}
+            {nodeGroupDirty && <div className="form-message form-message-warning">{copy.unsavedNodeGroup}</div>}
             <p className="routing-policy-automation-note">{t('automaticSelection.groupHelp')}</p>
             <div className="form-actions">
               <button className="small-button" type="submit" disabled={groupMutation.isPending}>{nodeGroupId ? t('routingPolicy.saveGroup') : t('routingPolicy.clearGroup')}</button>
@@ -176,13 +215,13 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
               <input
                 type="checkbox"
                 checked={automaticSelectionEnabled}
-                disabled={!policy.nodeGroup}
+                disabled={!policy.nodeGroup || nodeGroupDirty}
                 onChange={(event) => setAutomaticSelectionEnabled(event.target.checked)}
               />
               <span>{t('automaticSelection.enabled')}</span>
             </label>
             <label className="field checkbox-field">
-              <input type="checkbox" checked={allowDegraded} onChange={(event) => setAllowDegraded(event.target.checked)} />
+              <input type="checkbox" checked={allowDegraded} disabled={!policy.nodeGroup || nodeGroupDirty} onChange={(event) => setAllowDegraded(event.target.checked)} />
               <span>{t('automaticSelection.allowDegraded')}</span>
             </label>
             <label className="field">
@@ -192,20 +231,30 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
                 min={1}
                 max={1440}
                 value={Math.round(cooldownSeconds / 60)}
+                disabled={!policy.nodeGroup || nodeGroupDirty}
                 onChange={(event) => setCooldownSeconds(Math.max(60, Number(event.target.value || 1) * 60))}
               />
             </label>
             <div className="form-actions">
-              <button className="small-button" type="submit" disabled={selectionPolicyMutation.isPending || !policy.nodeGroup}>{t('automaticSelection.save')}</button>
-              <button className="small-button secondary" type="button" disabled={!policy.nodeGroup || selectionPreviewQuery.isFetching} onClick={() => selectionPreviewQuery.refetch()}>{t('automaticSelection.refresh')}</button>
+              <button className="small-button" type="submit" disabled={selectionPolicyMutation.isPending || !policy.nodeGroup || nodeGroupDirty}>{t('automaticSelection.save')}</button>
+              <button
+                className="small-button secondary"
+                type="button"
+                disabled={!policy.nodeGroup || automaticSelectionDirty || selectionPreviewQuery.isFetching}
+                onClick={() => selectionPreviewQuery.refetch()}
+              >
+                {t('automaticSelection.refresh')}
+              </button>
             </div>
             {!policy.nodeGroup && <div className="form-message form-message-warning">{t('automaticSelection.nodeGroupRequired')}</div>}
-            {selectionPreviewQuery.isError && <div className="form-message form-message-error">{t('automaticSelection.previewError')}</div>}
-            {selectionPreviewQuery.data && (
+            {nodeGroupDirty && <div className="form-message form-message-warning">{copy.saveNodeGroupFirst}</div>}
+            {!nodeGroupDirty && selectionPolicyDirty && <div className="form-message form-message-warning">{copy.savePolicyFirst}</div>}
+            {!automaticSelectionDirty && selectionPreviewQuery.isError && <div className="form-message form-message-error">{t('automaticSelection.previewError')}</div>}
+            {!automaticSelectionDirty && selectionPreviewQuery.data && (
               <div className="automatic-selection-decision">
                 <span>{selectionStatusLabel(selectionPreviewQuery.data.status)}</span>
                 {selectionPreviewQuery.data.selectedCandidate && (
-                  <strong>{selectionPreviewQuery.data.selectedCandidate.serverName} · {selectionPreviewQuery.data.selectedCandidate.protocol}</strong>
+                  <strong>{selectionPreviewQuery.data.selectedCandidate.serverName} · {protocolDisplayName(selectionPreviewQuery.data.selectedCandidate.protocol)}</strong>
                 )}
                 <small>{t('automaticSelection.eligible', { count: selectionPreviewQuery.data.eligibleCandidates })}</small>
                 {selectionPreviewQuery.data.blockedUntil && <small>{t('automaticSelection.blockedUntil', { date: new Date(selectionPreviewQuery.data.blockedUntil).toLocaleString() })}</small>}
@@ -227,7 +276,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
               <button
                 className="small-button"
                 type="button"
-                disabled={!selectionPreviewQuery.data?.canApply || selectionApplyMutation.isPending}
+                disabled={automaticSelectionDirty || !selectionPreviewQuery.data?.canApply || selectionApplyMutation.isPending}
                 onClick={() => selectionApplyMutation.mutate()}
               >
                 {t('automaticSelection.apply')}
