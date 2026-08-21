@@ -27,6 +27,10 @@
   overflow: visible;
 }
 
+.protocol-recommended-setup {
+  margin-top: 8px;
+}
+
 @media (max-width: 980px) {
   .servers-table-row {
     grid-template-columns: 1fr;
