@@ -36,6 +36,15 @@
   display: none;
 }
 
+/* A registered Agent can be offline. Never pair the stale "Server connected" headline with an Offline badge. */
+.server-connection-state:has(.server-connection-summary .badge-offline) .server-connection-summary > strong {
+  display: none;
+}
+
+.server-connection-state:has(.server-connection-summary .badge-offline) .server-connection-summary {
+  justify-content: flex-start;
+}
+
 /* Bordered detail containers need their own inset in addition to panel padding. */
 .detail-list,
 .credentials-detail-list {
