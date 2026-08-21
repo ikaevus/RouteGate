@@ -261,7 +261,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     },
     onMutate: () => {
       setSaved(false);
-      const current = connectionQuery.data?.profile as (typeof connectionQuery.data.profile & ProtocolAwareProfile) | undefined;
+      const current = connectionQuery.data?.profile as ProtocolAwareProfile | undefined;
       setProtocolChanged((current?.protocol ?? 'auto') !== protocol);
     },
     onSuccess: async (connection) => {
