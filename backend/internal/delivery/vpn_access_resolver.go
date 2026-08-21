@@ -77,7 +77,7 @@ func clientConnectionAccessMaterial(connection vpnaccounts.ClientConnectionRespo
 	default:
 		return "", "", Failure{Class: ErrorClassPermanent, Code: "access_protocol_unsupported"}
 	}
-	accessMaterial = strings.TrimSpace(accessMaterial)
+	accessMaterial = normalizeProtocolAccessMaterial(protocol, accessMaterial)
 	if !validProtocolAccessMaterial(protocol, accessMaterial) {
 		return "", "", Failure{Class: ErrorClassPermanent, Code: "access_material_invalid"}
 	}
