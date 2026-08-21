@@ -130,7 +130,7 @@ cp -a /etc/routegate/manager.env "$BACKUP_DIR/manager.env"
 tar -czf "$BACKUP_DIR/manager-migrations.tar.gz" -C /opt routegate-manager/migrations
 tar -czf "$BACKUP_DIR/frontend.tar.gz" -C /var/www routegate
 if [[ -r /etc/sing-box/config.json ]]; then
-  cp -a "$BACKUP_DIR/sing-box-config.json" "$BACKUP_DIR/sing-box-config.json"
+  cp -a /etc/sing-box/config.json "$BACKUP_DIR/sing-box-config.json"
 fi
 pg_dump --format=custom --no-owner --file="$BACKUP_DIR/routegate.pgdump" "$DB_URL"
 chmod -R go-rwx "$BACKUP_DIR"
