@@ -160,10 +160,10 @@ func (h *Handler) GenerateSubscriptionAccess(w http.ResponseWriter, r *http.Requ
 	locale := requestLocale(r)
 	qr := PortalQRCode{
 		ProfileID:    profile.ID,
-		Available:    false,
+		Available:    true,
 		AccessStatus: profile.AccessStatus,
+		QRText:       subscriptionURL,
 		Format:       PortalQRFormat,
-		Message:      localizedQRCodeNotReady(locale),
 	}
 	if source, ok := h.profiles.(vpnaccounts.ClientConnectionSource); ok {
 		directQR, qrErr := buildPortalDirectQRCode(r.Context(), source, profile, locale)
