@@ -82,7 +82,7 @@ type ClientConnectionResponse struct {
 	Protocol        string        `json:"protocol"`
 	Format          string        `json:"format"`
 	VLESSLink       string        `json:"vlessLink,omitempty"`
-	WireGuardConfig string        `json:"wireGuardConfig,omitempty"`
+	WireGuardConfig string        `json:"wireguardConfig,omitempty"`
 	Hysteria2URI    string        `json:"hysteria2Uri,omitempty"`
 	ShadowsocksURI  string        `json:"shadowsocksUri,omitempty"`
 	MTProtoURI      string        `json:"mtprotoUri,omitempty"`
@@ -283,6 +283,13 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidate := clientProfileFromRequest(accountID, request)
+	if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, subscription, candidate); err != nil {
+		if writeClientConnectionDomainError(w, err) {
+			return
+		}
+		h.databaseError(w, "validate vpn client protocol topology", err)
+		return
+	}
 	effectiveProtocol := resolveEffectiveClientProtocol(candidate, subscription.Server)
 	if preparer, ok := h.accounts.(clientProtocolPreparer); ok && subscription.Server != nil {
 		if err := preparer.PrepareClientProtocol(r.Context(), accountID, subscription.Server.ID, effectiveProtocol); err != nil {
@@ -347,6 +354,9 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	}
 	profile, err := repository.GetOrCreateClientProfile(ctx, accountID)
 	if err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	if err := validateClientProtocolTopologyForSource(ctx, h.accounts, subscription, profile); err != nil {
 		return ClientConnectionResponse{}, err
 	}
 	return buildClientConnectionResponse(accountID, subscription, profile)
