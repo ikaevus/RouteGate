@@ -97,7 +97,6 @@ type SubscriptionServer struct {
 	PublicIP               string
 	Location               string
 	Provider               string
-	DeploymentRole         string
 	VLESSPort              int
 	VLESSFlow              string
 	VLESSNetwork           string
