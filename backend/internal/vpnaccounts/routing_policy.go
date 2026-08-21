@@ -35,15 +35,16 @@ type NodeGroupPolicySummary struct {
 }
 
 type VPNAccountRoutingPolicy struct {
-	VPNAccountID           string                       `json:"vpnAccountId"`
-	ExplicitRoutingProfile *RoutingProfilePolicySummary `json:"explicitRoutingProfile,omitempty"`
-	EffectiveRoutingProfile *RoutingProfilePolicySummary `json:"effectiveRoutingProfile,omitempty"`
-	RoutingProfileSource   string                       `json:"routingProfileSource"`
-	NodeGroup              *NodeGroupPolicySummary      `json:"nodeGroup,omitempty"`
-	CurrentServerInGroup   bool                         `json:"currentServerInGroup"`
-	AutomaticSelection     bool                         `json:"automaticSelection"`
-	Protocol               string                       `json:"protocol,omitempty"`
-	ClientRoutingSupported bool                         `json:"clientRoutingSupported"`
+	VPNAccountID             string                       `json:"vpnAccountId"`
+	ExplicitRoutingProfile   *RoutingProfilePolicySummary `json:"explicitRoutingProfile,omitempty"`
+	EffectiveRoutingProfile  *RoutingProfilePolicySummary `json:"effectiveRoutingProfile,omitempty"`
+	RoutingProfileSource     string                       `json:"routingProfileSource"`
+	NodeGroup                *NodeGroupPolicySummary      `json:"nodeGroup,omitempty"`
+	CurrentServerInGroup     bool                         `json:"currentServerInGroup"`
+	AutomaticSelection       bool                         `json:"automaticSelection"`
+	AutomaticSelectionPolicy AutomaticSelectionPolicy     `json:"automaticSelectionPolicy"`
+	Protocol                 string                       `json:"protocol,omitempty"`
+	ClientRoutingSupported   bool                         `json:"clientRoutingSupported"`
 }
 
 type AssignAccountRoutingProfileRequest struct {
@@ -60,6 +61,9 @@ type routingPolicyRepository interface {
 	DeleteRoutingProfileAssignment(context.Context, string) (VPNAccountRoutingPolicy, error)
 	AssignNodeGroup(context.Context, string, string) (VPNAccountRoutingPolicy, error)
 	DeleteNodeGroupAssignment(context.Context, string) (VPNAccountRoutingPolicy, error)
+	UpdateAutomaticSelectionPolicy(context.Context, string, UpdateAutomaticSelectionPolicyInput) (VPNAccountRoutingPolicy, error)
+	PreviewAutomaticSelection(context.Context, string) (AutomaticSelectionDecision, error)
+	ApplyAutomaticSelection(context.Context, string) (AutomaticSelectionApplyResponse, error)
 }
 
 func (r *Repository) GetRoutingPolicy(ctx context.Context, accountID string) (VPNAccountRoutingPolicy, error) {
@@ -89,12 +93,17 @@ func (r *Repository) GetRoutingPolicy(ctx context.Context, accountID string) (VP
 	}
 
 	policy := VPNAccountRoutingPolicy{
-		VPNAccountID: accountID,
-		RoutingProfileSource: RoutingProfileSourceNone,
-		AutomaticSelection: false,
-		Protocol: protocol,
+		VPNAccountID:           accountID,
+		RoutingProfileSource:   RoutingProfileSourceNone,
+		Protocol:               protocol,
 		ClientRoutingSupported: protocol == "vless",
 	}
+	selectionPolicy, err := r.getAutomaticSelectionPolicy(ctx, accountID)
+	if err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	policy.AutomaticSelectionPolicy = selectionPolicy
+	policy.AutomaticSelection = selectionPolicy.Enabled
 	if accountProfileID.Valid {
 		profile, err := r.routingProfilePolicySummary(ctx, accountProfileID.String)
 		if err != nil {
@@ -174,7 +183,12 @@ func (r *Repository) DeleteRoutingProfileAssignment(ctx context.Context, account
 }
 
 func (r *Repository) AssignNodeGroup(ctx context.Context, accountID, groupID string) (VPNAccountRoutingPolicy, error) {
-	result, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	defer tx.Rollback(ctx)
+	result, err := tx.Exec(ctx, `
 		INSERT INTO vpn_account_node_groups (vpn_account_id, node_group_id)
 		SELECT a.id, g.id
 		FROM vpn_accounts a
@@ -189,11 +203,38 @@ func (r *Repository) AssignNodeGroup(ctx context.Context, accountID, groupID str
 	if result.RowsAffected() == 0 {
 		return VPNAccountRoutingPolicy{}, pgx.ErrNoRows
 	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE vpn_account_automatic_selection_policies
+		SET last_selected_at = NULL,
+			last_selected_server_id = NULL,
+			updated_at = now()
+		WHERE vpn_account_id = $1::uuid
+	`, accountID); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
 	return r.GetRoutingPolicy(ctx, accountID)
 }
 
 func (r *Repository) DeleteNodeGroupAssignment(ctx context.Context, accountID string) (VPNAccountRoutingPolicy, error) {
-	if _, err := r.pool.Exec(ctx, `DELETE FROM vpn_account_node_groups WHERE vpn_account_id = $1::uuid`, accountID); err != nil {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM vpn_account_node_groups WHERE vpn_account_id = $1::uuid`, accountID); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE vpn_account_automatic_selection_policies
+		SET enabled = FALSE, updated_at = now()
+		WHERE vpn_account_id = $1::uuid
+	`, accountID); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
 	return r.GetRoutingPolicy(ctx, accountID)

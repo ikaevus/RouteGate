@@ -85,6 +85,29 @@ func NextPeerAddress(serverAddress string, used []string) (string, error) {
 	return "", errors.New("WireGuard address pool is exhausted")
 }
 
+func PeerAddressInServerPrefix(serverAddress, peerAddress string) bool {
+	prefix, err := netip.ParsePrefix(strings.TrimSpace(serverAddress))
+	if err != nil || !prefix.Addr().Is4() {
+		return false
+	}
+	serverIP := prefix.Addr().Unmap()
+	address, err := netip.ParseAddr(strings.TrimSpace(peerAddress))
+	if err != nil {
+		if peerPrefix, prefixErr := netip.ParsePrefix(strings.TrimSpace(peerAddress)); prefixErr == nil {
+			address, err = peerPrefix.Addr(), nil
+		}
+	}
+	if err != nil {
+		return false
+	}
+	address = address.Unmap()
+	prefix = prefix.Masked()
+	return prefix.Contains(address) &&
+		address != prefix.Addr().Unmap() &&
+		address != lastAddress(prefix) &&
+		address != serverIP
+}
+
 func lastAddress(prefix netip.Prefix) netip.Addr {
 	address := prefix.Masked().Addr().As4()
 	hostBits := 32 - prefix.Bits()

@@ -325,3 +325,7 @@ RG-114H adds node group CRUD/member/candidate endpoints and account routing
 policy endpoints. Candidate results are derived, read-only Manager state;
 `automaticSelection` remains false and no endpoint in this slice changes an
 account's concrete server assignment implicitly.
+
+RG-114I adds per-account automatic-selection policy, deterministic preview, and
+operator-triggered apply endpoints. Apply returns the previous/selected server
+IDs plus the exact affected-node set that requires config render/deploy.

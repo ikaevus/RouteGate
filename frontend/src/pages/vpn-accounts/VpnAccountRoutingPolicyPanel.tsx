@@ -1,17 +1,31 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getNodeGroups } from '../../entities/nodeGroup/api/nodeGroupApi';
 import { getRoutingProfiles } from '../../entities/routingProfile/api/routingProfileApi';
 import {
   assignVpnAccountNodeGroup,
   assignVpnAccountRoutingProfile,
+  applyVpnAccountAutomaticSelection,
   clearVpnAccountNodeGroup,
   clearVpnAccountRoutingProfile,
   getVpnAccountRoutingPolicy,
+  previewVpnAccountAutomaticSelection,
+  updateVpnAccountAutomaticSelection,
   type RoutingProfileSource,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
 import './vpnAccountRoutingPolicy.css';
+
+function selectionStatusLabel(status: 'selected' | 'current' | 'no_eligible_candidates' | 'node_group_required' | 'cooldown'): string {
+  switch (status) {
+    case 'selected': return t('automaticSelection.status.selected');
+    case 'current': return t('automaticSelection.status.current');
+    case 'no_eligible_candidates': return t('automaticSelection.status.no_eligible_candidates');
+    case 'node_group_required': return t('automaticSelection.status.node_group_required');
+    case 'cooldown': return t('automaticSelection.status.cooldown');
+  }
+}
 
 function sourceLabel(source: RoutingProfileSource): string {
   switch (source) {
@@ -26,6 +40,9 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const queryClient = useQueryClient();
   const [routingProfileId, setRoutingProfileId] = useState('');
   const [nodeGroupId, setNodeGroupId] = useState('');
+  const [automaticSelectionEnabled, setAutomaticSelectionEnabled] = useState(false);
+  const [allowDegraded, setAllowDegraded] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(300);
 
   const policyQuery = useQuery({
     queryKey: ['vpn-account-routing-policy', accountId],
@@ -33,10 +50,18 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   });
   const profilesQuery = useQuery({ queryKey: ['routing-profiles'], queryFn: getRoutingProfiles });
   const groupsQuery = useQuery({ queryKey: ['node-groups'], queryFn: getNodeGroups });
+  const selectionPreviewQuery = useQuery({
+    queryKey: ['vpn-account-automatic-selection-preview', accountId],
+    queryFn: () => previewVpnAccountAutomaticSelection(accountId),
+    enabled: Boolean(policyQuery.data?.nodeGroup),
+  });
 
   useEffect(() => {
     setRoutingProfileId(policyQuery.data?.explicitRoutingProfile?.id ?? '');
     setNodeGroupId(policyQuery.data?.nodeGroup?.id ?? '');
+    setAutomaticSelectionEnabled(policyQuery.data?.automaticSelectionPolicy.enabled ?? false);
+    setAllowDegraded(policyQuery.data?.automaticSelectionPolicy.allowDegraded ?? false);
+    setCooldownSeconds(policyQuery.data?.automaticSelectionPolicy.cooldownSeconds ?? 300);
   }, [policyQuery.data]);
 
   async function refreshPolicy() {
@@ -45,6 +70,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
+      queryClient.invalidateQueries({ queryKey: ['vpn-account-automatic-selection-preview', accountId] }),
     ]);
   }
 
@@ -60,6 +86,18 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       : clearVpnAccountNodeGroup(accountId),
     onSuccess: refreshPolicy,
   });
+  const selectionPolicyMutation = useMutation({
+    mutationFn: () => updateVpnAccountAutomaticSelection(accountId, {
+      enabled: automaticSelectionEnabled,
+      allowDegraded,
+      cooldownSeconds,
+    }),
+    onSuccess: refreshPolicy,
+  });
+  const selectionApplyMutation = useMutation({
+    mutationFn: () => applyVpnAccountAutomaticSelection(accountId),
+    onSuccess: refreshPolicy,
+  });
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,6 +107,11 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   function saveGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     groupMutation.mutate();
+  }
+
+  function saveSelectionPolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    selectionPolicyMutation.mutate();
   }
 
   const policy = policyQuery.data;
@@ -83,7 +126,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
         </div>
       </div>
       {hasError && <div className="form-message form-message-error">{t('routingPolicy.loadError')}</div>}
-      {(profileMutation.isError || groupMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
+      {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
       {policy && (
         <div className="vpn-account-routing-policy-grid">
           <form className="routing-policy-card" onSubmit={saveProfile}>
@@ -118,9 +161,77 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
                 {policy.currentServerInGroup ? t('routingPolicy.currentInGroup') : t('routingPolicy.currentOutsideGroup')}
               </div>
             )}
-            <p className="routing-policy-automation-note">{t('routingPolicy.noAutomaticSelection')}</p>
+            <p className="routing-policy-automation-note">{t('automaticSelection.groupHelp')}</p>
             <div className="form-actions">
               <button className="small-button" type="submit" disabled={groupMutation.isPending}>{nodeGroupId ? t('routingPolicy.saveGroup') : t('routingPolicy.clearGroup')}</button>
+            </div>
+          </form>
+
+          <form className="routing-policy-card routing-policy-selection-card" onSubmit={saveSelectionPolicy}>
+            <div>
+              <strong>{t('automaticSelection.title')}</strong>
+              <p className="routing-policy-automation-note">{t('automaticSelection.subtitle')}</p>
+            </div>
+            <label className="field checkbox-field">
+              <input
+                type="checkbox"
+                checked={automaticSelectionEnabled}
+                disabled={!policy.nodeGroup}
+                onChange={(event) => setAutomaticSelectionEnabled(event.target.checked)}
+              />
+              <span>{t('automaticSelection.enabled')}</span>
+            </label>
+            <label className="field checkbox-field">
+              <input type="checkbox" checked={allowDegraded} onChange={(event) => setAllowDegraded(event.target.checked)} />
+              <span>{t('automaticSelection.allowDegraded')}</span>
+            </label>
+            <label className="field">
+              <span>{t('automaticSelection.cooldown')}</span>
+              <input
+                type="number"
+                min={1}
+                max={1440}
+                value={Math.round(cooldownSeconds / 60)}
+                onChange={(event) => setCooldownSeconds(Math.max(60, Number(event.target.value || 1) * 60))}
+              />
+            </label>
+            <div className="form-actions">
+              <button className="small-button" type="submit" disabled={selectionPolicyMutation.isPending || !policy.nodeGroup}>{t('automaticSelection.save')}</button>
+              <button className="small-button secondary" type="button" disabled={!policy.nodeGroup || selectionPreviewQuery.isFetching} onClick={() => selectionPreviewQuery.refetch()}>{t('automaticSelection.refresh')}</button>
+            </div>
+            {!policy.nodeGroup && <div className="form-message form-message-warning">{t('automaticSelection.nodeGroupRequired')}</div>}
+            {selectionPreviewQuery.isError && <div className="form-message form-message-error">{t('automaticSelection.previewError')}</div>}
+            {selectionPreviewQuery.data && (
+              <div className="automatic-selection-decision">
+                <span>{selectionStatusLabel(selectionPreviewQuery.data.status)}</span>
+                {selectionPreviewQuery.data.selectedCandidate && (
+                  <strong>{selectionPreviewQuery.data.selectedCandidate.serverName} · {selectionPreviewQuery.data.selectedCandidate.protocol}</strong>
+                )}
+                <small>{t('automaticSelection.eligible', { count: selectionPreviewQuery.data.eligibleCandidates })}</small>
+                {selectionPreviewQuery.data.blockedUntil && <small>{t('automaticSelection.blockedUntil', { date: new Date(selectionPreviewQuery.data.blockedUntil).toLocaleString() })}</small>}
+              </div>
+            )}
+            {selectionApplyMutation.data?.configDeploymentRequired && (
+              <div className="automatic-selection-next-action">
+                <div className="form-message form-message-warning">{t('automaticSelection.deployRequired')}</div>
+                <div className="form-actions">
+                  {selectionApplyMutation.data.affectedServerIds.map((serverId, index) => (
+                    <Link className="small-button" key={serverId} to={`/servers/${encodeURIComponent(serverId)}`}>
+                      {index === 0 ? t('automaticSelection.openSelectedNode') : t('automaticSelection.openPreviousNode')}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="form-actions">
+              <button
+                className="small-button"
+                type="button"
+                disabled={!selectionPreviewQuery.data?.canApply || selectionApplyMutation.isPending}
+                onClick={() => selectionApplyMutation.mutate()}
+              >
+                {t('automaticSelection.apply')}
+              </button>
             </div>
           </form>
         </div>

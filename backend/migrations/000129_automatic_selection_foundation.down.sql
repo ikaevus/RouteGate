@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS vpn_account_automatic_selection_policies;
