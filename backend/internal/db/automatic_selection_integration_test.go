@@ -148,7 +148,7 @@ func TestAutomaticSelectionPreviewAndApplyUseFreshCandidateEvidence(t *testing.T
 			WHERE application_name = 'routegate-automatic-selection-apply-test'
 			  AND state = 'active'
 		`).Scan(&waitEventType, &query)
-		if err == nil && waitEventType == "Lock" && strings.Contains(query, "FOR UPDATE OF a") {
+		if err == nil && waitEventType == "Lock" && strings.Contains(query, "SELECT id::text FROM vpn_accounts") && strings.Contains(query, "FOR UPDATE") {
 			blockedAfterAccountLock = true
 			break
 		}

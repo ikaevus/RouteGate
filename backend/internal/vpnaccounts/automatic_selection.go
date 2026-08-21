@@ -170,6 +170,9 @@ func lockVPNAccount(ctx context.Context, tx pgx.Tx, accountID string) error {
 }
 
 func lockedAutomaticSelectionContext(ctx context.Context, tx pgx.Tx, accountID string) (automaticSelectionContext, error) {
+	if err := lockVPNAccount(ctx, tx, accountID); err != nil {
+		return automaticSelectionContext{}, err
+	}
 	var value automaticSelectionContext
 	var nodeGroupID sql.NullString
 	var lastSelectedAt sql.NullTime
@@ -188,7 +191,6 @@ func lockedAutomaticSelectionContext(ctx context.Context, tx pgx.Tx, accountID s
 		LEFT JOIN vpn_account_node_groups ang ON ang.vpn_account_id = a.id
 		LEFT JOIN vpn_account_automatic_selection_policies p ON p.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
-		FOR UPDATE OF a
 	`, accountID).Scan(
 		&value.AccountID,
 		&value.Status,
