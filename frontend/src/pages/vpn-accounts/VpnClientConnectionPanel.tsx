@@ -54,6 +54,7 @@ function getCopy() {
       copyHysteria2: 'Скопировать Hysteria2 URI',
       hysteria2ReadyDescription: 'QR-код содержит стандартный hysteria2:// URI с логином, паролем и проверяемым TLS SNI.',
       hysteria2Uri: 'Hysteria2 URI',
+      hysteria2ServerName: 'TLS SNI',
       shadowsocksFormat: 'Shadowsocks 2022',
       copyShadowsocks: 'Скопировать Shadowsocks URI',
       shadowsocksReadyDescription: 'QR-код содержит стандартный ss:// URI с цепочкой серверного и пользовательского ключей.',
@@ -132,6 +133,7 @@ function getCopy() {
     copyHysteria2: 'Copy Hysteria2 URI',
     hysteria2ReadyDescription: 'The QR code contains a standard hysteria2:// URI with userpass credentials and verified TLS SNI.',
     hysteria2Uri: 'Hysteria2 URI',
+    hysteria2ServerName: 'TLS SNI',
     shadowsocksFormat: 'Shadowsocks 2022',
     copyShadowsocks: 'Copy Shadowsocks URI',
     shadowsocksReadyDescription: 'The QR code contains a standard ss:// URI with the chained server and per-user keys.',
@@ -332,16 +334,22 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
               <button className="small-button" type="button" onClick={() => void copyToClipboard('connection-config', connectionText)}>
                 {copiedTarget === 'connection-config' ? copy.copied : copyLabel}
               </button>
-              {!isNonVLESS && (
-                <ShareAccessActions vlessLink={connection.vlessLink ?? ''} profileName={connection.profile.name} includeQrShare compact />
-              )}
+              <ShareAccessActions
+                connectionText={connectionText}
+                protocol={connection.protocol}
+                profileName={connection.profile.name}
+                includeQrShare
+                compact
+              />
             </div>
 
             <div className="vpn-client-runtime-grid">
               <div><span>{copy.endpoint}</span><strong>{connection.endpoint}</strong></div>
-              {!isWireGuard && <div><span>{copy.serverName}</span><strong>{connection.serverName}</strong></div>}
+              {!isWireGuard && !isShadowsocks && !isMTProto && (
+                <div><span>{isHysteria2 ? copy.hysteria2ServerName : copy.serverName}</span><strong>{connection.serverName}</strong></div>
+              )}
               {!isWireGuard && <div><span>{copy.network}</span><strong>{connection.network}</strong></div>}
-              {!isWireGuard && !isHysteria2 && <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>}
+              {!isNonVLESS && <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>}
               {showVLESSSettings && <div><span>{copy.resolvedFingerprint}</span><strong>{connection.profile.resolvedFingerprint}</strong></div>}
             </div>
           </div>
@@ -462,7 +470,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         onClose={() => setIsQrOpen(false)}
         qrText={connectionText}
         qrTitle={copy.qrTitle}
-        qrSubtitle={connection?.profile.resolvedFingerprint ?? copy.format}
+        qrSubtitle={formatLabel}
         url={connectionText}
         urlLabel={uriLabel}
         onCopyQrText={() => void copyToClipboard('qr-connection', connectionText)}
@@ -472,8 +480,14 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         closeLabel={copy.close}
         loadingLabel={copy.loading}
         unavailableLabel={copy.loadError}
-        footerActions={!isNonVLESS ? (
-          <ShareAccessActions vlessLink={connection?.vlessLink ?? ''} profileName={connection?.profile.name} includeQrShare compact />
+        footerActions={connection ? (
+          <ShareAccessActions
+            connectionText={connectionText}
+            protocol={connection.protocol}
+            profileName={connection.profile.name}
+            includeQrShare
+            compact
+          />
         ) : undefined}
       />
     </div>
