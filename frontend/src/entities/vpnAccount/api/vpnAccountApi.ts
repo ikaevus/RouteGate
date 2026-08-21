@@ -38,8 +38,55 @@ export interface VpnAccountRoutingPolicy {
   nodeGroup?: NodeGroupPolicySummary;
   currentServerInGroup: boolean;
   automaticSelection: boolean;
+  automaticSelectionPolicy: AutomaticSelectionPolicy;
   protocol?: string;
   clientRoutingSupported: boolean;
+}
+
+export interface AutomaticSelectionPolicy {
+  enabled: boolean;
+  allowDegraded: boolean;
+  cooldownSeconds: number;
+  lastSelectedAt?: string;
+  lastSelectedServerId?: string;
+}
+
+export type AutomaticSelectionStatus =
+  | 'selected'
+  | 'current'
+  | 'no_eligible_candidates'
+  | 'node_group_required'
+  | 'cooldown';
+
+export interface AutomaticSelectionDecision {
+  vpnAccountId: string;
+  nodeGroupId?: string;
+  selectionStrategy?: 'priority' | 'weighted';
+  status: AutomaticSelectionStatus;
+  currentServerId?: string;
+  selectedCandidate?: {
+    serverId: string;
+    serverName: string;
+    protocol: string;
+    health: 'ready' | 'degraded';
+    priority: number;
+    weight: number;
+    signals: string[];
+  };
+  reasons: string[];
+  eligibleCandidates: number;
+  evaluatedAt: string;
+  blockedUntil?: string;
+  canApply: boolean;
+}
+
+export interface AutomaticSelectionApplyResponse {
+  decision: AutomaticSelectionDecision;
+  previousServerId?: string;
+  selectedServerId: string;
+  changed: boolean;
+  affectedServerIds: string[];
+  configDeploymentRequired: boolean;
 }
 
 export interface ListVpnAccountsResponse {
@@ -395,6 +442,32 @@ export function assignVpnAccountNodeGroup(
 export function clearVpnAccountNodeGroup(vpnAccountId: string): Promise<VpnAccountRoutingPolicy> {
   return apiDelete<VpnAccountRoutingPolicy>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/node-group`,
+  );
+}
+
+export function updateVpnAccountAutomaticSelection(
+  vpnAccountId: string,
+  policy: Pick<AutomaticSelectionPolicy, 'enabled' | 'allowDegraded' | 'cooldownSeconds'>,
+): Promise<VpnAccountRoutingPolicy> {
+  return apiPut<typeof policy, VpnAccountRoutingPolicy>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/automatic-selection`,
+    policy,
+  );
+}
+
+export function previewVpnAccountAutomaticSelection(
+  vpnAccountId: string,
+): Promise<AutomaticSelectionDecision> {
+  return apiGet<AutomaticSelectionDecision>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/automatic-selection/preview`,
+  );
+}
+
+export function applyVpnAccountAutomaticSelection(
+  vpnAccountId: string,
+): Promise<AutomaticSelectionApplyResponse> {
+  return apiPost<undefined, AutomaticSelectionApplyResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/automatic-selection/apply`,
   );
 }
 

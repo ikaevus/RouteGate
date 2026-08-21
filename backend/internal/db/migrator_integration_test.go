@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000128_node_groups_routing_extensions" {
-		t.Fatalf("applied schema version = %q, want 000128_node_groups_routing_extensions", version)
+	if version != "000129_automatic_selection_foundation" {
+		t.Fatalf("applied schema version = %q, want 000129_automatic_selection_foundation", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -99,6 +99,18 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 		VALUES ($1::uuid, $2::uuid)
 	`, vpnAccountID, nodeGroupID); err != nil {
 		t.Fatalf("create VPN account routing policy: %v", err)
+	}
+	var automaticSelectionEnabled, allowDegraded bool
+	var cooldownSeconds int
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_account_automatic_selection_policies (vpn_account_id, enabled)
+		VALUES ($1::uuid, TRUE)
+		RETURNING enabled, allow_degraded, cooldown_seconds
+	`, vpnAccountID).Scan(&automaticSelectionEnabled, &allowDegraded, &cooldownSeconds); err != nil {
+		t.Fatalf("create automatic selection policy: %v", err)
+	}
+	if !automaticSelectionEnabled || allowDegraded || cooldownSeconds != 300 {
+		t.Fatalf("unexpected automatic selection defaults: enabled=%v allow_degraded=%v cooldown=%d", automaticSelectionEnabled, allowDegraded, cooldownSeconds)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -375,8 +387,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000128_node_groups_routing_extensions" {
-		t.Fatalf("applied schema version = %q, want 000128_node_groups_routing_extensions", version)
+	if version != "000129_automatic_selection_foundation" {
+		t.Fatalf("applied schema version = %q, want 000129_automatic_selection_foundation", version)
 	}
 }
 

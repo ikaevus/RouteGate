@@ -41,3 +41,15 @@ func TestNextPeerAddressRejectsExhaustedPool(t *testing.T) {
 		t.Fatal("expected exhausted pool error")
 	}
 }
+
+func TestPeerAddressInServerPrefixRejectsPreviousNodePool(t *testing.T) {
+	if !PeerAddressInServerPrefix("10.66.0.1/24", "10.66.0.12") {
+		t.Fatal("expected peer address in server prefix")
+	}
+	if PeerAddressInServerPrefix("10.77.0.1/24", "10.66.0.12") {
+		t.Fatal("previous node peer address must be reallocated")
+	}
+	if PeerAddressInServerPrefix("10.66.0.1/24", "10.66.0.0") || PeerAddressInServerPrefix("10.66.0.1/24", "10.66.0.255") {
+		t.Fatal("network and broadcast addresses cannot be peers")
+	}
+}

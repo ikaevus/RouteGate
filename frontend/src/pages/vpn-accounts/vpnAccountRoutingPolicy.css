@@ -26,6 +26,33 @@
   font-size: 12px;
 }
 
+.routing-policy-selection-card {
+  grid-column: 1 / -1;
+}
+
+.checkbox-field {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.automatic-selection-decision {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--rg-surface-raised);
+}
+
+.automatic-selection-decision span,
+.automatic-selection-decision small {
+  color: var(--rg-text-secondary);
+}
+
+.automatic-selection-next-action {
+  display: grid;
+  gap: 10px;
+}
+
 .routing-policy-effective strong {
   color: var(--rg-text-primary);
 }

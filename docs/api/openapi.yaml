@@ -602,7 +602,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         "200":
-          description: Candidate evidence; no automatic selection is performed
+          description: Read-only candidate evidence consumed by automatic selection
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NodeGroupCandidatesResponse" }
@@ -668,7 +668,7 @@ paths:
   /api/v1/vpn-accounts/{id}/node-group:
     put:
       tags: [VPN Accounts]
-      summary: Assign a future node-group balancing target without moving the account
+      summary: Assign the node-group target without immediately moving the account
       security: [{ bearerAuth: [] }]
       parameters:
         - in: path
@@ -706,6 +706,64 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
 
+  /api/v1/vpn-accounts/{id}/automatic-selection:
+    put:
+      tags: [VPN Accounts]
+      summary: Configure explainable automatic node selection for an account
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAutomaticSelectionPolicyRequest" }
+      responses:
+        "200":
+          description: Updated routing and automatic-selection policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
+        "409": { description: A node group is required before enabling selection }
+
+  /api/v1/vpn-accounts/{id}/automatic-selection/preview:
+    get:
+      tags: [VPN Accounts]
+      summary: Evaluate the current deterministic node-selection decision
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Explainable selection preview without assignment mutation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomaticSelectionDecision" }
+
+  /api/v1/vpn-accounts/{id}/automatic-selection/apply:
+    post:
+      tags: [VPN Accounts]
+      summary: Re-evaluate and apply the selected VPN node
+      description: Changes the concrete account server assignment only after a fresh evaluation. The response lists every VPN node whose configuration must be rendered and deployed next.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Applied or already-current selection decision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutomaticSelectionApplyResponse" }
+        "409": { description: Selection is disabled, blocked by cooldown, or has no eligible target }
 components:
   securitySchemes:
     bearerAuth:
@@ -1294,7 +1352,7 @@ components:
 
     VPNAccountRoutingPolicy:
       type: object
-      required: [vpnAccountId, routingProfileSource, currentServerInGroup, automaticSelection, clientRoutingSupported]
+      required: [vpnAccountId, routingProfileSource, currentServerInGroup, automaticSelection, automaticSelectionPolicy, clientRoutingSupported]
       properties:
         vpnAccountId: { type: string, format: uuid }
         explicitRoutingProfile: { $ref: "#/components/schemas/RoutingProfilePolicySummary" }
@@ -1304,6 +1362,70 @@ components:
         currentServerInGroup: { type: boolean }
         automaticSelection:
           type: boolean
-          enum: [false]
+        automaticSelectionPolicy: { $ref: "#/components/schemas/AutomaticSelectionPolicy" }
         protocol: { type: string }
         clientRoutingSupported: { type: boolean }
+
+    AutomaticSelectionPolicy:
+      type: object
+      required: [enabled, allowDegraded, cooldownSeconds]
+      properties:
+        enabled: { type: boolean }
+        allowDegraded: { type: boolean }
+        cooldownSeconds: { type: integer, minimum: 60, maximum: 86400 }
+        lastSelectedAt: { type: string, format: date-time }
+        lastSelectedServerId: { type: string, format: uuid }
+
+    UpdateAutomaticSelectionPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [enabled, allowDegraded, cooldownSeconds]
+      properties:
+        enabled: { type: boolean }
+        allowDegraded: { type: boolean }
+        cooldownSeconds: { type: integer, minimum: 60, maximum: 86400 }
+
+    AutomaticSelectionCandidate:
+      type: object
+      required: [serverId, serverName, protocol, health, priority, weight, signals]
+      properties:
+        serverId: { type: string, format: uuid }
+        serverName: { type: string }
+        protocol: { type: string }
+        health: { type: string, enum: [ready, degraded] }
+        priority: { type: integer }
+        weight: { type: integer }
+        signals:
+          type: array
+          items: { type: string }
+
+    AutomaticSelectionDecision:
+      type: object
+      required: [vpnAccountId, status, reasons, eligibleCandidates, evaluatedAt, canApply]
+      properties:
+        vpnAccountId: { type: string, format: uuid }
+        nodeGroupId: { type: string, format: uuid }
+        selectionStrategy: { type: string, enum: [priority, weighted] }
+        status: { type: string, enum: [selected, current, no_eligible_candidates, node_group_required, cooldown] }
+        currentServerId: { type: string, format: uuid }
+        selectedCandidate: { $ref: "#/components/schemas/AutomaticSelectionCandidate" }
+        reasons:
+          type: array
+          items: { type: string }
+        eligibleCandidates: { type: integer, minimum: 0 }
+        evaluatedAt: { type: string, format: date-time }
+        blockedUntil: { type: string, format: date-time }
+        canApply: { type: boolean }
+
+    AutomaticSelectionApplyResponse:
+      type: object
+      required: [decision, selectedServerId, changed, affectedServerIds, configDeploymentRequired]
+      properties:
+        decision: { $ref: "#/components/schemas/AutomaticSelectionDecision" }
+        previousServerId: { type: string, format: uuid }
+        selectedServerId: { type: string, format: uuid }
+        changed: { type: boolean }
+        affectedServerIds:
+          type: array
+          items: { type: string, format: uuid }
+        configDeploymentRequired: { type: boolean }

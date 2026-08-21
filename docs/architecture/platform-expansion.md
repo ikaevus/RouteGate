@@ -173,7 +173,7 @@ HTTP-01 and stores its own ACME material locally. No Manager nginx private key
 is reused or distributed. This slice supports dedicated VPN Nodes only;
 Hybrid-node certificate coordination remains explicit future work.
 
-## Planned slices
+## Delivery slices
 
 1. **RG-114A — Node Roles & Protocol Capability Foundation**
 2. **RG-114B — Remote VPN Node Bootstrap & Inventory**
@@ -209,8 +209,20 @@ not select or mutate an account's server.
 VPN accounts may override their inherited routing profile and may record one
 node group as a future balancing target. The concrete `serverId` remains the
 actual endpoint, and the routing-profile resolution order is account, server,
-then default. Automatic placement and failover remain RG-114I. See
+then default. Explainable selection execution is introduced by RG-114I. See
 [ADR-0008](../decisions/ADR-0008-node-groups-routing-extensions.md).
+
+## Explainable automatic selection
+
+RG-114I executes the node-group strategy through a preview/apply lifecycle.
+Ready nodes are preferred, degraded fallback is explicit, weighted decisions use
+stable account-keyed rendezvous hashing, and cooldown prevents repeated moves.
+Apply re-evaluates and locks the account before changing its concrete server.
+
+The response identifies every VPN node whose configuration must be rendered and
+deployed next. A background health-triggered failover loop remains disabled
+until RouteGate can coordinate those deployments atomically. See
+[ADR-0009](../decisions/ADR-0009-explainable-automatic-selection.md).
 
 Exact slice names may evolve, but dependency order should remain: role and
 capability contracts before distributed onboarding; adapter boundary before new

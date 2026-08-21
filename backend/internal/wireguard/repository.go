@@ -56,7 +56,7 @@ func EnsureServerPeerCredentials(ctx context.Context, pool *pgxpool.Pool, server
 			return err
 		}
 		peers = append(peers, item)
-		if item.address != "" {
+		if item.address != "" && PeerAddressInServerPrefix(serverAddress, item.address) {
 			used = append(used, item.address)
 		}
 	}
@@ -69,6 +69,9 @@ func EnsureServerPeerCredentials(ctx context.Context, pool *pgxpool.Pool, server
 		privateKey := strings.TrimSpace(item.privateKey)
 		publicKey := strings.TrimSpace(item.publicKey)
 		address := strings.TrimSpace(item.address)
+		if !PeerAddressInServerPrefix(serverAddress, address) {
+			address = ""
+		}
 		if privateKey == "" {
 			keypair, keyErr := GenerateKeypair()
 			if keyErr != nil {
