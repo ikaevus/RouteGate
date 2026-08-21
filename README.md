@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Manage VPN servers, accounts, routing profiles, configuration deployment, client access, delivery, and operational visibility from one web interface.
+  Operate VPN nodes, accounts, protocols, routing, configuration deployment, client access, delivery, and operational state from one control plane.
 </p>
 
 <p align="center">
@@ -31,52 +31,114 @@
 
 ## What is RouteGate?
 
-RouteGate is an independent open-source platform for operating self-hosted Linux VPN infrastructure.
+RouteGate is an independent open-source control plane for operating self-hosted Linux VPN infrastructure.
 
 ```text
-RouteGate Manager → RouteGate Agent → VPN Core
+RouteGate Manager → RouteGate Agent → managed VPN runtime
 ```
 
-- **Manager** provides the Admin UI, API, PostgreSQL-backed state, configuration lifecycle, operational workflows, delivery, and observability.
-- **Agent** runs on managed Linux servers and performs authenticated, allow-listed infrastructure operations.
-- **VPN Core** provides the VPN runtime. The current supported core is **sing-box**, with **VLESS / Reality** as the validated public path.
+The boundary is intentionally simple:
 
-RouteGate is designed for administrators who want a coherent infrastructure product instead of a collection of scripts, disconnected panels, and manual VPN configuration steps.
+- **Manager** owns desired state, the Admin UI and API, PostgreSQL-backed data, account and routing policy, configuration lifecycle, audit history, delivery, and aggregated operational state.
+- **Agent** runs on managed Linux nodes and performs authenticated, allow-listed host operations such as installation, validation, apply, service control, diagnostics, health checks, and rollback.
+- **VPN runtimes** remain replaceable behind explicit protocol/core adapters. RouteGate manages only combinations for which it can own the complete lifecycle safely.
 
-## Current project state
+Remote Agents do **not** connect directly to PostgreSQL, and RouteGate does not expose an arbitrary remote-shell channel from Manager to nodes.
 
-**RouteGate v0.1.0 is the first public MVP release. Development on `main` continues beyond the release baseline.**
+RouteGate is designed as an infrastructure product: administrators work with nodes, VPN accounts, protocols, routing policies, deployment state, and next actions instead of assembling those workflows from scripts and unrelated service-specific panels.
 
-The canonical clean-host flow has been validated end to end on Ubuntu 24.04 LTS:
+## Project state
+
+**RouteGate v0.1.0 is the first public MVP release. `main` has moved significantly beyond that release baseline.**
+
+The canonical clean-host path remains the compatibility and production-like validation baseline:
 
 ```text
-Clean Ubuntu VPS
-→ one-command RouteGate installer
+Clean Ubuntu 24.04 LTS host
+→ one-command RouteGate installation
 → PostgreSQL + Manager + Admin UI + nginx/HTTPS + local Agent
-→ secure one-time /setup activation
+→ single-use /setup activation
 → Guided Workflow / Next Action First
-→ install sing-box through RouteGate
-→ configure VLESS / Reality
-→ create VPN account
+→ managed VPN runtime installation
+→ VLESS / Reality configuration
+→ VPN account creation
 → render → validate → apply → health check → rollback boundary
-→ persistent client profile / QR / VLESS link / subscription
+→ persistent client access / QR / subscription
 → working VPN connection
 → reboot
-→ automatic service recovery
+→ service recovery
 → working VPN connection after reboot
 ```
 
-The production-like validation environment is operated at `us.routegate.org` and uses the same native systemd/PostgreSQL/nginx model as the supported clean-host deployment.
+The production-like validation environment is operated at `us.routegate.org` using native systemd services, PostgreSQL, nginx, and HTTPS.
 
-Since the v0.1.0 release baseline, `main` has continued to evolve with scalable VPN-account management, real Dashboard runtime data, stronger operational visibility, and the Delivery / external-integration domain direction.
+Development on `main` now also includes the RG-114 platform-expansion architecture: deployment roles, remote VPN Node onboarding, explicit VPN Core adapter boundaries, multiple managed protocol families, multi-protocol account profiles, multi-runtime apply, node groups, and explainable Automatic Selection.
+
+> **Release note:** features described as available on `main` may not exist in the published v0.1.0 release bundle. The v0.1.0 release notes remain the source of truth for that specific release.
+
+### Validation and implementation status
+
+| Area | Current status |
+|---|---|
+| Clean Ubuntu 24.04 LTS All-in-One / Hybrid deployment | Production-like validated baseline |
+| VLESS / Reality | Production-like validated public VPN path |
+| Remote VPN Node bootstrap and inventory | Implemented on `main` |
+| Native WireGuard | Managed adapter implemented on `main` |
+| Hysteria2 | Managed adapter implemented on `main`; current TLS/ACME ownership targets dedicated VPN Nodes |
+| Shadowsocks 2022 | Managed adapter implemented on `main` |
+| MTProto / FakeTLS | Managed adapter implemented on `main` |
+| Multiple protocols on one VPN node | Manager/Agent multi-runtime lifecycle implemented on `main` |
+| Node groups and explainable Automatic Selection | Preview/apply workflow implemented on `main`; unattended failover is intentionally not enabled |
+
+Implementation support and production-like validation are deliberately treated as different claims. A detected binary or upstream feature is not considered a RouteGate-managed capability until its settings, credentials, render, validation, apply, rollback, health, client-access, and redaction lifecycle are controlled by RouteGate.
+
+## Deployment model
+
+RouteGate uses explicit node roles rather than a permanent root-server hierarchy.
+
+| Role | Intended components | Agent required | VPN configuration deploy |
+|---|---|---|---|
+| **Management Node** | Manager, PostgreSQL, Admin UI, nginx/HTTPS | No | No |
+| **VPN Node** | Agent and managed VPN runtime(s) | Yes | Yes |
+| **Hybrid Node** | Management plane + VPN plane | Yes for VPN plane | Yes |
+
+The familiar single-server installation is a **Hybrid Node**. Additional VPN Nodes register with Manager using a short-lived, single-use bootstrap token and then report heartbeat, capabilities, versions, runtime state, telemetry, and task results through the Manager API.
+
+Manager evaluates three things separately before offering an action:
+
+1. **role** — what the node is intended to host;
+2. **capability** — what the registered Agent can manage;
+3. **runtime state** — what is installed and healthy now.
+
+See [Platform Expansion Architecture](docs/architecture/platform-expansion.md) and the [Remote VPN Node guide](docs/deployment/remote-vpn-node.md).
+
+## Managed protocol model
+
+RouteGate separates **VPN Core**, **Protocol**, **Transport**, and **Security** instead of treating every VPN feature as one interchangeable mode.
+
+| Protocol | Managed runtime | Transport / security model | Status on `main` |
+|---|---|---|---|
+| **VLESS / Reality** | sing-box | TCP + Reality / XTLS Vision | Managed and production-like validated |
+| **WireGuard** | native `wireguard-tools` / `wg-quick` | UDP + WireGuard cryptography | Managed |
+| **Hysteria2** | Hysteria | QUIC + TLS / ACME | Managed; dedicated VPN Node for the current certificate lifecycle |
+| **Shadowsocks 2022** | sing-box | TCP + AEAD-2022 | Managed |
+| **MTProto / FakeTLS** | mtg | TCP + FakeTLS | Managed |
+
+A VPN client profile may use `Auto` to inherit the node default or explicitly select one managed protocol. Manager resolves the effective protocol for every active account before rendering configuration, so one VPN Node can require multiple managed runtimes at the same time.
+
+VLESS and Shadowsocks are composed into the shared sing-box runtime. Native WireGuard, Hysteria2, and MTProto retain separate runtime/service ownership. Agent validates all required runtimes before promotion and rolls already-applied runtimes back if a later step in the same node deployment fails.
+
+Hysteria2 owns its VPN-plane certificate locally through ACME. RouteGate does not reuse or distribute the Manager nginx private key; coordination of that certificate lifecycle on Hybrid nodes is not claimed by the current Hysteria2 path.
+
+Cross-node atomic deployment remains a separate problem and is not implied by multi-runtime support on one node.
 
 ## Install RouteGate
 
-The supported public installation contract is a single-node **Ubuntu 24.04 LTS amd64** host using native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS.
+The current public clean-host installation contract is **Ubuntu 24.04 LTS amd64** with native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS.
 
 Before installation:
 
-- create a DNS `A` record for the RouteGate hostname pointing to the VPS;
+- create a DNS `A` record for the RouteGate hostname pointing to the host;
 - make TCP ports 80 and 443 reachable;
 - connect as `root` or a user with working `sudo`.
 
@@ -87,80 +149,119 @@ curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
   | sudo bash
 ```
 
-The installer downloads the published RouteGate release bundle and verifies it against `SHA256SUMS`. To install v0.1.0 explicitly, use `--version v0.1.0` as documented in the [Clean VPS Installer guide](docs/deployment/clean-vps-installer.md).
+The installer downloads a published RouteGate release bundle and verifies it against `SHA256SUMS`. To install v0.1.0 explicitly, use `--version v0.1.0` as documented in the [Clean VPS Installer guide](docs/deployment/clean-vps-installer.md).
 
 After installation, open the single-use `/setup` link printed by the installer, choose the administrator password, and continue through the guided Dashboard workflow.
 
-Additional VPN Nodes are attached from the Manager UI. Create a VPN Node, choose
-**Connect server**, and copy the generated one-command Agent installer to the
-target Ubuntu 24.04 host. See the [Remote VPN Node guide](docs/deployment/remote-vpn-node.md).
+On versions that include remote-node onboarding, additional VPN Nodes are attached from Manager: create a VPN Node, choose **Connect server**, and run the generated Agent bootstrap command on the target Ubuntu host.
 
-In the canonical All-in-One layout, nginx/HTTPS owns TCP `443`; the recommended VLESS / Reality listener uses TCP `8443`.
+In the canonical Hybrid layout, nginx/HTTPS owns TCP `443`; the recommended VLESS / Reality listener uses TCP `8443` to avoid the HTTPS listener conflict.
 
 ## Product principles
 
 - **Self-hosted by design** — infrastructure and data remain under the operator's control.
-- **Open source** — security-sensitive and operationally critical code stays inspectable and self-buildable.
-- **Guided Workflow / Next Action First** — every major workflow should expose the current state and the most logical next action.
-- **Product model over implementation model** — administrators manage infrastructure concepts, not internal service plumbing.
-- **Operational safety** — configuration deployment follows render, validation, apply, health-check, and rollback boundaries.
-- **Provider-independent integrations** — external communication is modeled through a Delivery domain rather than scattered provider-specific logic.
-- **No artificial product limits** — RouteGate is one open-source self-hosted product, not a crippled community edition around closed critical features.
+- **Open source** — security-sensitive and operationally critical code remains inspectable and self-buildable.
+- **Guided Workflow / Next Action First** — major screens communicate current state and expose the most logical next action.
+- **Product model over implementation model** — administrators manage infrastructure concepts rather than internal service plumbing.
+- **Operational safety** — deployment follows render, validation, apply, health-check, and rollback boundaries.
+- **Explicit capability contracts** — detecting a binary is not the same as supporting its lifecycle.
+- **Control-plane isolation** — remote Agents have no direct database access and no general remote-shell authority.
+- **Provider-independent integrations** — external communication belongs to the Delivery domain rather than being scattered through product logic.
+- **No artificial product limits** — RouteGate is one open-source self-hosted product, not a restricted edition around closed critical features.
 - **Protected brand** — source code is AGPLv3-or-later; the RouteGate name and official branding are governed separately.
 
-## Current capabilities
+## Current capabilities on `main`
 
-RouteGate currently includes working foundations and end-to-end flows for:
+### Control plane and node management
 
-- clean Ubuntu 24.04 LTS VPS installation;
-- PostgreSQL, Manager, Admin UI, nginx/HTTPS, and local Agent deployment;
+- PostgreSQL-backed Manager state and migrations;
+- React/TypeScript Admin UI with English-first product language and Russian localization;
 - secure single-use administrator activation at `/setup`;
-- automatic local All-in-One Server and Agent registration;
-- state-aware Dashboard and Guided Workflow;
-- real runtime Dashboard data rather than static operational placeholders;
-- VPN Core detection and allow-listed sing-box installation/service management;
-- VLESS / Reality settings and validated first-run configuration;
-- scalable VPN-account lifecycle, search, and management;
-- persistent client profiles, QR codes, VLESS links, and subscriptions;
-- configuration render, validation, deployment, health checking, and rollback foundations;
+- Management, VPN, and Hybrid deployment roles;
+- local Hybrid-node registration and remote VPN Node bootstrap;
+- short-lived registration tokens and persistent Agent credentials;
+- heartbeat, compatibility, capability, version, runtime, and telemetry inventory;
+- state-aware Dashboard and operational next-action guidance;
+- allow-listed Agent infrastructure operations rather than arbitrary command execution.
+
+### VPN protocols and configuration lifecycle
+
+- explicit Manager/Agent adapter contracts;
+- VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS managed protocol families;
+- per-node default protocol plus per-client-profile `Auto` or explicit protocol preference;
+- multi-runtime rendering and apply on one VPN node;
+- render, validate, apply, health-check, rollback, and configuration history boundaries;
+- server/account credential lifecycle and protected client-access rendering;
+- certificate observation and recovery tooling for the Manager HTTPS path;
+- protocol-specific certificate ownership where required.
+
+### VPN accounts and client access
+
+- scalable VPN-account lifecycle, search, filtering, and management;
+- persistent client profiles;
+- account-level protocol selection;
+- QR codes, share/client representations, and subscription access;
+- User Portal and self-service foundations;
+- traffic collection, visibility, limits, and enforcement foundations.
+
+### Routing and node selection
+
 - routing profiles with Direct, VPN, and Block actions;
-- user portal and self-service access foundations;
-- traffic collection, visibility, limits, and enforcement foundations;
-- version, schema, protocol, and compatibility reporting;
-- PostgreSQL-backed persistence and migrations;
-- English-first UI with Russian localization;
-- Delivery architecture for provider-independent external communication, with Email/SMTP, Telegram, and WhatsApp adapter boundaries defined for integration work.
+- account-level routing-profile overrides with explicit inheritance;
+- node groups with priority/weight membership;
+- candidate health derived from role, Agent state, heartbeat freshness, protocol capability, runtime state, and load;
+- explainable Automatic Selection preview/apply with cooldown and optional degraded fallback;
+- protocol-aware candidate evaluation for accounts with an explicit protocol override;
+- explicit deployment-required result after moving an account between nodes.
+
+Automatic Selection is intentionally operator-driven today. RouteGate does **not** silently move accounts in the background when health changes because safe unattended failover requires coordinated deployment across the previous and selected nodes.
+
+### Operations and integrations
+
+- runtime Dashboard data and operational visibility;
+- audit-oriented state transitions;
+- recovery/status tooling with fixed allow-listed actions;
+- Delivery domain for durable external communication requests, templates, retries, lifecycle, history, and provider adapters;
+- Email/SMTP, Telegram Bot API, and WhatsApp Business Cloud API adapter boundaries in the integration architecture.
 
 ## Architecture
 
 ```text
-Administrator
-     │
-     ▼
-RouteGate Admin UI
-     │
-     ▼
-RouteGate Manager ───────── PostgreSQL
-     │
-     ├── Servers / Accounts / Routing / Traffic / Delivery
-     │
-     │ authenticated task queue
-     ▼
-RouteGate Agent
-     │
-     │ install / render / validate / apply / restart / health check / rollback
-     ▼
-sing-box
-     │
-     ▼
-VPN clients
+Administrator / User
+        │
+        ▼
+RouteGate Admin UI / User Portal
+        │
+        ▼
+RouteGate Manager ───────────── PostgreSQL
+        │
+        ├── Nodes / Accounts / Protocols / Routing
+        ├── Config lifecycle / Traffic / Delivery / Audit
+        │
+        └── authenticated Agent tasks + aggregated telemetry
+                 │
+         ┌───────┴────────┐
+         ▼                ▼
+RouteGate Agent      RouteGate Agent
+    VPN Node A           VPN Node B
+         │                   │
+         ▼                   ▼
+ managed adapter(s)     managed adapter(s)
+         │                   │
+         ├─ sing-box         ├─ sing-box
+         ├─ WireGuard        ├─ WireGuard
+         ├─ Hysteria         ├─ Hysteria
+         └─ mtg              └─ mtg
+                 │
+                 ▼
+              VPN clients
 ```
 
-The Manager follows a **modular monolith** architecture. Domain boundaries are kept explicit, but components are extracted into separately deployed services only when demonstrated scaling or operational pressure justifies it.
+The Manager follows a **modular monolith** architecture. Domain boundaries are kept explicit, but components should become separately deployed services only when real scaling or operational pressure justifies that complexity.
 
 ### Delivery / external integrations
 
-The accepted integration direction is:
+The integration boundary is:
 
 ```text
 RouteGate Manager
@@ -176,7 +277,7 @@ Provider Adapter
       └── WhatsApp Business Cloud API → WhatsApp
 ```
 
-Delivery owns durable requests, template selection, idempotency, lifecycle/status, bounded retries, restart-safe recovery, and audit/history. Provider adapters contain only external-system communication logic.
+Delivery owns durable requests, template selection, idempotency, lifecycle/status, bounded retries, restart-safe recovery, and audit/history. Provider adapters contain external-system communication logic rather than leaking provider details into core product domains.
 
 ## Technology stack
 
@@ -184,11 +285,11 @@ Delivery owns durable requests, template selection, idempotency, lifecycle/statu
 |---|---|
 | Manager | Go |
 | Agent | Go |
-| Admin UI | React, TypeScript, Vite |
+| Admin UI / User Portal | React, TypeScript, Vite |
 | Database | PostgreSQL |
-| VPN Core | sing-box |
-| Current validated VPN path | VLESS / Reality |
-| Supported public deployment | Ubuntu 24.04 LTS, native systemd services, PostgreSQL, nginx, Let's Encrypt TLS |
+| Managed VPN runtimes on `main` | sing-box, native WireGuard, Hysteria, mtg |
+| Production-like validation baseline | VLESS / Reality on Ubuntu 24.04 LTS |
+| Clean-host deployment | native systemd services, PostgreSQL, nginx, Let's Encrypt TLS |
 | Development | Docker Compose |
 | Public website | React/Vite static site on GitHub Pages |
 
@@ -199,15 +300,15 @@ agent/       RouteGate Agent
 backend/     RouteGate Manager API and database migrations
 brand/       Official brand assets and design tokens
 deploy/      Development and deployment resources
-docs/        Architecture, API, operations, features, and release notes
-frontend/    RouteGate Admin UI
+docs/        Architecture, API, operations, features, decisions, and release notes
+frontend/    RouteGate Admin UI and User Portal
 scripts/     Development, packaging, and operational helpers
 website/     Public routegate.org website
 ```
 
 ## Development quick start
 
-Docker Compose is the contributor/development path; it is not the supported public VPS installation contract.
+Docker Compose is the contributor/development path; it is not the supported public clean-host installation contract.
 
 ### Requirements
 
@@ -250,14 +351,18 @@ Development defaults are documented in [`.env.example`](.env.example). Never use
 
 ## Documentation
 
+Start here:
+
+- [Documentation index](docs/)
+- [Platform Expansion Architecture](docs/architecture/platform-expansion.md)
 - [Clean VPS Installer](docs/deployment/clean-vps-installer.md)
+- [Remote VPN Node](docs/deployment/remote-vpn-node.md)
 - [MVP Deployment Baseline](docs/deployment/mvp-deployment-baseline.md)
-- [Release Readiness Checklist](docs/deployment/release-readiness-checklist.md)
-- [v0.1.0 release notes](docs/release/v0.1.0.md)
-- [Architecture](docs/architecture/)
 - [API documentation](docs/api/)
 - [Feature documentation](docs/features/)
+- [Architecture decisions](docs/decisions/)
 - [Release documentation](docs/release/)
+- [v0.1.0 release notes](docs/release/v0.1.0.md)
 - [Official website](https://routegate.org)
 
 Documentation is English-first, with Russian localization developed alongside the product.
@@ -269,11 +374,12 @@ RouteGate is not:
 - an OPNsense plugin;
 - a firewall distribution;
 - a consumer VPN service;
-- a closed VPN panel;
-- a Hiddify / 3x-ui / Marzban clone;
+- a closed-source VPN panel;
 - a restriction-bypass marketing product.
 
-The current public release path does not promise Kubernetes/HA deployment, an appliance OS, official RouteGate mobile clients, or multiple production-validated VPN cores.
+The current project does not promise Kubernetes/HA orchestration, an appliance operating system, official RouteGate mobile clients, or identical production-like validation across every managed protocol and topology.
+
+Automatic Selection is currently an explainable preview/apply workflow, not an unattended health-triggered failover service. Cross-node atomic deployment, session draining, and live connection migration remain separate future problems.
 
 ## Security
 
