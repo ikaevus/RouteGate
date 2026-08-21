@@ -17,9 +17,9 @@ func validateClientProtocolDeploymentRole(protocol, deploymentRole string) error
 		return nil
 	}
 	if protocol == ClientProtocolHysteria2 {
-		return unavailableClientConnection(fmt.Errorf("Hysteria2 is supported only on a dedicated VPN Node because its current ACME lifecycle cannot share the Hybrid Manager/nginx topology"))
+		return fmt.Errorf("%w: Hysteria2 is supported only on a dedicated VPN Node because its current ACME lifecycle cannot share the Hybrid Manager/nginx topology", ErrClientConnectionUnavailable)
 	}
-	return unavailableClientConnection(fmt.Errorf("protocol %q is not supported on deployment role %q", protocol, deploymentRole))
+	return fmt.Errorf("%w: protocol %q is not supported on deployment role %q", ErrClientConnectionUnavailable, protocol, deploymentRole)
 }
 
 func validateClientProtocolTopologyForSource(
