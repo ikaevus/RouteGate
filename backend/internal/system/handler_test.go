@@ -41,7 +41,7 @@ func TestVersionEndpointReturnsBuildAndSchemaMetadata(t *testing.T) {
 	if payload.Manager.Version != "dev" || payload.Manager.GitCommit != "unknown" {
 		t.Fatalf("unexpected manager metadata: %+v", payload.Manager)
 	}
-	if payload.Database.ExpectedSchemaVersion != 127 {
+	if payload.Database.ExpectedSchemaVersion != 128 {
 		t.Fatalf("unexpected schema metadata: %+v", payload.Database)
 	}
 	if payload.Database.AppliedSchemaVersion == nil || *payload.Database.AppliedSchemaVersion != "000124_node_deployment_roles" {

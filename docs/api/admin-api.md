@@ -320,3 +320,8 @@ curl -sS http://localhost:8080/api/v1/users \
 curl -sS -X POST http://localhost:8080/api/v1/auth/logout \
   -H "Authorization: Bearer ${TOKEN}"
 ```
+
+RG-114H adds node group CRUD/member/candidate endpoints and account routing
+policy endpoints. Candidate results are derived, read-only Manager state;
+`automaticSelection` remains false and no endpoint in this slice changes an
+account's concrete server assignment implicitly.

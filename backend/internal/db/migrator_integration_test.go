@@ -42,20 +42,63 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000127_shadowsocks_mtproto_adapters" {
-		t.Fatalf("applied schema version = %q, want 000127_shadowsocks_mtproto_adapters", version)
+	if version != "000128_node_groups_routing_extensions" {
+		t.Fatalf("applied schema version = %q, want 000128_node_groups_routing_extensions", version)
 	}
 
-	var deploymentRoleDefault string
+	var defaultRoleServerID, deploymentRoleDefault string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO servers (name, status)
 		VALUES ('RG-114 role default fixture', 'pending')
-		RETURNING deployment_role
-	`).Scan(&deploymentRoleDefault); err != nil {
+		RETURNING id::text, deployment_role
+	`).Scan(&defaultRoleServerID, &deploymentRoleDefault); err != nil {
 		t.Fatalf("create default-role server: %v", err)
 	}
 	if deploymentRoleDefault != "vpn" {
 		t.Fatalf("new server deployment role = %q, want vpn", deploymentRoleDefault)
+	}
+
+	var nodeGroupID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO node_groups (name, selection_strategy)
+		VALUES ('RG-114H integration group', 'weighted')
+		RETURNING id::text
+	`).Scan(&nodeGroupID); err != nil {
+		t.Fatalf("create node group: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO node_group_members (node_group_id, server_id, priority, weight)
+		VALUES ($1::uuid, $2::uuid, 10, 250)
+	`, nodeGroupID, defaultRoleServerID); err != nil {
+		t.Fatalf("create node group member: %v", err)
+	}
+
+	var routingProfileID, vpnAccountID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO routing_profiles (name, description)
+		VALUES ('RG-114H account profile', 'integration fixture')
+		RETURNING id::text
+	`).Scan(&routingProfileID); err != nil {
+		t.Fatalf("create account routing profile: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_accounts (username, protocol, display_name, status, server_id)
+		VALUES ('rg114h-fixture', 'sing-box', 'RG-114H fixture', 'active', $1::uuid)
+		RETURNING id::text
+	`, defaultRoleServerID).Scan(&vpnAccountID); err != nil {
+		t.Fatalf("create VPN account routing fixture: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO vpn_account_routing_profiles (vpn_account_id, routing_profile_id)
+		VALUES ($1::uuid, $2::uuid)
+	`, vpnAccountID, routingProfileID); err != nil {
+		t.Fatalf("create VPN account routing profile assignment: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO vpn_account_node_groups (vpn_account_id, node_group_id)
+		VALUES ($1::uuid, $2::uuid)
+	`, vpnAccountID, nodeGroupID); err != nil {
+		t.Fatalf("create VPN account routing policy: %v", err)
 	}
 
 	rows, err := pool.Query(ctx, `
@@ -332,8 +375,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000127_shadowsocks_mtproto_adapters" {
-		t.Fatalf("applied schema version = %q, want 000127_shadowsocks_mtproto_adapters", version)
+	if version != "000128_node_groups_routing_extensions" {
+		t.Fatalf("applied schema version = %q, want 000128_node_groups_routing_extensions", version)
 	}
 }
 

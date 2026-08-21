@@ -122,7 +122,7 @@ func TestClientProfileUniquenessRepairMigrationRepairsHistoricalDrift(t *testing
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000127_shadowsocks_mtproto_adapters" {
-		t.Fatalf("applied schema version = %q, want 000127_shadowsocks_mtproto_adapters", version)
+	if version != "000128_node_groups_routing_extensions" {
+		t.Fatalf("applied schema version = %q, want 000128_node_groups_routing_extensions", version)
 	}
 }

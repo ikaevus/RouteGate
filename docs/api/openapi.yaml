@@ -17,6 +17,8 @@ tags:
   - name: Agents
   - name: Users
   - name: Roles
+  - name: Node Groups
+  - name: VPN Accounts
 
 paths:
   /api/admin/health:
@@ -464,6 +466,245 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListPermissionsResponse"
+
+  /api/v1/node-groups:
+    get:
+      tags: [Node Groups]
+      summary: List node groups
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Node group list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/NodeGroup" }
+    post:
+      tags: [Node Groups]
+      summary: Create node group
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateNodeGroupRequest" }
+      responses:
+        "201":
+          description: Node group created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeGroup" }
+
+  /api/v1/node-groups/{group_id}:
+    get:
+      tags: [Node Groups]
+      summary: Get node group with members
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: group_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Node group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeGroup" }
+    patch:
+      tags: [Node Groups]
+      summary: Update node group policy
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: group_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateNodeGroupRequest" }
+      responses:
+        "200":
+          description: Updated node group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeGroup" }
+    delete:
+      tags: [Node Groups]
+      summary: Delete an unassigned node group
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: group_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Node group deleted }
+        "409": { description: Node group is assigned to a VPN account }
+
+  /api/v1/node-groups/{group_id}/members/{server_id}:
+    put:
+      tags: [Node Groups]
+      summary: Add or update a VPN node group member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: group_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: server_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertNodeGroupMemberRequest" }
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeGroupMember" }
+    delete:
+      tags: [Node Groups]
+      summary: Remove a node group member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: group_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: path
+          name: server_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Member removed }
+
+  /api/v1/node-groups/{group_id}/candidates:
+    get:
+      tags: [Node Groups]
+      summary: Inspect read-only node-group candidate health
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: group_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Candidate evidence; no automatic selection is performed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeGroupCandidatesResponse" }
+
+  /api/v1/vpn-accounts/{id}/routing-policy:
+    get:
+      tags: [VPN Accounts]
+      summary: Get effective account routing and node-group policy
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Account routing policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
+
+  /api/v1/vpn-accounts/{id}/routing-profile:
+    put:
+      tags: [VPN Accounts]
+      summary: Assign an account routing-profile override
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [routingProfileId]
+              properties:
+                routingProfileId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Updated account routing policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
+    delete:
+      tags: [VPN Accounts]
+      summary: Clear the account override and restore inheritance
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Inherited account routing policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
+
+  /api/v1/vpn-accounts/{id}/node-group:
+    put:
+      tags: [VPN Accounts]
+      summary: Assign a future node-group balancing target without moving the account
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeGroupId]
+              properties:
+                nodeGroupId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Updated account routing policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
+    delete:
+      tags: [VPN Accounts]
+      summary: Clear the future node-group target
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Account routing policy without a node-group target
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VPNAccountRoutingPolicy" }
 
 components:
   securitySchemes:
@@ -934,8 +1175,8 @@ components:
         database:
           type: object
           properties:
-            expectedSchemaVersion: { type: integer, example: 124 }
-            appliedSchemaVersion: { type: string, example: "000124_node_deployment_roles" }
+            expectedSchemaVersion: { type: integer, example: 128 }
+            appliedSchemaVersion: { type: string, example: "000128_node_groups_routing_extensions" }
         agentCompatibility:
           type: object
           properties:
@@ -948,3 +1189,121 @@ components:
             status: { type: string, example: manual }
             channel: { type: string, example: development }
             automaticUpdatesSupported: { type: boolean, example: false }
+
+    NodeGroup:
+      type: object
+      required: [id, name, selectionStrategy, memberCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        selectionStrategy: { type: string, enum: [priority, weighted] }
+        memberCount: { type: integer, minimum: 0 }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/NodeGroupMember" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateNodeGroupRequest:
+      type: object
+      required: [name, selectionStrategy]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 500 }
+        selectionStrategy: { type: string, enum: [priority, weighted] }
+
+    UpdateNodeGroupRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 500 }
+        selectionStrategy: { type: string, enum: [priority, weighted] }
+
+    NodeGroupMember:
+      type: object
+      required: [nodeGroupId, serverId, serverName, protocol, deploymentRole, priority, weight, enabled]
+      properties:
+        nodeGroupId: { type: string, format: uuid }
+        serverId: { type: string, format: uuid }
+        serverName: { type: string }
+        protocol: { type: string, enum: [vless, wireguard, hysteria2, shadowsocks, mtproto] }
+        deploymentRole: { type: string, enum: [vpn, hybrid] }
+        priority: { type: integer, minimum: 0, maximum: 10000 }
+        weight: { type: integer, minimum: 1, maximum: 1000 }
+        enabled: { type: boolean }
+
+    UpsertNodeGroupMemberRequest:
+      type: object
+      properties:
+        priority: { type: integer, minimum: 0, maximum: 10000, default: 100 }
+        weight: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+        enabled: { type: boolean, default: true }
+
+    NodeGroupCandidate:
+      type: object
+      required: [serverId, serverName, protocol, priority, weight, memberEnabled, nodeStatus, protocolSupported, eligible, health, signals]
+      properties:
+        serverId: { type: string, format: uuid }
+        serverName: { type: string }
+        protocol: { type: string }
+        priority: { type: integer }
+        weight: { type: integer }
+        memberEnabled: { type: boolean }
+        nodeStatus: { type: string }
+        agentStatus: { type: string }
+        lastSeenAt: { type: string, format: date-time }
+        load1: { type: number, format: double }
+        logicalCpus: { type: integer }
+        loadPerCpu: { type: number, format: double }
+        protocolSupported: { type: boolean }
+        runtimeState: { type: string }
+        eligible: { type: boolean }
+        health: { type: string, enum: [ready, degraded, unavailable] }
+        signals:
+          type: array
+          items: { type: string }
+
+    NodeGroupCandidatesResponse:
+      type: object
+      required: [nodeGroupId, selectionStrategy, candidates]
+      properties:
+        nodeGroupId: { type: string, format: uuid }
+        selectionStrategy: { type: string, enum: [priority, weighted] }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/NodeGroupCandidate" }
+
+    RoutingProfilePolicySummary:
+      type: object
+      required: [id, name, isDefault]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        isDefault: { type: boolean }
+
+    NodeGroupPolicySummary:
+      type: object
+      required: [id, name, selectionStrategy, memberCount]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        selectionStrategy: { type: string, enum: [priority, weighted] }
+        memberCount: { type: integer, minimum: 0 }
+
+    VPNAccountRoutingPolicy:
+      type: object
+      required: [vpnAccountId, routingProfileSource, currentServerInGroup, automaticSelection, clientRoutingSupported]
+      properties:
+        vpnAccountId: { type: string, format: uuid }
+        explicitRoutingProfile: { $ref: "#/components/schemas/RoutingProfilePolicySummary" }
+        effectiveRoutingProfile: { $ref: "#/components/schemas/RoutingProfilePolicySummary" }
+        routingProfileSource: { type: string, enum: [none, account, server, default] }
+        nodeGroup: { $ref: "#/components/schemas/NodeGroupPolicySummary" }
+        currentServerInGroup: { type: boolean }
+        automaticSelection:
+          type: boolean
+          enum: [false]
+        protocol: { type: string }
+        clientRoutingSupported: { type: boolean }

@@ -302,7 +302,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 		return profile, nil
 	}
 
-	routingProfile, err := r.getSubscriptionRoutingProfile(ctx, profile.Account.ServerID)
+	routingProfile, err := r.getSubscriptionRoutingProfile(ctx, profile.Account.ID, profile.Account.ServerID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return SubscriptionProfile{}, err
 	}
@@ -321,7 +321,7 @@ func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) e
 	return err
 }
 
-func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, serverID string) (RoutingProfile, error) {
+func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, accountID, serverID string) (RoutingProfile, error) {
 	profile, err := scanRoutingProfile(r.pool.QueryRow(ctx, `
 		SELECT
 			p.id::text,
@@ -331,9 +331,14 @@ func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, serverID
 		FROM routing_profiles p
 		WHERE p.id = COALESCE(
 			(
+				SELECT arp.routing_profile_id
+				FROM vpn_account_routing_profiles arp
+				WHERE arp.vpn_account_id = $1::uuid
+			),
+			(
 				SELECT srp.routing_profile_id
 				FROM server_routing_profiles srp
-				WHERE srp.server_id = $1::uuid
+				WHERE srp.server_id = $2::uuid
 			),
 			(
 				SELECT rp.id
@@ -344,7 +349,7 @@ func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, serverID
 			)
 		)
 		LIMIT 1
-	`, serverID))
+	`, accountID, serverID))
 	if err != nil {
 		return RoutingProfile{}, err
 	}

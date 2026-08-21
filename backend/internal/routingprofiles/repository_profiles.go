@@ -175,6 +175,10 @@ func (r *Repository) profileExists(ctx context.Context, id string) (bool, error)
 
 func (r *Repository) profileAssigned(ctx context.Context, id string) (bool, error) {
 	var assigned bool
-	err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM server_routing_profiles WHERE routing_profile_id = $1::uuid)`, id).Scan(&assigned)
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			EXISTS (SELECT 1 FROM server_routing_profiles WHERE routing_profile_id = $1::uuid)
+			OR EXISTS (SELECT 1 FROM vpn_account_routing_profiles WHERE routing_profile_id = $1::uuid)
+	`, id).Scan(&assigned)
 	return assigned, err
 }

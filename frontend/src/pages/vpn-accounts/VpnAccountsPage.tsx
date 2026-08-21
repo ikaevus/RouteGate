@@ -12,6 +12,7 @@ import { VpnAccessDeliveryPanel } from './VpnAccessDeliveryPanel';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
+import { VpnAccountRoutingPolicyPanel } from './VpnAccountRoutingPolicyPanel';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 import './vpnAccountManagement.css';
 import './vpnAccountNotes.css';
@@ -171,6 +172,7 @@ export function VpnAccountsPage() {
 
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
+          {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
           {accountId && <VpnAccessDeliveryPanel accountId={accountId} />}
 
           {accountId && (
