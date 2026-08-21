@@ -10,6 +10,7 @@ PUBLIC_URL=${ROUTEGATE_PUBLIC_URL_OVERRIDE:-https://us.routegate.org}
 WORK_DIR=$(mktemp -d /tmp/routegate-production-like.XXXXXX)
 BACKUP_DIR=""
 DB_URL=""
+EXPECTED_SCHEMA=""
 MUTATED=0
 DB_MAY_BE_MUTATED=0
 STAGE=initializing
@@ -103,6 +104,15 @@ source "$WORK_DIR/metadata/manifest.env"
 [[ "$OS" == linux ]]
 [[ "$ARCH" == amd64 ]]
 
+EXPECTED_SCHEMA=$(
+  find "$WORK_DIR/manager/migrations" -maxdepth 1 -type f -name '*.up.sql' -printf '%f\n' \
+    | LC_ALL=C sort \
+    | tail -n 1 \
+    | sed 's/\.up\.sql$//'
+)
+[[ -n "$EXPECTED_SCHEMA" ]] || { printf 'Release bundle contains no database migrations.\n' >&2; exit 1; }
+log "bundle expected schema=${EXPECTED_SCHEMA}"
+
 set -a
 # shellcheck disable=SC1091
 source /etc/routegate/manager.env
@@ -168,8 +178,12 @@ done
 [[ "$manager_ready" == 1 ]]
 
 STAGE=schema_validation
-latest_schema=$(psql "$DB_URL" -qAtc "SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1")
-[[ "$latest_schema" == 000123_server_geography ]]
+latest_schema=$(psql "$DB_URL" -qAtc "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
+if [[ "$latest_schema" != "$EXPECTED_SCHEMA" ]]; then
+  printf 'Database schema mismatch after deploy: applied=%s expected=%s\n' "$latest_schema" "$EXPECTED_SCHEMA" >&2
+  exit 1
+fi
+log "database schema=${latest_schema}"
 
 STAGE=agent_start
 systemctl start routegate-agent
@@ -193,6 +207,6 @@ public_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")
 
 STAGE=complete
 trap - ERR
-log "RG-113I production-like deploy and observability validation PASSED"
+log "production-like deploy and validation PASSED"
 log "deployed_commit=$EXPECTED_COMMIT"
 log "backup=$BACKUP_DIR"
