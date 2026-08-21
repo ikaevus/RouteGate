@@ -22,6 +22,26 @@ func validateClientProtocolDeploymentRole(protocol, deploymentRole string) error
 	return unavailableClientConnection(fmt.Errorf("protocol %q is not supported on deployment role %q", protocol, deploymentRole))
 }
 
+func validateClientProtocolTopologyForSource(
+	ctx context.Context,
+	source any,
+	subscription SubscriptionProfile,
+	profile ClientProfile,
+) error {
+	if subscription.Server == nil {
+		return nil
+	}
+	validator, ok := source.(clientProtocolTopologyValidator)
+	if !ok {
+		return nil
+	}
+	return validator.ValidateClientProtocolTopology(
+		ctx,
+		subscription.Server.ID,
+		resolveEffectiveClientProtocol(profile, subscription.Server),
+	)
+}
+
 func (r *Repository) ValidateClientProtocolTopology(ctx context.Context, serverID, protocol string) error {
 	var deploymentRole string
 	if err := r.pool.QueryRow(ctx, `
