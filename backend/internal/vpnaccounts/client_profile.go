@@ -23,6 +23,13 @@ const (
 	FingerprintModeAuto   = "auto"
 	FingerprintModeManual = "manual"
 
+	ClientProtocolAuto        = "auto"
+	ClientProtocolVLESS       = "vless"
+	ClientProtocolWireGuard   = "wireguard"
+	ClientProtocolHysteria2   = "hysteria2"
+	ClientProtocolShadowsocks = "shadowsocks"
+	ClientProtocolMTProto     = "mtproto"
+
 	DefaultAutoFingerprint = "firefox"
 )
 
@@ -38,6 +45,10 @@ var allowedDeviceTypes = map[string]struct{}{
 	"windows": {}, "ios": {}, "android": {}, "macos": {}, "linux": {}, "other": {},
 }
 
+var allowedClientProtocols = map[string]struct{}{
+	ClientProtocolAuto: {}, ClientProtocolVLESS: {}, ClientProtocolWireGuard: {}, ClientProtocolHysteria2: {}, ClientProtocolShadowsocks: {}, ClientProtocolMTProto: {},
+}
+
 type ClientProfile struct {
 	ID                  string    `json:"id"`
 	VPNAccountID        string    `json:"vpnAccountId"`
@@ -50,6 +61,7 @@ type ClientProfile struct {
 	ServerNameOverride  string    `json:"serverNameOverride,omitempty"`
 	SpiderX             string    `json:"spiderX"`
 	MTU                 *int      `json:"mtu,omitempty"`
+	Protocol            string    `json:"protocol"`
 	CreatedAt           time.Time `json:"createdAt"`
 	UpdatedAt           time.Time `json:"updatedAt"`
 }
@@ -63,21 +75,23 @@ type UpdateClientProfileRequest struct {
 	ServerNameOverride string `json:"serverNameOverride"`
 	SpiderX            string `json:"spiderX"`
 	MTU                *int   `json:"mtu"`
+	Protocol           string `json:"protocol"`
 }
 
 type ClientConnectionResponse struct {
-	VPNAccountID string        `json:"vpnAccountId"`
-	Format       string        `json:"format"`
-	VLESSLink    string        `json:"vlessLink,omitempty"`
-	WireGuardConfig string     `json:"wireGuardConfig,omitempty"`
-	Hysteria2URI string        `json:"hysteria2Uri,omitempty"`
-	ShadowsocksURI string      `json:"shadowsocksUri,omitempty"`
-	MTProtoURI string          `json:"mtprotoUri,omitempty"`
-	Profile      ClientProfile `json:"profile"`
-	Endpoint     string        `json:"endpoint"`
-	ServerName   string        `json:"serverName"`
-	Network      string        `json:"network"`
-	Flow         string        `json:"flow,omitempty"`
+	VPNAccountID    string        `json:"vpnAccountId"`
+	Protocol        string        `json:"protocol"`
+	Format          string        `json:"format"`
+	VLESSLink       string        `json:"vlessLink,omitempty"`
+	WireGuardConfig string        `json:"wireGuardConfig,omitempty"`
+	Hysteria2URI    string        `json:"hysteria2Uri,omitempty"`
+	ShadowsocksURI  string        `json:"shadowsocksUri,omitempty"`
+	MTProtoURI      string        `json:"mtprotoUri,omitempty"`
+	Profile         ClientProfile `json:"profile"`
+	Endpoint        string        `json:"endpoint"`
+	ServerName      string        `json:"serverName"`
+	Network         string        `json:"network"`
+	Flow            string        `json:"flow,omitempty"`
 }
 
 type clientProfileRepository interface {
@@ -102,6 +116,7 @@ func (r *Repository) GetOrCreateClientProfile(ctx context.Context, vpnAccountID 
 			server_name_override,
 			spider_x,
 			mtu,
+			protocol,
 			created_at,
 			updated_at
 	`, vpnAccountID))
@@ -122,6 +137,7 @@ func (r *Repository) UpdateClientProfile(ctx context.Context, vpnAccountID strin
 			server_name_override = NULLIF($7, ''),
 			spider_x = $8,
 			mtu = $9,
+			protocol = $10,
 			updated_at = now()
 		WHERE vpn_account_id = $1::uuid
 		RETURNING
@@ -135,9 +151,10 @@ func (r *Repository) UpdateClientProfile(ctx context.Context, vpnAccountID strin
 			server_name_override,
 			spider_x,
 			mtu,
+			protocol,
 			created_at,
 			updated_at
-	`, vpnAccountID, request.Name, request.ClientType, request.DeviceType, request.FingerprintMode, request.Fingerprint, request.ServerNameOverride, request.SpiderX, request.MTU))
+	`, vpnAccountID, request.Name, request.ClientType, request.DeviceType, request.FingerprintMode, request.Fingerprint, request.ServerNameOverride, request.SpiderX, request.MTU, request.Protocol))
 }
 
 func scanClientProfile(row scanner) (ClientProfile, error) {
@@ -155,6 +172,7 @@ func scanClientProfile(row scanner) (ClientProfile, error) {
 		&serverNameOverride,
 		&profile.SpiderX,
 		&mtu,
+		&profile.Protocol,
 		&profile.CreatedAt,
 		&profile.UpdatedAt,
 	); err != nil {
@@ -166,6 +184,9 @@ func scanClientProfile(row scanner) (ClientProfile, error) {
 	if mtu.Valid {
 		value := int(mtu.Int32)
 		profile.MTU = &value
+	}
+	if strings.TrimSpace(profile.Protocol) == "" {
+		profile.Protocol = ClientProtocolAuto
 	}
 	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
 	return profile, nil
@@ -232,6 +253,8 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 			Metadata: map[string]any{
 				"client_type":          response.Profile.ClientType,
 				"device_type":          response.Profile.DeviceType,
+				"protocol_preference":   response.Profile.Protocol,
+				"effective_protocol":    response.Protocol,
 				"fingerprint_mode":     response.Profile.FingerprintMode,
 				"resolved_fingerprint": response.Profile.ResolvedFingerprint,
 			},
@@ -256,26 +279,32 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	if subscription.Server.VPNProtocol == "wireguard" {
+	protocol := strings.TrimSpace(subscription.Server.VPNProtocol)
+	if protocol == "" {
+		protocol = ClientProtocolVLESS
+	}
+	if protocol == ClientProtocolWireGuard {
 		config, renderErr := RenderWireGuardClientConfig(subscription)
 		if renderErr != nil {
 			return ClientConnectionResponse{}, renderErr
 		}
 		return ClientConnectionResponse{
 			VPNAccountID: accountID,
+			Protocol: protocol,
 			Format: "wireguard-config",
 			WireGuardConfig: config,
 			Profile: profile,
 			Endpoint: subscriptionServerEndpoint(subscription.Server),
 		}, nil
 	}
-	if subscription.Server.VPNProtocol == "hysteria2" {
+	if protocol == ClientProtocolHysteria2 {
 		uri, renderErr := RenderHysteria2ClientURI(subscription)
 		if renderErr != nil {
 			return ClientConnectionResponse{}, renderErr
 		}
 		return ClientConnectionResponse{
 			VPNAccountID: accountID,
+			Protocol:     protocol,
 			Format:       "hysteria2-uri",
 			Hysteria2URI: uri,
 			Profile:      profile,
@@ -284,13 +313,14 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 			Network:      "quic",
 		}, nil
 	}
-	if subscription.Server.VPNProtocol == "shadowsocks" {
+	if protocol == ClientProtocolShadowsocks {
 		uri, renderErr := RenderShadowsocksClientURI(subscription)
 		if renderErr != nil {
 			return ClientConnectionResponse{}, renderErr
 		}
 		return ClientConnectionResponse{
 			VPNAccountID: accountID,
+			Protocol:     protocol,
 			Format:       "shadowsocks-uri",
 			ShadowsocksURI: uri,
 			Profile:      profile,
@@ -298,13 +328,14 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 			Network:      "tcp",
 		}, nil
 	}
-	if subscription.Server.VPNProtocol == "mtproto" {
+	if protocol == ClientProtocolMTProto {
 		uri, renderErr := RenderMTProtoClientURI(subscription)
 		if renderErr != nil {
 			return ClientConnectionResponse{}, renderErr
 		}
 		return ClientConnectionResponse{
 			VPNAccountID: accountID,
+			Protocol:     protocol,
 			Format:       "mtproto-uri",
 			MTProtoURI:   uri,
 			Profile:      profile,
@@ -318,6 +349,7 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	}
 	return ClientConnectionResponse{
 		VPNAccountID: accountID,
+		Protocol:     ClientProtocolVLESS,
 		Format:       "vless-reality-uri",
 		VLESSLink:    link,
 		Profile:      profile,
@@ -407,6 +439,7 @@ func normalizeClientProfileRequest(request *UpdateClientProfileRequest) {
 	request.Fingerprint = strings.ToLower(strings.TrimSpace(request.Fingerprint))
 	request.ServerNameOverride = strings.TrimSpace(request.ServerNameOverride)
 	request.SpiderX = strings.TrimSpace(request.SpiderX)
+	request.Protocol = strings.ToLower(strings.TrimSpace(request.Protocol))
 	if request.Name == "" {
 		request.Name = "Default"
 	}
@@ -425,6 +458,9 @@ func normalizeClientProfileRequest(request *UpdateClientProfileRequest) {
 	if request.SpiderX == "" {
 		request.SpiderX = "/"
 	}
+	if request.Protocol == "" {
+		request.Protocol = ClientProtocolAuto
+	}
 }
 
 func validateClientProfileRequest(request UpdateClientProfileRequest) error {
@@ -436,6 +472,9 @@ func validateClientProfileRequest(request UpdateClientProfileRequest) error {
 	}
 	if _, ok := allowedDeviceTypes[request.DeviceType]; !ok {
 		return errors.New("deviceType is not supported")
+	}
+	if _, ok := allowedClientProtocols[request.Protocol]; !ok {
+		return errors.New("protocol is not supported")
 	}
 	if request.FingerprintMode != FingerprintModeAuto && request.FingerprintMode != FingerprintModeManual {
 		return errors.New("fingerprintMode must be auto or manual")
