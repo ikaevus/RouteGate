@@ -11,6 +11,7 @@ import { TrafficStatsPanel } from './TrafficStatsPanel';
 import { VpnAccessDeliveryPanel } from './VpnAccessDeliveryPanel';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
+import { VpnAccountProtocolPreferencePanel } from './VpnAccountProtocolPreferencePanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
 import { VpnAccountRoutingPolicyPanel } from './VpnAccountRoutingPolicyPanel';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
@@ -172,6 +173,7 @@ export function VpnAccountsPage() {
 
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
+          {accountId && <VpnAccountProtocolPreferencePanel accountId={accountId} />}
           {accountId && <VpnClientConnectionPanel accountId={accountId} />}
           {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
           {accountId && <VpnAccessDeliveryPanel accountId={accountId} />}
