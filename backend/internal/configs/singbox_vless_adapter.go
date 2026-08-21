@@ -30,18 +30,7 @@ func (singBoxVLESSAdapter) Descriptor() platform.VPNCoreAdapterDescriptor {
 }
 
 func (singBoxVLESSAdapter) Render(config *RenderedConfig, info ServerConfigInfo) {
-	config.SingBox = SingBoxConfig{
-		Log:      SingBoxLog{Level: "info"},
-		Inbounds: []map[string]any{},
-		Outbounds: []SingBoxOutbound{{
-			Type: "direct",
-			Tag:  singBoxDirectTag,
-		}},
-		Route: SingBoxRoute{
-			Rules: []map[string]any{},
-			Final: singBoxDirectTag,
-		},
-	}
+	ensureSingBoxBase(config)
 
 	accounts := renderableVPNAccounts(info.VPNAccounts)
 	if len(accounts) > 0 {
@@ -51,6 +40,7 @@ func (singBoxVLESSAdapter) Render(config *RenderedConfig, info ServerConfigInfo)
 				ID:          account.ID,
 				DisplayName: accountDisplayName(account),
 				Status:      account.Status,
+				Protocol:    platform.VPNProtocolVLESS,
 				VLESSUUID:   account.VLESSUUID,
 			})
 
@@ -89,8 +79,8 @@ func (singBoxVLESSAdapter) Validate(config RenderedConfig, result *ValidationRes
 		result.Valid = false
 		result.Errors = append(result.Errors, "singBox.route.final is required.")
 	}
-	if len(config.SingBox.Inbounds) == 0 {
-		result.Warnings = append(result.Warnings, "No active VPN accounts are available; this config has no VPN listener and cannot be applied.")
+	if findVLESSInbound(config) == nil {
+		result.Warnings = append(result.Warnings, "No active VLESS accounts are available; this config has no VLESS listener and cannot be applied.")
 	}
 	if !config.Metadata.RealityEnabled {
 		return
@@ -146,7 +136,7 @@ func buildRealityTLS(info ServerConfigInfo) map[string]any {
 }
 
 func applySingBoxRoutingProfile(config *RenderedConfig, profile *RoutingProfileConfigInfo) {
-	if profile == nil {
+	if profile == nil || len(config.SingBox.Route.Rules) > 0 {
 		return
 	}
 	for _, rule := range profile.Rules {
@@ -217,7 +207,7 @@ func renderableVPNAccounts(accounts []VPNAccountConfigInfo) []VPNAccountConfigIn
 }
 
 func isVPNAccountRenderable(account VPNAccountConfigInfo) bool {
-	if account.Status != "active" || strings.TrimSpace(account.VLESSUUID) == "" {
+	if !accountUsesProtocol(account, platform.VPNProtocolVLESS) || account.Status != "active" || strings.TrimSpace(account.VLESSUUID) == "" {
 		return false
 	}
 	return account.TrafficEnforcementStatus != traffic.TrafficLimitEnforcementOverLimit
