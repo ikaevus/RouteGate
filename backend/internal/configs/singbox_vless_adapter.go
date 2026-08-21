@@ -40,7 +40,6 @@ func (singBoxVLESSAdapter) Render(config *RenderedConfig, info ServerConfigInfo)
 				ID:          account.ID,
 				DisplayName: accountDisplayName(account),
 				Status:      account.Status,
-				Protocol:    platform.VPNProtocolVLESS,
 				VLESSUUID:   account.VLESSUUID,
 			})
 
