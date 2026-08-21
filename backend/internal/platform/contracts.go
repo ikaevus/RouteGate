@@ -11,18 +11,18 @@ const (
 	VPNCoreHysteria  = "hysteria"
 	VPNCoreMTG       = "mtg"
 
-	VPNProtocolVLESS     = "vless"
-	VPNProtocolWireGuard = "wireguard"
-	VPNProtocolHysteria2 = "hysteria2"
+	VPNProtocolVLESS       = "vless"
+	VPNProtocolWireGuard   = "wireguard"
+	VPNProtocolHysteria2   = "hysteria2"
 	VPNProtocolShadowsocks = "shadowsocks"
 	VPNProtocolMTProto     = "mtproto"
 
-	VPNTransportTCP = "tcp"
-	VPNTransportUDP = "udp"
+	VPNTransportTCP  = "tcp"
+	VPNTransportUDP  = "udp"
 	VPNTransportQUIC = "quic"
 
-	VPNSecurityNone    = "none"
-	VPNSecurityReality = "reality"
+	VPNSecurityNone      = "none"
+	VPNSecurityReality   = "reality"
 	VPNSecurityWireGuard = "wireguard"
 	VPNSecurityTLS       = "tls"
 	VPNSecurityAEAD2022  = "aead-2022"
@@ -97,6 +97,26 @@ func (r DeploymentRole) HostsManagementPlane() bool {
 
 func (r DeploymentRole) HostsVPNPlane() bool {
 	return r == DeploymentRoleVPN || r == DeploymentRoleHybrid
+}
+
+// ProtocolSupportsDeploymentRole reports whether RouteGate can safely manage
+// the protocol lifecycle on the assigned topology. Hysteria2 currently owns
+// its ACME HTTP-01 certificate lifecycle on the VPN plane, so the managed path
+// requires a dedicated VPN Node rather than a Hybrid Node sharing ports and TLS
+// ownership with Manager/nginx.
+func ProtocolSupportsDeploymentRole(protocol string, role DeploymentRole) bool {
+	if !role.Valid() || !role.HostsVPNPlane() {
+		return false
+	}
+
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case VPNProtocolHysteria2:
+		return role == DeploymentRoleVPN
+	case VPNProtocolVLESS, VPNProtocolWireGuard, VPNProtocolShadowsocks, VPNProtocolMTProto:
+		return true
+	default:
+		return false
+	}
 }
 
 // EffectiveDeploymentRole keeps pre-RG-114 in-memory fixtures and serialized
