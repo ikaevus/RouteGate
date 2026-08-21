@@ -112,11 +112,17 @@ func (r *Repository) SecurityEvents(ctx context.Context, userID string, limit in
 		limit = 20
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, action, result, metadata, created_at
-		FROM audit_events
-		WHERE actor_user_id=$1
-		  AND action LIKE 'auth.%'
-		ORDER BY created_at DESC
+		SELECT e.id::text, e.action, e.result, e.metadata, e.created_at
+		FROM audit_events e
+		WHERE e.actor_user_id=$1
+		  AND e.action LIKE 'auth.%'
+		  AND e.created_at > COALESCE(
+		      (SELECT visibility.cleared_before
+		       FROM auth_security_event_visibility visibility
+		       WHERE visibility.user_id=$1),
+		      '-infinity'::timestamptz
+		  )
+		ORDER BY e.created_at DESC
 		LIMIT $2
 	`, userID, limit)
 	if err != nil {
@@ -133,6 +139,17 @@ func (r *Repository) SecurityEvents(ctx context.Context, userID string, limit in
 		events = append(events, event)
 	}
 	return events, rows.Err()
+}
+
+func (r *Repository) ClearSecurityEventHistory(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO auth_security_event_visibility (user_id, cleared_before, updated_at)
+		VALUES ($1, now(), now())
+		ON CONFLICT (user_id) DO UPDATE
+		SET cleared_before=EXCLUDED.cleared_before,
+		    updated_at=EXCLUDED.updated_at
+	`, userID)
+	return err
 }
 
 func (h *Handler) ListSecuritySessions(w http.ResponseWriter, r *http.Request) {
@@ -230,4 +247,30 @@ func (h *Handler) ListSecurityEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, SecurityEventsResponse{Events: events})
+}
+
+func (h *Handler) ClearSecurityEvents(w http.ResponseWriter, r *http.Request) {
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
+		return
+	}
+	if err := h.repo.ClearSecurityEventHistory(r.Context(), user.ID); err != nil {
+		h.logger.Error("clear security event history failed", "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to clear security event history."))
+		return
+	}
+	h.recordAudit(r, audit.EventInput{
+		ActorUserID:  user.ID,
+		ActorType:    audit.ActorTypeUser,
+		Action:       "security.events.cleared",
+		ResourceType: "user",
+		ResourceID:   user.ID,
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"ip_address": clientIP(r),
+			"user_agent": r.UserAgent(),
+		},
+	})
+	httpx.WriteJSON(w, http.StatusOK, StatusResponse{Status: "ok", Timestamp: time.Now().UTC()})
 }
