@@ -14,7 +14,7 @@ import {
   type NodeGroupMember,
   type NodeGroupSelectionStrategy,
 } from '../../entities/nodeGroup/api/nodeGroupApi';
-import { getServers } from '../../entities/server/api/serverApi';
+import { getServers, type DeploymentRole } from '../../entities/server/api/serverApi';
 import { t } from '../../shared/i18n/i18n';
 import './nodeGroups.css';
 
@@ -26,6 +26,25 @@ function formatDate(value?: string): string {
   if (!value) return t('common.notAvailable');
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function protocolLabel(protocol: string): string {
+  switch (protocol.trim().toLowerCase()) {
+    case 'wireguard': return 'WireGuard';
+    case 'hysteria2': return 'Hysteria2';
+    case 'shadowsocks': return 'Shadowsocks 2022';
+    case 'mtproto': return 'MTProto / FakeTLS';
+    case 'vless': return 'VLESS / Reality';
+    default: return protocol;
+  }
+}
+
+function deploymentRoleLabel(role: DeploymentRole | string): string {
+  switch (role) {
+    case 'management': return t('servers.deploymentRole.management');
+    case 'hybrid': return t('servers.deploymentRole.hybrid');
+    default: return t('servers.deploymentRole.vpn');
+  }
 }
 
 function signalLabel(signal: string): string {
@@ -169,6 +188,19 @@ export function NodeGroupsPage() {
     setMemberEnabled(member.enabled);
   }
 
+  function confirmDeleteGroup() {
+    if (!groupQuery.data) return;
+    if (window.confirm(t('nodeGroups.deleteConfirm', { name: groupQuery.data.name }))) {
+      deleteMutation.mutate();
+    }
+  }
+
+  function confirmRemoveMember(member: NodeGroupMember) {
+    if (window.confirm(t('nodeGroups.removeConfirm', { name: member.serverName }))) {
+      removeMemberMutation.mutate(member.serverId);
+    }
+  }
+
   const groups = groupsQuery.data?.items ?? [];
   const selectedGroup = groupQuery.data;
   const members = selectedGroup?.members ?? [];
@@ -222,7 +254,7 @@ export function NodeGroupsPage() {
               <form className="panel" onSubmit={saveGroup}>
                 <div className="panel-header">
                   <div><div className="panel-title">{t('nodeGroups.details')}</div><p className="panel-subtitle">{t('nodeGroups.strategyHelp')}</p></div>
-                  <div className="table-actions"><button className="small-button" type="button" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>{t('nodeGroups.delete')}</button><button className="primary-button" type="submit" disabled={saveMutation.isPending || name.trim() === ''}>{t('nodeGroups.save')}</button></div>
+                  <div className="table-actions"><button className="small-button" type="button" onClick={confirmDeleteGroup} disabled={deleteMutation.isPending}>{t('nodeGroups.delete')}</button><button className="primary-button" type="submit" disabled={saveMutation.isPending || name.trim() === ''}>{t('nodeGroups.save')}</button></div>
                 </div>
                 {(saveMutation.isError || deleteMutation.isError) && <div className="form-message form-message-error">{errorText(saveMutation.error ?? deleteMutation.error, saveMutation.isError ? t('nodeGroups.saveError') : t('nodeGroups.deleteError'))}</div>}
                 <div className="node-group-policy-grid">
@@ -235,7 +267,7 @@ export function NodeGroupsPage() {
               <div className="panel">
                 <div className="panel-header"><div><div className="panel-title">{t('nodeGroups.members')}</div><p className="panel-subtitle">{t('nodeGroups.membersHelp')}</p></div></div>
                 <form className="node-group-member-form" onSubmit={saveMember}>
-                  <label className="field"><span>{t('nodeGroups.node')}</span><select value={memberServerId} onChange={(event) => setMemberServerId(event.target.value)}><option value="">—</option>{vpnServers.map((server) => <option key={server.id} value={server.id}>{server.name} · {server.deploymentRole}</option>)}</select></label>
+                  <label className="field"><span>{t('nodeGroups.node')}</span><select value={memberServerId} onChange={(event) => setMemberServerId(event.target.value)}><option value="">—</option>{vpnServers.map((server) => <option key={server.id} value={server.id}>{server.name} · {deploymentRoleLabel(server.deploymentRole)}</option>)}</select></label>
                   <label className="field"><span>{t('nodeGroups.priority')}</span><input min="0" max="10000" type="number" value={memberPriority} onChange={(event) => setMemberPriority(Number(event.target.value))} /></label>
                   <label className="field"><span>{t('nodeGroups.weight')}</span><input min="1" max="1000" type="number" value={memberWeight} onChange={(event) => setMemberWeight(Number(event.target.value))} /></label>
                   <label className="node-group-enabled-field"><input type="checkbox" checked={memberEnabled} onChange={(event) => setMemberEnabled(event.target.checked)} />{t('nodeGroups.enabled')}</label>
@@ -245,7 +277,7 @@ export function NodeGroupsPage() {
                 {members.length === 0 ? <p className="empty-state">{t('nodeGroups.noMembers')}</p> : (
                   <div className="admin-table node-group-members-table">
                     <div className="admin-table-row admin-table-head node-group-member-row"><span>{t('nodeGroups.node')}</span><span>{t('nodeGroups.priority')}</span><span>{t('nodeGroups.weight')}</span><span>{t('nodeGroups.enabled')}</span><span /></div>
-                    {members.map((member) => <div className="admin-table-row node-group-member-row" key={member.serverId}><div><strong>{member.serverName}</strong><span>{member.protocol} · {member.deploymentRole}</span></div><span>{member.priority}</span><span>{member.weight}</span><span>{member.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</span><div className="table-actions"><button className="small-button" type="button" onClick={() => editMember(member)}>{t('nodeGroups.configure')}</button><button className="small-button" type="button" onClick={() => removeMemberMutation.mutate(member.serverId)}>{t('nodeGroups.remove')}</button></div></div>)}
+                    {members.map((member) => <div className="admin-table-row node-group-member-row" key={member.serverId}><div><strong>{member.serverName}</strong><span>{protocolLabel(member.protocol)} · {deploymentRoleLabel(member.deploymentRole)}</span></div><span>{member.priority}</span><span>{member.weight}</span><span>{member.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</span><div className="table-actions"><button className="small-button" type="button" onClick={() => editMember(member)}>{t('nodeGroups.configure')}</button><button className="small-button" type="button" disabled={removeMemberMutation.isPending} onClick={() => confirmRemoveMember(member)}>{t('nodeGroups.remove')}</button></div></div>)}
                   </div>
                 )}
               </div>
@@ -256,7 +288,7 @@ export function NodeGroupsPage() {
                 {candidates.length === 0 ? <p className="empty-state">{t('nodeGroups.noMembers')}</p> : (
                   <div className="admin-table node-group-candidates-table">
                     <div className="admin-table-row admin-table-head node-group-candidate-row"><span>{t('nodeGroups.node')}</span><span>{t('nodeGroups.health')}</span><span>{t('nodeGroups.load')}</span><span>{t('nodeGroups.lastSeen')}</span><span>{t('nodeGroups.signals')}</span></div>
-                    {candidates.map((candidate) => <div className="admin-table-row node-group-candidate-row" key={candidate.serverId}><div><strong>{candidate.serverName}</strong><span>{candidate.protocol} · P{candidate.priority} · W{candidate.weight}</span></div><span className={`badge badge-${candidate.health === 'ready' ? 'active' : candidate.health === 'degraded' ? 'pending' : 'error'}`}>{healthLabel(candidate)}</span><span>{candidate.loadPerCpu === undefined ? t('common.notAvailable') : candidate.loadPerCpu.toFixed(2)}</span><span>{formatDate(candidate.lastSeenAt)}</span><span>{candidate.signals.length === 0 ? '—' : candidate.signals.map(signalLabel).join(' · ')}</span></div>)}
+                    {candidates.map((candidate) => <div className="admin-table-row node-group-candidate-row" key={candidate.serverId}><div><strong>{candidate.serverName}</strong><span>{protocolLabel(candidate.protocol)} · {t('nodeGroups.priority')}: {candidate.priority} · {t('nodeGroups.weight')}: {candidate.weight}</span></div><span className={`badge badge-${candidate.health === 'ready' ? 'active' : candidate.health === 'degraded' ? 'pending' : 'error'}`}>{healthLabel(candidate)}</span><span>{candidate.loadPerCpu === undefined ? t('common.notAvailable') : candidate.loadPerCpu.toFixed(2)}</span><span>{formatDate(candidate.lastSeenAt)}</span><span>{candidate.signals.length === 0 ? '—' : candidate.signals.map(signalLabel).join(' · ')}</span></div>)}
                   </div>
                 )}
               </div>
