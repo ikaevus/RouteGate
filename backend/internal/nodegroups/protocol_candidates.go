@@ -2,7 +2,6 @@ package nodegroups
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"time"
 )
@@ -90,5 +89,3 @@ func (r *Repository) CandidatesForProtocol(ctx context.Context, groupID, protoco
 	}
 	return response, rows.Err()
 }
-
-var _ = sql.NullTime{}
