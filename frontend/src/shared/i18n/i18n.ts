@@ -38,6 +38,9 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...telegramPairingEn,
     ...portalV2En,
     ...nodeGroupsEn,
+    // Server Details decides the next action from the deployment role.
+    // Keep the generic creation banner true for Management, VPN, and Hybrid nodes.
+    'servers.createSuccess': 'Server created successfully.',
   },
   ru: {
     ...ru,
@@ -48,6 +51,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...telegramPairingRu,
     ...portalV2Ru,
     ...nodeGroupsRu,
+    'servers.createSuccess': 'Сервер успешно создан.',
   },
 };
 
