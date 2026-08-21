@@ -110,7 +110,7 @@ export function VpnAccountsPage() {
       <div className="page-header feature-page-header">
         <div>
           <h1>{t('vpnAccounts.title')}</h1>
-          <p>{t('vpnAccounts.subtitle')}</p>
+          <p>{copy.pageSubtitle}</p>
         </div>
       </div>
 
@@ -172,6 +172,7 @@ export function VpnAccountsPage() {
 
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
+          {accountId && <VpnClientConnectionPanel accountId={accountId} />}
           {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
           {accountId && <VpnAccessDeliveryPanel accountId={accountId} />}
 
@@ -179,8 +180,8 @@ export function VpnAccountsPage() {
             <div className="panel credentials-panel feature-detail-panel">
               <div className="panel-header">
                 <div>
-                  <div className="panel-title">{t('vpnAccounts.credentialsTitle')}</div>
-                  <p className="panel-subtitle">{t('vpnAccounts.credentialsSubtitle')}</p>
+                  <div className="panel-title">{copy.credentialsTitle}</div>
+                  <p className="panel-subtitle">{copy.credentialsSubtitle}</p>
                 </div>
               </div>
               {credentialsQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingCredentials')}</p>}
@@ -191,55 +192,54 @@ export function VpnAccountsPage() {
                   <DetailRow label={t('vpnAccounts.serverId')}>{formatValue(credentials.serverId)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.protocol')}>{formatValue(credentials.protocol)}</DetailRow>
                   <DetailRow label={t('vpnAccounts.endpoint')}>{formatValue(credentials.endpoint)}</DetailRow>
-					{credentials.protocol === 'mtproto' ? (
-						<>
-							<DetailRow label={t('vpnAccounts.mtprotoSecret')}><code>{formatValue(credentials.mtproto.secret)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.mtprotoPort')}>{formatValue(credentials.mtproto.port ? String(credentials.mtproto.port) : undefined)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.mtprotoDomain')}>{formatValue(credentials.mtproto.frontingDomain)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.credentialScope')}>{credentials.mtproto.shared ? t('vpnAccounts.nodeShared') : t('vpnAccounts.accountSpecific')}</DetailRow>
-						</>
-					) : credentials.protocol === 'shadowsocks' ? (
-						<>
-							<DetailRow label={t('vpnAccounts.shadowsocksUsername')}><code>{formatValue(credentials.shadowsocks.username)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.shadowsocksMethod')}>{formatValue(credentials.shadowsocks.method)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.shadowsocksServerKey')}><code>{formatValue(credentials.shadowsocks.serverKey)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.shadowsocksUserKey')}><code>{formatValue(credentials.shadowsocks.userKey)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.shadowsocksPort')}>{formatValue(credentials.shadowsocks.port ? String(credentials.shadowsocks.port) : undefined)}</DetailRow>
-						</>
-					) : credentials.protocol === 'hysteria2' ? (
-						<>
-							<DetailRow label={t('vpnAccounts.hysteria2Username')}><code>{formatValue(credentials.hysteria2.username)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.hysteria2Password')}><code>{formatValue(credentials.hysteria2.password)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.hysteria2Domain')}>{formatValue(credentials.hysteria2.domain)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.hysteria2Port')}>{formatValue(credentials.hysteria2.port ? String(credentials.hysteria2.port) : undefined)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.hysteria2AcmeEmail')}>{formatValue(credentials.hysteria2.acmeEmail)}</DetailRow>
-						</>
-					) : credentials.protocol === 'wireguard' ? (
-						<>
-							<DetailRow label={t('vpnAccounts.wireGuardAddress')}>{formatValue(credentials.wireGuard.address)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.wireGuardPublicKey')}><code>{formatValue(credentials.wireGuard.publicKey)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.wireGuardPrivateKey')}><code>{formatValue(credentials.wireGuard.privateKey)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.wireGuardServerKey')}><code>{formatValue(credentials.wireGuard.serverPublicKey)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.wireGuardDns')}>{formatValue(credentials.wireGuard.dns)}</DetailRow>
-						</>
-					) : (
-						<>
-							<DetailRow label={t('vpnAccounts.vlessUuid')}><code>{formatValue(credentials.vless.uuid)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.flow')}>{formatValue(credentials.vless.flow)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.network')}>{formatValue(credentials.vless.network)}</DetailRow>
-							<DetailRow label={t('vpnAccounts.realityEnabled')}>{credentials.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</DetailRow>
-							<DetailRow label={t('vpnAccounts.realityPublicKey')}><code>{formatValue(credentials.reality.publicKey)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.realityShortId')}><code>{formatValue(credentials.reality.shortId)}</code></DetailRow>
-							<DetailRow label={t('vpnAccounts.realityServerName')}>{formatValue(credentials.reality.serverName)}</DetailRow>
-						</>
-					)}
+                  {credentials.protocol === 'mtproto' ? (
+                    <>
+                      <DetailRow label={t('vpnAccounts.mtprotoSecret')}><code>{formatValue(credentials.mtproto.secret)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.mtprotoPort')}>{formatValue(credentials.mtproto.port ? String(credentials.mtproto.port) : undefined)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.mtprotoDomain')}>{formatValue(credentials.mtproto.frontingDomain)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.credentialScope')}>{credentials.mtproto.shared ? t('vpnAccounts.nodeShared') : t('vpnAccounts.accountSpecific')}</DetailRow>
+                    </>
+                  ) : credentials.protocol === 'shadowsocks' ? (
+                    <>
+                      <DetailRow label={t('vpnAccounts.shadowsocksUsername')}><code>{formatValue(credentials.shadowsocks.username)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.shadowsocksMethod')}>{formatValue(credentials.shadowsocks.method)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.shadowsocksServerKey')}><code>{formatValue(credentials.shadowsocks.serverKey)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.shadowsocksUserKey')}><code>{formatValue(credentials.shadowsocks.userKey)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.shadowsocksPort')}>{formatValue(credentials.shadowsocks.port ? String(credentials.shadowsocks.port) : undefined)}</DetailRow>
+                    </>
+                  ) : credentials.protocol === 'hysteria2' ? (
+                    <>
+                      <DetailRow label={t('vpnAccounts.hysteria2Username')}><code>{formatValue(credentials.hysteria2.username)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.hysteria2Password')}><code>{formatValue(credentials.hysteria2.password)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.hysteria2Domain')}>{formatValue(credentials.hysteria2.domain)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.hysteria2Port')}>{formatValue(credentials.hysteria2.port ? String(credentials.hysteria2.port) : undefined)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.hysteria2AcmeEmail')}>{formatValue(credentials.hysteria2.acmeEmail)}</DetailRow>
+                    </>
+                  ) : credentials.protocol === 'wireguard' ? (
+                    <>
+                      <DetailRow label={t('vpnAccounts.wireGuardAddress')}>{formatValue(credentials.wireGuard.address)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.wireGuardPublicKey')}><code>{formatValue(credentials.wireGuard.publicKey)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.wireGuardPrivateKey')}><code>{formatValue(credentials.wireGuard.privateKey)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.wireGuardServerKey')}><code>{formatValue(credentials.wireGuard.serverPublicKey)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.wireGuardDns')}>{formatValue(credentials.wireGuard.dns)}</DetailRow>
+                    </>
+                  ) : (
+                    <>
+                      <DetailRow label={t('vpnAccounts.vlessUuid')}><code>{formatValue(credentials.vless.uuid)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.flow')}>{formatValue(credentials.vless.flow)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.network')}>{formatValue(credentials.vless.network)}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.realityEnabled')}>{credentials.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</DetailRow>
+                      <DetailRow label={t('vpnAccounts.realityPublicKey')}><code>{formatValue(credentials.reality.publicKey)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.realityShortId')}><code>{formatValue(credentials.reality.shortId)}</code></DetailRow>
+                      <DetailRow label={t('vpnAccounts.realityServerName')}>{formatValue(credentials.reality.serverName)}</DetailRow>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           {accountId && <TrafficStatsPanel accountId={accountId} />}
-          {accountId && <VpnClientConnectionPanel accountId={accountId} />}
         </div>
       </div>
     </section>

@@ -7,6 +7,7 @@ import {
   rotateVpnAccountSubscriptionToken,
   updateVpnAccountClientProfile,
   type ClientFingerprintMode,
+  type ClientProtocolPreference,
   type SubscriptionTokenResponse,
   type UpdateVpnClientProfileRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
@@ -17,11 +18,6 @@ import './vpn-client-connection.css';
 
 type VpnClientConnectionPanelProps = {
   accountId: string;
-};
-
-type ClientProtocolPreference = 'auto' | 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
-type ProtocolAwareProfile = {
-  protocol?: ClientProtocolPreference;
 };
 
 const fingerprintOptions = ['chrome', 'firefox', 'safari', 'ios', 'android', 'edge', 'random', 'randomized'];
@@ -223,9 +219,8 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   useEffect(() => {
     const profile = connectionQuery.data?.profile;
     if (!profile) return;
-    const protocolAware = profile as typeof profile & ProtocolAwareProfile;
     setProfileName(profile.name);
-    setProtocol(protocolAware.protocol ?? 'auto');
+    setProtocol(profile.protocol ?? 'auto');
     setClientType(profile.clientType);
     setDeviceType(profile.deviceType);
     setFingerprintMode(profile.fingerprintMode);
@@ -246,7 +241,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const request = {
+      const request: UpdateVpnClientProfileRequest = {
         name: profileName.trim() || 'Default',
         clientType,
         deviceType,
@@ -256,12 +251,12 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         spiderX: spiderX.trim() || '/',
         mtu: mtu.trim() === '' ? null : Number(mtu),
         protocol,
-      } as UpdateVpnClientProfileRequest & { protocol: ClientProtocolPreference };
+      };
       return updateVpnAccountClientProfile(accountId, request);
     },
     onMutate: () => {
       setSaved(false);
-      const current = connectionQuery.data?.profile as ProtocolAwareProfile | undefined;
+      const current = connectionQuery.data?.profile;
       setProtocolChanged((current?.protocol ?? 'auto') !== protocol);
     },
     onSuccess: async (connection) => {

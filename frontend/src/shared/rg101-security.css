@@ -69,6 +69,20 @@
   margin: 0;
 }
 
+.rg110-security-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.rg110-security-meta span {
+  display: block;
+  line-height: 1.45;
+}
+
+.rg101-security-card + .rg101-password-hint {
+  margin-top: 10px;
+}
+
 .admin-profile-menu-item.rg101-profile-link {
   display: flex;
   align-items: center;
