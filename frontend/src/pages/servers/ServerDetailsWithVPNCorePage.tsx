@@ -42,9 +42,54 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+function inventoryGuidance(nextAction: string) {
+  const russian = getCurrentLocale() === 'ru';
+  switch (nextAction) {
+    case 'restore_connection':
+      return russian
+        ? {
+            title: 'Следующее действие: восстановить связь с Agent',
+            description: 'Agent зарегистрирован, но Manager сейчас не получает heartbeat. Проверьте службу RouteGate Agent и сетевую доступность узла, затем обновите состояние.',
+            action: 'Проверить снова',
+          }
+        : {
+            title: 'Next action: restore the Agent connection',
+            description: 'The Agent is registered, but Manager is not receiving a current heartbeat. Check the RouteGate Agent service and node network path, then refresh the state.',
+            action: 'Check again',
+          };
+    case 'review_compatibility':
+      return russian
+        ? {
+            title: 'Следующее действие: проверить совместимость Agent',
+            description: 'Manager обнаружил несовместимость протокола или версии Agent. Проверьте технические сведения ниже и обновите Agent или Manager до совместимой версии перед deploy.',
+            action: 'Обновить состояние',
+          }
+        : {
+            title: 'Next action: review Agent compatibility',
+            description: 'Manager detected an Agent protocol or version compatibility issue. Review the technical details below and update Agent or Manager before deployment.',
+            action: 'Refresh state',
+          };
+    case 'review_capabilities':
+      return russian
+        ? {
+            title: 'Следующее действие: проверить возможности Agent',
+            description: 'Agent не передал полный набор управляемых возможностей. Проверьте технические сведения и версию Agent перед выполнением VPN-действий.',
+            action: 'Обновить состояние',
+          }
+        : {
+            title: 'Next action: review Agent capabilities',
+            description: 'The Agent has not reported the complete managed capability set. Review its technical details and version before running VPN actions.',
+            action: 'Refresh state',
+          };
+    default:
+      return null;
+  }
+}
+
 export function ServerDetailsWithVPNCorePage() {
   const { serverId } = useParams<{ serverId: string }>();
   const [panelTarget, setPanelTarget] = useState<HTMLElement | null>(null);
+  const [connectionPanelTarget, setConnectionPanelTarget] = useState<HTMLElement | null>(null);
   const [activeOperation, setActiveOperation] = useState<{
     operation: VPNCoreOperation;
     jobId: string;
@@ -108,11 +153,15 @@ export function ServerDetailsWithVPNCorePage() {
 
   useEffect(() => {
     setPanelTarget(document.querySelector<HTMLElement>('.details-layout'));
+    setConnectionPanelTarget(document.querySelector<HTMLElement>('.server-connection-panel'));
   }, [serverId, serverQuery.isSuccess]);
 
-  const agent = serverQuery.data?.agent;
+  const server = serverQuery.data;
+  const agent = server?.agent;
   const status = parseVPNCoreStatus(agent?.capabilities);
-  const isDisconnected = !agent;
+  const hostsVPNPlane = Boolean(server && server.deploymentRole !== 'management');
+  const isDisconnected = !agent || server?.inventory.connectionState !== 'online';
+  const guidance = server ? inventoryGuidance(server.inventory.nextAction) : null;
   const operations = useMemo(() => supportedOperations(agent?.capabilities), [agent?.capabilities]);
   const controlsSupported = operations.size > 0;
   const installationSupported = supportsInstallation(agent?.capabilities);
@@ -271,7 +320,7 @@ export function ServerDetailsWithVPNCorePage() {
     }
   })();
 
-  const controls = status && status.installed && controlsSupported ? (
+  const controls = !isDisconnected && status && status.installed && controlsSupported ? (
     <div className="form-actions">
       {(status.state === 'stopped' || status.state === 'installed' || status.state === 'failed') && operations.has('start') && (
         <button className="primary-button" type="button" disabled={busy} onClick={() => runOperation('start')}>
@@ -291,7 +340,7 @@ export function ServerDetailsWithVPNCorePage() {
     </div>
   ) : null;
 
-  const installationControl = status?.state === 'not_installed' && installationSupported ? (
+  const installationControl = !isDisconnected && status?.state === 'not_installed' && installationSupported ? (
     <div className="form-actions">
       <button className="primary-button" type="button" disabled={busy} onClick={runInstallation}>
         {installationBusy ? text.installationPending : text.installAction}
@@ -359,10 +408,31 @@ export function ServerDetailsWithVPNCorePage() {
     </section>
   );
 
+  const guidancePanel = guidance && agent ? (
+    <div
+      className="form-message form-message-warning server-inventory-next-action"
+      style={{ display: 'grid', gap: 8, marginTop: 14, textAlign: 'left' }}
+    >
+      <strong>{guidance.title}</strong>
+      <span>{guidance.description}</span>
+      <div className="form-actions">
+        <button
+          className="small-button"
+          type="button"
+          disabled={serverQuery.isFetching}
+          onClick={() => void serverQuery.refetch()}
+        >
+          {serverQuery.isFetching ? text.checkingAction : guidance.action}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <LegacyServerDetailsPage />
-      {panelTarget ? createPortal(panel, panelTarget) : null}
+      {connectionPanelTarget && guidancePanel ? createPortal(guidancePanel, connectionPanelTarget) : null}
+      {panelTarget && hostsVPNPlane ? createPortal(panel, panelTarget) : null}
     </>
   );
 }
