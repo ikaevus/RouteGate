@@ -35,6 +35,48 @@ func CheckSingBoxTCPListener(ctx context.Context, configPath, inboundType string
 	)
 }
 
+// CheckSingBoxTCPListeners validates every RouteGate-managed TCP listener in a
+// composed sing-box config. RG-114J may place VLESS and Shadowsocks in the same
+// service, so checking only whichever adapter happened to be selected first
+// would miss a failed second inbound.
+func CheckSingBoxTCPListeners(ctx context.Context, configPath string) (ListenerHealthResult, error) {
+	payload, err := os.ReadFile(strings.TrimSpace(configPath))
+	if err != nil {
+		return ListenerHealthResult{}, fmt.Errorf("read active sing-box config: %w", err)
+	}
+	var config struct {
+		Inbounds []map[string]any `json:"inbounds"`
+	}
+	if err := json.Unmarshal(payload, &config); err != nil {
+		return ListenerHealthResult{}, fmt.Errorf("decode active sing-box config: %w", err)
+	}
+
+	managed := map[string]bool{"vless": true, "shadowsocks": true}
+	checked := 0
+	last := ListenerHealthResult{}
+	for _, inbound := range config.Inbounds {
+		typeName, _ := inbound["type"].(string)
+		typeName = strings.ToLower(strings.TrimSpace(typeName))
+		if !managed[typeName] {
+			continue
+		}
+		port := listenerPort(inbound["listen_port"])
+		if port < 1 || port > 65535 {
+			return ListenerHealthResult{}, fmt.Errorf("active sing-box config has no valid %s listen_port", typeName)
+		}
+		result, err := checkTCPListenerPort(ctx, port, typeName, defaultListenerHealthTimeout, defaultListenerHealthRetryInterval)
+		if err != nil {
+			return result, err
+		}
+		last = result
+		checked++
+	}
+	if checked == 0 {
+		return ListenerHealthResult{}, fmt.Errorf("active sing-box config contains no managed TCP listener")
+	}
+	return last, nil
+}
+
 func checkVLESSListener(
 	ctx context.Context,
 	configPath string,
@@ -73,23 +115,28 @@ func checkSingBoxTCPListener(
 		if !strings.EqualFold(strings.TrimSpace(typeName), inboundType) {
 			continue
 		}
-		switch value := inbound["listen_port"].(type) {
-		case float64:
-			port = int(value)
-		case int:
-			port = value
-		case json.Number:
-			parsed, parseErr := value.Int64()
-			if parseErr == nil {
-				port = int(parsed)
-			}
-		}
+		port = listenerPort(inbound["listen_port"])
 		break
 	}
 	if port < 1 || port > 65535 {
 		return ListenerHealthResult{}, fmt.Errorf("active sing-box config has no valid %s listen_port", inboundType)
 	}
 	return checkTCPListenerPort(ctx, port, inboundType, timeout, retryInterval)
+}
+
+func listenerPort(value any) int {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed)
+	case int:
+		return typed
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err == nil {
+			return int(parsed)
+		}
+	}
+	return 0
 }
 
 func checkTCPListenerPort(ctx context.Context, port int, label string, timeout, retryInterval time.Duration) (ListenerHealthResult, error) {
