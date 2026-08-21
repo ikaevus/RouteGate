@@ -133,5 +133,8 @@ func BuildClientConnection(ctx context.Context, source ClientConnectionSource, a
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
+	if err := validateClientProtocolTopologyForSource(ctx, source, subscription, profile); err != nil {
+		return ClientConnectionResponse{}, err
+	}
 	return buildClientConnectionResponse(accountID, subscription, profile)
 }
