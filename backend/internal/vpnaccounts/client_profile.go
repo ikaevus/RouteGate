@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -192,11 +191,49 @@ func scanClientProfile(row scanner) (ClientProfile, error) {
 	return profile, nil
 }
 
+func clientProfileFromRequest(accountID string, request UpdateClientProfileRequest) ClientProfile {
+	profile := ClientProfile{
+		VPNAccountID:       accountID,
+		Name:               request.Name,
+		ClientType:         request.ClientType,
+		DeviceType:         request.DeviceType,
+		FingerprintMode:    request.FingerprintMode,
+		Fingerprint:        request.Fingerprint,
+		ServerNameOverride: request.ServerNameOverride,
+		SpiderX:            request.SpiderX,
+		MTU:                request.MTU,
+		Protocol:           request.Protocol,
+	}
+	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
+	return profile
+}
+
+func clientConnectionUnavailableMessage(err error) string {
+	message := strings.TrimSpace(err.Error())
+	prefix := ErrClientConnectionUnavailable.Error() + ":"
+	return strings.TrimSpace(strings.TrimPrefix(message, prefix))
+}
+
+func writeClientConnectionDomainError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, ErrVPNAccountUnassigned) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("vpn_account_unassigned", "Assign a VPN node before creating a client connection."))
+		return true
+	}
+	if errors.Is(err, ErrClientConnectionUnavailable) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("client_connection_unavailable", clientConnectionUnavailableMessage(err)))
+		return true
+	}
+	return false
+}
+
 func (h *Handler) GetClientConnection(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("id")
 	response, err := h.clientConnection(r.Context(), accountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeAccountNotFound(w)
+		return
+	}
+	if writeClientConnectionDomainError(w, err) {
 		return
 	}
 	if err != nil {
@@ -234,14 +271,50 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_profile_unavailable", "Client profile storage is unavailable."))
 		return
 	}
-	if _, err := repository.UpdateClientProfile(r.Context(), accountID, request); err != nil {
+
+	subscription, err := h.accounts.GetSubscriptionProfileByAccountID(r.Context(), accountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeAccountNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get vpn subscription profile for client preflight", err)
+		return
+	}
+
+	candidate := clientProfileFromRequest(accountID, request)
+	effectiveProtocol := resolveEffectiveClientProtocol(candidate, subscription.Server)
+	if preparer, ok := h.accounts.(clientProtocolPreparer); ok && subscription.Server != nil {
+		if err := preparer.PrepareClientProtocol(r.Context(), accountID, subscription.Server.ID, effectiveProtocol); err != nil {
+			h.databaseError(w, "prepare vpn client protocol", err)
+			return
+		}
+		if effectiveProtocol == ClientProtocolWireGuard {
+			subscription, err = h.accounts.GetSubscriptionProfileByAccountID(r.Context(), accountID)
+			if err != nil {
+				h.databaseError(w, "reload vpn subscription profile after protocol preparation", err)
+				return
+			}
+		}
+	}
+	if _, err := buildClientConnectionResponse(accountID, subscription, candidate); err != nil {
+		if writeClientConnectionDomainError(w, err) {
+			return
+		}
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("client_connection_unavailable", "The selected client settings cannot be rendered."))
+		return
+	}
+
+	savedProfile, err := repository.UpdateClientProfile(r.Context(), accountID, request)
+	if err != nil {
 		h.databaseError(w, "update vpn client profile", err)
 		return
 	}
 
-	response, err := h.clientConnection(r.Context(), accountID)
+	response, err := buildClientConnectionResponse(accountID, subscription, savedProfile)
 	if err != nil {
-		h.databaseError(w, "render updated vpn client connection", err)
+		h.logger.Error("render persisted vpn client connection", "vpn_account_id", accountID, "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The client profile was saved but could not be rendered consistently."))
 		return
 	}
 	if h.audit != nil {
@@ -268,9 +341,6 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	if subscription.Server == nil {
-		return ClientConnectionResponse{}, fmt.Errorf("vpn account is not assigned to a server")
-	}
 	repository, ok := h.accounts.(clientProfileRepository)
 	if !ok {
 		return ClientConnectionResponse{}, errors.New("client profile storage is unavailable")
@@ -279,85 +349,7 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	protocol := strings.TrimSpace(subscription.Server.VPNProtocol)
-	if protocol == "" {
-		protocol = ClientProtocolVLESS
-	}
-	if protocol == ClientProtocolWireGuard {
-		config, renderErr := RenderWireGuardClientConfig(subscription)
-		if renderErr != nil {
-			return ClientConnectionResponse{}, renderErr
-		}
-		return ClientConnectionResponse{
-			VPNAccountID: accountID,
-			Protocol: protocol,
-			Format: "wireguard-config",
-			WireGuardConfig: config,
-			Profile: profile,
-			Endpoint: subscriptionServerEndpoint(subscription.Server),
-		}, nil
-	}
-	if protocol == ClientProtocolHysteria2 {
-		uri, renderErr := RenderHysteria2ClientURI(subscription)
-		if renderErr != nil {
-			return ClientConnectionResponse{}, renderErr
-		}
-		return ClientConnectionResponse{
-			VPNAccountID: accountID,
-			Protocol:     protocol,
-			Format:       "hysteria2-uri",
-			Hysteria2URI: uri,
-			Profile:      profile,
-			Endpoint:     subscription.Server.Hysteria2Domain,
-			ServerName:   subscription.Server.Hysteria2Domain,
-			Network:      "quic",
-		}, nil
-	}
-	if protocol == ClientProtocolShadowsocks {
-		uri, renderErr := RenderShadowsocksClientURI(subscription)
-		if renderErr != nil {
-			return ClientConnectionResponse{}, renderErr
-		}
-		return ClientConnectionResponse{
-			VPNAccountID: accountID,
-			Protocol:     protocol,
-			Format:       "shadowsocks-uri",
-			ShadowsocksURI: uri,
-			Profile:      profile,
-			Endpoint:     subscriptionServerEndpoint(subscription.Server),
-			Network:      "tcp",
-		}, nil
-	}
-	if protocol == ClientProtocolMTProto {
-		uri, renderErr := RenderMTProtoClientURI(subscription)
-		if renderErr != nil {
-			return ClientConnectionResponse{}, renderErr
-		}
-		return ClientConnectionResponse{
-			VPNAccountID: accountID,
-			Protocol:     protocol,
-			Format:       "mtproto-uri",
-			MTProtoURI:   uri,
-			Profile:      profile,
-			Endpoint:     subscriptionServerEndpoint(subscription.Server),
-			Network:      "tcp",
-		}, nil
-	}
-	link, endpoint, serverName, network, flow, err := buildClientVLESSLink(subscription, profile)
-	if err != nil {
-		return ClientConnectionResponse{}, err
-	}
-	return ClientConnectionResponse{
-		VPNAccountID: accountID,
-		Protocol:     ClientProtocolVLESS,
-		Format:       "vless-reality-uri",
-		VLESSLink:    link,
-		Profile:      profile,
-		Endpoint:     endpoint,
-		ServerName:   serverName,
-		Network:      network,
-		Flow:         flow,
-	}, nil
+	return buildClientConnectionResponse(accountID, subscription, profile)
 }
 
 func buildClientVLESSLink(subscription SubscriptionProfile, profile ClientProfile) (string, string, string, string, string, error) {
