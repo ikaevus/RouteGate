@@ -28,7 +28,7 @@ func BuildConnectURL(publicURL, vlessLink string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	vlessLink = strings.TrimSpace(vlessLink)
+	vlessLink = normalizeProtocolAccessMaterial("vless", vlessLink)
 	if !validProtocolAccessMaterial("vless", vlessLink) {
 		return "", Failure{Class: ErrorClassPermanent, Code: "access_material_invalid"}
 	}
@@ -42,7 +42,7 @@ func BuildProtocolConnectURL(publicURL, protocol, accessMaterial string) (string
 		return "", err
 	}
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
-	accessMaterial = strings.TrimSpace(accessMaterial)
+	accessMaterial = normalizeProtocolAccessMaterial(protocol, accessMaterial)
 	if !validProtocolAccessMaterial(protocol, accessMaterial) {
 		return "", Failure{Class: ErrorClassPermanent, Code: "access_material_invalid"}
 	}
@@ -52,6 +52,13 @@ func BuildProtocolConnectURL(publicURL, protocol, accessMaterial string) (string
 		"protocol": []string{protocol},
 	}.Encode()
 	return base + "/connect.html#" + fragment, nil
+}
+
+func normalizeProtocolAccessMaterial(protocol, accessMaterial string) string {
+	if strings.EqualFold(strings.TrimSpace(protocol), "wireguard") {
+		return accessMaterial
+	}
+	return strings.TrimSpace(accessMaterial)
 }
 
 func validProtocolAccessMaterial(protocol, accessMaterial string) bool {
