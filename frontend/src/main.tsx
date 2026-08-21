@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './app/App';
 import { BrandHomeNavigation } from './app/BrandHomeNavigation';
 import { GlobalSearchController } from './app/GlobalSearchController';
+import { LegacyRouteRedirects } from './app/LegacyRouteRedirects';
 import { PortalAccessGate } from './app/PortalAccessGate';
 import { ScrollToTop } from './app/ScrollToTop';
 import './shared/styles.css';
@@ -41,6 +42,7 @@ if (rootElement) {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <ScrollToTop />
+          <LegacyRouteRedirects />
           <PortalAccessGate>
             <App />
             <BrandHomeNavigation />
