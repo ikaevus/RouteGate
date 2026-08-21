@@ -16,6 +16,7 @@ export interface PortalProfile {
   expiresAt?: string | null;
   maxDevices?: number | null;
   protocol: string;
+  protocolCode?: string;
   location?: string;
   updatedAt: string;
 }
@@ -114,6 +115,23 @@ export interface PortalInstructionResponse {
   instruction: DeviceInstruction;
 }
 
+const portalProtocolDisplayNames: Record<string, string> = {
+  vless: 'VLESS / Reality',
+  wireguard: 'WireGuard',
+  hysteria2: 'Hysteria2',
+  shadowsocks: 'Shadowsocks 2022',
+  mtproto: 'MTProto / FakeTLS',
+};
+
+function withProtocolDisplayName(profile: PortalProfile): PortalProfile {
+  const protocolCode = profile.protocol.trim().toLowerCase();
+  return {
+    ...profile,
+    protocolCode,
+    protocol: portalProtocolDisplayNames[protocolCode] ?? profile.protocol,
+  };
+}
+
 export function getPortalMe(): Promise<PortalMeResponse> {
   return apiGet<PortalMeResponse>('/api/portal/me');
 }
@@ -122,12 +140,20 @@ export function getPortalDashboard(): Promise<PortalDashboardResponse> {
   return apiGet<PortalDashboardResponse>('/api/portal/dashboard');
 }
 
-export function getPortalProfiles(): Promise<PortalProfilesResponse> {
-  return apiGet<PortalProfilesResponse>('/api/portal/profiles');
+export async function getPortalProfiles(): Promise<PortalProfilesResponse> {
+  const response = await apiGet<PortalProfilesResponse>('/api/portal/profiles');
+  return {
+    ...response,
+    items: response.items.map(withProtocolDisplayName),
+  };
 }
 
-export function getPortalProfile(profileId: string): Promise<PortalProfileResponse> {
-  return apiGet<PortalProfileResponse>(`/api/portal/profiles/${encodeURIComponent(profileId)}`);
+export async function getPortalProfile(profileId: string): Promise<PortalProfileResponse> {
+  const response = await apiGet<PortalProfileResponse>(`/api/portal/profiles/${encodeURIComponent(profileId)}`);
+  return {
+    ...response,
+    profile: withProtocolDisplayName(response.profile),
+  };
 }
 
 export function getPortalSubscription(profileId: string): Promise<PortalSubscriptionResponse> {
