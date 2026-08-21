@@ -59,6 +59,12 @@ function normalizeLocale(locale: string | null): Locale {
   return locale === 'ru' ? 'ru' : DEFAULT_LOCALE;
 }
 
+function resolveTranslationKey(key: TranslationKey): TranslationKey {
+  // `/protocol-settings` historically used the old Config Deploy navigation key.
+  // Keep the key valid for compatibility, but present the route by its actual purpose.
+  return key === 'navigation.configDeploy' ? 'navigation.protocolSettings' : key;
+}
+
 function notifyLocaleListeners(): void {
   localeListeners.forEach((listener) => listener());
 }
@@ -110,7 +116,8 @@ export function subscribeLocale(listener: LocaleListener): () => void {
 
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {
   const locale = getCurrentLocale();
-  const template = dictionaries[locale][key] ?? dictionaries[DEFAULT_LOCALE][key] ?? key;
+  const resolvedKey = resolveTranslationKey(key);
+  const template = dictionaries[locale][resolvedKey] ?? dictionaries[DEFAULT_LOCALE][resolvedKey] ?? resolvedKey;
 
   if (!params) {
     return template;
