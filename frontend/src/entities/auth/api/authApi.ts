@@ -105,3 +105,7 @@ export function revokeOtherSecuritySessions(): Promise<{ status: string; timesta
 export function getSecurityEvents(): Promise<SecurityEventsResponse> {
   return apiGet<SecurityEventsResponse>('/api/v1/auth/security-events');
 }
+
+export function clearSecurityEvents(): Promise<void> {
+  return apiDelete('/api/v1/auth/security-events');
+}
