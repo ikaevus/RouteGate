@@ -14,6 +14,8 @@ export interface VpnAccount {
   configUpdatedAt?: string;
 }
 
+export type ClientProtocol = 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
+export type ClientProtocolPreference = 'auto' | ClientProtocol;
 export type RoutingProfileSource = 'none' | 'account' | 'server' | 'default';
 
 export interface RoutingProfilePolicySummary {
@@ -103,7 +105,7 @@ export interface VpnAccountCredentialsResponse {
   vpnAccountId: string;
   serverId?: string;
   endpoint?: string;
-  protocol: string;
+  protocol: ClientProtocol;
   vless: {
     uuid: string;
     flow?: string;
@@ -122,26 +124,26 @@ export interface VpnAccountCredentialsResponse {
     serverPublicKey?: string;
     dns?: string;
   };
-	hysteria2: {
-		username?: string;
-		password?: string;
-		domain?: string;
-		port?: number;
-		acmeEmail?: string;
-	};
-	shadowsocks: {
-		username?: string;
-		method?: string;
-		serverKey?: string;
-		userKey?: string;
-		port?: number;
-	};
-	mtproto: {
-		secret?: string;
-		port?: number;
-		frontingDomain?: string;
-		shared: boolean;
-	};
+  hysteria2: {
+    username?: string;
+    password?: string;
+    domain?: string;
+    port?: number;
+    acmeEmail?: string;
+  };
+  shadowsocks: {
+    username?: string;
+    method?: string;
+    serverKey?: string;
+    userKey?: string;
+    port?: number;
+  };
+  mtproto: {
+    secret?: string;
+    port?: number;
+    frontingDomain?: string;
+    shared: boolean;
+  };
 }
 
 export interface TrafficUsageSummaryResponse {
@@ -219,18 +221,20 @@ export interface VpnClientProfile {
   serverNameOverride?: string;
   spiderX: string;
   mtu?: number | null;
+  protocol: ClientProtocolPreference;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface VpnClientConnectionResponse {
   vpnAccountId: string;
+  protocol: ClientProtocol;
   format: string;
   vlessLink?: string;
   wireGuardConfig?: string;
-	hysteria2Uri?: string;
-	shadowsocksUri?: string;
-	mtprotoUri?: string;
+  hysteria2Uri?: string;
+  shadowsocksUri?: string;
+  mtprotoUri?: string;
   profile: VpnClientProfile;
   endpoint: string;
   serverName: string;
@@ -247,6 +251,7 @@ export interface UpdateVpnClientProfileRequest {
   serverNameOverride: string;
   spiderX: string;
   mtu?: number | null;
+  protocol: ClientProtocolPreference;
 }
 
 interface SingBoxClientReality {
@@ -304,8 +309,8 @@ export interface PublicSubscriptionResponse {
     message?: string;
     rendered?: {
       format: string;
-		content?: SingBoxClientConfig;
-		text?: string;
+      content?: SingBoxClientConfig;
+      text?: string;
     } | null;
   };
 }
@@ -329,7 +334,7 @@ export function buildVlessRealityShareLink(
   subscription: PublicSubscriptionResponse,
   fingerprint = 'firefox',
 ): string {
-	const content = subscription.config.rendered?.content;
+  const content = subscription.config.rendered?.content;
   const outbound = content?.outbounds?.find(
     (candidate) => candidate.type?.trim().toLowerCase() === 'vless',
   );
@@ -532,19 +537,19 @@ export async function getVpnAccountSubscriptionQRCode(
     throw new Error('Subscription belongs to a different VPN account.');
   }
 
-	const renderedText = subscription.config.rendered?.text;
-	const isWireGuard = subscription.config.type === 'wireguard' && typeof renderedText === 'string';
-	const isHysteria2 = subscription.config.type === 'hysteria2' && typeof renderedText === 'string';
-	const isShadowsocks = subscription.config.type === 'shadowsocks' && typeof renderedText === 'string';
-	const isMTProto = subscription.config.type === 'mtproto' && typeof renderedText === 'string';
+  const renderedText = subscription.config.rendered?.text;
+  const isWireGuard = subscription.config.type === 'wireguard' && typeof renderedText === 'string';
+  const isHysteria2 = subscription.config.type === 'hysteria2' && typeof renderedText === 'string';
+  const isShadowsocks = subscription.config.type === 'shadowsocks' && typeof renderedText === 'string';
+  const isMTProto = subscription.config.type === 'mtproto' && typeof renderedText === 'string';
   return {
     vpnAccountId,
     subscriptionUrl: new URL(
       `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
       globalThis.location.origin,
     ).toString(),
-		qrText: isWireGuard || isHysteria2 || isShadowsocks || isMTProto ? renderedText : buildVlessRealityShareLink(subscription),
-		format: isWireGuard ? 'wireguard-config' : isHysteria2 ? 'hysteria2-uri' : isShadowsocks ? 'shadowsocks-uri' : isMTProto ? 'mtproto-uri' : 'vless-reality-uri',
+    qrText: isWireGuard || isHysteria2 || isShadowsocks || isMTProto ? renderedText : buildVlessRealityShareLink(subscription),
+    format: isWireGuard ? 'wireguard-config' : isHysteria2 ? 'hysteria2-uri' : isShadowsocks ? 'shadowsocks-uri' : isMTProto ? 'mtproto-uri' : 'vless-reality-uri',
   };
 }
 
