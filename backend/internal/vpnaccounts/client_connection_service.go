@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	ErrVPNAccountUnassigned        = errors.New("vpn account is not assigned to a server")
+	ErrVPNAccountUnassigned      = errors.New("vpn account is not assigned to a server")
 	ErrClientConnectionUnavailable = errors.New("client connection is unavailable")
 )
 
