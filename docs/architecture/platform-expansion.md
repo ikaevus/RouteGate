@@ -199,6 +199,19 @@ reuses the sing-box storage and service lifecycle, while MTProto uses separate
 staging, active config, backups, binary detection, systemd service, and health
 checks. See [ADR-0007](../decisions/ADR-0007-shadowsocks-mtproto-adapters.md).
 
+## Node groups and routing extensions
+
+RG-114H adds reusable node groups with explicit priority/weight membership and
+read-only candidate health. Manager evaluates Agent heartbeat, the versioned
+managed-adapter contract, reported runtime state, and normalized load, but does
+not select or mutate an account's server.
+
+VPN accounts may override their inherited routing profile and may record one
+node group as a future balancing target. The concrete `serverId` remains the
+actual endpoint, and the routing-profile resolution order is account, server,
+then default. Automatic placement and failover remain RG-114I. See
+[ADR-0008](../decisions/ADR-0008-node-groups-routing-extensions.md).
+
 Exact slice names may evolve, but dependency order should remain: role and
 capability contracts before distributed onboarding; adapter boundary before new
 protocol implementations; explicit health signals before automatic selection.

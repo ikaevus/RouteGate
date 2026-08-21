@@ -1,0 +1,104 @@
+.node-groups-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.node-groups-sidebar-stack,
+.node-groups-detail-stack {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.node-group-create-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.node-group-list {
+  display: grid;
+  gap: 8px;
+}
+
+.node-group-list-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--rg-border);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  background: color-mix(in srgb, var(--rg-surface-main) 92%, transparent);
+}
+
+.node-group-list-item:hover,
+.node-group-list-item-active {
+  border-color: var(--rg-primary);
+  background: color-mix(in srgb, var(--rg-primary) 10%, var(--rg-surface-main));
+}
+
+.node-group-list-item span {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+}
+
+.node-group-policy-grid,
+.node-group-member-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.node-group-member-form {
+  grid-template-columns: minmax(220px, 1.6fr) minmax(90px, 0.5fr) minmax(90px, 0.5fr) minmax(150px, 0.75fr) auto;
+  margin-bottom: 18px;
+}
+
+.node-group-enabled-field {
+  display: flex;
+  gap: 8px;
+  min-height: 40px;
+  align-items: center;
+  color: var(--rg-text-secondary);
+  font-size: 13px;
+}
+
+.node-group-member-row {
+  grid-template-columns: minmax(180px, 1.5fr) 0.5fr 0.5fr 0.8fr minmax(180px, auto);
+}
+
+.node-group-candidate-row {
+  grid-template-columns: minmax(180px, 1.25fr) 0.65fr 0.55fr 0.9fr minmax(230px, 1.6fr);
+}
+
+.node-group-member-row > div:first-child,
+.node-group-candidate-row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+@media (max-width: 1100px) {
+  .node-groups-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .node-group-member-form,
+  .node-group-policy-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .node-group-member-row,
+  .node-group-candidate-row {
+    min-width: 820px;
+  }
+}
+
+@media (max-width: 680px) {
+  .node-group-member-form,
+  .node-group-policy-grid {
+    grid-template-columns: 1fr;
+  }
+}

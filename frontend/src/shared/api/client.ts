@@ -158,7 +158,7 @@ export async function apiPatch<TRequest, TResponse>(
   return response.json() as Promise<TResponse>;
 }
 
-export async function apiDelete(path: string): Promise<void> {
+export async function apiDelete<TResponse = void>(path: string): Promise<TResponse> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'DELETE',
     headers: buildHeaders(),
@@ -167,4 +167,10 @@ export async function apiDelete(path: string): Promise<void> {
   if (!response.ok) {
     throw await buildApiError(response, 'DELETE', path);
   }
+
+  if (response.status === 204) {
+    return undefined as TResponse;
+  }
+
+  return response.json() as Promise<TResponse>;
 }

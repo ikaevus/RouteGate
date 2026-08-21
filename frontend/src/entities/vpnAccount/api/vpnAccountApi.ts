@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '../../../shared/api/client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../../shared/api/client';
 
 export interface VpnAccount {
   id: string;
@@ -12,6 +12,34 @@ export interface VpnAccount {
   createdAt: string;
   updatedAt: string;
   configUpdatedAt?: string;
+}
+
+export type RoutingProfileSource = 'none' | 'account' | 'server' | 'default';
+
+export interface RoutingProfilePolicySummary {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+}
+
+export interface NodeGroupPolicySummary {
+  id: string;
+  name: string;
+  selectionStrategy: 'priority' | 'weighted';
+  memberCount: number;
+}
+
+export interface VpnAccountRoutingPolicy {
+  vpnAccountId: string;
+  explicitRoutingProfile?: RoutingProfilePolicySummary;
+  effectiveRoutingProfile?: RoutingProfilePolicySummary;
+  routingProfileSource: RoutingProfileSource;
+  nodeGroup?: NodeGroupPolicySummary;
+  currentServerInGroup: boolean;
+  automaticSelection: boolean;
+  protocol?: string;
+  clientRoutingSupported: boolean;
 }
 
 export interface ListVpnAccountsResponse {
@@ -329,6 +357,44 @@ export function getVpnAccountCredentials(
 ): Promise<VpnAccountCredentialsResponse> {
   return apiGet<VpnAccountCredentialsResponse>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/credentials`,
+  );
+}
+
+export function getVpnAccountRoutingPolicy(vpnAccountId: string): Promise<VpnAccountRoutingPolicy> {
+  return apiGet<VpnAccountRoutingPolicy>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/routing-policy`,
+  );
+}
+
+export function assignVpnAccountRoutingProfile(
+  vpnAccountId: string,
+  routingProfileId: string,
+): Promise<VpnAccountRoutingPolicy> {
+  return apiPut<{ routingProfileId: string }, VpnAccountRoutingPolicy>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/routing-profile`,
+    { routingProfileId },
+  );
+}
+
+export function clearVpnAccountRoutingProfile(vpnAccountId: string): Promise<VpnAccountRoutingPolicy> {
+  return apiDelete<VpnAccountRoutingPolicy>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/routing-profile`,
+  );
+}
+
+export function assignVpnAccountNodeGroup(
+  vpnAccountId: string,
+  nodeGroupId: string,
+): Promise<VpnAccountRoutingPolicy> {
+  return apiPut<{ nodeGroupId: string }, VpnAccountRoutingPolicy>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/node-group`,
+    { nodeGroupId },
+  );
+}
+
+export function clearVpnAccountNodeGroup(vpnAccountId: string): Promise<VpnAccountRoutingPolicy> {
+  return apiDelete<VpnAccountRoutingPolicy>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/node-group`,
   );
 }
 

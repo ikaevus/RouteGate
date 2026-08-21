@@ -138,7 +138,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, ErrRoutingProfileAssigned) {
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("routing_profile_assigned", "Routing profile is assigned to one or more servers and cannot be deleted."))
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("routing_profile_assigned", "Routing profile is assigned to one or more servers or VPN accounts and cannot be deleted."))
 		return
 	}
 	if err != nil {

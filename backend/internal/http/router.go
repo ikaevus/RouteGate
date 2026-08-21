@@ -13,6 +13,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/dashboard"
 	"github.com/ikaevus/routegate/backend/internal/geoip"
 	"github.com/ikaevus/routegate/backend/internal/health"
+	"github.com/ikaevus/routegate/backend/internal/nodegroups"
 	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
@@ -43,6 +44,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	vpnAccountNotesHandler := vpnaccounts.NewNotesHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
 	routingProfilesHandler := routingprofiles.NewHandler(logger, pool)
+	nodeGroupsHandler := nodegroups.NewHandler(logger, pool)
 	portalHandler := portal.NewHandler(logger, pool)
 	authn := auth.Middleware(authRepo)
 	adminAuth := func(handler stdhttp.HandlerFunc) stdhttp.Handler {
@@ -123,6 +125,15 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateRule))))
 	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteRule))))
 
+	mux.Handle("GET /api/v1/node-groups", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(nodeGroupsHandler.List))))
+	mux.Handle("POST /api/v1/node-groups", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(nodeGroupsHandler.Create))))
+	mux.Handle("GET /api/v1/node-groups/{group_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(nodeGroupsHandler.Get))))
+	mux.Handle("PATCH /api/v1/node-groups/{group_id}", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(nodeGroupsHandler.Update))))
+	mux.Handle("DELETE /api/v1/node-groups/{group_id}", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(nodeGroupsHandler.Delete))))
+	mux.Handle("PUT /api/v1/node-groups/{group_id}/members/{server_id}", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(nodeGroupsHandler.PutMember))))
+	mux.Handle("DELETE /api/v1/node-groups/{group_id}/members/{server_id}", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(nodeGroupsHandler.DeleteMember))))
+	mux.Handle("GET /api/v1/node-groups/{group_id}/candidates", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(nodeGroupsHandler.Candidates))))
+
 	mux.Handle("GET /api/v1/agents", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(agentsHandler.List))))
 	mux.Handle("GET /api/v1/dashboard/activity", adminAuth(dashboardHandler.Activity))
 	mux.Handle("GET /api/v1/dashboard/traffic", adminAuth(dashboardHandler.Traffic))
@@ -138,6 +149,11 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/credentials", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetCredentials))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-connection", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientConnection))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.UpdateClientProfile))))
+	mux.Handle("GET /api/v1/vpn-accounts/{id}/routing-policy", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetRoutingPolicy))))
+	mux.Handle("PUT /api/v1/vpn-accounts/{id}/routing-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.AssignRoutingProfile))))
+	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/routing-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.DeleteRoutingProfileAssignment))))
+	mux.Handle("PUT /api/v1/vpn-accounts/{id}/node-group", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.AssignNodeGroup))))
+	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/node-group", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.DeleteNodeGroupAssignment))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/traffic", authn(auth.RequirePermission("traffic:read")(stdhttp.HandlerFunc(trafficHandler.GetAccountUsage))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/traffic-limit", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(trafficHandler.UpdateAccountLimit))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.Update))))

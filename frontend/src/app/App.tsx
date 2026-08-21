@@ -8,6 +8,7 @@ import { ServerDetailsPage } from '../pages/servers/ServerDetailsPage';
 import { ProtocolSettingsPage } from '../pages/protocol-settings/ProtocolSettingsPage';
 import { VpnAccountsPage } from '../pages/vpn-accounts/VpnAccountsPage';
 import { RoutingProfilesPage } from '../pages/routing-profiles/RoutingProfilesPage';
+import { NodeGroupsPage } from '../pages/node-groups/NodeGroupsPage';
 import { LoginPage } from '../pages/login/LoginPage';
 import { SetupPage } from '../pages/setup/SetupPage';
 import { SecurityPage } from '../pages/settings/SecurityPage';
@@ -337,6 +338,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
     { to: '/vpn-accounts', label: t('navigation.vpnAccounts'), icon: 'accounts' as const },
     { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
     { to: '/routing-profiles', label: t('navigation.routingProfiles'), icon: 'routing' as const },
+    { to: '/node-groups', label: t('navigation.nodeGroups'), icon: 'servers' as const },
     { to: '/portal', label: t('navigation.userPortal'), icon: 'portal' as const },
   ];
   const secondaryNavigationItems = [
@@ -458,6 +460,8 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <Route path="/vpn-accounts/:accountId" element={<VpnAccountsPage />} />
             <Route path="/routing-profiles" element={<RoutingProfilesPage />} />
             <Route path="/routing-profiles/:profileId" element={<RoutingProfilesPage />} />
+            <Route path="/node-groups" element={<NodeGroupsPage />} />
+            <Route path="/node-groups/:groupId" element={<NodeGroupsPage />} />
             <Route path="/settings/security" element={<SecurityPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
