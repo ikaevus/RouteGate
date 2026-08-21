@@ -35,6 +35,10 @@
   padding-right: 12px;
 }
 
+.routing-profiles-table-row:not(.admin-table-head) {
+  padding-left: 18px;
+}
+
 /* The profile list lives in the narrow master column of the split layout.
  * Unlike dense data tables, its descriptive copy is useful content and must
  * remain readable instead of being truncated by the generic table ellipsis. */
@@ -88,6 +92,10 @@
 
 .routing-rule-form-grid {
   grid-template-columns: minmax(0, 1.2fr) 160px 180px 260px;
+}
+
+.routing-rule-form > .form-message {
+  margin-bottom: 14px;
 }
 
 .routing-rule-matchers-grid {
