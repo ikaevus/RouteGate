@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   changePassword,
+  clearSecurityEvents,
   getSecurityEvents,
   getSecuritySessions,
   revokeOtherSecuritySessions,
@@ -37,7 +38,11 @@ const copy = {
     eventsDescription: 'Authentication and account-security events recorded for this administrator.',
     eventsLoading: 'Loading security activity...',
     eventsError: 'Security activity could not be loaded.',
-    noEvents: 'No security events have been recorded yet.',
+    noEvents: 'No security events have been recorded since the history was cleared.',
+    clearEvents: 'Clear history',
+    clearingEvents: 'Clearing...',
+    clearEventsError: 'Security history could not be cleared.',
+    clearEventsHint: 'Clears this on-screen history without deleting the immutable audit trail.',
     eventLogin: 'Signed in',
     eventLogout: 'Signed out',
     eventPassword: 'Password changed',
@@ -73,7 +78,11 @@ const copy = {
     eventsDescription: 'События аутентификации и защиты аккаунта, записанные для этого администратора.',
     eventsLoading: 'Загрузка событий безопасности...',
     eventsError: 'Не удалось загрузить события безопасности.',
-    noEvents: 'События безопасности пока не записаны.',
+    noEvents: 'После очистки новые события безопасности пока не записаны.',
+    clearEvents: 'Очистить историю',
+    clearingEvents: 'Очистка...',
+    clearEventsError: 'Не удалось очистить историю безопасности.',
+    clearEventsHint: 'Очищает эту историю на экране, не удаляя неизменяемый журнал аудита.',
     eventLogin: 'Выполнен вход',
     eventLogout: 'Выполнен выход',
     eventPassword: 'Пароль изменён',
@@ -221,6 +230,13 @@ export function SecurityPage() {
     },
   });
 
+  const clearEventsMutation = useMutation({
+    mutationFn: clearSecurityEvents,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['security-events'] });
+    },
+  });
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
@@ -242,6 +258,7 @@ export function SecurityPage() {
 
   const sessions = sessionsQuery.data?.sessions ?? [];
   const otherSessionCount = sessions.filter((session) => !session.current).length;
+  const securityEvents = eventsQuery.data?.events ?? [];
 
   return (
     <section className="rg101-security-page">
@@ -345,14 +362,28 @@ export function SecurityPage() {
       </form>
 
       <section>
-        <div className="rg101-security-header">
-          <h2>{c.events}</h2>
-          <p>{c.eventsDescription}</p>
+        <div className="rg101-security-section-heading">
+          <div className="rg101-security-header">
+            <h2>{c.events}</h2>
+            <p>{c.eventsDescription}</p>
+          </div>
+          {securityEvents.length > 0 && (
+            <button
+              className="small-button"
+              type="button"
+              disabled={clearEventsMutation.isPending}
+              onClick={() => clearEventsMutation.mutate()}
+            >
+              {clearEventsMutation.isPending ? c.clearingEvents : c.clearEvents}
+            </button>
+          )}
         </div>
+        {securityEvents.length > 0 && <p className="rg101-password-hint rg101-security-clear-hint">{c.clearEventsHint}</p>}
         {eventsQuery.isPending && <p className="empty-state">{c.eventsLoading}</p>}
         {eventsQuery.isError && <p className="form-message auth-message auth-message-error">{c.eventsError}</p>}
-        {eventsQuery.isSuccess && eventsQuery.data.events.length === 0 && <p className="empty-state">{c.noEvents}</p>}
-        {eventsQuery.data?.events.map((event) => (
+        {clearEventsMutation.isError && <p className="form-message auth-message auth-message-error">{c.clearEventsError}</p>}
+        {eventsQuery.isSuccess && securityEvents.length === 0 && <p className="empty-state">{c.noEvents}</p>}
+        {securityEvents.map((event) => (
           <div className="panel rg101-security-card" key={event.id}>
             <div>
               <h3>{eventLabel(event, c)}</h3>

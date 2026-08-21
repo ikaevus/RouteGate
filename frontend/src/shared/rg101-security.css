@@ -35,6 +35,28 @@
   color: var(--text-secondary, #9caec4);
 }
 
+.rg101-security-section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  max-width: 620px;
+}
+
+.rg101-security-section-heading .rg101-security-header {
+  min-width: 0;
+}
+
+.rg101-security-section-heading .small-button {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.rg101-security-clear-hint {
+  margin-top: 8px;
+  max-width: 620px;
+}
+
 .rg101-security-card {
   display: grid;
   gap: 18px;
@@ -52,6 +74,17 @@
   align-items: center;
   width: 100%;
   text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .rg101-security-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rg101-security-section-heading .small-button {
+    align-self: flex-start;
+  }
 }
 
 /* Light-theme compatibility for the legacy security screen. */

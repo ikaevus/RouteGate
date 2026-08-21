@@ -1,0 +1,41 @@
+/* RG-114 manual acceptance fixes that are intentionally scoped to affected screens. */
+
+.servers-table-row {
+  grid-template-columns:
+    minmax(150px, 1.45fr)
+    minmax(90px, 0.8fr)
+    minmax(70px, 0.7fr)
+    minmax(100px, 0.85fr)
+    minmax(130px, 1.1fr)
+    minmax(90px, 0.8fr)
+    minmax(95px, 0.85fr)
+    minmax(90px, 0.75fr)
+    minmax(120px, 1.05fr)
+    minmax(120px, 1.05fr);
+}
+
+.servers-table-row > div:nth-child(5) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.servers-table-row > div:nth-child(6),
+.servers-table-row > div:nth-child(7) {
+  min-width: 0;
+  overflow: visible;
+}
+
+@media (max-width: 980px) {
+  .servers-table-row {
+    grid-template-columns: 1fr;
+  }
+
+  .servers-table-row > div:nth-child(5) {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
