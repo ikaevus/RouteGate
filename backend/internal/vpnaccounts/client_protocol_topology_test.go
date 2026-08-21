@@ -98,13 +98,13 @@ func TestUpdateClientProfileRejectsHysteria2OnHybridBeforeSave(t *testing.T) {
 		t.Fatalf("unexpected topology preflight server=%q protocol=%q", repo.validatedServer, repo.validatedProto)
 	}
 	var body struct {
-		Code    string `json:"code"`
+		Status  string `json:"status"`
 		Message string `json:"message"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Code != "client_connection_unavailable" || !strings.Contains(body.Message, "dedicated VPN Node") {
+	if body.Status != "client_connection_unavailable" || !strings.Contains(body.Message, "dedicated VPN Node") {
 		t.Fatalf("unexpected domain error: %+v", body)
 	}
 }
