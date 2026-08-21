@@ -24,7 +24,16 @@ func NormalizePublicURL(value string) (string, error) {
 }
 
 func BuildConnectURL(publicURL, vlessLink string) (string, error) {
-	return BuildProtocolConnectURL(publicURL, "vless", vlessLink)
+	base, err := NormalizePublicURL(publicURL)
+	if err != nil {
+		return "", err
+	}
+	vlessLink = strings.TrimSpace(vlessLink)
+	if !validProtocolAccessMaterial("vless", vlessLink) {
+		return "", Failure{Class: ErrorClassPermanent, Code: "access_material_invalid"}
+	}
+	payload := base64.RawURLEncoding.EncodeToString([]byte(vlessLink))
+	return base + "/connect.html#vless=" + payload, nil
 }
 
 func BuildProtocolConnectURL(publicURL, protocol, accessMaterial string) (string, error) {
