@@ -184,6 +184,7 @@ Hybrid-node certificate coordination remains explicit future work.
 7. **RG-114G — Shadowsocks and MTProto Adapters**
 8. **RG-114H — Node Groups, Balancing Targets & Routing Extensions**
 9. **RG-114I — Automatic Selection Foundation**
+10. **RG-114J — Multi-Protocol Account Profiles & Multi-Runtime Apply**
 
 ## Native Shadowsocks and MTProto adapters
 
@@ -225,6 +226,35 @@ deployed next. A background health-triggered failover loop remains disabled
 until RouteGate can coordinate those deployments atomically. See
 [ADR-0009](../decisions/ADR-0009-explainable-automatic-selection.md).
 
+## Multi-protocol account profiles and multi-runtime apply
+
+RG-114J removes the transitional one-protocol-per-node limitation. Each VPN
+client profile stores a protocol preference (`auto`, VLESS, WireGuard,
+Hysteria2, Shadowsocks, or MTProto), while `servers.vpn_protocol` remains the
+backwards-compatible default used by `auto` profiles.
+
+Manager resolves the effective protocol of every active account before render.
+A node configuration can therefore require more than one managed adapter at the
+same time. `routegate.config.v1` keeps the legacy `metadata.vpnCore` field and
+adds ordered `metadata.vpnCores` for the full runtime set. VLESS and
+Shadowsocks are composed into one sing-box runtime; native WireGuard, Hysteria2,
+and MTProto retain separate service ownership.
+
+Agent validates every required runtime before promotion and applies each unique
+runtime as one per-node transaction. Later apply, restart, persistence, or
+listener-health failure rolls already-promoted runtimes back in reverse order.
+Cross-node atomic deployment is intentionally still out of scope.
+
+The account connection API exposes both the stored profile preference and the
+resolved effective protocol so credentials, access delivery, QR/URI output, and
+the Web UI cannot silently disagree. The primary account workflow surfaces the
+protocol selector immediately after account management and points the
+administrator to Config Deploy when a protocol change requires a new runtime
+configuration. See
+[RG-114J — Multi-Protocol Account Profiles](rg-114j-multi-protocol-account-profiles.md).
+
 Exact slice names may evolve, but dependency order should remain: role and
 capability contracts before distributed onboarding; adapter boundary before new
-protocol implementations; explicit health signals before automatic selection.
+protocol implementations; explicit health signals before automatic selection;
+and managed adapter lifecycles before multiple protocols are activated together
+on one node.
