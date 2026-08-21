@@ -82,7 +82,7 @@ type ClientConnectionResponse struct {
 	Protocol        string        `json:"protocol"`
 	Format          string        `json:"format"`
 	VLESSLink       string        `json:"vlessLink,omitempty"`
-	WireGuardConfig string        `json:"wireguardConfig,omitempty"`
+	WireGuardConfig string        `json:"wireGuardConfig,omitempty"`
 	Hysteria2URI    string        `json:"hysteria2Uri,omitempty"`
 	ShadowsocksURI  string        `json:"shadowsocksUri,omitempty"`
 	MTProtoURI      string        `json:"mtprotoUri,omitempty"`
