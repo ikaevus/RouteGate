@@ -24,14 +24,44 @@ func NormalizePublicURL(value string) (string, error) {
 }
 
 func BuildConnectURL(publicURL, vlessLink string) (string, error) {
+	return BuildProtocolConnectURL(publicURL, "vless", vlessLink)
+}
+
+func BuildProtocolConnectURL(publicURL, protocol, accessMaterial string) (string, error) {
 	base, err := NormalizePublicURL(publicURL)
 	if err != nil {
 		return "", err
 	}
-	vlessLink = strings.TrimSpace(vlessLink)
-	if !strings.HasPrefix(strings.ToLower(vlessLink), "vless://") {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	accessMaterial = strings.TrimSpace(accessMaterial)
+	if !validProtocolAccessMaterial(protocol, accessMaterial) {
 		return "", Failure{Class: ErrorClassPermanent, Code: "access_material_invalid"}
 	}
-	payload := base64.RawURLEncoding.EncodeToString([]byte(vlessLink))
-	return base + "/connect.html#vless=" + payload, nil
+	payload := base64.RawURLEncoding.EncodeToString([]byte(accessMaterial))
+	fragment := url.Values{
+		"profile":  []string{payload},
+		"protocol": []string{protocol},
+	}.Encode()
+	return base + "/connect.html#" + fragment, nil
+}
+
+func validProtocolAccessMaterial(protocol, accessMaterial string) bool {
+	lower := strings.ToLower(strings.TrimSpace(accessMaterial))
+	switch protocol {
+	case "vless":
+		return strings.HasPrefix(lower, "vless://")
+	case "wireguard":
+		return strings.Contains(accessMaterial, "[Interface]") &&
+			strings.Contains(accessMaterial, "PrivateKey =") &&
+			strings.Contains(accessMaterial, "[Peer]") &&
+			strings.Contains(accessMaterial, "PublicKey =")
+	case "hysteria2":
+		return strings.HasPrefix(lower, "hysteria2://")
+	case "shadowsocks":
+		return strings.HasPrefix(lower, "ss://")
+	case "mtproto":
+		return strings.HasPrefix(lower, "tg://proxy?")
+	default:
+		return false
+	}
 }
