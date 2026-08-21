@@ -12,7 +12,7 @@ const (
 
 const (
 	PortalSubscriptionFormat = "routegate.subscription.v1"
-	PortalQRFormat           = "client-connection"
+	PortalQRFormat           = "subscription-url"
 )
 
 type PortalUser struct {
