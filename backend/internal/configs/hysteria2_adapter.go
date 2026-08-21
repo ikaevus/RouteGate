@@ -41,7 +41,7 @@ type hysteria2AuthConfig struct {
 }
 
 type hysteria2MasqueradeConfig struct {
-	Type  string                       `json:"type"`
+	Type  string                          `json:"type"`
 	Proxy hysteria2MasqueradeProxyConfig `json:"proxy"`
 }
 
@@ -92,7 +92,7 @@ func (hysteria2Adapter) Render(config *RenderedConfig, info ServerConfigInfo) {
 		payload.Auth.Userpass[username] = strings.TrimSpace(account.Hysteria2Password)
 		config.VPNAccounts = append(config.VPNAccounts, ConfigVPNAccount{
 			ID: account.ID, DisplayName: accountDisplayName(account), Status: account.Status,
-			Hysteria2Username: username,
+			Protocol: platform.VPNProtocolHysteria2, Hysteria2Username: username,
 		})
 	}
 	rendered, err := json.MarshalIndent(payload, "", "  ")
@@ -124,7 +124,7 @@ func (hysteria2Adapter) Ready(config RenderedConfig) bool {
 }
 
 func isHysteria2AccountRenderable(account VPNAccountConfigInfo) bool {
-	return account.Status == "active" && validHysteria2Password(account.Hysteria2Password) && account.TrafficEnforcementStatus != "over_limit"
+	return accountUsesProtocol(account, platform.VPNProtocolHysteria2) && account.Status == "active" && validHysteria2Password(account.Hysteria2Password) && account.TrafficEnforcementStatus != "over_limit"
 }
 
 func parseHysteria2ServerConfig(payload string) (hysteria2ServerConfig, error) {
@@ -169,11 +169,17 @@ func parseHysteria2ServerConfig(payload string) (hysteria2ServerConfig, error) {
 func validHysteria2Domain(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	labels := strings.Split(value, ".")
-	if len(value) < 4 || len(value) > 253 || len(labels) < 2 { return false }
+	if len(value) < 4 || len(value) > 253 || len(labels) < 2 {
+		return false
+	}
 	for _, label := range labels {
-		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' { return false }
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
 		for _, char := range label {
-			if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') { return false }
+			if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
+				return false
+			}
 		}
 	}
 	return true
@@ -186,10 +192,14 @@ func validHysteria2Username(value string) bool {
 	}
 	for index, char := range value {
 		if index == 8 || index == 13 || index == 18 || index == 23 {
-			if char != '-' { return false }
+			if char != '-' {
+				return false
+			}
 			continue
 		}
-		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) { return false }
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return false
+		}
 	}
 	return true
 }
