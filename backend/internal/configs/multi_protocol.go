@@ -2,7 +2,6 @@ package configs
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"github.com/ikaevus/routegate/backend/internal/platform"
@@ -138,9 +137,13 @@ func configVPNCoreFromAdapter(adapter vpnCoreAdapter, realityEnabled bool) Confi
 
 func renderSelectedVPNCoreAdapters(config *RenderedConfig, info ServerConfigInfo) {
 	adapters := selectedVPNCoreAdapters(info)
-	config.Metadata.VPNCores = make([]ConfigVPNCore, 0, len(adapters))
+	if len(adapters) != 1 || configVPNCoreFromAdapter(adapters[0], config.Metadata.RealityEnabled) != config.Metadata.VPNCore {
+		config.Metadata.VPNCores = make([]ConfigVPNCore, 0, len(adapters))
+		for _, adapter := range adapters {
+			config.Metadata.VPNCores = append(config.Metadata.VPNCores, configVPNCoreFromAdapter(adapter, config.Metadata.RealityEnabled))
+		}
+	}
 	for _, adapter := range adapters {
-		config.Metadata.VPNCores = append(config.Metadata.VPNCores, configVPNCoreFromAdapter(adapter, config.Metadata.RealityEnabled))
 		adapter.Render(config, info)
 	}
 }
@@ -229,13 +232,4 @@ func accountUsesProtocol(account VPNAccountConfigInfo, protocol string) bool {
 	// Empty preserves pre-RG-114J unit fixtures where the adapter itself defines
 	// the only protocol under test.
 	return selected == "" || selected == strings.ToLower(strings.TrimSpace(protocol))
-}
-
-func sortedProtocolNames(protocols map[string]bool) []string {
-	result := make([]string, 0, len(protocols))
-	for protocol := range protocols {
-		result = append(result, protocol)
-	}
-	sort.Strings(result)
-	return result
 }
