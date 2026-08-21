@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000129_automatic_selection_foundation" {
-		t.Fatalf("applied schema version = %q, want 000129_automatic_selection_foundation", version)
+	if version != "000130_multi_protocol_account_profiles" {
+		t.Fatalf("applied schema version = %q, want 000130_multi_protocol_account_profiles", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -387,8 +387,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000129_automatic_selection_foundation" {
-		t.Fatalf("applied schema version = %q, want 000129_automatic_selection_foundation", version)
+	if version != "000130_multi_protocol_account_profiles" {
+		t.Fatalf("applied schema version = %q, want 000130_multi_protocol_account_profiles", version)
 	}
 }
 
