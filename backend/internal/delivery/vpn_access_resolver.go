@@ -89,13 +89,13 @@ func classifyAccessMaterialError(err error) Failure {
 	switch {
 	case errors.Is(err, vpnaccounts.ErrVPNAccountUnassigned):
 		return Failure{Class: ErrorClassPermanent, Code: "vpn_server_missing"}
-	case errors.Is(err, vpnaccounts.ErrClientConnectionUnavailable):
-		return Failure{Class: ErrorClassPermanent, Code: "vpn_access_incomplete"}
 	case strings.Contains(code, "endpoint"):
 		return Failure{Class: ErrorClassPermanent, Code: "vpn_endpoint_missing"}
 	case strings.Contains(code, "reality"):
 		return Failure{Class: ErrorClassPermanent, Code: "vpn_reality_incomplete"}
 	case strings.Contains(code, "vless"):
+		return Failure{Class: ErrorClassPermanent, Code: "vpn_access_incomplete"}
+	case errors.Is(err, vpnaccounts.ErrClientConnectionUnavailable):
 		return Failure{Class: ErrorClassPermanent, Code: "vpn_access_incomplete"}
 	default:
 		return Failure{Class: ErrorClassTransient, Code: "vpn_access_resolution_failed"}
