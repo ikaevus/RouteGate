@@ -40,7 +40,9 @@ export function ProtocolSettingsPage() {
     queryFn: getServers,
   });
 
-  const servers = serversQuery.data?.items ?? [];
+  const servers = (serversQuery.data?.items ?? []).filter(
+    (server) => server.deploymentRole !== 'management',
+  );
   const selectedServer = servers.find((server) => server.id === serverId);
 
   return (
@@ -99,7 +101,7 @@ export function ProtocolSettingsPage() {
             {serversQuery.isSuccess && !selectedServer && (
               <div className="form-message form-message-error">{t('protocolSettings.serverNotFound')}</div>
             )}
-            <ServerProtocolSettingsPanel serverId={serverId} />
+            {selectedServer && <ServerProtocolSettingsPanel serverId={selectedServer.id} />}
           </>
         ) : (
           <div className="panel">
