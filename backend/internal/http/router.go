@@ -70,6 +70,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/auth/sessions/{session_id}", authn(stdhttp.HandlerFunc(authHandler.RevokeSecuritySession)))
 	mux.Handle("POST /api/v1/auth/sessions/revoke-others", authn(stdhttp.HandlerFunc(authHandler.RevokeOtherSecuritySessions)))
 	mux.Handle("GET /api/v1/auth/security-events", authn(stdhttp.HandlerFunc(authHandler.ListSecurityEvents)))
+	mux.Handle("DELETE /api/v1/auth/security-events", authn(stdhttp.HandlerFunc(authHandler.ClearSecurityEvents)))
 
 	mux.Handle("GET /api/portal/me", portalAuth(portalHandler.Me))
 	mux.Handle("GET /api/portal/dashboard", portalAuth(portalHandler.Dashboard))
