@@ -53,6 +53,7 @@ func (wireGuardAdapter) Render(config *RenderedConfig, info ServerConfigInfo) {
 			ID:                 account.ID,
 			DisplayName:        accountDisplayName(account),
 			Status:             account.Status,
+			Protocol:           platform.VPNProtocolWireGuard,
 			WireGuardPublicKey: strings.TrimSpace(account.WireGuardPublicKey),
 			WireGuardAddress:   peerAddress,
 		})
@@ -82,7 +83,7 @@ func (wireGuardAdapter) Ready(config RenderedConfig) bool {
 }
 
 func isWireGuardAccountRenderable(account VPNAccountConfigInfo) bool {
-	if account.Status != "active" || wireGuardPeerAddress(account.WireGuardAddress) == "" {
+	if !accountUsesProtocol(account, platform.VPNProtocolWireGuard) || account.Status != "active" || wireGuardPeerAddress(account.WireGuardAddress) == "" {
 		return false
 	}
 	if err := wgcredentials.ValidateKey(account.WireGuardPublicKey); err != nil {
@@ -93,8 +94,12 @@ func isWireGuardAccountRenderable(account VPNAccountConfigInfo) bool {
 
 func wireGuardPeerAddress(value string) string {
 	value = strings.TrimSpace(value)
-	if address, err := netip.ParseAddr(value); err == nil && address.Is4() { return address.String() }
-	if prefix, err := netip.ParsePrefix(value); err == nil && prefix.Addr().Is4() { return prefix.Addr().String() }
+	if address, err := netip.ParseAddr(value); err == nil && address.Is4() {
+		return address.String()
+	}
+	if prefix, err := netip.ParsePrefix(value); err == nil && prefix.Addr().Is4() {
+		return prefix.Addr().String()
+	}
 	return ""
 }
 
