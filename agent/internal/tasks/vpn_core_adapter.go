@@ -22,37 +22,82 @@ type VPNCoreAdapter interface {
 	CheckHealth(context.Context, string) (ListenerHealthResult, error)
 }
 
-func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter, additional ...VPNCoreAdapter) (VPNCoreAdapter, error) {
+type renderedVPNCoreDescriptor struct {
+	Core      string `json:"core"`
+	Protocol  string `json:"protocol"`
+	Transport string `json:"transport"`
+	Security  string `json:"security"`
+}
+
+func SelectVPNCoreAdapters(task ConfigTask, vless, wireGuard VPNCoreAdapter, additional ...VPNCoreAdapter) ([]VPNCoreAdapter, error) {
 	var envelope struct {
 		Metadata struct {
-			VPNCore struct {
-				Core string `json:"core"`
-				Protocol string `json:"protocol"`
-				Transport string `json:"transport"`
-				Security string `json:"security"`
-			} `json:"vpnCore"`
+			VPNCore  renderedVPNCoreDescriptor   `json:"vpnCore"`
+			VPNCores []renderedVPNCoreDescriptor `json:"vpnCores"`
 		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(task.RenderedConfig, &envelope); err != nil {
 		return nil, errors.New("rendered config must be valid JSON")
 	}
-	descriptor := envelope.Metadata.VPNCore
-	if strings.TrimSpace(descriptor.Core) == "" {
-		if vless == nil { return nil, errors.New("VLESS VPN Core adapter is unavailable") }
-		return vless, nil
+
+	descriptors := envelope.Metadata.VPNCores
+	if len(descriptors) == 0 {
+		descriptors = []renderedVPNCoreDescriptor{envelope.Metadata.VPNCore}
 	}
 	candidates := append([]VPNCoreAdapter{vless, wireGuard}, additional...)
-	for _, candidate := range candidates {
-		if candidate == nil {
+	selected := make([]VPNCoreAdapter, 0, len(descriptors))
+	seenCores := map[string]struct{}{}
+
+	for _, descriptor := range descriptors {
+		if strings.TrimSpace(descriptor.Core) == "" {
+			if vless == nil {
+				return nil, errors.New("VLESS VPN Core adapter is unavailable")
+			}
+			if _, exists := seenCores[vless.Descriptor().Core]; !exists {
+				selected = append(selected, vless)
+				seenCores[vless.Descriptor().Core] = struct{}{}
+			}
 			continue
 		}
-		managed := candidate.Descriptor()
-		if managed.Core == descriptor.Core && managed.Protocol == descriptor.Protocol &&
-			containsString(managed.Transports, descriptor.Transport) && containsString(managed.SecurityModes, descriptor.Security) {
-			return candidate, nil
+
+		var matched VPNCoreAdapter
+		for _, candidate := range candidates {
+			if candidate == nil {
+				continue
+			}
+			managed := candidate.Descriptor()
+			if managed.Core == descriptor.Core && managed.Protocol == descriptor.Protocol &&
+				containsString(managed.Transports, descriptor.Transport) && containsString(managed.SecurityModes, descriptor.Security) {
+				matched = candidate
+				break
+			}
 		}
+		if matched == nil {
+			return nil, errors.New("rendered config selects an unsupported VPN Core adapter")
+		}
+
+		// VLESS and Shadowsocks share one sing-box config and one service. The
+		// rendered singBox object already contains both inbounds, so applying the
+		// same service twice would add no safety and would complicate rollback.
+		core := matched.Descriptor().Core
+		if _, exists := seenCores[core]; exists {
+			continue
+		}
+		seenCores[core] = struct{}{}
+		selected = append(selected, matched)
 	}
-	return nil, errors.New("rendered config selects an unsupported VPN Core adapter")
+	if len(selected) == 0 {
+		return nil, errors.New("rendered config contains no managed VPN Core adapters")
+	}
+	return selected, nil
+}
+
+func SelectVPNCoreAdapter(task ConfigTask, vless, wireGuard VPNCoreAdapter, additional ...VPNCoreAdapter) (VPNCoreAdapter, error) {
+	adapters, err := SelectVPNCoreAdapters(task, vless, wireGuard, additional...)
+	if err != nil {
+		return nil, err
+	}
+	return adapters[0], nil
 }
 
 func containsString(values []string, selected string) bool {
@@ -65,10 +110,10 @@ func containsString(values []string, selected string) bool {
 }
 
 type singBoxVLESSAdapter struct {
-	stager    Stager
-	validator Validator
-	service   ServiceController
-	descriptor platform.VPNCoreAdapterDescriptor
+	stager      Stager
+	validator   Validator
+	service     ServiceController
+	descriptor  platform.VPNCoreAdapterDescriptor
 	inboundType string
 }
 
@@ -76,10 +121,10 @@ var _ VPNCoreAdapter = singBoxVLESSAdapter{}
 
 func NewSingBoxVLESSAdapter(stagingDir, binary, service string) VPNCoreAdapter {
 	return singBoxVLESSAdapter{
-		stager:    NewStager(stagingDir),
-		validator: NewValidator(binary),
-		service:   NewServiceController(service),
-		descriptor: platform.ManagedVPNCoreAdapters()[0],
+		stager:      NewStager(stagingDir),
+		validator:   NewValidator(binary),
+		service:     NewServiceController(service),
+		descriptor:  platform.ManagedVPNCoreAdapters()[0],
 		inboundType: platform.VPNProtocolVLESS,
 	}
 }
@@ -121,5 +166,5 @@ func (a singBoxVLESSAdapter) ExecuteServiceTask(ctx context.Context, task Config
 }
 
 func (a singBoxVLESSAdapter) CheckHealth(ctx context.Context, configPath string) (ListenerHealthResult, error) {
-	return CheckSingBoxTCPListener(ctx, configPath, a.inboundType)
+	return CheckSingBoxTCPListeners(ctx, configPath)
 }
