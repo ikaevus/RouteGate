@@ -17,6 +17,7 @@
     .brand span { display:block; margin-top:2px; color:#91a4bd; font-size:12px; }
     h1 { margin:0 0 10px; font-size:25px; line-height:1.2; }
     p { margin:0; color:#a8b8cc; line-height:1.55; }
+    .protocol { display:inline-flex; margin-top:14px; padding:5px 9px; border-radius:999px; border:1px solid rgba(96,165,250,.28); background:rgba(37,99,235,.12); color:#cfe2ff; font-size:12px; font-weight:700; }
     .warning { margin:20px 0; padding:13px 14px; border:1px solid rgba(245,158,11,.32); border-radius:13px; background:rgba(245,158,11,.08); color:#f5d88d; font-size:13px; }
     .actions { display:grid; gap:10px; margin-top:22px; }
     button { min-height:46px; border-radius:13px; border:1px solid rgba(96,165,250,.35); font:inherit; font-weight:650; cursor:pointer; display:flex; align-items:center; justify-content:center; }
@@ -34,11 +35,12 @@
     <div class="brand"><div class="mark">R</div><div><strong>RouteGate</strong><span id="brand-subtitle">VPN access</span></div></div>
     <section id="content">
       <h1 id="title">Open VPN profile</h1>
-      <p id="description">This secure link contains a VLESS profile. Open it in a compatible VPN client or copy the profile manually.</p>
+      <p id="description">This secure link contains a VPN profile or configuration. Open it in a compatible client or copy it for manual import.</p>
+      <div class="protocol" id="protocol-label"></div>
       <div class="warning" id="warning">Anyone with this link can use the VPN access. Do not forward it to unauthorized people.</div>
       <div class="actions">
         <button class="primary" id="open-link" type="button">Open in VPN client</button>
-        <button class="secondary" id="copy-button" type="button">Copy VLESS profile</button>
+        <button class="secondary" id="copy-button" type="button">Copy VPN profile</button>
       </div>
       <div class="status" id="status" aria-live="polite"></div>
     </section>
@@ -49,51 +51,103 @@
       const ru = (navigator.language || '').toLowerCase().startsWith('ru');
       const strings = ru ? {
         subtitle: 'Подключение к VPN', title: 'Открыть VPN-профиль',
-        description: 'Эта защищённая ссылка содержит профиль VLESS. Откройте его в совместимом VPN-клиенте или скопируйте профиль вручную.',
+        description: protocol => protocol === 'WireGuard'
+          ? 'Эта защищённая ссылка содержит конфигурацию WireGuard. Скопируйте её и импортируйте в WireGuard-совместимый клиент.'
+          : `Эта защищённая ссылка содержит профиль ${protocol}. Откройте его в совместимом VPN-клиенте или скопируйте вручную.`,
         warning: 'Любой, у кого есть эта ссылка, получает доступ к VPN. Не пересылайте её посторонним.',
-        open: 'Открыть в VPN-клиенте', copy: 'Скопировать VLESS-профиль', copied: 'VLESS-профиль скопирован',
-        opening: 'Передаём VLESS-ссылку системе…',
-        noHandler: 'Если VPN-клиент не открылся, в системе не зарегистрирован обработчик ссылок vless://. Используйте копирование профиля или включите обработку VLESS-ссылок в VPN-клиенте.',
+        open: 'Открыть в VPN-клиенте',
+        copy: protocol => protocol === 'WireGuard' ? 'Скопировать конфигурацию WireGuard' : `Скопировать профиль ${protocol}`,
+        copied: protocol => protocol === 'WireGuard' ? 'Конфигурация WireGuard скопирована' : `Профиль ${protocol} скопирован`,
+        opening: protocol => `Передаём профиль ${protocol} системе…`,
+        noHandler: protocol => `Если VPN-клиент не открылся, в системе может не быть обработчика для ${protocol}. Скопируйте профиль и импортируйте его вручную.`,
+        wireguard: 'WireGuard использует конфигурационный файл и обычно не открывается через системную URL-схему.',
         invalid: 'Ссылка подключения RouteGate недействительна или неполна.'
       } : {
         subtitle: 'VPN access', title: 'Open VPN profile',
-        description: 'This secure link contains a VLESS profile. Open it in a compatible VPN client or copy the profile manually.',
+        description: protocol => protocol === 'WireGuard'
+          ? 'This secure link contains a WireGuard configuration. Copy it and import it into a WireGuard-compatible client.'
+          : `This secure link contains a ${protocol} profile. Open it in a compatible VPN client or copy it for manual import.`,
         warning: 'Anyone with this link can use the VPN access. Do not forward it to unauthorized people.',
-        open: 'Open in VPN client', copy: 'Copy VLESS profile', copied: 'VLESS profile copied',
-        opening: 'Passing the VLESS link to your system…',
-        noHandler: 'If no VPN client opened, your system has no registered handler for vless:// links. Copy the profile or enable VLESS link handling in your VPN client.',
+        open: 'Open in VPN client',
+        copy: protocol => protocol === 'WireGuard' ? 'Copy WireGuard configuration' : `Copy ${protocol} profile`,
+        copied: protocol => protocol === 'WireGuard' ? 'WireGuard configuration copied' : `${protocol} profile copied`,
+        opening: protocol => `Passing the ${protocol} profile to your system…`,
+        noHandler: protocol => `If no VPN client opened, your system may not have a handler for ${protocol}. Copy the profile and import it manually.`,
+        wireguard: 'WireGuard uses a configuration file and normally does not open through a system URL scheme.',
         invalid: 'This RouteGate connection link is invalid or incomplete.'
       };
-      document.getElementById('brand-subtitle').textContent = strings.subtitle;
-      document.getElementById('title').textContent = strings.title;
-      document.getElementById('description').textContent = strings.description;
-      document.getElementById('warning').textContent = strings.warning;
-      document.getElementById('open-link').textContent = strings.open;
-      document.getElementById('copy-button').textContent = strings.copy;
-      document.getElementById('invalid').textContent = strings.invalid;
 
-      function decodePayload() {
-        const params = new URLSearchParams(location.hash.slice(1));
-        const encoded = params.get('vless');
-        if (!encoded) return '';
+      const protocolMeta = {
+        vless: { label: 'VLESS / Reality', openable: true },
+        wireguard: { label: 'WireGuard', openable: false },
+        hysteria2: { label: 'Hysteria2', openable: true },
+        shadowsocks: { label: 'Shadowsocks 2022', openable: true },
+        mtproto: { label: 'MTProto / FakeTLS', openable: true }
+      };
+
+      function decodeBase64URL(encoded) {
         try {
           const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
           const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
           const binary = atob(padded);
           const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
-          const value = new TextDecoder().decode(bytes);
-          return value.startsWith('vless://') ? value : '';
+          return new TextDecoder().decode(bytes);
         } catch { return ''; }
       }
 
-      const vless = decodePayload();
-      if (!vless) {
+      function validMaterial(protocol, value) {
+        const lower = value.trim().toLowerCase();
+        switch (protocol) {
+          case 'vless': return lower.startsWith('vless://');
+          case 'wireguard': return value.includes('[Interface]') && value.includes('PrivateKey =') && value.includes('[Peer]') && value.includes('PublicKey =');
+          case 'hysteria2': return lower.startsWith('hysteria2://');
+          case 'shadowsocks': return lower.startsWith('ss://');
+          case 'mtproto': return lower.startsWith('tg://proxy?');
+          default: return false;
+        }
+      }
+
+      function decodeConnection() {
+        const params = new URLSearchParams(location.hash.slice(1));
+        const legacyVLESS = params.get('vless');
+        if (legacyVLESS) {
+          const value = decodeBase64URL(legacyVLESS);
+          return validMaterial('vless', value) ? { protocol: 'vless', value } : null;
+        }
+        const protocol = (params.get('protocol') || '').toLowerCase();
+        const encoded = params.get('profile') || '';
+        if (!protocolMeta[protocol] || !encoded) return null;
+        const value = decodeBase64URL(encoded);
+        return validMaterial(protocol, value) ? { protocol, value } : null;
+      }
+
+      const connection = decodeConnection();
+      if (!connection) {
         document.getElementById('content').style.display = 'none';
         document.getElementById('invalid').style.display = 'block';
+        document.getElementById('invalid').textContent = strings.invalid;
         return;
       }
 
+      const meta = protocolMeta[connection.protocol];
+      document.getElementById('brand-subtitle').textContent = strings.subtitle;
+      document.getElementById('title').textContent = strings.title;
+      document.getElementById('description').textContent = strings.description(meta.label);
+      document.getElementById('protocol-label').textContent = meta.label;
+      document.getElementById('warning').textContent = strings.warning;
+      document.getElementById('copy-button').textContent = strings.copy(meta.label);
+      document.getElementById('invalid').textContent = strings.invalid;
+
+      const openButton = document.getElementById('open-link');
       const status = document.getElementById('status');
+      if (!meta.openable) {
+        openButton.style.display = 'none';
+        status.classList.add('status-warn');
+        status.textContent = strings.wireguard;
+      } else {
+        openButton.textContent = strings.open;
+      }
+
       let externalLaunchObserved = false;
       const markExternalLaunch = () => { externalLaunchObserved = true; };
       window.addEventListener('blur', markExternalLaunch);
@@ -101,13 +155,14 @@
         if (document.hidden) markExternalLaunch();
       });
 
-      document.getElementById('open-link').addEventListener('click', () => {
+      openButton.addEventListener('click', () => {
+        if (!meta.openable) return;
         externalLaunchObserved = false;
         status.classList.remove('status-warn');
-        status.textContent = strings.opening;
+        status.textContent = strings.opening(meta.label);
 
         const launcher = document.createElement('a');
-        launcher.href = vless;
+        launcher.href = connection.value;
         launcher.style.display = 'none';
         launcher.setAttribute('rel', 'external');
         document.body.appendChild(launcher);
@@ -117,23 +172,23 @@
         window.setTimeout(() => {
           if (!externalLaunchObserved) {
             status.classList.add('status-warn');
-            status.textContent = strings.noHandler;
+            status.textContent = strings.noHandler(meta.label);
           }
         }, 1600);
       });
 
       document.getElementById('copy-button').addEventListener('click', async () => {
         try {
-          await navigator.clipboard.writeText(vless);
+          await navigator.clipboard.writeText(connection.value);
           status.classList.remove('status-warn');
-          status.textContent = strings.copied;
+          status.textContent = strings.copied(meta.label);
         } catch {
           const area = document.createElement('textarea');
-          area.value = vless;
+          area.value = connection.value;
           area.style.position = 'fixed'; area.style.opacity = '0';
           document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
           status.classList.remove('status-warn');
-          status.textContent = strings.copied;
+          status.textContent = strings.copied(meta.label);
         }
       });
     })();
