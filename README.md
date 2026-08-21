@@ -84,7 +84,7 @@ Development on `main` now also includes the RG-114 platform-expansion architectu
 | VLESS / Reality | Production-like validated public VPN path |
 | Remote VPN Node bootstrap and inventory | Implemented on `main` |
 | Native WireGuard | Managed adapter implemented on `main` |
-| Hysteria2 | Managed adapter implemented on `main` |
+| Hysteria2 | Managed adapter implemented on `main`; current TLS/ACME ownership targets dedicated VPN Nodes |
 | Shadowsocks 2022 | Managed adapter implemented on `main` |
 | MTProto / FakeTLS | Managed adapter implemented on `main` |
 | Multiple protocols on one VPN node | Manager/Agent multi-runtime lifecycle implemented on `main` |
@@ -120,13 +120,15 @@ RouteGate separates **VPN Core**, **Protocol**, **Transport**, and **Security** 
 |---|---|---|---|
 | **VLESS / Reality** | sing-box | TCP + Reality / XTLS Vision | Managed and production-like validated |
 | **WireGuard** | native `wireguard-tools` / `wg-quick` | UDP + WireGuard cryptography | Managed |
-| **Hysteria2** | Hysteria | QUIC + TLS / ACME | Managed |
+| **Hysteria2** | Hysteria | QUIC + TLS / ACME | Managed; dedicated VPN Node for the current certificate lifecycle |
 | **Shadowsocks 2022** | sing-box | TCP + AEAD-2022 | Managed |
 | **MTProto / FakeTLS** | mtg | TCP + FakeTLS | Managed |
 
 A VPN client profile may use `Auto` to inherit the node default or explicitly select one managed protocol. Manager resolves the effective protocol for every active account before rendering configuration, so one VPN Node can require multiple managed runtimes at the same time.
 
 VLESS and Shadowsocks are composed into the shared sing-box runtime. Native WireGuard, Hysteria2, and MTProto retain separate runtime/service ownership. Agent validates all required runtimes before promotion and rolls already-applied runtimes back if a later step in the same node deployment fails.
+
+Hysteria2 owns its VPN-plane certificate locally through ACME. RouteGate does not reuse or distribute the Manager nginx private key; coordination of that certificate lifecycle on Hybrid nodes is not claimed by the current Hysteria2 path.
 
 Cross-node atomic deployment remains a separate problem and is not implied by multi-runtime support on one node.
 
