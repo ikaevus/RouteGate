@@ -38,7 +38,7 @@ function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       title: 'Подключение VPN-клиента',
-      subtitle: 'Выберите протокол подключения для этого VPN-аккаунта и получите готовый QR-код или конфигурацию.',
+      subtitle: 'Получите готовый QR-код или конфигурацию для выбранного выше протокола.',
       loading: 'Загрузка клиентского профиля...',
       loadError: 'Не удалось загрузить клиентский профиль.',
       ready: 'Готово к подключению',
@@ -116,7 +116,7 @@ function getCopy() {
 
   return {
     title: 'Connect VPN client',
-    subtitle: 'Choose the connection protocol for this VPN account and get a ready QR code or configuration.',
+    subtitle: 'Get a ready QR code or configuration for the protocol selected above.',
     loading: 'Loading client profile...',
     loadError: 'Could not load the client profile.',
     ready: 'Ready to connect',
@@ -350,18 +350,6 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             <summary>{copy.profileSettings}</summary>
             <div className="vpn-client-advanced-content">
               <div className="vpn-client-settings-grid">
-                <label className="field">
-                  <span>{copy.protocol}</span>
-                  <select value={protocol} onChange={(event) => setProtocol(event.target.value as ClientProtocolPreference)}>
-                    <option value="auto">{copy.protocolAuto}</option>
-                    <option value="vless">{copy.protocolVless}</option>
-                    <option value="wireguard">{copy.protocolWireGuard}</option>
-                    <option value="hysteria2">{copy.protocolHysteria2}</option>
-                    <option value="shadowsocks">{copy.protocolShadowsocks}</option>
-                    <option value="mtproto">{copy.protocolMTProto}</option>
-                  </select>
-                  <small>{copy.protocolHint}</small>
-                </label>
                 <label className="field">
                   <span>{copy.profileName}</span>
                   <input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
