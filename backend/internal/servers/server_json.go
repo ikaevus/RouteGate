@@ -19,6 +19,27 @@ func (server Server) MarshalJSON() ([]byte, error) {
 	return json.Marshal(payload)
 }
 
+// MarshalJSON preserves ServerResponse's existing flattened shape. Server is
+// anonymously embedded in this DTO, so without an explicit method the
+// embedded Server marshaler would otherwise hide agent/inventory fields.
+func (response ServerResponse) MarshalJSON() ([]byte, error) {
+	serverJSON, err := json.Marshal(response.Server)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := make(map[string]any)
+	if err := json.Unmarshal(serverJSON, &payload); err != nil {
+		return nil, err
+	}
+	if response.Agent != nil {
+		payload["agent"] = response.Agent
+	}
+	payload["inventory"] = response.Inventory
+
+	return json.Marshal(payload)
+}
+
 func hostAddress(value string) string {
 	if value == "" {
 		return ""
