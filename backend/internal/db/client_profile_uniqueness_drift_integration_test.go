@@ -26,13 +26,8 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	defer pool.Close()
 
 	resetPublicSchema(t, ctx, pool)
-	migrationsBeforeRepair := copyMigrationsBefore(
-		t,
-		"../../migrations",
-		"000132_client_profile_schema_invariant_repair.up.sql",
-	)
-	if err := Migrate(ctx, pool, migrationsBeforeRepair, logger); err != nil {
-		t.Fatalf("apply migrations before invariant repair: %v", err)
+	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+		t.Fatalf("apply current migrations before simulating drift: %v", err)
 	}
 
 	var accountID string
@@ -44,9 +39,13 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 		t.Fatalf("create drift fixture account: %v", err)
 	}
 
-	// Simulate a historical host whose schema_migrations table is current through
-	// 000131 but whose physical client-profile schema drifted from those migrations.
+	// Simulate a historical host where later versions such as 000131 are already
+	// recorded, but the new invariant-repair migration has never run and the
+	// physical client-profile schema has drifted.
 	if _, err := pool.Exec(ctx, `
+		DELETE FROM schema_migrations
+		WHERE version = '000130z_client_profile_schema_invariant_repair';
+
 		DROP TRIGGER IF EXISTS trg_vpn_client_profiles_mark_server_dirty ON vpn_client_profiles;
 		ALTER TABLE vpn_client_profiles DROP CONSTRAINT IF EXISTS vpn_client_profiles_protocol_check;
 		ALTER TABLE vpn_client_profiles DROP CONSTRAINT IF EXISTS vpn_client_profiles_vpn_account_id_key;
@@ -66,7 +65,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	}
 
 	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
-		t.Fatalf("apply client-profile invariant repair migration: %v", err)
+		t.Fatalf("reapply missing client-profile invariant repair migration: %v", err)
 	}
 
 	var profileCount int
@@ -149,11 +148,25 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 		t.Fatalf("upsert returned profile = %q, want Newest profile", upsertedName)
 	}
 
+	var repairApplied bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM schema_migrations
+			WHERE version = '000130z_client_profile_schema_invariant_repair'
+		)
+	`).Scan(&repairApplied); err != nil {
+		t.Fatalf("check invariant repair migration record: %v", err)
+	}
+	if !repairApplied {
+		t.Fatal("client-profile invariant repair migration was not recorded")
+	}
+
 	version, err := NewSchemaVersionRepository(pool).AppliedSchemaVersion(ctx)
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000132_client_profile_schema_invariant_repair" {
-		t.Fatalf("applied schema version = %q, want 000132_client_profile_schema_invariant_repair", version)
+	if version != "000131_security_event_visibility" {
+		t.Fatalf("applied schema version = %q, want 000131_security_event_visibility", version)
 	}
 }
