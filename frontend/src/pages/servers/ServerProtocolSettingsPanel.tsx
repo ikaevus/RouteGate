@@ -120,6 +120,9 @@ function getCopy() {
     return {
       recommendedEyebrow: 'Рекомендуемая настройка',
       configuredEyebrow: 'Протокол готов',
+      selectionEyebrow: 'Изменения не сохранены',
+      selectionDescription: 'Настройки этого протокола уже готовы, но он ещё не сохранён как протокол узла по умолчанию. Сохраните выбор, чтобы VPN-аккаунты в режиме «Автоматически» начали наследовать его.',
+      saveDefault: 'Сохранить как протокол по умолчанию',
       vlessTitle: 'Настроить VLESS / Reality автоматически',
       vlessDescription: 'RouteGate выберет безопасные параметры, сгенерирует Reality keypair и Short ID и использует hostname узла как SNI.',
       vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
@@ -135,7 +138,7 @@ function getCopy() {
       configuredDescription: 'Настройки протокола готовы. Следующий шаг — назначить протокол VPN-аккаунту или отрендерить конфигурацию узла.',
       continue: 'К VPN-аккаунтам →',
       protocol: 'Протокол узла по умолчанию',
-      protocolHint: 'Используется профилями VPN-аккаунтов с режимом «Автоматически». Явный выбор в аккаунте может использовать другой поддерживаемый протокол.',
+      protocolHint: 'Используется VPN-аккаунтами в режиме «Автоматически». Выбор в этом списке применяется только после сохранения или успешной автонастройки протокола.',
       wireGuardPort: 'Порт WireGuard',
       wireGuardAddress: 'Адрес интерфейса WireGuard',
       wireGuardDns: 'DNS для клиентов',
@@ -167,6 +170,9 @@ function getCopy() {
   return {
     recommendedEyebrow: 'Recommended setup',
     configuredEyebrow: 'Protocol ready',
+    selectionEyebrow: 'Unsaved change',
+    selectionDescription: 'This protocol is already prepared, but it is not yet saved as the node default. Save the selection so VPN accounts using Automatic start inheriting it.',
+    saveDefault: 'Save as node default',
     vlessTitle: 'Configure VLESS / Reality automatically',
     vlessDescription: 'RouteGate will choose safe settings, generate the Reality keypair and Short ID, and use the node hostname as SNI.',
     vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
@@ -182,7 +188,7 @@ function getCopy() {
     configuredDescription: 'The protocol settings are ready. Next, assign the protocol to a VPN account or render the node configuration.',
     continue: 'Open VPN accounts →',
     protocol: 'Node default protocol',
-    protocolHint: 'Used by VPN account profiles set to Automatic. An explicit account choice may use another supported protocol.',
+    protocolHint: 'Used by VPN accounts set to Automatic. A selection here takes effect only after you save it or complete the protocol automatic setup.',
     wireGuardPort: 'WireGuard port',
     wireGuardAddress: 'WireGuard interface address',
     wireGuardDns: 'Client DNS',
@@ -290,8 +296,10 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   const realityValues = [form.realityPublicKey, form.realityShortId, form.realityServerName].map((value) => value.trim());
   const realityTouched = realityValues.some(Boolean);
   const realityComplete = realityValues.every(Boolean);
+  const savedProtocol = normalizeProtocol(settingsQuery.data?.protocol ?? 'vless');
+  const protocolSelectionDirty = Boolean(settingsQuery.data) && form.protocol !== savedProtocol;
 
-  const protocolConfigured = form.protocol === 'mtproto'
+  const selectedProtocolReady = form.protocol === 'mtproto'
     ? Boolean(settingsQuery.data?.mtproto.ready) && Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
     : form.protocol === 'shadowsocks'
       ? Boolean(settingsQuery.data?.shadowsocks.ready) && Number.isInteger(shadowsocksPortNumber) && shadowsocksPortNumber >= 1 && shadowsocksPortNumber <= 65535
@@ -301,9 +309,11 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           ? Boolean(settingsQuery.data?.wireGuard.ready) && Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
           : realityComplete && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
 
+  const protocolConfigured = selectedProtocolReady && !protocolSelectionDirty;
+
   useEffect(() => {
-    if (settingsQuery.data && !protocolConfigured) setAdvancedOpen(true);
-  }, [form.protocol, protocolConfigured, settingsQuery.data]);
+    if (settingsQuery.data && !selectedProtocolReady) setAdvancedOpen(true);
+  }, [form.protocol, selectedProtocolReady, settingsQuery.data]);
 
   const mutationPending = updateSettingsMutation.isPending
     || realityKeypairMutation.isPending
@@ -323,6 +333,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           : Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535 && (!realityTouched || realityComplete))
     && !mutationPending;
 
+  const selectionReadyToSave = protocolSelectionDirty && selectedProtocolReady && canSave;
   const translatedKeypairActionLabel = form.realityPublicKey.trim() === ''
     ? t('protocolSettings.generateRealityKeypair')
     : t('protocolSettings.rotateRealityKeypair');
@@ -332,18 +343,22 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
   const recommendedTitle = protocolConfigured
     ? `${selectedProtocolLabel} — ${copy.configuredEyebrow}`
-    : isVless
-      ? copy.vlessTitle
-      : isWireGuard
-        ? copy.wireGuardTitle
-        : `${selectedProtocolLabel}`;
+    : selectionReadyToSave
+      ? `${selectedProtocolLabel} — ${copy.selectionEyebrow}`
+      : isVless
+        ? copy.vlessTitle
+        : isWireGuard
+          ? copy.wireGuardTitle
+          : `${selectedProtocolLabel}`;
   const recommendedDescription = protocolConfigured
     ? copy.configuredDescription
-    : isVless
-      ? copy.vlessDescription
-      : isWireGuard
-        ? copy.wireGuardDescription
-        : copy.manualDescription;
+    : selectionReadyToSave
+      ? copy.selectionDescription
+      : isVless
+        ? copy.vlessDescription
+        : isWireGuard
+          ? copy.wireGuardDescription
+          : copy.manualDescription;
   const recommendedValues = isVless ? copy.vlessValues : isWireGuard ? copy.wireGuardValues : null;
   const recommendedReason = isVless ? copy.vlessReason : isWireGuard ? copy.wireGuardReason : null;
 
@@ -375,15 +390,21 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
           <div className={`protocol-recommended-setup${protocolConfigured ? ' protocol-recommended-setup-ready' : ''}`}>
             <div className="protocol-recommended-copy">
-              <span className="protocol-recommended-eyebrow">{protocolConfigured ? copy.configuredEyebrow : copy.recommendedEyebrow}</span>
+              <span className="protocol-recommended-eyebrow">
+                {protocolConfigured ? copy.configuredEyebrow : selectionReadyToSave ? copy.selectionEyebrow : copy.recommendedEyebrow}
+              </span>
               <div className="protocol-recommended-title">{recommendedTitle}</div>
               <p>{recommendedDescription}</p>
-              {!protocolConfigured && recommendedValues && <div className="protocol-recommended-values">{recommendedValues}</div>}
-              {!protocolConfigured && recommendedReason && <p className="protocol-recommended-reason">{recommendedReason}</p>}
+              {!selectedProtocolReady && recommendedValues && <div className="protocol-recommended-values">{recommendedValues}</div>}
+              {!selectedProtocolReady && recommendedReason && <p className="protocol-recommended-reason">{recommendedReason}</p>}
             </div>
             <div className="protocol-recommended-actions">
               {protocolConfigured ? (
                 <Link className="small-button" to="/vpn-accounts">{copy.continue}</Link>
+              ) : selectionReadyToSave ? (
+                <button className="primary-button" type="submit" disabled={!canSave}>
+                  {updateSettingsMutation.isPending ? t('protocolSettings.saving') : copy.saveDefault}
+                </button>
               ) : isVless ? (
                 <button
                   className="primary-button"
