@@ -126,11 +126,12 @@ const portalProfileSelect = `
 		a.status,
 		a.expires_at,
 		a.max_devices,
-		COALESCE(a.protocol, 'sing-box'),
+		COALESCE(NULLIF(cp.protocol, 'auto'), NULLIF(s.vpn_protocol, ''), 'vless'),
 		COALESCE(s.location, ''),
 		a.updated_at
 	FROM vpn_accounts a
 	LEFT JOIN servers s ON s.id = a.server_id
+	LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 `
 
 type scanner interface {
