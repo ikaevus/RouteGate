@@ -15,18 +15,18 @@ import (
 )
 
 type Runner struct {
-	cfg               config.Config
-	configPath        string
-	client            *client.Client
-	logger            *slog.Logger
-	trafficCollector  traffic.Collector
-	trafficTracker    *traffic.DeltaTracker
-	lastTrafficReport time.Time
-	vpnCoreAdapter    tasks.VPNCoreAdapter
-	wireGuardAdapter  tasks.VPNCoreAdapter
-	hysteria2Adapter  tasks.VPNCoreAdapter
+	cfg                config.Config
+	configPath         string
+	client             *client.Client
+	logger             *slog.Logger
+	trafficCollector   traffic.Collector
+	trafficTracker     *traffic.DeltaTracker
+	lastTrafficReport  time.Time
+	vpnCoreAdapter     tasks.VPNCoreAdapter
+	wireGuardAdapter   tasks.VPNCoreAdapter
+	hysteria2Adapter   tasks.VPNCoreAdapter
 	shadowsocksAdapter tasks.VPNCoreAdapter
-	mtprotoAdapter tasks.VPNCoreAdapter
+	mtprotoAdapter     tasks.VPNCoreAdapter
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -196,7 +196,7 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 	case tasks.TaskKindDiagnostic:
 		return r.processDiagnosticTask(ctx, *task)
 	case tasks.TaskKindConfigApply:
-		// Continue through the existing config deployment workflow.
+		return r.processConfigApplyTask(ctx, *task)
 	default:
 		err := fmt.Errorf("unsupported agent task kind %q", task.Kind)
 		report := map[string]any{"kind": task.Kind, "status": "rejected"}
@@ -205,223 +205,6 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		}
 		return err
 	}
-
-	adapter, err := tasks.SelectVPNCoreAdapter(*task, r.vpnCoreAdapter, r.wireGuardAdapter, r.hysteria2Adapter, r.shadowsocksAdapter, r.mtprotoAdapter)
-	if err != nil {
-		report := map[string]any{"stage": "rejected", "configVersionId": task.ConfigVersionID, "configHash": task.ConfigHash}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("select VPN Core adapter failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-	activeConfigPath, backupDir := r.adapterStorage(adapter)
-
-	stageResult, err := adapter.Stage(*task)
-	if err != nil {
-		report := map[string]any{
-			"stage":           "failed",
-			"validate":        "skipped",
-			"apply":           "skipped",
-			"configVersionId": task.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("stage config task failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	validationResult, err := adapter.Validate(ctx, stageResult.StagedPath)
-	if err != nil {
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "failed",
-			"apply":           "skipped",
-			"stagedPath":      stageResult.StagedPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      stageResult.ConfigHash,
-			"command":         validationResult.Command,
-			"output":          validationResult.Output,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("validate staged config failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	applyResult, err := tasks.NewApplier(activeConfigPath, backupDir).Apply(stageResult.StagedPath, stageResult.ConfigVersionID)
-	if err != nil {
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "succeeded",
-			"apply":           "failed",
-			"stagedPath":      stageResult.StagedPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-			"command":         validationResult.Command,
-			"output":          validationResult.Output,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("apply staged config failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	if !r.cfg.ServiceControlEnabled {
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "succeeded",
-			"apply":           "succeeded",
-			"restart":         "skipped_service_control_disabled",
-			"healthcheck":     "skipped_service_control_disabled",
-			"rollback":        "skipped",
-			"stagedPath":      stageResult.StagedPath,
-			"activePath":      applyResult.ActivePath,
-			"backupPath":      applyResult.BackupPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-			"command":         validationResult.Command,
-			"output":          validationResult.Output,
-		}
-		if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
-			return err
-		}
-		r.logger.Info("config task staged, validated and applied; service control skipped", "job_id", task.ID, "config_version_id", stageResult.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath)
-		return nil
-	}
-
-	restartResult, err := adapter.Restart(ctx)
-	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "succeeded",
-			"apply":           "succeeded",
-			"restart":         "failed",
-			"healthcheck":     "skipped",
-			"rollback":        rollbackStatus,
-			"stagedPath":      stageResult.StagedPath,
-			"activePath":      applyResult.ActivePath,
-			"backupPath":      applyResult.BackupPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-			"command":         restartResult.Command,
-			"output":          restartResult.Output,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("restart VPN Core failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	healthResult, err := adapter.IsActive(ctx)
-	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "succeeded",
-			"apply":           "succeeded",
-			"restart":         "succeeded",
-			"healthcheck":     "failed",
-			"rollback":        rollbackStatus,
-			"stagedPath":      stageResult.StagedPath,
-			"activePath":      applyResult.ActivePath,
-			"backupPath":      applyResult.BackupPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-			"command":         healthResult.Command,
-			"output":          healthResult.Output,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("VPN Core healthcheck failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	persistenceResult, err := adapter.IsEnabled(ctx)
-	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "succeeded",
-			"apply":           "succeeded",
-			"restart":         "succeeded",
-			"healthcheck":     "failed",
-			"rollback":        rollbackStatus,
-			"stagedPath":      stageResult.StagedPath,
-			"activePath":      applyResult.ActivePath,
-			"backupPath":      applyResult.BackupPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-			"command":         persistenceResult.Command,
-			"output":          persistenceResult.Output,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("VPN Core persistence check failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	listenerResult, err := adapter.CheckHealth(ctx, applyResult.ActivePath)
-	if err != nil {
-		rollbackStatus := r.rollbackAppliedConfig(applyResult, activeConfigPath, backupDir)
-		report := map[string]any{
-			"stage":           "succeeded",
-			"validate":        "succeeded",
-			"apply":           "succeeded",
-			"restart":         "succeeded",
-			"healthcheck":     "failed",
-			"rollback":        rollbackStatus,
-			"stagedPath":      stageResult.StagedPath,
-			"activePath":      applyResult.ActivePath,
-			"backupPath":      applyResult.BackupPath,
-			"configVersionId": stageResult.ConfigVersionID,
-			"configHash":      task.ConfigHash,
-			"listenerPort":    listenerResult.Port,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), report); completeErr != nil {
-			return fmt.Errorf("VPN Core listener healthcheck failed: %v; report failure: %w", err, completeErr)
-		}
-		return err
-	}
-
-	report := map[string]any{
-		"stage":              "succeeded",
-		"validate":           "succeeded",
-		"apply":              "succeeded",
-		"restart":            "succeeded",
-		"healthcheck":        "succeeded",
-		"rollback":           "skipped",
-		"stagedPath":         stageResult.StagedPath,
-		"activePath":         applyResult.ActivePath,
-		"backupPath":         applyResult.BackupPath,
-		"configVersionId":    stageResult.ConfigVersionID,
-		"configHash":         task.ConfigHash,
-		"command":            validationResult.Command,
-		"output":             validationResult.Output,
-		"restartCommand":     restartResult.Command,
-		"healthCommand":      healthResult.Command,
-		"persistenceCommand": persistenceResult.Command,
-		"listenerAddress":    listenerResult.Address,
-		"listenerPort":       listenerResult.Port,
-	}
-	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, report); err != nil {
-		return err
-	}
-	r.logger.Info("config task staged, validated and applied", "job_id", task.ID, "config_version_id", task.ConfigVersionID, "staged_path", stageResult.StagedPath, "active_path", applyResult.ActivePath, "listener_port", listenerResult.Port)
-	return nil
-}
-
-func (r *Runner) rollbackAppliedConfig(result tasks.ApplyResult, activeConfigPath, backupDir string) string {
-	if result.BackupPath == "" {
-		return "skipped_no_backup"
-	}
-	if err := tasks.NewApplier(activeConfigPath, backupDir).Rollback(result.BackupPath); err != nil {
-		r.logger.Warn("rollback active config failed", "error", err, "backup_path", result.BackupPath, "active_path", result.ActivePath)
-		return "failed"
-	}
-	r.logger.Warn("rolled back active config", "backup_path", result.BackupPath, "active_path", result.ActivePath)
-	return "succeeded"
 }
 
 func (r *Runner) adapterStorage(adapter tasks.VPNCoreAdapter) (string, string) {
