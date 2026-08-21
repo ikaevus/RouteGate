@@ -188,20 +188,40 @@ func (r *Repository) AssignNodeGroup(ctx context.Context, accountID, groupID str
 		return VPNAccountRoutingPolicy{}, err
 	}
 	defer tx.Rollback(ctx)
-	result, err := tx.Exec(ctx, `
+	if err := lockVPNAccount(ctx, tx, accountID); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	var groupExists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM node_groups WHERE id = $1::uuid)`, groupID).Scan(&groupExists); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	if !groupExists {
+		return VPNAccountRoutingPolicy{}, pgx.ErrNoRows
+	}
+	var currentGroupID string
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE((
+			SELECT node_group_id::text
+			FROM vpn_account_node_groups
+			WHERE vpn_account_id = $1::uuid
+		), '')
+	`, accountID).Scan(&currentGroupID); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
+	if currentGroupID == groupID {
+		if err := tx.Commit(ctx); err != nil {
+			return VPNAccountRoutingPolicy{}, err
+		}
+		return r.GetRoutingPolicy(ctx, accountID)
+	}
+	_, err = tx.Exec(ctx, `
 		INSERT INTO vpn_account_node_groups (vpn_account_id, node_group_id)
-		SELECT a.id, g.id
-		FROM vpn_accounts a
-		CROSS JOIN node_groups g
-		WHERE a.id = $1::uuid AND g.id = $2::uuid
+		VALUES ($1::uuid, $2::uuid)
 		ON CONFLICT (vpn_account_id) DO UPDATE
 		SET node_group_id = EXCLUDED.node_group_id, updated_at = now()
 	`, accountID, groupID)
 	if err != nil {
 		return VPNAccountRoutingPolicy{}, err
-	}
-	if result.RowsAffected() == 0 {
-		return VPNAccountRoutingPolicy{}, pgx.ErrNoRows
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE vpn_account_automatic_selection_policies
@@ -224,6 +244,9 @@ func (r *Repository) DeleteNodeGroupAssignment(ctx context.Context, accountID st
 		return VPNAccountRoutingPolicy{}, err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockVPNAccount(ctx, tx, accountID); err != nil {
+		return VPNAccountRoutingPolicy{}, err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM vpn_account_node_groups WHERE vpn_account_id = $1::uuid`, accountID); err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}

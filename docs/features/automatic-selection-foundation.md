@@ -17,9 +17,10 @@ eligible count, evaluation time, and any cooldown deadline.
 
 ## Safe apply lifecycle
 
-Apply is an explicit administrator action. RouteGate re-evaluates candidates,
-checks account status and policy, locks the account assignment, and then updates
-`vpn_accounts.server_id`. A concurrent manual change is rejected.
+Apply is an explicit administrator action. RouteGate locks the account first,
+then reads its current status, policy, node group, and fresh candidate evidence
+inside the same transaction before updating `vpn_accounts.server_id`. A manual
+assignment change that wins the lock first is rejected as a concurrent change.
 
 When a move occurs, the response contains both the previous and selected server
 IDs in selected-node-first order and sets `configDeploymentRequired: true`. The

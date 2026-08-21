@@ -24,9 +24,10 @@ the selected VPN Core has received them.
    VPN account, avoiding random movement between evaluations.
 3. Each account stores an enable flag, degraded fallback policy, and a cooldown
    between actual moves. Removing its node-group target disables selection.
-4. Preview never mutates assignment. Apply performs a fresh evaluation, locks
-   the account row, rejects a concurrent assignment change, updates the concrete
-   server, and records the operator action in the audit log.
+4. Preview never mutates assignment. Apply locks the account row, then reads the
+   current status, policy, node group, and fresh candidate evidence in the same
+   transaction. It rejects a manual assignment change that won the lock first,
+   updates the concrete server, and records the operator action in the audit log.
 5. Apply returns every affected server ID and explicitly requires render/apply
    of their configurations as the next administrator action.
 6. RG-114I does not run a background failover loop. Fully unattended movement
