@@ -283,6 +283,20 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidate := clientProfileFromRequest(accountID, request)
+	effectiveProtocol := resolveEffectiveClientProtocol(candidate, subscription.Server)
+	if preparer, ok := h.accounts.(clientProtocolPreparer); ok && subscription.Server != nil {
+		if err := preparer.PrepareClientProtocol(r.Context(), accountID, subscription.Server.ID, effectiveProtocol); err != nil {
+			h.databaseError(w, "prepare vpn client protocol", err)
+			return
+		}
+		if effectiveProtocol == ClientProtocolWireGuard {
+			subscription, err = h.accounts.GetSubscriptionProfileByAccountID(r.Context(), accountID)
+			if err != nil {
+				h.databaseError(w, "reload vpn subscription profile after protocol preparation", err)
+				return
+			}
+		}
+	}
 	if _, err := buildClientConnectionResponse(accountID, subscription, candidate); err != nil {
 		if writeClientConnectionDomainError(w, err) {
 			return
