@@ -8,7 +8,9 @@ import (
 )
 
 // EnsureServerPeerCredentials fills only missing WireGuard account material.
-// The server row lock serializes address allocation for a peer pool.
+// The server row lock serializes address allocation for a peer pool. Accounts
+// explicitly selecting WireGuard are included even when WireGuard is not the
+// node's default protocol.
 func EnsureServerPeerCredentials(ctx context.Context, pool *pgxpool.Pool, serverID string) error {
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
@@ -20,28 +22,28 @@ func EnsureServerPeerCredentials(ctx context.Context, pool *pgxpool.Pool, server
 	}
 	defer tx.Rollback(ctx)
 
-	var protocol, serverAddress string
+	var serverAddress string
 	if err := tx.QueryRow(ctx, `
-		SELECT vpn_protocol, wireguard_address::text
+		SELECT wireguard_address::text
 		FROM servers
 		WHERE id = $1::uuid
 		FOR UPDATE
-	`, serverID).Scan(&protocol, &serverAddress); err != nil {
+	`, serverID).Scan(&serverAddress); err != nil {
 		return err
-	}
-	if protocol != "wireguard" {
-		return tx.Commit(ctx)
 	}
 
 	rows, err := tx.Query(ctx, `
 		SELECT
-			id::text,
-			COALESCE(wireguard_private_key, ''),
-			COALESCE(wireguard_public_key, ''),
-			COALESCE(wireguard_address::text, '')
-		FROM vpn_accounts
-		WHERE server_id = $1::uuid
-		ORDER BY created_at ASC, id ASC
+			a.id::text,
+			COALESCE(a.wireguard_private_key, ''),
+			COALESCE(a.wireguard_public_key, ''),
+			COALESCE(a.wireguard_address::text, '')
+		FROM vpn_accounts a
+		JOIN servers s ON s.id = a.server_id
+		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
+		WHERE a.server_id = $1::uuid
+		  AND COALESCE(NULLIF(cp.protocol, 'auto'), s.vpn_protocol, 'vless') = 'wireguard'
+		ORDER BY a.created_at ASC, a.id ASC
 	`, serverID)
 	if err != nil {
 		return err

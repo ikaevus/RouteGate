@@ -233,16 +233,19 @@ func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, toke
 }
 
 func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id string) (SubscriptionProfile, error) {
-	var serverID, serverProtocol string
+	var serverID, effectiveProtocol string
 	if err := r.pool.QueryRow(ctx, `
-		SELECT COALESCE(a.server_id::text, ''), COALESCE(s.vpn_protocol, 'vless')
+		SELECT
+			COALESCE(a.server_id::text, ''),
+			COALESCE(NULLIF(cp.protocol, 'auto'), s.vpn_protocol, 'vless')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
-	`, id).Scan(&serverID, &serverProtocol); err != nil {
+	`, id).Scan(&serverID, &effectiveProtocol); err != nil {
 		return SubscriptionProfile{}, err
 	}
-	if serverID != "" && serverProtocol == "wireguard" {
+	if serverID != "" && effectiveProtocol == ClientProtocolWireGuard {
 		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.pool, serverID); err != nil {
 			return SubscriptionProfile{}, err
 		}
@@ -277,7 +280,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(s.reality_public_key, ''),
 			COALESCE(s.reality_short_id, ''),
 			COALESCE(s.reality_server_name, ''),
-			COALESCE(s.vpn_protocol, 'vless'),
+			COALESCE(NULLIF(cp.protocol, 'auto'), s.vpn_protocol, 'vless'),
 			COALESCE(s.wireguard_port, 51820),
 			COALESCE(s.wireguard_address::text, '10.66.0.1/24'),
 			COALESCE(s.wireguard_dns::text, '1.1.1.1'),
@@ -293,6 +296,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			s.mtproto_fronting_domain
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
 	`, id))
 	if err != nil {
@@ -589,7 +593,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			RealityPublicKey:  realityPublicKey.String,
 			RealityShortID:    realityShortID.String,
 			RealityServerName: realityServerName.String,
-			VPNProtocol:        vpnProtocol.String,
+			VPNProtocol:       vpnProtocol.String,
 			WireGuardPort:      int(wireGuardPort.Int32),
 			WireGuardAddress:   serverWireGuardAddress.String,
 			WireGuardDNS:       wireGuardDNS.String,

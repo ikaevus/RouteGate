@@ -49,10 +49,15 @@ func NewService(repository configRepository) *Service {
 }
 
 func (s *Service) Render(ctx context.Context, serverID string) (RenderConfigResponse, error) {
+	resolvedProtocols, err := resolveServerAccountProtocols(ctx, s.repository, serverID)
+	if err != nil {
+		return RenderConfigResponse{}, err
+	}
 	info, err := s.repository.GetServerConfigInfo(ctx, serverID)
 	if err != nil {
 		return RenderConfigResponse{}, err
 	}
+	applyResolvedAccountProtocols(&info, resolvedProtocols)
 	if !platform.EffectiveDeploymentRole(info.DeploymentRole).HostsVPNPlane() {
 		return RenderConfigResponse{}, ErrNodeRoleNoVPN
 	}
@@ -164,8 +169,7 @@ func (s *Service) GetApplyJob(ctx context.Context, serverID, jobID string) (Conf
 
 func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedConfig {
 	realityEnabled := realityRequested(info)
-	adapter := selectedVPNCoreAdapter(info)
-	descriptor := adapter.Descriptor()
+	legacyAdapter := selectedVPNCoreAdapter(info)
 	config := RenderedConfig{
 		SchemaVersion: SchemaVersion,
 		Server: ConfigServer{
@@ -184,12 +188,7 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 			Source:         "routegate-manager",
 			RenderedAt:     renderedAt,
 			RealityEnabled: realityEnabled,
-			VPNCore: ConfigVPNCore{
-				Core: descriptor.Core,
-				Protocol: descriptor.Protocol,
-				Transport: descriptor.Transports[0],
-				Security: selectedAdapterSecurity(descriptor, realityEnabled),
-			},
+			VPNCore:        configVPNCoreFromAdapter(legacyAdapter, realityEnabled),
 		},
 	}
 
@@ -209,7 +208,7 @@ func buildRenderedConfig(info ServerConfigInfo, renderedAt time.Time) RenderedCo
 	}
 
 	applyServerRoutingProfile(&config, info.RoutingProfile)
-	adapter.Render(&config, info)
+	renderSelectedVPNCoreAdapters(&config, info)
 
 	return config
 }
@@ -294,13 +293,7 @@ func ValidateRenderedConfig(config RenderedConfig) ValidationResult {
 			result.Errors = append(result.Errors, "server.deploymentRole does not host the VPN plane.")
 		}
 	}
-	adapter, ok := adapterForRenderedConfig(config)
-	if !ok {
-		result.Valid = false
-		result.Errors = append(result.Errors, "metadata.vpnCore selects an unsupported adapter composition.")
-	} else {
-		adapter.Validate(config, &result)
-	}
+	validateConfiguredVPNCoreAdapters(config, &result)
 	if config.Agent == nil {
 		result.Warnings = append(result.Warnings, "No registered agent is attached to this server yet; the config can be rendered but cannot be applied.")
 	}
@@ -332,8 +325,7 @@ func ensureConfigVersionSafeForApply(version ConfigVersion) error {
 }
 
 func vpnServiceReady(config RenderedConfig) bool {
-	adapter, ok := adapterForRenderedConfig(config)
-	return ok && adapter.Ready(config)
+	return configuredVPNServicesReady(config)
 }
 
 func selectedAdapterSecurity(descriptor platform.VPNCoreAdapterDescriptor, realityEnabled bool) string {

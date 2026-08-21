@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   createVpnAccountSubscriptionToken,
   getVpnAccountClientConnection,
@@ -16,6 +17,11 @@ import './vpn-client-connection.css';
 
 type VpnClientConnectionPanelProps = {
   accountId: string;
+};
+
+type ClientProtocolPreference = 'auto' | 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
+type ProtocolAwareProfile = {
+  protocol?: ClientProtocolPreference;
 };
 
 const fingerprintOptions = ['chrome', 'firefox', 'safari', 'ios', 'android', 'edge', 'random', 'randomized'];
@@ -36,7 +42,7 @@ function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       title: 'Подключение VPN-клиента',
-      subtitle: 'Постоянный профиль VLESS Reality сохраняется в RouteGate и не меняется после повторного входа.',
+      subtitle: 'Выберите протокол подключения для этого VPN-аккаунта и получите готовый QR-код или конфигурацию.',
       loading: 'Загрузка клиентского профиля...',
       loadError: 'Не удалось загрузить клиентский профиль.',
       ready: 'Готово к подключению',
@@ -44,27 +50,37 @@ function getCopy() {
       format: 'VLESS Reality',
       showQr: 'Показать QR',
       copyVless: 'Скопировать VLESS-ссылку',
-		copyWireGuard: 'Скопировать конфиг WireGuard',
-		wireGuardFormat: 'WireGuard',
-		wireGuardReadyDescription: 'QR-код содержит готовый конфиг WireGuard с приватным ключом этого профиля.',
-		wireGuardConfig: 'Конфиг WireGuard',
-		hysteria2Format: 'Hysteria2',
-		copyHysteria2: 'Скопировать Hysteria2 URI',
-		hysteria2ReadyDescription: 'QR-код содержит стандартный hysteria2:// URI с логином, паролем и проверяемым TLS SNI.',
-		hysteria2Uri: 'Hysteria2 URI',
-		shadowsocksFormat: 'Shadowsocks 2022',
-		copyShadowsocks: 'Скопировать Shadowsocks URI',
-		shadowsocksReadyDescription: 'QR-код содержит стандартный ss:// URI с цепочкой серверного и пользовательского ключей.',
-		shadowsocksUri: 'Shadowsocks URI',
-		mtprotoFormat: 'MTProto / FakeTLS',
-		copyMTProto: 'Скопировать MTProto URI',
-		mtprotoReadyDescription: 'QR-код содержит стандартную Telegram-ссылку tg://proxy с общим секретом этого узла.',
-		mtprotoUri: 'MTProto URI',
+      copyWireGuard: 'Скопировать конфиг WireGuard',
+      wireGuardFormat: 'WireGuard',
+      wireGuardReadyDescription: 'QR-код содержит готовый конфиг WireGuard с приватным ключом этого профиля.',
+      wireGuardConfig: 'Конфиг WireGuard',
+      hysteria2Format: 'Hysteria2',
+      copyHysteria2: 'Скопировать Hysteria2 URI',
+      hysteria2ReadyDescription: 'QR-код содержит стандартный hysteria2:// URI с логином, паролем и проверяемым TLS SNI.',
+      hysteria2Uri: 'Hysteria2 URI',
+      shadowsocksFormat: 'Shadowsocks 2022',
+      copyShadowsocks: 'Скопировать Shadowsocks URI',
+      shadowsocksReadyDescription: 'QR-код содержит стандартный ss:// URI с цепочкой серверного и пользовательского ключей.',
+      shadowsocksUri: 'Shadowsocks URI',
+      mtprotoFormat: 'MTProto / FakeTLS',
+      copyMTProto: 'Скопировать MTProto URI',
+      mtprotoReadyDescription: 'QR-код содержит стандартную Telegram-ссылку tg://proxy с общим секретом этого узла.',
+      mtprotoUri: 'MTProto URI',
       copy: 'Копировать',
       copied: 'Скопировано',
-      credentialWarning: 'QR-код и VLESS-ссылка предоставляют доступ к VPN. Не публикуйте их.',
+      credentialWarning: 'QR-код, URI и конфигурация предоставляют VPN-доступ. Не публикуйте их.',
       profileSettings: 'Настройки клиентского профиля',
       profileName: 'Название профиля',
+      protocol: 'Протокол подключения',
+      protocolAuto: 'Автоматически — наследовать протокол узла',
+      protocolVless: 'VLESS / Reality',
+      protocolWireGuard: 'WireGuard',
+      protocolHysteria2: 'Hysteria2',
+      protocolShadowsocks: 'Shadowsocks 2022',
+      protocolMTProto: 'MTProto / FakeTLS',
+      protocolHint: 'Auto сохраняет текущий default узла. Явный выбор закрепляет протокол за этим VPN-аккаунтом.',
+      protocolDeployNotice: 'Протокол профиля изменён. Отрендерьте и разверните новую конфигурацию назначенного узла.',
+      openDeploy: 'Открыть развёртывание конфигов',
       clientType: 'VPN-клиент',
       deviceType: 'Устройство',
       other: 'Другое',
@@ -104,7 +120,7 @@ function getCopy() {
 
   return {
     title: 'Connect VPN client',
-    subtitle: 'The persistent VLESS Reality profile is stored in RouteGate and remains stable after signing in again.',
+    subtitle: 'Choose the connection protocol for this VPN account and get a ready QR code or configuration.',
     loading: 'Loading client profile...',
     loadError: 'Could not load the client profile.',
     ready: 'Ready to connect',
@@ -112,27 +128,37 @@ function getCopy() {
     format: 'VLESS Reality',
     showQr: 'Show QR',
     copyVless: 'Copy VLESS link',
-		copyWireGuard: 'Copy WireGuard config',
-		wireGuardFormat: 'WireGuard',
-		wireGuardReadyDescription: 'The QR code contains a ready-to-import WireGuard config with this profile’s private key.',
-		wireGuardConfig: 'WireGuard config',
-		hysteria2Format: 'Hysteria2',
-		copyHysteria2: 'Copy Hysteria2 URI',
-		hysteria2ReadyDescription: 'The QR code contains a standard hysteria2:// URI with userpass credentials and verified TLS SNI.',
-		hysteria2Uri: 'Hysteria2 URI',
-		shadowsocksFormat: 'Shadowsocks 2022',
-		copyShadowsocks: 'Copy Shadowsocks URI',
-		shadowsocksReadyDescription: 'The QR code contains a standard ss:// URI with the chained server and per-user keys.',
-		shadowsocksUri: 'Shadowsocks URI',
-		mtprotoFormat: 'MTProto / FakeTLS',
-		copyMTProto: 'Copy MTProto URI',
-		mtprotoReadyDescription: 'The QR code contains a standard Telegram tg://proxy link with this node’s shared secret.',
-		mtprotoUri: 'MTProto URI',
+    copyWireGuard: 'Copy WireGuard config',
+    wireGuardFormat: 'WireGuard',
+    wireGuardReadyDescription: 'The QR code contains a ready-to-import WireGuard config with this profile’s private key.',
+    wireGuardConfig: 'WireGuard config',
+    hysteria2Format: 'Hysteria2',
+    copyHysteria2: 'Copy Hysteria2 URI',
+    hysteria2ReadyDescription: 'The QR code contains a standard hysteria2:// URI with userpass credentials and verified TLS SNI.',
+    hysteria2Uri: 'Hysteria2 URI',
+    shadowsocksFormat: 'Shadowsocks 2022',
+    copyShadowsocks: 'Copy Shadowsocks URI',
+    shadowsocksReadyDescription: 'The QR code contains a standard ss:// URI with the chained server and per-user keys.',
+    shadowsocksUri: 'Shadowsocks URI',
+    mtprotoFormat: 'MTProto / FakeTLS',
+    copyMTProto: 'Copy MTProto URI',
+    mtprotoReadyDescription: 'The QR code contains a standard Telegram tg://proxy link with this node’s shared secret.',
+    mtprotoUri: 'MTProto URI',
     copy: 'Copy',
     copied: 'Copied',
-    credentialWarning: 'The QR code and VLESS link grant VPN access. Do not publish them.',
+    credentialWarning: 'The QR code, URI, and configuration grant VPN access. Do not publish them.',
     profileSettings: 'Client profile settings',
     profileName: 'Profile name',
+    protocol: 'Connection protocol',
+    protocolAuto: 'Automatic — inherit node default',
+    protocolVless: 'VLESS / Reality',
+    protocolWireGuard: 'WireGuard',
+    protocolHysteria2: 'Hysteria2',
+    protocolShadowsocks: 'Shadowsocks 2022',
+    protocolMTProto: 'MTProto / FakeTLS',
+    protocolHint: 'Auto follows the node default. An explicit choice pins this VPN account to that protocol.',
+    protocolDeployNotice: 'The profile protocol changed. Render and deploy a new configuration for the assigned node.',
+    openDeploy: 'Open config deployment',
     clientType: 'VPN client',
     deviceType: 'Device',
     other: 'Other',
@@ -178,7 +204,9 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
   const [saved, setSaved] = useState(false);
+  const [protocolChanged, setProtocolChanged] = useState(false);
   const [profileName, setProfileName] = useState('Default');
+  const [protocol, setProtocol] = useState<ClientProtocolPreference>('auto');
   const [clientType, setClientType] = useState('other');
   const [deviceType, setDeviceType] = useState('other');
   const [fingerprintMode, setFingerprintMode] = useState<ClientFingerprintMode>('auto');
@@ -194,10 +222,10 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
 
   useEffect(() => {
     const profile = connectionQuery.data?.profile;
-    if (!profile) {
-      return;
-    }
+    if (!profile) return;
+    const protocolAware = profile as typeof profile & ProtocolAwareProfile;
     setProfileName(profile.name);
+    setProtocol(protocolAware.protocol ?? 'auto');
     setClientType(profile.clientType);
     setDeviceType(profile.deviceType);
     setFingerprintMode(profile.fingerprintMode);
@@ -205,6 +233,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     setServerNameOverride(profile.serverNameOverride ?? '');
     setSpiderX(profile.spiderX || '/');
     setMtu(profile.mtu ? String(profile.mtu) : '');
+    setProtocolChanged(false);
   }, [connectionQuery.data]);
 
   useEffect(() => {
@@ -212,11 +241,12 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     setCopiedTarget(null);
     setIsQrOpen(false);
     setSaved(false);
+    setProtocolChanged(false);
   }, [accountId]);
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const request: UpdateVpnClientProfileRequest = {
+      const request = {
         name: profileName.trim() || 'Default',
         clientType,
         deviceType,
@@ -225,12 +255,22 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         serverNameOverride: serverNameOverride.trim(),
         spiderX: spiderX.trim() || '/',
         mtu: mtu.trim() === '' ? null : Number(mtu),
-      };
+        protocol,
+      } as UpdateVpnClientProfileRequest & { protocol: ClientProtocolPreference };
       return updateVpnAccountClientProfile(accountId, request);
     },
-    onMutate: () => setSaved(false),
-    onSuccess: (connection) => {
+    onMutate: () => {
+      setSaved(false);
+      const current = connectionQuery.data?.profile as ProtocolAwareProfile | undefined;
+      setProtocolChanged((current?.protocol ?? 'auto') !== protocol);
+    },
+    onSuccess: async (connection) => {
       queryClient.setQueryData(queryKey, connection);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
+        queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
+        queryClient.invalidateQueries({ queryKey: ['servers'] }),
+      ]);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2200);
     },
@@ -244,25 +284,24 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   });
 
   const copyToClipboard = async (target: string, value: string) => {
-    if (!navigator.clipboard || value.trim() === '') {
-      return;
-    }
+    if (!navigator.clipboard || value.trim() === '') return;
     await navigator.clipboard.writeText(value);
     setCopiedTarget(target);
     window.setTimeout(() => setCopiedTarget(null), 1800);
   };
 
   const connection = connectionQuery.data;
-	const isWireGuard = connection?.format === 'wireguard-config';
-	const isHysteria2 = connection?.format === 'hysteria2-uri';
-	const isShadowsocks = connection?.format === 'shadowsocks-uri';
-	const isMTProto = connection?.format === 'mtproto-uri';
-	const connectionText = connection?.wireGuardConfig ?? connection?.hysteria2Uri ?? connection?.shadowsocksUri ?? connection?.mtprotoUri ?? connection?.vlessLink ?? '';
-	const readyDescription = isWireGuard ? copy.wireGuardReadyDescription : isHysteria2 ? copy.hysteria2ReadyDescription : isShadowsocks ? copy.shadowsocksReadyDescription : isMTProto ? copy.mtprotoReadyDescription : copy.readyDescription;
-	const formatLabel = isWireGuard ? copy.wireGuardFormat : isHysteria2 ? copy.hysteria2Format : isShadowsocks ? copy.shadowsocksFormat : isMTProto ? copy.mtprotoFormat : copy.format;
-	const copyLabel = isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : isShadowsocks ? copy.copyShadowsocks : isMTProto ? copy.copyMTProto : copy.copyVless;
-	const uriLabel = isWireGuard ? copy.wireGuardConfig : isHysteria2 ? copy.hysteria2Uri : isShadowsocks ? copy.shadowsocksUri : isMTProto ? copy.mtprotoUri : copy.vlessLink;
-	const isNonVLESS = isWireGuard || isHysteria2 || isShadowsocks || isMTProto;
+  const isWireGuard = connection?.format === 'wireguard-config';
+  const isHysteria2 = connection?.format === 'hysteria2-uri';
+  const isShadowsocks = connection?.format === 'shadowsocks-uri';
+  const isMTProto = connection?.format === 'mtproto-uri';
+  const isNonVLESS = isWireGuard || isHysteria2 || isShadowsocks || isMTProto;
+  const showVLESSSettings = protocol === 'vless' || (protocol === 'auto' && !isNonVLESS);
+  const connectionText = connection?.wireGuardConfig ?? connection?.hysteria2Uri ?? connection?.shadowsocksUri ?? connection?.mtprotoUri ?? connection?.vlessLink ?? '';
+  const readyDescription = isWireGuard ? copy.wireGuardReadyDescription : isHysteria2 ? copy.hysteria2ReadyDescription : isShadowsocks ? copy.shadowsocksReadyDescription : isMTProto ? copy.mtprotoReadyDescription : copy.readyDescription;
+  const formatLabel = isWireGuard ? copy.wireGuardFormat : isHysteria2 ? copy.hysteria2Format : isShadowsocks ? copy.shadowsocksFormat : isMTProto ? copy.mtprotoFormat : copy.format;
+  const copyLabel = isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : isShadowsocks ? copy.copyShadowsocks : isMTProto ? copy.copyMTProto : copy.copyVless;
+  const uriLabel = isWireGuard ? copy.wireGuardConfig : isHysteria2 ? copy.hysteria2Uri : isShadowsocks ? copy.shadowsocksUri : isMTProto ? copy.mtprotoUri : copy.vlessLink;
 
   return (
     <div className="panel subscription-panel feature-detail-panel vpn-client-connection-panel">
@@ -288,38 +327,27 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             <div className="subscription-url-header">
               <div className="subscription-url-meta">
                 <div className="subscription-url-label">{copy.ready}</div>
-				<p className="subscription-url-helper">{readyDescription}</p>
+                <p className="subscription-url-helper">{readyDescription}</p>
               </div>
-			  <span className="vpn-client-format-badge">{formatLabel}</span>
+              <span className="vpn-client-format-badge">{formatLabel}</span>
             </div>
 
             <div className="vpn-client-primary-actions">
-              <button className="primary-button" type="button" onClick={() => setIsQrOpen(true)}>
-                {copy.showQr}
+              <button className="primary-button" type="button" onClick={() => setIsQrOpen(true)}>{copy.showQr}</button>
+              <button className="small-button" type="button" onClick={() => void copyToClipboard('connection-config', connectionText)}>
+                {copiedTarget === 'connection-config' ? copy.copied : copyLabel}
               </button>
-              <button
-                className="small-button"
-                type="button"
-				onClick={() => void copyToClipboard('connection-config', connectionText)}
-              >
-				{copiedTarget === 'connection-config' ? copy.copied : copyLabel}
-              </button>
-			  {!isNonVLESS && (
-				<ShareAccessActions
-				  vlessLink={connection.vlessLink ?? ''}
-				  profileName={connection.profile.name}
-				  includeQrShare
-				  compact
-				/>
-			  )}
+              {!isNonVLESS && (
+                <ShareAccessActions vlessLink={connection.vlessLink ?? ''} profileName={connection.profile.name} includeQrShare compact />
+              )}
             </div>
 
             <div className="vpn-client-runtime-grid">
               <div><span>{copy.endpoint}</span><strong>{connection.endpoint}</strong></div>
-			  {!isWireGuard && <div><span>{copy.serverName}</span><strong>{connection.serverName}</strong></div>}
-			  {!isWireGuard && <div><span>{copy.network}</span><strong>{connection.network}</strong></div>}
-			  {!isWireGuard && !isHysteria2 && <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>}
-              <div><span>{copy.resolvedFingerprint}</span><strong>{connection.profile.resolvedFingerprint}</strong></div>
+              {!isWireGuard && <div><span>{copy.serverName}</span><strong>{connection.serverName}</strong></div>}
+              {!isWireGuard && <div><span>{copy.network}</span><strong>{connection.network}</strong></div>}
+              {!isWireGuard && !isHysteria2 && <div><span>{copy.flow}</span><strong>{connection.flow || '—'}</strong></div>}
+              {showVLESSSettings && <div><span>{copy.resolvedFingerprint}</span><strong>{connection.profile.resolvedFingerprint}</strong></div>}
             </div>
           </div>
 
@@ -327,6 +355,18 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             <summary>{copy.profileSettings}</summary>
             <div className="vpn-client-advanced-content">
               <div className="vpn-client-settings-grid">
+                <label className="field">
+                  <span>{copy.protocol}</span>
+                  <select value={protocol} onChange={(event) => setProtocol(event.target.value as ClientProtocolPreference)}>
+                    <option value="auto">{copy.protocolAuto}</option>
+                    <option value="vless">{copy.protocolVless}</option>
+                    <option value="wireguard">{copy.protocolWireGuard}</option>
+                    <option value="hysteria2">{copy.protocolHysteria2}</option>
+                    <option value="shadowsocks">{copy.protocolShadowsocks}</option>
+                    <option value="mtproto">{copy.protocolMTProto}</option>
+                  </select>
+                  <small>{copy.protocolHint}</small>
+                </label>
                 <label className="field">
                   <span>{copy.profileName}</span>
                   <input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
@@ -352,68 +392,52 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                     <option value="other">{copy.other}</option>
                   </select>
                 </label>
-                <label className="field">
-                  <span>{copy.fingerprintMode}</span>
-                  <select
-                    value={fingerprintMode}
-                    onChange={(event) => setFingerprintMode(event.target.value as ClientFingerprintMode)}
-                  >
-                    <option value="auto">{copy.auto}</option>
-                    <option value="manual">{copy.manual}</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>{copy.fingerprint}</span>
-                  <select
-                    value={fingerprint}
-                    disabled={fingerprintMode === 'auto'}
-                    onChange={(event) => setFingerprint(event.target.value)}
-                  >
-                    {fingerprintOptions.map((option) => <option value={option} key={option}>{option}</option>)}
-                  </select>
-                  {fingerprintMode === 'auto' && <small>{copy.autoHint}</small>}
-                </label>
-                <label className="field">
-                  <span>{copy.serverNameOverride}</span>
-                  <input
-                    value={serverNameOverride}
-                    placeholder={connection.serverName}
-                    onChange={(event) => setServerNameOverride(event.target.value)}
-                  />
-                  <small>{copy.serverNameHint}</small>
-                </label>
-                <label className="field">
-                  <span>{copy.spiderX}</span>
-                  <input value={spiderX} onChange={(event) => setSpiderX(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>{copy.mtu}</span>
-                  <input
-                    type="number"
-                    min="576"
-                    max="9000"
-                    value={mtu}
-                    placeholder={copy.autoPlaceholder}
-                    onChange={(event) => setMtu(event.target.value)}
-                  />
-                  <small>{copy.mtuHint}</small>
-                </label>
+
+                {showVLESSSettings && (
+                  <>
+                    <label className="field">
+                      <span>{copy.fingerprintMode}</span>
+                      <select value={fingerprintMode} onChange={(event) => setFingerprintMode(event.target.value as ClientFingerprintMode)}>
+                        <option value="auto">{copy.auto}</option>
+                        <option value="manual">{copy.manual}</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>{copy.fingerprint}</span>
+                      <select value={fingerprint} disabled={fingerprintMode === 'auto'} onChange={(event) => setFingerprint(event.target.value)}>
+                        {fingerprintOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                      </select>
+                      {fingerprintMode === 'auto' && <small>{copy.autoHint}</small>}
+                    </label>
+                    <label className="field">
+                      <span>{copy.serverNameOverride}</span>
+                      <input value={serverNameOverride} placeholder={connection.serverName} onChange={(event) => setServerNameOverride(event.target.value)} />
+                      <small>{copy.serverNameHint}</small>
+                    </label>
+                    <label className="field">
+                      <span>{copy.spiderX}</span>
+                      <input value={spiderX} onChange={(event) => setSpiderX(event.target.value)} />
+                    </label>
+                    <label className="field">
+                      <span>{copy.mtu}</span>
+                      <input type="number" min="576" max="9000" value={mtu} placeholder={copy.autoPlaceholder} onChange={(event) => setMtu(event.target.value)} />
+                      <small>{copy.mtuHint}</small>
+                    </label>
+                  </>
+                )}
               </div>
 
-              {saveMutation.isError && (
-                <div className="form-message form-message-error">
-                  {getErrorMessage(saveMutation.error, copy.saveError)}
+              {saveMutation.isError && <div className="form-message form-message-error">{getErrorMessage(saveMutation.error, copy.saveError)}</div>}
+              {saved && <div className="form-message form-message-success">{copy.saved}</div>}
+              {protocolChanged && !saveMutation.isPending && !saveMutation.isError && (
+                <div className="form-message vpn-account-config-notice">
+                  <span>{copy.protocolDeployNotice}</span>
+                  <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
                 </div>
               )}
-              {saved && <div className="form-message form-message-success">{copy.saved}</div>}
 
               <div className="form-actions">
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={saveMutation.isPending}
-                  onClick={() => saveMutation.mutate()}
-                >
+                <button className="primary-button" type="button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
                   {saveMutation.isPending ? copy.saving : copy.save}
                 </button>
               </div>
@@ -424,22 +448,11 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             <summary>{copy.advancedSubscription}</summary>
             <div className="vpn-client-advanced-content">
               <div className="form-message form-message-warning">{copy.subscriptionDescription}</div>
-              <button
-                className="small-button"
-                type="button"
-                disabled={subscriptionMutation.isPending}
-                onClick={() => subscriptionMutation.mutate()}
-              >
-                {subscriptionMutation.isPending
-                  ? copy.subscriptionBusy
-                  : subscriptionToken
-                    ? copy.rotateSubscription
-                    : copy.createSubscription}
+              <button className="small-button" type="button" disabled={subscriptionMutation.isPending} onClick={() => subscriptionMutation.mutate()}>
+                {subscriptionMutation.isPending ? copy.subscriptionBusy : subscriptionToken ? copy.rotateSubscription : copy.createSubscription}
               </button>
 
-              {subscriptionMutation.isError && (
-                <div className="form-message form-message-error">{copy.subscriptionError}</div>
-              )}
+              {subscriptionMutation.isError && <div className="form-message form-message-error">{copy.subscriptionError}</div>}
 
               {subscriptionToken && (
                 <div className="subscription-url-stack">
@@ -448,11 +461,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                       <div className="subscription-url-label">{copy.subscriptionUrl}</div>
                       <p className="subscription-url-helper">{copy.expires}: {formatDate(subscriptionToken.expiresAt)}</p>
                     </div>
-                    <button
-                      className="small-button"
-                      type="button"
-                      onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}
-                    >
+                    <button className="small-button" type="button" onClick={() => void copyToClipboard('subscription-url', subscriptionToken.subscriptionUrl)}>
                       {copiedTarget === 'subscription-url' ? copy.copied : copy.copy}
                     </button>
                   </div>
@@ -468,26 +477,21 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
         isOpen={isQrOpen}
         title={copy.qrTitle}
         onClose={() => setIsQrOpen(false)}
-		qrText={connectionText}
+        qrText={connectionText}
         qrTitle={copy.qrTitle}
         qrSubtitle={connection?.profile.resolvedFingerprint ?? copy.format}
-		url={connectionText}
-		urlLabel={uriLabel}
-		onCopyQrText={() => void copyToClipboard('qr-connection', connectionText)}
-		copyQrLabel={copyLabel}
+        url={connectionText}
+        urlLabel={uriLabel}
+        onCopyQrText={() => void copyToClipboard('qr-connection', connectionText)}
+        copyQrLabel={copyLabel}
         copyCopiedLabel={copy.copied}
-		copied={copiedTarget === 'qr-connection'}
+        copied={copiedTarget === 'qr-connection'}
         closeLabel={copy.close}
         loadingLabel={copy.loading}
         unavailableLabel={copy.loadError}
-		footerActions={!isNonVLESS ? (
-          <ShareAccessActions
-			vlessLink={connection?.vlessLink ?? ''}
-            profileName={connection?.profile.name}
-            includeQrShare
-            compact
-          />
-		) : undefined}
+        footerActions={!isNonVLESS ? (
+          <ShareAccessActions vlessLink={connection?.vlessLink ?? ''} profileName={connection?.profile.name} includeQrShare compact />
+        ) : undefined}
       />
     </div>
   );

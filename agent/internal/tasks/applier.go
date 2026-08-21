@@ -86,6 +86,26 @@ func (a Applier) Rollback(backupPath string) error {
 	return nil
 }
 
+// RollbackApply restores the previous config when one existed. If the apply
+// introduced a runtime config for the first time, rollback removes that newly
+// promoted file instead of leaving a partial multi-runtime deployment behind.
+func (a Applier) RollbackApply(result ApplyResult) error {
+	if strings.TrimSpace(result.BackupPath) != "" {
+		return a.Rollback(result.BackupPath)
+	}
+	activePath := strings.TrimSpace(result.ActivePath)
+	if activePath == "" {
+		activePath = strings.TrimSpace(a.activePath)
+	}
+	if activePath == "" {
+		return fmt.Errorf("active config path is required")
+	}
+	if err := os.Remove(activePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove newly-created active config: %w", err)
+	}
+	return nil
+}
+
 func copyFileAtomic(src, dst string, perm os.FileMode) error {
 	input, err := os.Open(src)
 	if err != nil {
