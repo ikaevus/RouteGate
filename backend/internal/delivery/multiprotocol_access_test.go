@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestClientConnectionAccessMaterialUsesEffectiveProtocolPayload(t *testing.T
 		want       string
 	}{
 		{name: "vless", connection: vpnaccounts.ClientConnectionResponse{Protocol: vpnaccounts.ClientProtocolVLESS, VLESSLink: "vless://fixture@example.invalid:8443"}, want: "vless://fixture@example.invalid:8443"},
-		{name: "wireguard", connection: vpnaccounts.ClientConnectionResponse{Protocol: vpnaccounts.ClientProtocolWireGuard, WireGuardConfig: "[Interface]\nPrivateKey = fixture\n\n[Peer]\nPublicKey = fixture\n"}, want: "[Interface]\nPrivateKey = fixture\n\n[Peer]\nPublicKey = fixture"},
+		{name: "wireguard", connection: vpnaccounts.ClientConnectionResponse{Protocol: vpnaccounts.ClientProtocolWireGuard, WireGuardConfig: "[Interface]\nPrivateKey = fixture\n\n[Peer]\nPublicKey = fixture\n"}, want: "[Interface]\nPrivateKey = fixture\n\n[Peer]\nPublicKey = fixture\n"},
 		{name: "hysteria2", connection: vpnaccounts.ClientConnectionResponse{Protocol: vpnaccounts.ClientProtocolHysteria2, Hysteria2URI: "hysteria2://fixture@example.invalid:443"}, want: "hysteria2://fixture@example.invalid:443"},
 		{name: "shadowsocks", connection: vpnaccounts.ClientConnectionResponse{Protocol: vpnaccounts.ClientProtocolShadowsocks, ShadowsocksURI: "ss://fixture@example.invalid:8388/"}, want: "ss://fixture@example.invalid:8388/"},
 		{name: "mtproto", connection: vpnaccounts.ClientConnectionResponse{Protocol: vpnaccounts.ClientProtocolMTProto, MTProtoURI: "tg://proxy?server=example.invalid&port=8443&secret=fixture"}, want: "tg://proxy?server=example.invalid&port=8443&secret=fixture"},
@@ -92,5 +93,17 @@ func TestClientConnectionAccessMaterialRejectsMissingProtocolPayload(t *testing.
 	failure, ok := err.(Failure)
 	if !ok || failure.Class != ErrorClassPermanent || failure.Code != "access_material_invalid" {
 		t.Fatalf("unexpected error: %#v", err)
+	}
+}
+
+func TestAccessMaterialErrorClassificationKeepsSpecificDiagnostics(t *testing.T) {
+	endpoint := classifyAccessMaterialError(fmt.Errorf("%w: server endpoint is required", vpnaccounts.ErrClientConnectionUnavailable))
+	if endpoint.Class != ErrorClassPermanent || endpoint.Code != "vpn_endpoint_missing" {
+		t.Fatalf("endpoint classification = %+v", endpoint)
+	}
+
+	topology := classifyAccessMaterialError(fmt.Errorf("%w: Hysteria2 requires a dedicated VPN Node", vpnaccounts.ErrClientConnectionUnavailable))
+	if topology.Class != ErrorClassPermanent || topology.Code != "vpn_access_incomplete" {
+		t.Fatalf("topology classification = %+v", topology)
 	}
 }
