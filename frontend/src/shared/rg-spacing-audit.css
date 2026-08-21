@@ -28,6 +28,14 @@
   margin-top: 16px;
 }
 
+/* Management nodes are control-plane only. Their not-applicable Agent state is the rendered role marker; do not expose VPN-plane controls. */
+.server-details-page:has(.server-connection-panel .badge-not-applicable) .vpn-core-management-section,
+.server-details-page:has(.server-connection-panel .badge-not-applicable) > .routing-profile-assignment-panel,
+.server-details-page:has(.server-connection-panel .badge-not-applicable) > .token-panel,
+.server-details-page:has(.server-connection-panel .badge-not-applicable) > .admin-table-panel {
+  display: none;
+}
+
 /* Bordered detail containers need their own inset in addition to panel padding. */
 .detail-list,
 .credentials-detail-list {
