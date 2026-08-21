@@ -2,8 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getCurrentLocale } from '../i18n/i18n';
 import { encodeQrPayload } from '../qr/ScannableQrCode';
 
+type ShareProtocol = 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
+
 type ShareAccessActionsProps = {
-  vlessLink?: string | null;
+  connectionText?: string | null;
+  protocol?: string | null;
   profileName?: string | null;
   includeQrShare?: boolean;
   compact?: boolean;
@@ -19,6 +22,7 @@ type ShareCopy = {
   downloadQr: string;
   subject: string;
   intro: string;
+  protocol: string;
   openHint: string;
   fallbackHint: string;
   warning: string;
@@ -39,9 +43,10 @@ function getShareCopy(): ShareCopy {
       downloadQr: 'Скачать QR',
       subject: 'Доступ к RouteGate VPN',
       intro: 'Доступ к RouteGate VPN',
+      protocol: 'Протокол',
       openHint: 'Открыть VPN-профиль:',
-      fallbackHint: 'Если ссылка не открылась, импортируйте VLESS вручную:',
-      warning: 'QR-код и ссылки предоставляют доступ к VPN. Не передавайте их посторонним.',
+      fallbackHint: 'Если ссылка не открылась, импортируйте профиль или конфигурацию вручную:',
+      warning: 'QR-код, ссылка и конфигурация предоставляют доступ к VPN. Не передавайте их посторонним.',
     };
   }
 
@@ -55,10 +60,43 @@ function getShareCopy(): ShareCopy {
     downloadQr: 'Download QR',
     subject: 'RouteGate VPN access',
     intro: 'RouteGate VPN access',
+    protocol: 'Protocol',
     openHint: 'Open VPN profile:',
-    fallbackHint: 'If the link does not open, import the VLESS profile manually:',
-    warning: 'The QR code and links grant VPN access. Do not share them with unauthorized people.',
+    fallbackHint: 'If the link does not open, import the profile or configuration manually:',
+    warning: 'The QR code, link, and configuration grant VPN access. Do not share them with unauthorized people.',
   };
+}
+
+function normalizeShareProtocol(value?: string | null): ShareProtocol | '' {
+  switch (value?.trim().toLowerCase()) {
+    case 'vless':
+      return 'vless';
+    case 'wireguard':
+      return 'wireguard';
+    case 'hysteria2':
+      return 'hysteria2';
+    case 'shadowsocks':
+      return 'shadowsocks';
+    case 'mtproto':
+      return 'mtproto';
+    default:
+      return '';
+  }
+}
+
+function protocolLabel(protocol: ShareProtocol): string {
+  switch (protocol) {
+    case 'wireguard':
+      return 'WireGuard';
+    case 'hysteria2':
+      return 'Hysteria2';
+    case 'shadowsocks':
+      return 'Shadowsocks 2022';
+    case 'mtproto':
+      return 'MTProto / FakeTLS';
+    default:
+      return 'VLESS / Reality';
+  }
 }
 
 function sanitizeFileName(value: string): string {
@@ -175,32 +213,39 @@ function ShareIcon(): ReactNode {
 }
 
 export function ShareAccessActions({
-  vlessLink,
+  connectionText,
+  protocol,
   profileName,
   includeQrShare = false,
   compact = false,
 }: ShareAccessActionsProps) {
   const copy = getShareCopy();
-  const normalizedLink = vlessLink?.trim() ?? '';
+  const normalizedMaterial = connectionText?.trim() ?? '';
+  const normalizedProtocol = normalizeShareProtocol(protocol);
   const normalizedProfileName = profileName?.trim() || 'VPN';
   const [qrFile, setQrFile] = useState<File | null>(null);
   const [qrCopied, setQrCopied] = useState(false);
 
-  const connectUrl = normalizedLink === ''
+  const connectUrl = normalizedMaterial === '' || normalizedProtocol === ''
     ? ''
-    : `${window.location.origin}/connect.html#vless=${encodeConnectPayload(normalizedLink)}`;
+    : `${window.location.origin}/connect.html#${new URLSearchParams({
+      protocol: normalizedProtocol,
+      profile: encodeConnectPayload(normalizedMaterial),
+    }).toString()}`;
 
+  const displayProtocol = normalizedProtocol === '' ? '' : protocolLabel(normalizedProtocol);
   const messengerMessage = [
     `${copy.intro}: ${normalizedProfileName}`,
+    displayProtocol ? `${copy.protocol}: ${displayProtocol}` : '',
     '',
     copy.openHint,
     connectUrl,
     '',
     copy.fallbackHint,
-    normalizedLink,
+    normalizedMaterial,
     '',
     copy.warning,
-  ].join('\n');
+  ].filter((line, index, lines) => line !== '' || (index > 0 && lines[index - 1] !== '')).join('\n');
 
   const emailMessage = messengerMessage;
 
@@ -209,11 +254,11 @@ export function ShareAccessActions({
     setQrFile(null);
     setQrCopied(false);
 
-    if (!includeQrShare || normalizedLink === '') {
+    if (!includeQrShare || normalizedMaterial === '' || normalizedProtocol === '') {
       return undefined;
     }
 
-    void createQrPngFile(normalizedLink, normalizedProfileName)
+    void createQrPngFile(normalizedMaterial, normalizedProfileName)
       .then((file) => {
         if (!cancelled) {
           setQrFile(file);
@@ -228,14 +273,14 @@ export function ShareAccessActions({
     return () => {
       cancelled = true;
     };
-  }, [includeQrShare, normalizedLink, normalizedProfileName]);
+  }, [includeQrShare, normalizedMaterial, normalizedProfileName, normalizedProtocol]);
 
-  if (normalizedLink === '') {
+  if (normalizedMaterial === '' || normalizedProtocol === '') {
     return null;
   }
 
   const emailUrl = `mailto:?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(emailMessage)}`;
-  const telegramText = `${copy.intro}: ${normalizedProfileName}\n\n${copy.warning}`;
+  const telegramText = `${copy.intro}: ${normalizedProfileName}\n${copy.protocol}: ${displayProtocol}\n\n${copy.warning}`;
   const telegramUrl = `tg://msg_url?url=${encodeURIComponent(connectUrl)}&text=${encodeURIComponent(telegramText)}`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(messengerMessage)}`;
 
