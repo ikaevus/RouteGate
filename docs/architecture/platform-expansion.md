@@ -217,7 +217,8 @@ then default. Explainable selection execution is introduced by RG-114I. See
 RG-114I executes the node-group strategy through a preview/apply lifecycle.
 Ready nodes are preferred, degraded fallback is explicit, weighted decisions use
 stable account-keyed rendezvous hashing, and cooldown prevents repeated moves.
-Apply re-evaluates and locks the account before changing its concrete server.
+Apply locks the account, then re-evaluates its current policy, node group, and
+candidate evidence before changing the concrete server.
 
 The response identifies every VPN node whose configuration must be rendered and
 deployed next. A background health-triggered failover loop remains disabled

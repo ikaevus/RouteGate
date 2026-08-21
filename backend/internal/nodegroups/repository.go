@@ -20,11 +20,22 @@ var (
 )
 
 type Repository struct {
-	pool *pgxpool.Pool
+	queries interface {
+		Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+		Query(context.Context, string, ...any) (pgx.Rows, error)
+		QueryRow(context.Context, string, ...any) pgx.Row
+	}
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool}
+	return &Repository{queries: pool}
+}
+
+// NewTransactionalRepository evaluates and mutates node-group state through an
+// existing transaction. Automatic selection uses this after locking the VPN
+// account so the decision and assignment share one database transaction.
+func NewTransactionalRepository(tx pgx.Tx) *Repository {
+	return &Repository{queries: tx}
 }
 
 const nodeGroupSelect = `
@@ -40,7 +51,7 @@ const nodeGroupSelect = `
 	LEFT JOIN node_group_members m ON m.node_group_id = g.id`
 
 func (r *Repository) List(ctx context.Context) ([]NodeGroup, error) {
-	rows, err := r.pool.Query(ctx, nodeGroupSelect+`
+	rows, err := r.queries.Query(ctx, nodeGroupSelect+`
 		GROUP BY g.id
 		ORDER BY lower(g.name), g.created_at
 	`)
@@ -61,7 +72,7 @@ func (r *Repository) List(ctx context.Context) ([]NodeGroup, error) {
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (NodeGroup, error) {
-	group, err := scanNodeGroup(r.pool.QueryRow(ctx, nodeGroupSelect+`
+	group, err := scanNodeGroup(r.queries.QueryRow(ctx, nodeGroupSelect+`
 		WHERE g.id = $1::uuid
 		GROUP BY g.id
 	`, id))
@@ -78,7 +89,7 @@ func (r *Repository) Get(ctx context.Context, id string) (NodeGroup, error) {
 
 func (r *Repository) Create(ctx context.Context, input CreateNodeGroupInput) (NodeGroup, error) {
 	var id string
-	err := r.pool.QueryRow(ctx, `
+	err := r.queries.QueryRow(ctx, `
 		INSERT INTO node_groups (name, description, selection_strategy)
 		VALUES ($1, NULLIF($2, ''), $3)
 		RETURNING id::text
@@ -91,7 +102,7 @@ func (r *Repository) Create(ctx context.Context, input CreateNodeGroupInput) (No
 
 func (r *Repository) Update(ctx context.Context, id string, input UpdateNodeGroupInput) (NodeGroup, error) {
 	var updatedID string
-	err := r.pool.QueryRow(ctx, `
+	err := r.queries.QueryRow(ctx, `
 		UPDATE node_groups
 		SET
 			name = CASE WHEN $2 THEN $3 ELSE name END,
@@ -112,7 +123,7 @@ func (r *Repository) Update(ctx context.Context, id string, input UpdateNodeGrou
 }
 
 func (r *Repository) Delete(ctx context.Context, id string) error {
-	result, err := r.pool.Exec(ctx, `DELETE FROM node_groups WHERE id = $1::uuid`, id)
+	result, err := r.queries.Exec(ctx, `DELETE FROM node_groups WHERE id = $1::uuid`, id)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -127,7 +138,7 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *Repository) ListMembers(ctx context.Context, groupID string) ([]NodeGroupMember, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.queries.Query(ctx, `
 		SELECT
 			m.node_group_id::text,
 			m.server_id::text,
@@ -173,7 +184,7 @@ func (r *Repository) ListMembers(ctx context.Context, groupID string) ([]NodeGro
 
 func (r *Repository) UpsertMember(ctx context.Context, input UpsertNodeGroupMemberInput) (NodeGroupMember, error) {
 	var deploymentRole string
-	if err := r.pool.QueryRow(ctx, `SELECT deployment_role FROM servers WHERE id = $1::uuid`, input.ServerID).Scan(&deploymentRole); err != nil {
+	if err := r.queries.QueryRow(ctx, `SELECT deployment_role FROM servers WHERE id = $1::uuid`, input.ServerID).Scan(&deploymentRole); err != nil {
 		return NodeGroupMember{}, err
 	}
 	if deploymentRole != "vpn" && deploymentRole != "hybrid" {
@@ -183,7 +194,7 @@ func (r *Repository) UpsertMember(ctx context.Context, input UpsertNodeGroupMemb
 		return NodeGroupMember{}, err
 	}
 
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.queries.Exec(ctx, `
 		INSERT INTO node_group_members (node_group_id, server_id, priority, weight, enabled)
 		VALUES ($1::uuid, $2::uuid, $3, $4, $5)
 		ON CONFLICT (node_group_id, server_id) DO UPDATE
@@ -199,7 +210,7 @@ func (r *Repository) UpsertMember(ctx context.Context, input UpsertNodeGroupMemb
 }
 
 func (r *Repository) DeleteMember(ctx context.Context, groupID, serverID string) error {
-	result, err := r.pool.Exec(ctx, `
+	result, err := r.queries.Exec(ctx, `
 		DELETE FROM node_group_members
 		WHERE node_group_id = $1::uuid AND server_id = $2::uuid
 	`, groupID, serverID)
@@ -214,7 +225,7 @@ func (r *Repository) DeleteMember(ctx context.Context, groupID, serverID string)
 
 func (r *Repository) getMember(ctx context.Context, groupID, serverID string) (NodeGroupMember, error) {
 	var member NodeGroupMember
-	err := r.pool.QueryRow(ctx, `
+	err := r.queries.QueryRow(ctx, `
 		SELECT
 			m.node_group_id::text,
 			m.server_id::text,
@@ -258,7 +269,7 @@ func (r *Repository) Candidates(ctx context.Context, groupID string, now time.Ti
 	if err != nil {
 		return ListNodeGroupCandidatesResponse{}, err
 	}
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.queries.Query(ctx, `
 		SELECT
 			s.id::text,
 			s.name,

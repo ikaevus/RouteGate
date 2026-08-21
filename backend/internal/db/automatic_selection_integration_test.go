@@ -2,11 +2,15 @@ package db
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 )
@@ -96,6 +100,96 @@ func TestAutomaticSelectionPreviewAndApplyUseFreshCandidateEvidence(t *testing.T
 	if preview.Status != vpnaccounts.SelectionStatusSelected || preview.SelectedCandidate == nil || preview.SelectedCandidate.ServerID != serverIDs[1] || !preview.CanApply {
 		t.Fatalf("unexpected preview: %+v", preview)
 	}
+
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin account blocker: %v", err)
+	}
+	defer blocker.Rollback(ctx)
+	var lockedAccountID string
+	if err := blocker.QueryRow(ctx, `
+		SELECT id::text FROM vpn_accounts WHERE id = $1::uuid FOR UPDATE
+	`, accountID).Scan(&lockedAccountID); err != nil {
+		t.Fatalf("lock account before concurrent apply: %v", err)
+	}
+
+	applyPoolConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse apply pool config: %v", err)
+	}
+	applyPoolConfig.MaxConns = 1
+	applyPoolConfig.ConnConfig.RuntimeParams["application_name"] = "routegate-automatic-selection-apply-test"
+	applyPool, err := pgxpool.NewWithConfig(ctx, applyPoolConfig)
+	if err != nil {
+		t.Fatalf("create apply pool: %v", err)
+	}
+	defer applyPool.Close()
+	if err := applyPool.Ping(ctx); err != nil {
+		t.Fatalf("ping apply pool: %v", err)
+	}
+
+	type applyResult struct {
+		response vpnaccounts.AutomaticSelectionApplyResponse
+		err      error
+	}
+	applyResultChannel := make(chan applyResult, 1)
+	go func() {
+		response, applyErr := vpnaccounts.NewRepository(applyPool).ApplyAutomaticSelection(ctx, accountID)
+		applyResultChannel <- applyResult{response: response, err: applyErr}
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	blockedAfterAccountLock := false
+	for time.Now().Before(deadline) {
+		var waitEventType, query string
+		err := pool.QueryRow(ctx, `
+			SELECT COALESCE(wait_event_type, ''), query
+			FROM pg_stat_activity
+			WHERE application_name = 'routegate-automatic-selection-apply-test'
+			  AND state = 'active'
+		`).Scan(&waitEventType, &query)
+		if err == nil && waitEventType == "Lock" && strings.Contains(query, "SELECT id::text FROM vpn_accounts") && strings.Contains(query, "FOR UPDATE") {
+			blockedAfterAccountLock = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !blockedAfterAccountLock {
+		t.Fatal("automatic selection apply did not block while acquiring the account lock")
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE vpn_account_automatic_selection_policies
+		SET enabled = FALSE
+		WHERE vpn_account_id = $1::uuid
+	`, accountID); err != nil {
+		t.Fatalf("disable selection while apply waits: %v", err)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatalf("release account blocker: %v", err)
+	}
+	select {
+	case concurrentResult := <-applyResultChannel:
+		if !errors.Is(concurrentResult.err, vpnaccounts.ErrAutomaticSelectionDisabled) {
+			t.Fatalf("concurrent apply error = %v, want automatic selection disabled; response=%+v", concurrentResult.err, concurrentResult.response)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for concurrent automatic selection apply")
+	}
+	var assignedAfterRejectedApply string
+	if err := pool.QueryRow(ctx, `SELECT server_id::text FROM vpn_accounts WHERE id = $1::uuid`, accountID).Scan(&assignedAfterRejectedApply); err != nil {
+		t.Fatalf("read assignment after rejected apply: %v", err)
+	}
+	if assignedAfterRejectedApply != serverIDs[0] {
+		t.Fatalf("assignment changed after stale apply: got %s, want %s", assignedAfterRejectedApply, serverIDs[0])
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE vpn_account_automatic_selection_policies
+		SET enabled = TRUE
+		WHERE vpn_account_id = $1::uuid
+	`, accountID); err != nil {
+		t.Fatalf("re-enable selection: %v", err)
+	}
+
 	result, err := repository.ApplyAutomaticSelection(ctx, accountID)
 	if err != nil {
 		t.Fatalf("apply selection: %v", err)
@@ -109,5 +203,31 @@ func TestAutomaticSelectionPreviewAndApplyUseFreshCandidateEvidence(t *testing.T
 	}
 	if assignedServerID != serverIDs[1] {
 		t.Fatalf("assigned server = %s, want %s", assignedServerID, serverIDs[1])
+	}
+
+	var lastSelectedAtBefore, lastSelectedAtAfter time.Time
+	var lastSelectedServerIDBefore, lastSelectedServerIDAfter string
+	if err := pool.QueryRow(ctx, `
+		SELECT last_selected_at, last_selected_server_id::text
+		FROM vpn_account_automatic_selection_policies
+		WHERE vpn_account_id = $1::uuid
+	`, accountID).Scan(&lastSelectedAtBefore, &lastSelectedServerIDBefore); err != nil {
+		t.Fatalf("read selection history before idempotent assignment: %v", err)
+	}
+	if _, err := repository.AssignNodeGroup(ctx, accountID, groupID); err != nil {
+		t.Fatalf("repeat the same node-group assignment: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT last_selected_at, last_selected_server_id::text
+		FROM vpn_account_automatic_selection_policies
+		WHERE vpn_account_id = $1::uuid
+	`, accountID).Scan(&lastSelectedAtAfter, &lastSelectedServerIDAfter); err != nil {
+		t.Fatalf("read selection history after idempotent assignment: %v", err)
+	}
+	if !lastSelectedAtAfter.Equal(lastSelectedAtBefore) || lastSelectedServerIDAfter != lastSelectedServerIDBefore {
+		t.Fatalf(
+			"same node-group assignment reset selection history: before=(%s, %s) after=(%s, %s)",
+			lastSelectedAtBefore, lastSelectedServerIDBefore, lastSelectedAtAfter, lastSelectedServerIDAfter,
+		)
 	}
 }
