@@ -186,7 +186,6 @@ type ConfigVPNAccount struct {
 	ID                  string `json:"id"`
 	DisplayName         string `json:"displayName"`
 	Status              string `json:"status"`
-	Protocol            string `json:"protocol"`
 	VLESSUUID           string `json:"vlessUuid,omitempty"`
 	WireGuardPublicKey  string `json:"wireGuardPublicKey,omitempty"`
 	WireGuardAddress    string `json:"wireGuardAddress,omitempty"`
