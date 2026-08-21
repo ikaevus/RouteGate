@@ -23,6 +23,9 @@ func evaluateCandidate(candidate NodeGroupCandidate, deploymentRole string, now 
 	if candidate.LastSeenAt == nil || now.Sub(candidate.LastSeenAt.UTC()) > candidateHeartbeatStaleAfter {
 		candidate.Signals = append(candidate.Signals, "heartbeat_stale")
 	}
+	if candidate.TopologySupported != nil && !*candidate.TopologySupported {
+		candidate.Signals = append(candidate.Signals, "protocol_topology_unsupported")
+	}
 	if !candidate.ProtocolSupported {
 		candidate.Signals = append(candidate.Signals, "protocol_unsupported")
 	}

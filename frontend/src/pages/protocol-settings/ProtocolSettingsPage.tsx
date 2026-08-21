@@ -12,12 +12,14 @@ const copy = {
     emptyDescription: 'Add a VPN or Hybrid node before configuring managed VPN protocols.',
     selectDescription: 'Choose a VPN or Hybrid node to view and edit its managed protocol settings.',
     unavailable: 'This node cannot host VPN protocols. Management Nodes are control-plane only.',
+    hysteriaDedicatedOnly: 'Hysteria2 is currently supported only on a dedicated VPN Node. Its ACME HTTP-01 certificate lifecycle cannot share the Hybrid Manager/nginx topology. RouteGate will reject Hysteria2 as the default protocol on this Hybrid Node.',
   },
   ru: {
     subtitle: 'Настраивайте VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto на VPN-узлах.',
     emptyDescription: 'Добавьте VPN-узел или гибридный узел, прежде чем настраивать управляемые VPN-протоколы.',
     selectDescription: 'Выберите VPN-узел или гибридный узел, чтобы просмотреть и изменить настройки протоколов.',
     unavailable: 'Этот узел не может размещать VPN-протоколы. Management Node относится только к плоскости управления.',
+    hysteriaDedicatedOnly: 'Hysteria2 сейчас поддерживается только на отдельном VPN Node. Его ACME HTTP-01 lifecycle сертификата нельзя совместить с топологией Hybrid Node, где Manager/nginx владеет HTTPS. RouteGate не позволит сохранить Hysteria2 как протокол этого Hybrid Node по умолчанию.',
   },
 } as const;
 
@@ -116,6 +118,9 @@ export function ProtocolSettingsPage() {
           <>
             {serversQuery.isSuccess && !selectedServer && (
               <div className="form-message form-message-error">{text.unavailable}</div>
+            )}
+            {selectedServer?.deploymentRole === 'hybrid' && (
+              <div className="form-message form-message-warning">{text.hysteriaDedicatedOnly}</div>
             )}
             {selectedServer && <ServerProtocolSettingsPanel serverId={selectedServer.id} />}
           </>

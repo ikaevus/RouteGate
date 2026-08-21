@@ -49,6 +49,7 @@ type NodeGroupCandidate struct {
 	LogicalCPUs    *int       `json:"logicalCpus,omitempty"`
 	LoadPerCPU     *float64   `json:"loadPerCpu,omitempty"`
 	ProtocolSupported bool    `json:"protocolSupported"`
+	TopologySupported *bool   `json:"-"`
 	RuntimeState      string  `json:"runtimeState,omitempty"`
 	Eligible       bool       `json:"eligible"`
 	Health         string     `json:"health"`

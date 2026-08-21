@@ -10,14 +10,14 @@ func TestEvaluateCandidateReportsReadyAndHighLoadWithoutSelecting(t *testing.T) 
 	lastSeen := now.Add(-30 * time.Second)
 	load, cpus := 6.0, 4
 	candidate := evaluateCandidate(NodeGroupCandidate{
-		MemberEnabled: true,
-		NodeStatus: "active",
-		AgentStatus: "online",
-		LastSeenAt: &lastSeen,
+		MemberEnabled:     true,
+		NodeStatus:        "active",
+		AgentStatus:       "online",
+		LastSeenAt:        &lastSeen,
 		ProtocolSupported: true,
-		RuntimeState: "running",
-		Load1: &load,
-		LogicalCPUs: &cpus,
+		RuntimeState:      "running",
+		Load1:             &load,
+		LogicalCPUs:       &cpus,
 	}, "vpn", now)
 	if !candidate.Eligible || candidate.Health != CandidateHealthDegraded {
 		t.Fatalf("unexpected candidate: %+v", candidate)
@@ -30,8 +30,8 @@ func TestEvaluateCandidateReportsReadyAndHighLoadWithoutSelecting(t *testing.T) 
 func TestEvaluateCandidateExplainsUnavailableNode(t *testing.T) {
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	candidate := evaluateCandidate(NodeGroupCandidate{
-		MemberEnabled: true,
-		NodeStatus: "active",
+		MemberEnabled:     true,
+		NodeStatus:        "active",
 		ProtocolSupported: false,
 	}, "vpn", now)
 	if candidate.Eligible || candidate.Health != CandidateHealthUnavailable {
@@ -43,6 +43,27 @@ func TestEvaluateCandidateExplainsUnavailableNode(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing signals: %+v in %+v", want, candidate.Signals)
+	}
+}
+
+func TestEvaluateCandidateExplainsUnsupportedProtocolTopology(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	lastSeen := now.Add(-30 * time.Second)
+	topologySupported := false
+	candidate := evaluateCandidate(NodeGroupCandidate{
+		MemberEnabled:     true,
+		NodeStatus:        "active",
+		AgentStatus:       "online",
+		LastSeenAt:        &lastSeen,
+		ProtocolSupported: true,
+		TopologySupported: &topologySupported,
+		RuntimeState:      "running",
+	}, "hybrid", now)
+	if candidate.Eligible || candidate.Health != CandidateHealthUnavailable {
+		t.Fatalf("unexpected topology-incompatible candidate: %+v", candidate)
+	}
+	if len(candidate.Signals) != 1 || candidate.Signals[0] != "protocol_topology_unsupported" {
+		t.Fatalf("unexpected topology signals: %+v", candidate.Signals)
 	}
 }
 

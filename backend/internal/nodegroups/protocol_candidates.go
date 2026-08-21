@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/ikaevus/routegate/backend/internal/platform"
 )
 
 // CandidatesForProtocol evaluates the group using one required protocol rather
@@ -84,6 +86,8 @@ func (r *Repository) CandidatesForProtocol(ctx context.Context, groupID, protoco
 			row.candidate.LogicalCPUs = &value
 		}
 		row.candidate.ProtocolSupported, row.candidate.RuntimeState = capabilityEvidence(row.capabilities, protocol)
+		topologySupported := platform.ProtocolSupportsDeploymentRole(protocol, platform.EffectiveDeploymentRole(row.deploymentRole))
+		row.candidate.TopologySupported = &topologySupported
 		row.candidate = evaluateCandidate(row.candidate, row.deploymentRole, now)
 		response.Candidates = append(response.Candidates, row.candidate)
 	}

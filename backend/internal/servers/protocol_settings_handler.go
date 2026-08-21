@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/platform"
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
@@ -84,29 +85,51 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	}
 
 	input := UpdateProtocolSettingsInput{
-		Protocol:          request.Protocol,
-		VLESSPort:         request.VLESSPort,
-		VLESSFlow:         request.VLESSFlow,
-		VLESSNetwork:      request.VLESSNetwork,
-		RealityPublicKey:  request.RealityPublicKey,
-		RealityShortID:    request.RealityShortID,
-		RealityServerName: request.RealityServerName,
-		WireGuardPort:      request.WireGuardPort,
-		WireGuardAddress:   request.WireGuardAddress,
-		WireGuardDNS:       request.WireGuardDNS,
-		Hysteria2Port:       request.Hysteria2Port,
-		Hysteria2Domain:     request.Hysteria2Domain,
-		Hysteria2ACMEEmail:  request.Hysteria2ACMEEmail,
-		Hysteria2MasqueradeURL: request.Hysteria2MasqueradeURL,
-		ShadowsocksPort:         request.ShadowsocksPort,
-		MTProtoPort:              request.MTProtoPort,
+		Protocol:                  request.Protocol,
+		VLESSPort:                 request.VLESSPort,
+		VLESSFlow:                 request.VLESSFlow,
+		VLESSNetwork:              request.VLESSNetwork,
+		RealityPublicKey:          request.RealityPublicKey,
+		RealityShortID:            request.RealityShortID,
+		RealityServerName:         request.RealityServerName,
+		WireGuardPort:             request.WireGuardPort,
+		WireGuardAddress:          request.WireGuardAddress,
+		WireGuardDNS:              request.WireGuardDNS,
+		Hysteria2Port:             request.Hysteria2Port,
+		Hysteria2Domain:           request.Hysteria2Domain,
+		Hysteria2ACMEEmail:        request.Hysteria2ACMEEmail,
+		Hysteria2MasqueradeURL:    request.Hysteria2MasqueradeURL,
+		ShadowsocksPort:           request.ShadowsocksPort,
+		MTProtoPort:               request.MTProtoPort,
 	}
 	if err := validateProtocolSettingsInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())
 		return
 	}
 
-	settings, err := repository.UpdateProtocolSettings(r.Context(), r.PathValue("server_id"), input)
+	serverID := r.PathValue("server_id")
+	if request.Protocol != nil {
+		server, err := h.servers.GetServerByID(r.Context(), serverID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeServerNotFound(w)
+			return
+		}
+		if err != nil {
+			h.databaseError(w, "get server for protocol topology validation", err)
+			return
+		}
+		role := platform.EffectiveDeploymentRole(server.DeploymentRole)
+		if !platform.ProtocolSupportsDeploymentRole(*request.Protocol, role) {
+			if *request.Protocol == platform.VPNProtocolHysteria2 {
+				writeInvalidRequest(w, "Hysteria2 is supported only on a dedicated VPN Node because its current ACME lifecycle cannot share the Hybrid Manager/nginx topology.")
+				return
+			}
+			writeInvalidRequest(w, "The selected protocol is not supported on this node deployment role.")
+			return
+		}
+	}
+
+	settings, err := repository.UpdateProtocolSettings(r.Context(), serverID, input)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeServerNotFound(w)
 		return
@@ -350,11 +373,17 @@ func validRecommendedRealityServerName(value string) bool {
 func validHysteria2ServerName(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	labels := strings.Split(value, ".")
-	if len(value) < 4 || len(value) > 253 || len(labels) < 2 { return false }
+	if len(value) < 4 || len(value) > 253 || len(labels) < 2 {
+		return false
+	}
 	for _, label := range labels {
-		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' { return false }
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
 		for _, char := range label {
-			if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') { return false }
+			if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
+				return false
+			}
 		}
 	}
 	return true

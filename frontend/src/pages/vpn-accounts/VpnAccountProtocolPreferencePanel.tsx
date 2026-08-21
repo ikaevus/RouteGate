@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getServers } from '../../entities/server/api/serverApi';
 import {
   getVpnAccountClientConnection,
   updateVpnAccountClientProfile,
   type ClientProtocolPreference,
   type UpdateVpnClientProfileRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 
 type Props = {
@@ -23,6 +25,8 @@ function getCopy() {
       vless: 'VLESS / Reality',
       wireguard: 'WireGuard',
       hysteria2: 'Hysteria2',
+      hysteria2Dedicated: 'Hysteria2 — только отдельный VPN Node',
+      hysteria2Topology: 'Hysteria2 использует отдельный ACME HTTP-01 lifecycle сертификата и сейчас поддерживается только на dedicated VPN Node. Назначьте аккаунт отдельному VPN Node или выберите другой протокол.',
       shadowsocks: 'Shadowsocks 2022',
       mtproto: 'MTProto / FakeTLS',
       save: 'Применить протокол',
@@ -44,6 +48,8 @@ function getCopy() {
     vless: 'VLESS / Reality',
     wireguard: 'WireGuard',
     hysteria2: 'Hysteria2',
+    hysteria2Dedicated: 'Hysteria2 — dedicated VPN Node only',
+    hysteria2Topology: 'Hysteria2 uses its own ACME HTTP-01 certificate lifecycle and is currently supported only on a dedicated VPN Node. Assign the account to a dedicated VPN Node or choose another protocol.',
     shadowsocks: 'Shadowsocks 2022',
     mtproto: 'MTProto / FakeTLS',
     save: 'Apply protocol',
@@ -84,6 +90,11 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     queryKey,
     queryFn: () => getVpnAccountClientConnection(accountId),
   });
+  const accountQuery = useQuery({
+    queryKey: ['vpn-account', accountId],
+    queryFn: () => getVpnAccount(accountId),
+  });
+  const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
 
   useEffect(() => {
     const preference = connectionQuery.data?.profile.protocol;
@@ -96,11 +107,20 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     setSaved(false);
   }, [accountId]);
 
+  const assignedServer = (serversQuery.data?.items ?? []).find(
+    (server) => server.id === accountQuery.data?.serverId,
+  );
+  const hysteria2TopologyBlocked = assignedServer?.deploymentRole === 'hybrid';
+  const selectedTopologyBlocked = hysteria2TopologyBlocked && protocol === 'hysteria2';
+
   const saveMutation = useMutation({
     mutationFn: () => {
       const profile = connectionQuery.data?.profile;
       if (!profile) {
         throw new Error(copy.loadError);
+      }
+      if (selectedTopologyBlocked) {
+        throw new Error(copy.hysteria2Topology);
       }
       const request: UpdateVpnClientProfileRequest = {
         name: profile.name,
@@ -164,13 +184,18 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
                 <option value="auto">{copy.auto}</option>
                 <option value="vless">{copy.vless}</option>
                 <option value="wireguard">{copy.wireguard}</option>
-                <option value="hysteria2">{copy.hysteria2}</option>
+                <option value="hysteria2" disabled={hysteria2TopologyBlocked}>
+                  {hysteria2TopologyBlocked ? copy.hysteria2Dedicated : copy.hysteria2}
+                </option>
                 <option value="shadowsocks">{copy.shadowsocks}</option>
                 <option value="mtproto">{copy.mtproto}</option>
               </select>
             </label>
           </div>
 
+          {hysteria2TopologyBlocked && (
+            <div className="form-message form-message-warning">{copy.hysteria2Topology}</div>
+          )}
           <div className="form-message form-message-warning">{copy.deploy}</div>
 
           {saveMutation.isError && (
@@ -182,7 +207,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <button
               className="primary-button"
               type="button"
-              disabled={!changed || saveMutation.isPending}
+              disabled={!changed || saveMutation.isPending || selectedTopologyBlocked}
               onClick={() => saveMutation.mutate()}
             >
               {saveMutation.isPending ? copy.saving : copy.save}
