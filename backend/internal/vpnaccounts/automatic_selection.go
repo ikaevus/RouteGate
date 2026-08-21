@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -59,17 +60,17 @@ type AutomaticSelectionCandidate struct {
 }
 
 type AutomaticSelectionDecision struct {
-	VPNAccountID       string                       `json:"vpnAccountId"`
-	NodeGroupID        string                       `json:"nodeGroupId,omitempty"`
-	SelectionStrategy  string                       `json:"selectionStrategy,omitempty"`
-	Status             string                       `json:"status"`
-	CurrentServerID    string                       `json:"currentServerId,omitempty"`
+	VPNAccountID       string                        `json:"vpnAccountId"`
+	NodeGroupID        string                        `json:"nodeGroupId,omitempty"`
+	SelectionStrategy  string                        `json:"selectionStrategy,omitempty"`
+	Status             string                        `json:"status"`
+	CurrentServerID    string                        `json:"currentServerId,omitempty"`
 	SelectedCandidate  *AutomaticSelectionCandidate `json:"selectedCandidate,omitempty"`
-	Reasons            []string                     `json:"reasons"`
-	EligibleCandidates int                          `json:"eligibleCandidates"`
-	EvaluatedAt        time.Time                    `json:"evaluatedAt"`
-	BlockedUntil       *time.Time                   `json:"blockedUntil,omitempty"`
-	CanApply           bool                         `json:"canApply"`
+	Reasons            []string                      `json:"reasons"`
+	EligibleCandidates int                           `json:"eligibleCandidates"`
+	EvaluatedAt        time.Time                     `json:"evaluatedAt"`
+	BlockedUntil       *time.Time                    `json:"blockedUntil,omitempty"`
+	CanApply           bool                          `json:"canApply"`
 }
 
 type AutomaticSelectionApplyResponse struct {
@@ -82,11 +83,12 @@ type AutomaticSelectionApplyResponse struct {
 }
 
 type automaticSelectionContext struct {
-	AccountID       string
-	Status          string
-	CurrentServerID string
-	NodeGroupID     string
-	Policy          AutomaticSelectionPolicy
+	AccountID          string
+	Status             string
+	CurrentServerID    string
+	NodeGroupID        string
+	ProtocolPreference string
+	Policy             AutomaticSelectionPolicy
 }
 
 func (r *Repository) getAutomaticSelectionPolicy(ctx context.Context, accountID string) (AutomaticSelectionPolicy, error) {
@@ -182,6 +184,7 @@ func lockedAutomaticSelectionContext(ctx context.Context, tx pgx.Tx, accountID s
 			a.status,
 			COALESCE(a.server_id::text, ''),
 			ang.node_group_id::text,
+			COALESCE(cp.protocol, 'auto'),
 			COALESCE(p.enabled, FALSE),
 			COALESCE(p.allow_degraded, FALSE),
 			COALESCE(p.cooldown_seconds, 300),
@@ -189,6 +192,7 @@ func lockedAutomaticSelectionContext(ctx context.Context, tx pgx.Tx, accountID s
 			COALESCE(p.last_selected_server_id::text, '')
 		FROM vpn_accounts a
 		LEFT JOIN vpn_account_node_groups ang ON ang.vpn_account_id = a.id
+		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		LEFT JOIN vpn_account_automatic_selection_policies p ON p.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
 	`, accountID).Scan(
@@ -196,6 +200,7 @@ func lockedAutomaticSelectionContext(ctx context.Context, tx pgx.Tx, accountID s
 		&value.Status,
 		&value.CurrentServerID,
 		&nodeGroupID,
+		&value.ProtocolPreference,
 		&value.Policy.Enabled,
 		&value.Policy.AllowDegraded,
 		&value.Policy.CooldownSeconds,
@@ -219,11 +224,23 @@ func (r *Repository) automaticSelectionContext(ctx context.Context, accountID st
 	var value automaticSelectionContext
 	var nodeGroupID sql.NullString
 	err := r.pool.QueryRow(ctx, `
-		SELECT a.id::text, a.status, COALESCE(a.server_id::text, ''), ang.node_group_id::text
+		SELECT
+			a.id::text,
+			a.status,
+			COALESCE(a.server_id::text, ''),
+			ang.node_group_id::text,
+			COALESCE(cp.protocol, 'auto')
 		FROM vpn_accounts a
 		LEFT JOIN vpn_account_node_groups ang ON ang.vpn_account_id = a.id
+		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
-	`, accountID).Scan(&value.AccountID, &value.Status, &value.CurrentServerID, &nodeGroupID)
+	`, accountID).Scan(
+		&value.AccountID,
+		&value.Status,
+		&value.CurrentServerID,
+		&nodeGroupID,
+		&value.ProtocolPreference,
+	)
 	if err != nil {
 		return automaticSelectionContext{}, err
 	}
@@ -246,6 +263,14 @@ func (r *Repository) previewAutomaticSelectionAt(ctx context.Context, accountID 
 	return evaluateAutomaticSelectionAt(ctx, selectionContext, now, nodegroups.NewRepository(r.pool))
 }
 
+func automaticSelectionRequiredProtocol(preference string) string {
+	preference = strings.ToLower(strings.TrimSpace(preference))
+	if preference == "" || preference == ClientProtocolAuto {
+		return ""
+	}
+	return preference
+}
+
 func evaluateAutomaticSelectionAt(ctx context.Context, selectionContext automaticSelectionContext, now time.Time, groups *nodegroups.Repository) (AutomaticSelectionDecision, error) {
 	decision := AutomaticSelectionDecision{
 		VPNAccountID:    selectionContext.AccountID,
@@ -259,7 +284,12 @@ func evaluateAutomaticSelectionAt(ctx context.Context, selectionContext automati
 		return decision, nil
 	}
 
-	candidates, err := groups.Candidates(ctx, selectionContext.NodeGroupID, now)
+	candidates, err := groups.CandidatesForProtocol(
+		ctx,
+		selectionContext.NodeGroupID,
+		automaticSelectionRequiredProtocol(selectionContext.ProtocolPreference),
+		now,
+	)
 	if err != nil {
 		return AutomaticSelectionDecision{}, err
 	}
