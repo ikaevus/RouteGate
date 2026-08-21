@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	shadowsocksInboundTag = "shadowsocks-in"
-	shadowsocksMethod     = "2022-blake3-aes-128-gcm"
+	shadowsocksInboundTag  = "shadowsocks-in"
+	shadowsocksMethod      = "2022-blake3-aes-128-gcm"
 	defaultShadowsocksPort = 8388
 )
 
@@ -28,12 +28,7 @@ func (shadowsocksAdapter) Descriptor() platform.VPNCoreAdapterDescriptor {
 }
 
 func (shadowsocksAdapter) Render(config *RenderedConfig, info ServerConfigInfo) {
-	config.SingBox = SingBoxConfig{
-		Log:      SingBoxLog{Level: "info"},
-		Inbounds: []map[string]any{},
-		Outbounds: []SingBoxOutbound{{Type: "direct", Tag: singBoxDirectTag}},
-		Route: SingBoxRoute{Rules: []map[string]any{}, Final: singBoxDirectTag},
-	}
+	ensureSingBoxBase(config)
 
 	users := make([]map[string]any, 0, len(info.VPNAccounts))
 	for _, account := range info.VPNAccounts {
@@ -46,7 +41,10 @@ func (shadowsocksAdapter) Render(config *RenderedConfig, info ServerConfigInfo) 
 			"password": strings.TrimSpace(account.ShadowsocksUserKey),
 		})
 		config.VPNAccounts = append(config.VPNAccounts, ConfigVPNAccount{
-			ID: account.ID, DisplayName: accountDisplayName(account), Status: account.Status,
+			ID:                  account.ID,
+			DisplayName:         accountDisplayName(account),
+			Status:              account.Status,
+			Protocol:            platform.VPNProtocolShadowsocks,
 			ShadowsocksUsername: username,
 		})
 	}
@@ -92,7 +90,7 @@ func (shadowsocksAdapter) Ready(config RenderedConfig) bool {
 }
 
 func isShadowsocksAccountRenderable(account VPNAccountConfigInfo) bool {
-	return account.Status == "active" && validShadowsocksKey(account.ShadowsocksUserKey) && account.TrafficEnforcementStatus != "over_limit"
+	return accountUsesProtocol(account, platform.VPNProtocolShadowsocks) && account.Status == "active" && validShadowsocksKey(account.ShadowsocksUserKey) && account.TrafficEnforcementStatus != "over_limit"
 }
 
 func parseShadowsocksInbound(config RenderedConfig) (map[string]any, error) {
