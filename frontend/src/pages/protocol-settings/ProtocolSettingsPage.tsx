@@ -2,9 +2,24 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { getServers, type Server } from '../../entities/server/api/serverApi';
 import { ServerProtocolSettingsPanel } from '../servers/ServerProtocolSettingsPanel';
-import { t } from '../../shared/i18n/i18n';
+import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
+
+const copy = {
+  en: {
+    subtitle: 'Configure VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto on VPN-capable nodes.',
+    emptyDescription: 'Add a VPN or Hybrid node before configuring managed VPN protocols.',
+    selectDescription: 'Choose a VPN or Hybrid node to view and edit its managed protocol settings.',
+    unavailable: 'This node cannot host VPN protocols. Management Nodes are control-plane only.',
+  },
+  ru: {
+    subtitle: 'Настраивайте VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto на VPN-узлах.',
+    emptyDescription: 'Добавьте VPN-узел или гибридный узел, прежде чем настраивать управляемые VPN-протоколы.',
+    selectDescription: 'Выберите VPN-узел или гибридный узел, чтобы просмотреть и изменить настройки протоколов.',
+    unavailable: 'Этот узел не может размещать VPN-протоколы. Management Node относится только к плоскости управления.',
+  },
+} as const;
 
 function formatValue(value?: string | null): string {
   return value && value.trim() !== '' ? value : t('common.notAvailable');
@@ -34,13 +49,16 @@ function ServerSettingsRow({ server, selected }: { server: Server; selected: boo
 
 export function ProtocolSettingsPage() {
   const { serverId } = useParams<{ serverId: string }>();
+  const text = copy[getCurrentLocale()];
 
   const serversQuery = useQuery({
     queryKey: ['servers'],
     queryFn: getServers,
   });
 
-  const servers = serversQuery.data?.items ?? [];
+  const servers = (serversQuery.data?.items ?? []).filter(
+    (server) => server.deploymentRole !== 'management',
+  );
   const selectedServer = servers.find((server) => server.id === serverId);
 
   return (
@@ -48,7 +66,7 @@ export function ProtocolSettingsPage() {
       <div className="page-header">
         <div>
           <h1>{t('protocolSettings.title')}</h1>
-          <p>{t('protocolSettings.subtitle')}</p>
+          <p>{text.subtitle}</p>
         </div>
 
         <div className="status-pill">
@@ -70,7 +88,7 @@ export function ProtocolSettingsPage() {
           {serversQuery.isSuccess && servers.length === 0 && (
             <EmptyState
               title={t('protocolSettings.emptyTitle')}
-              description={t('protocolSettings.emptyDescription')}
+              description={text.emptyDescription}
             />
           )}
 
@@ -97,15 +115,15 @@ export function ProtocolSettingsPage() {
         {serverId ? (
           <>
             {serversQuery.isSuccess && !selectedServer && (
-              <div className="form-message form-message-error">{t('protocolSettings.serverNotFound')}</div>
+              <div className="form-message form-message-error">{text.unavailable}</div>
             )}
-            <ServerProtocolSettingsPanel serverId={serverId} />
+            {selectedServer && <ServerProtocolSettingsPanel serverId={selectedServer.id} />}
           </>
         ) : (
           <div className="panel">
             <EmptyState
               title={t('protocolSettings.selectTitle')}
-              description={t('protocolSettings.selectDescription')}
+              description={text.selectDescription}
             />
           </div>
         )}
