@@ -3,6 +3,9 @@ import { getCurrentLocale } from '../../shared/i18n/i18n';
 export function getVpnAccountManagementCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
+      pageSubtitle: 'Управляйте VPN-аккаунтами, протоколами подключения, доступом, маршрутами и лимитами трафика.',
+      credentialsTitle: 'Учётные данные подключения',
+      credentialsSubtitle: 'Параметры выбранного протокола для этого VPN-аккаунта. Чувствительные серверные секреты не отображаются без необходимости.',
       searchPlaceholder: 'Поиск по имени, email, заметкам, ID или VLESS UUID…',
       search: 'Найти',
       clear: 'Сбросить',
@@ -69,6 +72,9 @@ export function getVpnAccountManagementCopy() {
   }
 
   return {
+    pageSubtitle: 'Manage VPN accounts, connection protocols, access delivery, routing, and traffic limits.',
+    credentialsTitle: 'Connection credentials',
+    credentialsSubtitle: 'Client-facing values for this account’s selected protocol. Sensitive server-side secrets stay hidden unless required.',
     searchPlaceholder: 'Search by account name, email, notes, ID, or VLESS UUID…',
     search: 'Search',
     clear: 'Reset',
