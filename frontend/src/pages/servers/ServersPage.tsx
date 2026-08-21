@@ -4,10 +4,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   createServer,
   getServers,
+  type DeploymentRole,
   type Server,
 } from '../../entities/server/api/serverApi';
 import { ApiError } from '../../shared/api/client';
-import { t } from '../../shared/i18n/i18n';
+import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 
@@ -32,6 +33,30 @@ function deploymentRoleLabel(role: Server['deploymentRole']): string {
     default:
       return t('servers.deploymentRole.vpn');
   }
+}
+
+function deploymentRoleHint(role: DeploymentRole): string {
+  const russian = getCurrentLocale() === 'ru';
+  switch (role) {
+    case 'management':
+      return russian
+        ? 'Только плоскость управления: Manager, PostgreSQL и Web UI. Agent и VPN Core для этой роли не требуются.'
+        : 'Control plane only: Manager, PostgreSQL, and Web UI. Agent and VPN Core are not required for this role.';
+    case 'hybrid':
+      return russian
+        ? 'Плоскость управления и VPN на одном хосте. Следующий шаг после создания — подключить Agent для VPN-части.'
+        : 'Control and VPN planes on one host. After creation, connect Agent for the VPN plane.';
+    default:
+      return russian
+        ? 'VPN-плоскость: Agent и VPN Core. Следующий шаг после создания — зарегистрировать Agent.'
+        : 'VPN plane: Agent and VPN Core. After creation, register Agent.';
+  }
+}
+
+function createNodeDescription(): string {
+  return getCurrentLocale() === 'ru'
+    ? 'Выберите назначение узла. RouteGate покажет только те следующие действия, которые относятся к выбранной роли.'
+    : 'Choose the node purpose. RouteGate will expose only the next actions that apply to the selected role.';
 }
 
 function connectionStateLabel(state: Server['inventory']['connectionState']): string {
@@ -123,6 +148,7 @@ export function ServersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [name, setName] = useState('');
+  const [deploymentRole, setDeploymentRole] = useState<DeploymentRole>('vpn');
   const [provider, setProvider] = useState('');
   const [location, setLocation] = useState('');
   const [publicIp, setPublicIp] = useState('');
@@ -136,7 +162,7 @@ export function ServersPage() {
   const createServerMutation = useMutation({
     mutationFn: () => createServer({
       name: name.trim(),
-      deploymentRole: 'vpn',
+      deploymentRole,
       provider: provider.trim() || undefined,
       location: location.trim() || undefined,
       publicIp: publicIp.trim(),
@@ -163,6 +189,7 @@ export function ServersPage() {
     setIsCreateOpen(false);
     setHasSubmitted(false);
     setName('');
+    setDeploymentRole('vpn');
     setProvider('');
     setLocation('');
     setPublicIp('');
@@ -221,7 +248,7 @@ export function ServersPage() {
           <form className="server-create-form" onSubmit={handleCreateServer} noValidate>
             <div>
               <div className="panel-title">{t('servers.createTitle')}</div>
-              <p className="panel-subtitle">{t('servers.createDescription')}</p>
+              <p className="panel-subtitle">{createNodeDescription()}</p>
             </div>
 
             <div className="server-create-grid">
@@ -238,6 +265,19 @@ export function ServersPage() {
                 {hasSubmitted && !nameIsValid && (
                   <small className="field-error">{t('servers.validationNameRequired')}</small>
                 )}
+              </label>
+
+              <label className="field">
+                <span>{t('servers.deploymentRole')}</span>
+                <select
+                  value={deploymentRole}
+                  onChange={(event) => setDeploymentRole(event.target.value as DeploymentRole)}
+                >
+                  <option value="management">{t('servers.deploymentRole.management')}</option>
+                  <option value="vpn">{t('servers.deploymentRole.vpn')}</option>
+                  <option value="hybrid">{t('servers.deploymentRole.hybrid')}</option>
+                </select>
+                <small>{deploymentRoleHint(deploymentRole)}</small>
               </label>
 
               <label className="field">
