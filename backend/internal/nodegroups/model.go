@@ -23,37 +23,37 @@ type NodeGroup struct {
 }
 
 type NodeGroupMember struct {
-	NodeGroupID    string    `json:"nodeGroupId"`
-	ServerID       string    `json:"serverId"`
-	ServerName     string    `json:"serverName"`
-	Protocol       string    `json:"protocol"`
-	DeploymentRole string    `json:"deploymentRole"`
-	Priority       int       `json:"priority"`
-	Weight         int       `json:"weight"`
-	Enabled        bool      `json:"enabled"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	NodeGroupID   string    `json:"nodeGroupId"`
+	ServerID      string    `json:"serverId"`
+	ServerName    string    `json:"serverName"`
+	Protocol      string    `json:"protocol"`
+	DeploymentRole string   `json:"deploymentRole"`
+	Priority      int       `json:"priority"`
+	Weight        int       `json:"weight"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type NodeGroupCandidate struct {
-	ServerID             string     `json:"serverId"`
-	ServerName           string     `json:"serverName"`
-	Protocol             string     `json:"protocol"`
-	Priority             int        `json:"priority"`
-	Weight               int        `json:"weight"`
-	MemberEnabled        bool       `json:"memberEnabled"`
-	NodeStatus           string     `json:"nodeStatus"`
-	AgentStatus          string     `json:"agentStatus,omitempty"`
-	LastSeenAt           *time.Time `json:"lastSeenAt,omitempty"`
-	Load1                *float64   `json:"load1,omitempty"`
-	LogicalCPUs          *int       `json:"logicalCpus,omitempty"`
-	LoadPerCPU           *float64   `json:"loadPerCpu,omitempty"`
-	ProtocolSupported    bool       `json:"protocolSupported"`
-	TopologySupported    *bool      `json:"-"`
-	RuntimeState         string     `json:"runtimeState,omitempty"`
-	Eligible             bool       `json:"eligible"`
-	Health               string     `json:"health"`
-	Signals              []string   `json:"signals"`
+	ServerID       string     `json:"serverId"`
+	ServerName     string     `json:"serverName"`
+	Protocol       string     `json:"protocol"`
+	Priority       int        `json:"priority"`
+	Weight         int        `json:"weight"`
+	MemberEnabled  bool       `json:"memberEnabled"`
+	NodeStatus     string     `json:"nodeStatus"`
+	AgentStatus    string     `json:"agentStatus,omitempty"`
+	LastSeenAt     *time.Time `json:"lastSeenAt,omitempty"`
+	Load1          *float64   `json:"load1,omitempty"`
+	LogicalCPUs    *int       `json:"logicalCpus,omitempty"`
+	LoadPerCPU     *float64   `json:"loadPerCpu,omitempty"`
+	ProtocolSupported bool    `json:"protocolSupported"`
+	TopologySupported *bool   `json:"-"`
+	RuntimeState      string  `json:"runtimeState,omitempty"`
+	Eligible       bool       `json:"eligible"`
+	Health         string     `json:"health"`
+	Signals        []string   `json:"signals"`
 }
 
 type ListNodeGroupsResponse struct {
