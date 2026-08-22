@@ -35,7 +35,7 @@ var _ VPNCoreAdapter = mtprotoAdapter{}
 func NewMTProtoAdapter(stagingDir, binary, serviceName string) VPNCoreAdapter {
 	return mtprotoAdapter{
 		stagingDir: strings.TrimSpace(stagingDir),
-		binary:     defaultTaskValue(binary, "mtg"),
+		binary:     defaultTaskValue(binary, "/usr/local/bin/mtg"),
 		service:    NewServiceController(defaultTaskValue(serviceName, "routegate-mtproto")),
 		run:        runCommand,
 	}
@@ -87,9 +87,6 @@ func (a mtprotoAdapter) Validate(ctx context.Context, configPath string) (Valida
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, mtprotoValidationTimeout)
 	defer cancel()
-	// mtg v2 exposes version reporting through -v/--version; "mtg version"
-	// is not a valid subcommand and caused healthy installations to fail
-	// RouteGate's pre-deploy validation.
 	output, err := a.run(checkCtx, a.binary, "--version")
 	result := ValidationResult{Command: a.binary + " --version", Output: strings.TrimSpace(string(output))}
 	if err != nil {

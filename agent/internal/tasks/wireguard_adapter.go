@@ -32,8 +32,8 @@ var _ VPNCoreAdapter = wireGuardAdapter{}
 func NewWireGuardAdapter(stagingDir, wgQuickPath, wgPath, serviceName, interfaceName string) VPNCoreAdapter {
 	return wireGuardAdapter{
 		stagingDir: strings.TrimSpace(stagingDir),
-		wgQuickPath: defaultTaskValue(wgQuickPath, "wg-quick"),
-		wgPath: defaultTaskValue(wgPath, "wg"),
+		wgQuickPath: defaultTaskValue(wgQuickPath, "/usr/bin/wg-quick"),
+		wgPath: defaultTaskValue(wgPath, "/usr/bin/wg"),
 		interfaceName: defaultTaskValue(interfaceName, "routegate-wg0"),
 		service: NewServiceController(defaultTaskValue(serviceName, "wg-quick@routegate-wg0")),
 		run: runCommand,
