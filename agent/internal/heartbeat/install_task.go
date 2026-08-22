@@ -67,13 +67,12 @@ func ensureInstalledServicePersistent(ctx context.Context, report *vpncoreinstal
 	}
 	enableCtx, cancel := context.WithTimeout(ctx, installedServiceEnableTimeout)
 	defer cancel()
-	output, err := exec.CommandContext(enableCtx, "systemctl", "enable", "--quiet", serviceName).CombinedOutput()
-	if err != nil {
+	if err := exec.CommandContext(enableCtx, "systemctl", "enable", "--quiet", serviceName).Run(); err != nil {
 		report.Status = "failed"
 		report.Stages = append(report.Stages, vpncoreinstall.StageResult{
 			Stage: "enable_service", Status: "failed", Code: "service_persistence_enable_failed",
 		})
-		return fmt.Errorf("service_persistence_enable_failed: %s", strings.TrimSpace(string(output)))
+		return fmt.Errorf("service_persistence_enable_failed")
 	}
 	report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "enable_service", Status: "succeeded"})
 	return nil
