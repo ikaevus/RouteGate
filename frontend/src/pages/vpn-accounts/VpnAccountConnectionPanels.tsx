@@ -4,6 +4,7 @@ import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { VpnAccountProtocolPreferencePanel } from './VpnAccountProtocolPreferencePanel';
 import { VpnMultiProtocolAccessPanel } from './VpnMultiProtocolAccessPanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
+import './multi-protocol-access.css';
 
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
