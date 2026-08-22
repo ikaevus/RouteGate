@@ -26,10 +26,7 @@ func DefaultDeliveryBranding(locale string) DeliveryBranding {
 	}
 }
 
-func normalizeDeliveryBranding(locale string, branding DeliveryBranding) DeliveryBranding {
-	if !branding.ShowBranding && strings.TrimSpace(branding.BrandName) == "" && strings.TrimSpace(branding.FooterText) == "" {
-		return DefaultDeliveryBranding(locale)
-	}
+func normalizeDeliveryBranding(_ string, branding DeliveryBranding) DeliveryBranding {
 	branding.BrandName = strings.TrimSpace(branding.BrandName)
 	branding.WebsiteURL = strings.TrimSpace(branding.WebsiteURL)
 	branding.LogoURL = strings.TrimSpace(branding.LogoURL)
