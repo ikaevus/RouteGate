@@ -61,10 +61,11 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 // both runtime health and systemd enablement before it can commit the protocol
 // as active.
 func ensureInstalledServicePersistent(ctx context.Context, report *vpncoreinstall.Report) error {
-	serviceName := strings.TrimSpace(report.ServiceName)
+	serviceName := installedRuntimeServiceName(report)
 	if serviceName == "" {
 		return nil
 	}
+	report.ServiceName = serviceName
 	enableCtx, cancel := context.WithTimeout(ctx, installedServiceEnableTimeout)
 	defer cancel()
 	if err := exec.CommandContext(enableCtx, "systemctl", "enable", "--quiet", serviceName).Run(); err != nil {
@@ -76,6 +77,19 @@ func ensureInstalledServicePersistent(ctx context.Context, report *vpncoreinstal
 	}
 	report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "enable_service", Status: "succeeded"})
 	return nil
+}
+
+func installedRuntimeServiceName(report *vpncoreinstall.Report) string {
+	if report == nil {
+		return ""
+	}
+	if serviceName := strings.TrimSpace(report.ServiceName); serviceName != "" {
+		return serviceName
+	}
+	if strings.TrimSpace(report.Operation) == vpncoreinstall.OperationInstallWireGuard {
+		return "wg-quick@routegate-wg0.service"
+	}
+	return ""
 }
 
 func reportMap(report vpncoreinstall.Report) map[string]any {

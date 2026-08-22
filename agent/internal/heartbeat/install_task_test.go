@@ -26,3 +26,24 @@ func TestInstallationReportMapIsStructuredAndOmitsCommandOutput(t *testing.T) {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 }
+
+func TestInstalledRuntimeServiceNameUsesReportedService(t *testing.T) {
+	report := &vpncoreinstall.Report{Operation: vpncoreinstall.OperationInstallMTG, ServiceName: "routegate-mtproto.service"}
+	if got := installedRuntimeServiceName(report); got != "routegate-mtproto.service" {
+		t.Fatalf("service = %q, want routegate-mtproto.service", got)
+	}
+}
+
+func TestInstalledRuntimeServiceNameMapsWireGuardTemplateInstance(t *testing.T) {
+	report := &vpncoreinstall.Report{Operation: vpncoreinstall.OperationInstallWireGuard}
+	if got := installedRuntimeServiceName(report); got != "wg-quick@routegate-wg0.service" {
+		t.Fatalf("service = %q, want wg-quick@routegate-wg0.service", got)
+	}
+}
+
+func TestInstalledRuntimeServiceNameLeavesUnknownRuntimeEmpty(t *testing.T) {
+	report := &vpncoreinstall.Report{Operation: "unknown"}
+	if got := installedRuntimeServiceName(report); got != "" {
+		t.Fatalf("service = %q, want empty", got)
+	}
+}
