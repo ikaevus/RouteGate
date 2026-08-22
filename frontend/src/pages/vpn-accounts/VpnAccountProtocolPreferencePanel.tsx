@@ -187,7 +187,12 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
       }
       await ensureProtocolRuntime(assignedServer, runtimeProtocol, setDeploymentStage);
       await deployPendingProtocol(assignedServer.id, setDeploymentStage);
-      return getVpnAccountClientConnection(accountId);
+
+      const connection = await getVpnAccountClientConnection(accountId);
+      if (connection.protocol !== runtimeProtocol) {
+        throw new Error('protocol_activation_not_confirmed');
+      }
+      return connection;
     },
     onMutate: () => {
       setSaved(false);
@@ -256,6 +261,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
                 value={protocol}
                 disabled={saveMutation.isPending}
                 onChange={(event) => {
+                  saveMutation.reset();
                   setSaved(false);
                   setDeploymentStage(null);
                   setProtocol(event.target.value as ClientProtocolPreference);
@@ -273,7 +279,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             </label>
           </div>
 
-          {hysteria2TopologyBlocked && (
+          {selectedTopologyBlocked && (
             <div className="form-message form-message-warning">{copy.hysteria2Topology}</div>
           )}
           <div className="form-message form-message-warning">{copy.deploy}</div>
