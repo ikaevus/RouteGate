@@ -1,6 +1,7 @@
 package heartbeat
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ikaevus/routegate/agent/internal/vpncoreinstall"
@@ -45,5 +46,19 @@ func TestInstalledRuntimeServiceNameLeavesUnknownRuntimeEmpty(t *testing.T) {
 	report := &vpncoreinstall.Report{Operation: "unknown"}
 	if got := installedRuntimeServiceName(report); got != "" {
 		t.Fatalf("service = %q, want empty", got)
+	}
+}
+
+func TestMTProtoCredentialOverrideKeepsSecretRootOnly(t *testing.T) {
+	for _, required := range []string{
+		"LoadCredential=mtg-config:/etc/routegate-mtproto/config.toml",
+		"ExecStart=/usr/local/bin/mtg run ${CREDENTIALS_DIRECTORY}/mtg-config",
+	} {
+		if !strings.Contains(mtprotoServiceCredentialOverride, required) {
+			t.Fatalf("MTProto service override missing %q: %s", required, mtprotoServiceCredentialOverride)
+		}
+	}
+	if strings.Contains(mtprotoServiceCredentialOverride, "ExecStart=/usr/local/bin/mtg run /etc/routegate-mtproto/config.toml") {
+		t.Fatalf("MTProto override must not expose the root-only config directly to DynamicUser")
 	}
 }
