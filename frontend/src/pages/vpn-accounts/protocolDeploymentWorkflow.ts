@@ -22,12 +22,17 @@ type ConcreteProtocol = Exclude<ClientProtocolPreference, 'auto'>;
 type RuntimeRequirement = {
   coreType: string;
   installOperation: VPNRuntimeInstallationOperation;
+  reconcileWhenInstalled?: boolean;
 };
 
 const runtimeRequirements: Record<ConcreteProtocol, RuntimeRequirement> = {
   vless: { coreType: 'sing-box', installOperation: 'install_sing_box' },
   shadowsocks: { coreType: 'sing-box', installOperation: 'install_sing_box' },
-  wireguard: { coreType: 'wireguard', installOperation: 'install_wireguard' },
+  wireguard: {
+    coreType: 'wireguard',
+    installOperation: 'install_wireguard',
+    reconcileWhenInstalled: true,
+  },
   hysteria2: { coreType: 'hysteria', installOperation: 'install_hysteria2' },
   mtproto: { coreType: 'mtg', installOperation: 'install_mtg' },
 };
@@ -134,7 +139,8 @@ export async function ensureProtocolRuntime(
   }
   const requirement = runtimeRequirements[protocol];
   onStage('checking_runtime');
-  if (runtimeInstalled(server, requirement.coreType)) {
+  const installed = runtimeInstalled(server, requirement.coreType);
+  if (installed && !requirement.reconcileWhenInstalled) {
     return;
   }
   if (!server.agent) {
@@ -146,6 +152,11 @@ export async function ensureProtocolRuntime(
       'The assigned Agent cannot install the runtime required by this protocol.',
     );
   }
+
+  // An installed runtime is not always activation-ready. In particular,
+  // historical WireGuard nodes can have wg/wg-quick present while the managed
+  // wg-quick instance is still disabled. Re-running the idempotent installer
+  // reconciles service persistence before the transactional config apply.
   onStage('installing_runtime');
   const response = await createVPNCoreInstallation(server.id, requirement.installOperation);
   await waitForInstallation(server.id, response.job.id);
