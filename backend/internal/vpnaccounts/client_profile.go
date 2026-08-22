@@ -318,10 +318,15 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := buildClientConnectionResponse(accountID, subscription, savedProfile)
+	activeProtocol, err := resolveActiveClientProtocol(r.Context(), h.accounts, accountID, savedProfile, subscription.Server)
+	if err != nil {
+		h.databaseError(w, "resolve active vpn client protocol", err)
+		return
+	}
+	response, err := buildClientConnectionResponseForProtocol(accountID, subscription, savedProfile, activeProtocol)
 	if err != nil {
 		h.logger.Error("render persisted vpn client connection", "vpn_account_id", accountID, "error", err)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The client profile was saved but could not be rendered consistently."))
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The client profile was saved but the active client connection could not be rendered consistently."))
 		return
 	}
 	if h.audit != nil {
@@ -334,7 +339,7 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 				"client_type":          response.Profile.ClientType,
 				"device_type":          response.Profile.DeviceType,
 				"protocol_preference":   response.Profile.Protocol,
-				"effective_protocol":    response.Protocol,
+				"active_protocol":       response.Protocol,
 				"fingerprint_mode":     response.Profile.FingerprintMode,
 				"resolved_fingerprint": response.Profile.ResolvedFingerprint,
 			},
@@ -359,7 +364,11 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	if err := validateClientProtocolTopologyForSource(ctx, h.accounts, subscription, profile); err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	return buildClientConnectionResponse(accountID, subscription, profile)
+	activeProtocol, err := resolveActiveClientProtocol(ctx, h.accounts, accountID, profile, subscription.Server)
+	if err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	return buildClientConnectionResponseForProtocol(accountID, subscription, profile, activeProtocol)
 }
 
 func buildClientVLESSLink(subscription SubscriptionProfile, profile ClientProfile) (string, string, string, string, string, error) {
