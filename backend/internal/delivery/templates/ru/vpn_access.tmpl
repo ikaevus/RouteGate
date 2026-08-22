@@ -1,10 +1,23 @@
 {{define "subject"}}Доступ к RouteGate VPN{{end}}
 {{define "text"}}Ваш доступ к RouteGate VPN готов.
-{{if .ProfileName}}
-Профиль: {{.ProfileName}}
-{{end}}
-Открыть VPN:
-{{.ConnectURL}}
+{{if .ProfileName}}Профиль: {{.ProfileName}}
+{{end}}Протокол: {{.Access.DisplayName}}
 
-Эта ссылка предоставляет доступ к VPN. Не передавайте её посторонним.{{end}}
-{{define "html"}}<p>Ваш доступ к RouteGate VPN готов.</p>{{if .ProfileName}}<p>Профиль: <strong>{{.ProfileName}}</strong></p>{{end}}<p><a href="{{.ConnectURL}}">Открыть VPN</a></p><p>Эта ссылка предоставляет доступ к VPN. Не передавайте её посторонним.</p>{{end}}
+{{.Access.PrimaryAction}}
+{{if .Access.URI}}
+Данные подключения:
+{{.Access.URI}}
+{{end}}{{if .Access.AlternativeURI}}
+Ссылка для Telegram:
+{{.Access.AlternativeURI}}
+{{end}}{{if .Access.ConfigText}}
+Конфигурация WireGuard:
+{{.Access.ConfigText}}
+{{end}}{{if .Access.SubscriptionURL}}
+Подписка:
+{{.Access.SubscriptionURL}}
+{{end}}{{if .Access.ClientHint}}
+{{.Access.ClientHint}}
+{{end}}
+Храните эти данные доступа в секрете.{{end}}
+{{define "html"}}<p>Ваш доступ к RouteGate VPN готов.</p>{{if .ProfileName}}<p>Профиль: <strong>{{.ProfileName}}</strong></p>{{end}}<p>Протокол: <strong>{{.Access.DisplayName}}</strong></p><p>{{.Access.PrimaryAction}}</p>{{if .Access.URI}}<p>Данные подключения:<br><code style="word-break:break-all">{{.Access.URI}}</code></p>{{end}}{{if .Access.AlternativeURI}}<p><a href="{{.Access.AlternativeURI}}">Открыть прокси в Telegram</a></p>{{end}}{{if .Access.ConfigText}}<p>Конфигурация WireGuard:</p><pre style="white-space:pre-wrap;word-break:break-all;background:#f3f4f6;padding:12px;border-radius:8px">{{.Access.ConfigText}}</pre>{{end}}{{if .Access.SubscriptionURL}}<p><a href="{{.Access.SubscriptionURL}}">Открыть подписку</a></p>{{end}}{{if .Access.ClientHint}}<p>{{.Access.ClientHint}}</p>{{end}}<p>Храните эти данные доступа в секрете.</p>{{end}}
