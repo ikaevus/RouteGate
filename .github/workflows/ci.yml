@@ -110,6 +110,7 @@ jobs:
             install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/production-like-ops.sh \
             scripts/routegate-recovery \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
@@ -123,6 +124,7 @@ jobs:
             install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/production-like-ops.sh \
             scripts/routegate-recovery \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
