@@ -33,9 +33,13 @@ type mtprotoServerConfig struct {
 var _ VPNCoreAdapter = mtprotoAdapter{}
 
 func NewMTProtoAdapter(stagingDir, binary, serviceName string) VPNCoreAdapter {
+	binary = strings.TrimSpace(binary)
+	if binary == "" || binary == "mtg" {
+		binary = "/usr/local/bin/mtg"
+	}
 	return mtprotoAdapter{
 		stagingDir: strings.TrimSpace(stagingDir),
-		binary:     defaultTaskValue(binary, "/usr/local/bin/mtg"),
+		binary:     binary,
 		service:    NewServiceController(defaultTaskValue(serviceName, "routegate-mtproto")),
 		run:        runCommand,
 	}

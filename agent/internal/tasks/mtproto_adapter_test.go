@@ -15,6 +15,13 @@ func testMTProtoConfig() string {
 	return "debug = false\nsecret = \"" + secret + "\"\nbind-to = \"0.0.0.0:8443\"\nconcurrency = 8192\nprefer-ip = \"prefer-ipv4\"\nauto-update = false\n"
 }
 
+func TestNewMTProtoAdapterNormalizesLegacyBinaryPath(t *testing.T) {
+	adapter := NewMTProtoAdapter(t.TempDir(), "mtg", "routegate-mtproto").(mtprotoAdapter)
+	if adapter.binary != "/usr/local/bin/mtg" {
+		t.Fatalf("expected canonical MTG path, got %q", adapter.binary)
+	}
+}
+
 func TestMTProtoAdapterStagesStrictConfigAndChecksBinary(t *testing.T) {
 	adapter := NewMTProtoAdapter(t.TempDir(), "mtg-test", "routegate-mtproto-test").(mtprotoAdapter)
 	adapter.run = func(_ context.Context, name string, args ...string) ([]byte, error) {

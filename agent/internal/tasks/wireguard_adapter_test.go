@@ -14,6 +14,13 @@ func testWireGuardConfig() string {
 	return "[Interface]\nPrivateKey = " + testWireGuardKey + "\nAddress = 10.66.0.1/24\nListenPort = 51820\nSaveConfig = false\nPostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -s 10.66.0.0/24 -j MASQUERADE\nPostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -s 10.66.0.0/24 -j MASQUERADE\n\n[Peer]\nPublicKey = " + testWireGuardKey + "\nAllowedIPs = 10.66.0.2/32\n"
 }
 
+func TestNewWireGuardAdapterNormalizesLegacyBinaryPaths(t *testing.T) {
+	adapter := NewWireGuardAdapter(t.TempDir(), "wg-quick", "wg", "wg-quick@test", "test0").(wireGuardAdapter)
+	if adapter.wgQuickPath != "/usr/bin/wg-quick" || adapter.wgPath != "/usr/bin/wg" {
+		t.Fatalf("expected canonical WireGuard paths, got wg-quick=%q wg=%q", adapter.wgQuickPath, adapter.wgPath)
+	}
+}
+
 func TestWireGuardAdapterStagesAndValidatesWithoutReturningKeyMaterial(t *testing.T) {
 	adapter := NewWireGuardAdapter(t.TempDir(), "wg-quick-test", "wg-test", "wg-quick@test", "test0").(wireGuardAdapter)
 	task := ConfigTask{ID: "task-id", ConfigVersionID: "version-id", RenderedConfig: []byte(`{"schemaVersion":"routegate.config.v1","wireGuard":` + mustJSONString(t, testWireGuardConfig()) + `}`)}
