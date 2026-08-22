@@ -1,7 +1,7 @@
 {{define "subject"}}Доступ к RouteGate VPN{{end}}
 {{define "text"}}Ваш доступ к RouteGate VPN готов.
 {{if .ProfileName}}Профиль: {{.ProfileName}}
-{{end}}Протокол: {{.Access.DisplayName}}
+{{end}}{{if .Access.Protocol}}Протокол: {{.Access.DisplayName}}
 
 {{.Access.PrimaryAction}}
 {{if .Access.URI}}
@@ -18,6 +18,8 @@
 {{.Access.SubscriptionURL}}
 {{end}}{{if .Access.ClientHint}}
 {{.Access.ClientHint}}
+{{end}}{{else}}Открыть VPN:
+{{.ConnectURL}}
 {{end}}
 Храните эти данные доступа в секрете.{{end}}
-{{define "html"}}<p>Ваш доступ к RouteGate VPN готов.</p>{{if .ProfileName}}<p>Профиль: <strong>{{.ProfileName}}</strong></p>{{end}}<p>Протокол: <strong>{{.Access.DisplayName}}</strong></p><p>{{.Access.PrimaryAction}}</p>{{if .Access.URI}}<p>Данные подключения:<br><code style="word-break:break-all">{{.Access.URI}}</code></p>{{end}}{{if .Access.AlternativeURI}}<p><a href="{{.Access.AlternativeURI}}">Открыть прокси в Telegram</a></p>{{end}}{{if .Access.ConfigText}}<p>Конфигурация WireGuard:</p><pre style="white-space:pre-wrap;word-break:break-all;background:#f3f4f6;padding:12px;border-radius:8px">{{.Access.ConfigText}}</pre>{{end}}{{if .Access.SubscriptionURL}}<p><a href="{{.Access.SubscriptionURL}}">Открыть подписку</a></p>{{end}}{{if .Access.ClientHint}}<p>{{.Access.ClientHint}}</p>{{end}}<p>Храните эти данные доступа в секрете.</p>{{end}}
+{{define "html"}}<p>Ваш доступ к RouteGate VPN готов.</p>{{if .ProfileName}}<p>Профиль: <strong>{{.ProfileName}}</strong></p>{{end}}{{if .Access.Protocol}}<p>Протокол: <strong>{{.Access.DisplayName}}</strong></p><p>{{.Access.PrimaryAction}}</p>{{if .Access.URI}}<p>Данные подключения:<br><code style="word-break:break-all">{{.Access.URI}}</code></p>{{end}}{{if .Access.AlternativeURI}}<p><a href="{{.Access.AlternativeURI}}">Открыть прокси в Telegram</a></p>{{end}}{{if .Access.ConfigText}}<p>Конфигурация WireGuard:</p><pre style="white-space:pre-wrap;word-break:break-all;background:#f3f4f6;padding:12px;border-radius:8px">{{.Access.ConfigText}}</pre>{{end}}{{if .Access.SubscriptionURL}}<p><a href="{{.Access.SubscriptionURL}}">Открыть подписку</a></p>{{end}}{{if .Access.ClientHint}}<p>{{.Access.ClientHint}}</p>{{end}}{{else}}<p><a href="{{.ConnectURL}}">Открыть VPN</a></p>{{end}}<p>Храните эти данные доступа в секрете.</p>{{end}}
