@@ -35,8 +35,10 @@ function getCopy() {
       shadowsocks: 'Shadowsocks 2022',
       mtproto: 'MTProto / FakeTLS',
       save: 'Переключить протокол',
+      retry: 'Повторить активацию',
       saving: 'Подготовка...',
       saved: 'Протокол успешно развернут и активирован.',
+      pending: 'Предпочтение сохранено, но новый протокол ещё не активирован. Текущее рабочее подключение сохранено.',
       deploy: 'RouteGate проверит нужный runtime, при необходимости установит его, сформирует конфигурацию и активирует новый протокол только после успешного применения.',
       loading: 'Загрузка протокола...',
       loadError: 'Не удалось определить клиентский профиль. Если аккаунту ещё не назначен сервер, сначала назначьте VPN-узел.',
@@ -69,8 +71,10 @@ function getCopy() {
     shadowsocks: 'Shadowsocks 2022',
     mtproto: 'MTProto / FakeTLS',
     save: 'Switch protocol',
+    retry: 'Retry activation',
     saving: 'Preparing...',
     saved: 'Protocol deployed and activated successfully.',
+    pending: 'The preference is saved, but the new protocol is not active yet. The current working connection has been preserved.',
     deploy: 'RouteGate will verify the required runtime, install it when needed, render the node configuration, and activate the new protocol only after a successful apply.',
     loading: 'Loading protocol...',
     loadError: 'Could not resolve the client profile. If the account has no server yet, assign a VPN node first.',
@@ -123,6 +127,12 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     queryFn: () => getVpnAccount(accountId),
   });
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
+  const assignedServerId = accountQuery.data?.serverId ?? '';
+  const protocolSettingsQuery = useQuery({
+    queryKey: ['server-protocol-settings', assignedServerId],
+    queryFn: () => getProtocolSettings(assignedServerId),
+    enabled: Boolean(assignedServerId),
+  });
 
   useEffect(() => {
     const preference = connectionQuery.data?.profile.protocol;
@@ -137,7 +147,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   }, [accountId]);
 
   const assignedServer = (serversQuery.data?.items ?? []).find(
-    (server) => server.id === accountQuery.data?.serverId,
+    (server) => server.id === assignedServerId,
   );
   const hysteria2TopologyBlocked = assignedServer?.deploymentRole === 'hybrid';
   const selectedTopologyBlocked = hysteria2TopologyBlocked && protocol === 'hysteria2';
@@ -172,7 +182,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
 
       let runtimeProtocol = protocol;
       if (runtimeProtocol === 'auto') {
-        const settings = await getProtocolSettings(assignedServer.id);
+        const settings = protocolSettingsQuery.data ?? await getProtocolSettings(assignedServer.id);
         runtimeProtocol = settings.protocol as ClientProtocolPreference;
       }
       await ensureProtocolRuntime(assignedServer, runtimeProtocol, setDeploymentStage);
@@ -190,8 +200,9 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
         queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['servers'] }),
-        queryClient.invalidateQueries({ queryKey: ['server-config-versions', assignedServer?.id] }),
-        queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', assignedServer?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', assignedServerId] }),
+        queryClient.invalidateQueries({ queryKey: ['server-config-versions', assignedServerId] }),
+        queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', assignedServerId] }),
       ]);
       setProtocol(connection.profile.protocol ?? 'auto');
       setDeploymentStage('completed');
@@ -199,13 +210,25 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
       window.setTimeout(() => setSaved(false), 2600);
     },
     onError: async () => {
-      await queryClient.invalidateQueries({ queryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ['servers'] }),
+      ]);
     },
   });
 
   const currentPreference = connectionQuery.data?.profile.protocol ?? 'auto';
+  const desiredEffectiveProtocol = protocol === 'auto'
+    ? protocolSettingsQuery.data?.protocol
+    : protocol;
+  const activationPending = Boolean(
+    desiredEffectiveProtocol
+    && connectionQuery.data?.protocol
+    && connectionQuery.data.protocol !== desiredEffectiveProtocol,
+  );
   const changed = protocol !== currentPreference;
   const stageText = deploymentStage ? copy.stages[deploymentStage] : null;
+  const canRetryActivation = !changed && activationPending;
 
   return (
     <div className="panel feature-detail-panel vpn-account-protocol-preference-panel">
@@ -254,6 +277,9 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <div className="form-message form-message-warning">{copy.hysteria2Topology}</div>
           )}
           <div className="form-message form-message-warning">{copy.deploy}</div>
+          {canRetryActivation && !saveMutation.isPending && (
+            <div className="form-message form-message-warning">{copy.pending}</div>
+          )}
 
           {saveMutation.isPending && stageText && (
             <div className="form-message" role="status">{stageText}</div>
@@ -267,10 +293,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <button
               className="primary-button"
               type="button"
-              disabled={!changed || saveMutation.isPending || selectedTopologyBlocked || !assignedServer}
+              disabled={(!changed && !activationPending) || saveMutation.isPending || selectedTopologyBlocked || !assignedServer}
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? copy.saving : copy.save}
+              {saveMutation.isPending ? copy.saving : canRetryActivation ? copy.retry : copy.save}
             </button>
           </div>
         </>
