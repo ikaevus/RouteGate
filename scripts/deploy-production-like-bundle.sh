@@ -19,6 +19,38 @@ log() {
   printf '[production-like] %s\n' "$*"
 }
 
+runtime_status() {
+  local label=$1
+  local service=$2
+  local load_state
+  local state
+
+  load_state=$(systemctl show --property=LoadState --value "$service" 2>/dev/null || true)
+  if [[ "$load_state" != "loaded" ]]; then
+    log "runtime ${label}=not-installed-or-unmanaged"
+    return 0
+  fi
+
+  state=$(systemctl is-active "$service" 2>/dev/null || true)
+  [[ -n "$state" ]] || state=unknown
+  log "runtime ${label} service=${service} state=${state}"
+}
+
+log_runtime_diagnostics() {
+  runtime_status sing-box sing-box
+  runtime_status wireguard wg-quick@routegate-wg0
+  runtime_status hysteria2 hysteria-server
+  runtime_status mtproto routegate-mtproto
+
+  if command -v sing-box >/dev/null 2>&1 && [[ -r /etc/sing-box/config.json ]]; then
+    if sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1; then
+      log "runtime sing-box config=valid"
+    else
+      log "runtime sing-box config=invalid"
+    fi
+  fi
+}
+
 cleanup() {
   rm -rf "$WORK_DIR"
   rm -f "$BUNDLE_FILE" "$VALIDATION_SCRIPT"
@@ -63,15 +95,10 @@ rollback() {
     install -m 0644 "$BACKUP_DIR/routegate-agent.service" /etc/systemd/system/routegate-agent.service
     install -m 0600 "$BACKUP_DIR/manager.env" /etc/routegate/manager.env
 
-    if [[ -s "$BACKUP_DIR/sing-box-config.json" ]]; then
-      install -m 0600 "$BACKUP_DIR/sing-box-config.json" /etc/sing-box/config.json
-    fi
-
     systemctl daemon-reload
-    systemctl restart sing-box >/dev/null 2>&1 || true
     systemctl start routegate-manager >/dev/null 2>&1 || true
     systemctl start routegate-agent >/dev/null 2>&1 || true
-    log "Rollback attempt completed; backup retained at $BACKUP_DIR"
+    log "Rollback attempt completed; VPN runtimes were left untouched; backup retained at $BACKUP_DIR"
   fi
 
   cleanup
@@ -89,11 +116,12 @@ done
 [[ -r "$VALIDATION_SCRIPT" ]] || { printf 'Validation script is not readable.\n' >&2; exit 1; }
 
 STAGE=preflight
-for service in routegate-manager routegate-agent sing-box; do
+for service in routegate-manager routegate-agent; do
   state=$(systemctl is-active "$service" || true)
-  log "preflight ${service}=${state}"
+  log "preflight control-plane ${service}=${state}"
   [[ "$state" == active ]]
 done
+log_runtime_diagnostics
 
 actual_bundle_sha=$(sha256sum "$BUNDLE_FILE" | awk '{print $1}')
 [[ "$actual_bundle_sha" == "$EXPECTED_BUNDLE_SHA" ]] || { printf 'Bundle SHA-256 mismatch.\n' >&2; exit 1; }
@@ -129,9 +157,6 @@ cp -a /etc/systemd/system/routegate-agent.service "$BACKUP_DIR/routegate-agent.s
 cp -a /etc/routegate/manager.env "$BACKUP_DIR/manager.env"
 tar -czf "$BACKUP_DIR/manager-migrations.tar.gz" -C /opt routegate-manager/migrations
 tar -czf "$BACKUP_DIR/frontend.tar.gz" -C /var/www routegate
-if [[ -r /etc/sing-box/config.json ]]; then
-  cp -a /etc/sing-box/config.json "$BACKUP_DIR/sing-box-config.json"
-fi
 pg_dump --format=custom --no-owner --file="$BACKUP_DIR/routegate.pgdump" "$DB_URL"
 chmod -R go-rwx "$BACKUP_DIR"
 log "Backup complete: $BACKUP_DIR"
@@ -200,10 +225,9 @@ chmod 0700 "$VALIDATION_SCRIPT"
 STAGE=final_health
 systemctl is-active --quiet routegate-manager
 systemctl is-active --quiet routegate-agent
-systemctl is-active --quiet sing-box
-/usr/bin/sing-box check -c /etc/sing-box/config.json >/dev/null
 public_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")
 [[ "$public_status" == 200 ]]
+log_runtime_diagnostics
 
 STAGE=complete
 trap - ERR
