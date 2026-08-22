@@ -61,36 +61,40 @@ type ClientProfile struct {
 	SpiderX             string    `json:"spiderX"`
 	MTU                 *int      `json:"mtu,omitempty"`
 	Protocol            string    `json:"protocol"`
+	EnabledProtocols    []string  `json:"enabledProtocols,omitempty"`
+	ActiveProtocols     []string  `json:"activeProtocols,omitempty"`
 	CreatedAt           time.Time `json:"createdAt"`
 	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
 type UpdateClientProfileRequest struct {
-	Name               string `json:"name"`
-	ClientType         string `json:"clientType"`
-	DeviceType         string `json:"deviceType"`
-	FingerprintMode    string `json:"fingerprintMode"`
-	Fingerprint        string `json:"fingerprint"`
-	ServerNameOverride string `json:"serverNameOverride"`
-	SpiderX            string `json:"spiderX"`
-	MTU                *int   `json:"mtu"`
-	Protocol           string `json:"protocol"`
+	Name               string   `json:"name"`
+	ClientType         string   `json:"clientType"`
+	DeviceType         string   `json:"deviceType"`
+	FingerprintMode    string   `json:"fingerprintMode"`
+	Fingerprint        string   `json:"fingerprint"`
+	ServerNameOverride string   `json:"serverNameOverride"`
+	SpiderX            string   `json:"spiderX"`
+	MTU                *int     `json:"mtu"`
+	Protocol           string   `json:"protocol"`
+	EnabledProtocols   []string `json:"enabledProtocols,omitempty"`
 }
 
 type ClientConnectionResponse struct {
-	VPNAccountID    string        `json:"vpnAccountId"`
-	Protocol        string        `json:"protocol"`
-	Format          string        `json:"format"`
-	VLESSLink       string        `json:"vlessLink,omitempty"`
-	WireGuardConfig string        `json:"wireGuardConfig,omitempty"`
-	Hysteria2URI    string        `json:"hysteria2Uri,omitempty"`
-	ShadowsocksURI  string        `json:"shadowsocksUri,omitempty"`
-	MTProtoURI      string        `json:"mtprotoUri,omitempty"`
-	Profile         ClientProfile `json:"profile"`
-	Endpoint        string        `json:"endpoint"`
-	ServerName      string        `json:"serverName"`
-	Network         string        `json:"network"`
-	Flow            string        `json:"flow,omitempty"`
+	VPNAccountID    string                     `json:"vpnAccountId"`
+	Protocol        string                     `json:"protocol"`
+	Format          string                     `json:"format"`
+	VLESSLink       string                     `json:"vlessLink,omitempty"`
+	WireGuardConfig string                     `json:"wireGuardConfig,omitempty"`
+	Hysteria2URI    string                     `json:"hysteria2Uri,omitempty"`
+	ShadowsocksURI  string                     `json:"shadowsocksUri,omitempty"`
+	MTProtoURI      string                     `json:"mtprotoUri,omitempty"`
+	Profile         ClientProfile              `json:"profile"`
+	Connections     []ClientProtocolConnection `json:"connections,omitempty"`
+	Endpoint        string                     `json:"endpoint"`
+	ServerName      string                     `json:"serverName"`
+	Network         string                     `json:"network"`
+	Flow            string                     `json:"flow,omitempty"`
 }
 
 type clientProfileRepository interface {
@@ -203,6 +207,7 @@ func clientProfileFromRequest(accountID string, request UpdateClientProfileReque
 		SpiderX:            request.SpiderX,
 		MTU:                request.MTU,
 		Protocol:           request.Protocol,
+		EnabledProtocols:   append([]string(nil), request.EnabledProtocols...),
 	}
 	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
 	return profile
@@ -283,38 +288,70 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	candidate := clientProfileFromRequest(accountID, request)
-	if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, subscription, candidate); err != nil {
-		if writeClientConnectionDomainError(w, err) {
+	requestedProtocols := effectiveRequestedProtocols(candidate, subscription.Server)
+	if request.EnabledProtocols != nil && request.Protocol == ClientProtocolAuto {
+		primary := resolveEffectiveClientProtocol(candidate, subscription.Server)
+		if !containsClientProtocol(requestedProtocols, primary) {
+			writeInvalidRequest(w, "enabledProtocols must include the node-default protocol while protocol is auto")
 			return
 		}
-		h.databaseError(w, "validate vpn client protocol topology", err)
-		return
 	}
-	effectiveProtocol := resolveEffectiveClientProtocol(candidate, subscription.Server)
-	if preparer, ok := h.accounts.(clientProtocolPreparer); ok && subscription.Server != nil {
-		if err := preparer.PrepareClientProtocol(r.Context(), accountID, subscription.Server.ID, effectiveProtocol); err != nil {
-			h.databaseError(w, "prepare vpn client protocol", err)
-			return
-		}
-		if effectiveProtocol == ClientProtocolWireGuard {
-			subscription, err = h.accounts.GetSubscriptionProfileByAccountID(r.Context(), accountID)
-			if err != nil {
-				h.databaseError(w, "reload vpn subscription profile after protocol preparation", err)
+	for _, protocol := range requestedProtocols {
+		protocolCandidate := candidate
+		protocolCandidate.Protocol = protocol
+		if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, subscription, protocolCandidate); err != nil {
+			if writeClientConnectionDomainError(w, err) {
 				return
 			}
-		}
-	}
-	if _, err := buildClientConnectionResponse(accountID, subscription, candidate); err != nil {
-		if writeClientConnectionDomainError(w, err) {
+			h.databaseError(w, "validate vpn client protocol topology", err)
 			return
 		}
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("client_connection_unavailable", "The selected client settings cannot be rendered."))
-		return
 	}
 
-	savedProfile, err := repository.UpdateClientProfile(r.Context(), accountID, request)
+	wireGuardPrepared := false
+	if preparer, ok := h.accounts.(clientProtocolPreparer); ok && subscription.Server != nil {
+		for _, protocol := range requestedProtocols {
+			if err := preparer.PrepareClientProtocol(r.Context(), accountID, subscription.Server.ID, protocol); err != nil {
+				h.databaseError(w, "prepare vpn client protocol", err)
+				return
+			}
+			wireGuardPrepared = wireGuardPrepared || protocol == ClientProtocolWireGuard
+		}
+	}
+	if wireGuardPrepared {
+		subscription, err = h.accounts.GetSubscriptionProfileByAccountID(r.Context(), accountID)
+		if err != nil {
+			h.databaseError(w, "reload vpn subscription profile after protocol preparation", err)
+			return
+		}
+	}
+	for _, protocol := range requestedProtocols {
+		if _, err := buildClientConnectionResponseForProtocol(accountID, subscription, candidate, protocol); err != nil {
+			if writeClientConnectionDomainError(w, err) {
+				return
+			}
+			httpx.WriteJSON(w, http.StatusConflict, httpx.Error("client_connection_unavailable", "One of the selected protocols cannot be rendered with the current settings."))
+			return
+		}
+	}
+
+	var savedProfile ClientProfile
+	if request.EnabledProtocols != nil {
+		protocolRepository, ok := h.accounts.(clientProtocolSetRepository)
+		if !ok {
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_protocol_set_unavailable", "Multi-protocol account storage is unavailable."))
+			return
+		}
+		savedProfile, err = protocolRepository.UpdateClientProfileWithProtocols(r.Context(), accountID, request, request.EnabledProtocols)
+	} else {
+		savedProfile, err = repository.UpdateClientProfile(r.Context(), accountID, request)
+	}
 	if err != nil {
 		h.databaseError(w, "update vpn client profile", err)
+		return
+	}
+	if err := hydrateClientProtocolSets(r.Context(), h.accounts, accountID, &savedProfile); err != nil {
+		h.databaseError(w, "load vpn client protocol sets", err)
 		return
 	}
 
@@ -329,6 +366,11 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The client profile was saved but the active client connection could not be rendered consistently."))
 		return
 	}
+	if err := attachActiveProtocolConnections(accountID, subscription, savedProfile, &response); err != nil {
+		h.logger.Error("render active vpn client protocol set", "vpn_account_id", accountID, "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The active protocol set could not be rendered consistently."))
+		return
+	}
 	if h.audit != nil {
 		h.recordAudit(r, audit.EventInput{
 			Action:       "vpn_client_profile.updated",
@@ -339,7 +381,9 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 				"client_type":          response.Profile.ClientType,
 				"device_type":          response.Profile.DeviceType,
 				"protocol_preference":   response.Profile.Protocol,
+				"enabled_protocols":     response.Profile.EnabledProtocols,
 				"active_protocol":       response.Protocol,
+				"active_protocols":      response.Profile.ActiveProtocols,
 				"fingerprint_mode":     response.Profile.FingerprintMode,
 				"resolved_fingerprint": response.Profile.ResolvedFingerprint,
 			},
@@ -361,14 +405,26 @@ func (h *Handler) clientConnection(ctx context.Context, accountID string) (Clien
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	if err := validateClientProtocolTopologyForSource(ctx, h.accounts, subscription, profile); err != nil {
+	if err := hydrateClientProtocolSets(ctx, h.accounts, accountID, &profile); err != nil {
 		return ClientConnectionResponse{}, err
 	}
 	activeProtocol, err := resolveActiveClientProtocol(ctx, h.accounts, accountID, profile, subscription.Server)
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	return buildClientConnectionResponseForProtocol(accountID, subscription, profile, activeProtocol)
+	activeProfile := profile
+	activeProfile.Protocol = activeProtocol
+	if err := validateClientProtocolTopologyForSource(ctx, h.accounts, subscription, activeProfile); err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	response, err := buildClientConnectionResponseForProtocol(accountID, subscription, profile, activeProtocol)
+	if err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	if err := attachActiveProtocolConnections(accountID, subscription, profile, &response); err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	return response, nil
 }
 
 func buildClientVLESSLink(subscription SubscriptionProfile, profile ClientProfile) (string, string, string, string, string, error) {
@@ -451,6 +507,22 @@ func normalizeClientProfileRequest(request *UpdateClientProfileRequest) {
 	request.ServerNameOverride = strings.TrimSpace(request.ServerNameOverride)
 	request.SpiderX = strings.TrimSpace(request.SpiderX)
 	request.Protocol = strings.ToLower(strings.TrimSpace(request.Protocol))
+	if request.EnabledProtocols != nil {
+		seen := map[string]struct{}{}
+		normalized := make([]string, 0, len(request.EnabledProtocols))
+		for _, value := range request.EnabledProtocols {
+			protocol := strings.ToLower(strings.TrimSpace(value))
+			if protocol == "" {
+				continue
+			}
+			if _, exists := seen[protocol]; exists {
+				continue
+			}
+			seen[protocol] = struct{}{}
+			normalized = append(normalized, protocol)
+		}
+		request.EnabledProtocols = normalized
+	}
 	if request.Name == "" {
 		request.Name = "Default"
 	}
@@ -486,6 +558,22 @@ func validateClientProfileRequest(request UpdateClientProfileRequest) error {
 	}
 	if _, ok := allowedClientProtocols[request.Protocol]; !ok {
 		return errors.New("protocol is not supported")
+	}
+	if request.EnabledProtocols != nil {
+		if len(request.EnabledProtocols) == 0 {
+			return errors.New("enabledProtocols must contain at least one protocol")
+		}
+		for _, protocol := range request.EnabledProtocols {
+			if protocol == ClientProtocolAuto {
+				return errors.New("enabledProtocols must contain concrete protocols, not auto")
+			}
+			if _, ok := allowedClientProtocols[protocol]; !ok {
+				return errors.New("enabledProtocols contains an unsupported protocol")
+			}
+		}
+		if request.Protocol != ClientProtocolAuto && !containsClientProtocol(request.EnabledProtocols, request.Protocol) {
+			return errors.New("protocol must be included in enabledProtocols")
+		}
 	}
 	if request.FingerprintMode != FingerprintModeAuto && request.FingerprintMode != FingerprintModeManual {
 		return errors.New("fingerprintMode must be auto or manual")
