@@ -34,7 +34,11 @@ const runtimeRequirements: Record<ConcreteProtocol, RuntimeRequirement> = {
     reconcileWhenInstalled: true,
   },
   hysteria2: { coreType: 'hysteria', installOperation: 'install_hysteria2' },
-  mtproto: { coreType: 'mtg', installOperation: 'install_mtg' },
+  mtproto: {
+    coreType: 'mtg',
+    installOperation: 'install_mtg',
+    reconcileWhenInstalled: true,
+  },
 };
 
 export type ProtocolDeploymentStage =
@@ -155,10 +159,9 @@ export async function ensureProtocolRuntime(
     );
   }
 
-  // An installed runtime is not always activation-ready. In particular,
-  // historical WireGuard nodes can have wg/wg-quick present while the managed
-  // wg-quick instance is still disabled. Re-running the idempotent installer
-  // reconciles service persistence before the transactional config apply.
+  // Installed runtimes are not always activation-ready on historical nodes.
+  // Re-running idempotent runtime operations reconciles service persistence and
+  // runtime-specific host/service prerequisites before transactional config apply.
   onStage('installing_runtime');
   const response = await createVPNCoreInstallation(server.id, requirement.installOperation);
   await waitForInstallation(server.id, response.job.id);

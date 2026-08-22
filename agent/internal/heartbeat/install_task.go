@@ -15,6 +15,14 @@ import (
 const installedServiceEnableTimeout = 10 * time.Second
 const wireGuardPrerequisiteTimeout = 2 * time.Minute
 const wireGuardSysctlPath = "/etc/sysctl.d/99-routegate-wireguard.conf"
+const mtprotoServiceOverrideDir = "/etc/systemd/system/routegate-mtproto.service.d"
+const mtprotoServiceOverridePath = mtprotoServiceOverrideDir + "/10-routegate-credentials.conf"
+
+const mtprotoServiceCredentialOverride = `[Service]
+ExecStart=
+ExecStart=/usr/local/bin/mtg run ${CREDENTIALS_DIRECTORY}/mtg-config
+LoadCredential=mtg-config:/etc/routegate-mtproto/config.toml
+`
 
 func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.ConfigTask) error {
 	if validationErr := tasks.ValidateVPNCoreInstallTask(task); validationErr != nil {
@@ -43,6 +51,12 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 	if err := ensureWireGuardHostPrerequisites(ctx, &report); err != nil {
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), reportMap(report)); completeErr != nil {
 			return fmt.Errorf("prepare WireGuard host prerequisites: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
+	if err := ensureMTProtoCredentialAccess(ctx, &report); err != nil {
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), reportMap(report)); completeErr != nil {
+			return fmt.Errorf("prepare MTProto service credentials: %v; report failure: %w", err, completeErr)
 		}
 		return err
 	}
@@ -91,6 +105,35 @@ func ensureWireGuardHostPrerequisites(ctx context.Context, report *vpncoreinstal
 		return fmt.Errorf("wireguard_ip_forward_enable_failed")
 	}
 	report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_host", Status: "succeeded"})
+	return nil
+}
+
+// MTG runs with DynamicUser=true while RouteGate deliberately stores the
+// FakeTLS secret in a root-only 0600 config. systemd LoadCredential bridges
+// those requirements: systemd reads the protected source as PID 1 and exposes
+// an isolated read-only copy only to the dynamic service user.
+func ensureMTProtoCredentialAccess(ctx context.Context, report *vpncoreinstall.Report) error {
+	if report == nil || strings.TrimSpace(report.Operation) != vpncoreinstall.OperationInstallMTG {
+		return nil
+	}
+	if err := os.MkdirAll(mtprotoServiceOverrideDir, 0o755); err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_service", Status: "failed", Code: "credential_override_directory_failed"})
+		return fmt.Errorf("mtproto_credential_override_directory_failed")
+	}
+	if err := os.WriteFile(mtprotoServiceOverridePath, []byte(mtprotoServiceCredentialOverride), 0o644); err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_service", Status: "failed", Code: "credential_override_write_failed"})
+		return fmt.Errorf("mtproto_credential_override_write_failed")
+	}
+	reloadCtx, cancel := context.WithTimeout(ctx, installedServiceEnableTimeout)
+	defer cancel()
+	if err := exec.CommandContext(reloadCtx, "systemctl", "daemon-reload").Run(); err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_service", Status: "failed", Code: "credential_override_reload_failed"})
+		return fmt.Errorf("mtproto_credential_override_reload_failed")
+	}
+	report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_service", Status: "succeeded"})
 	return nil
 }
 
