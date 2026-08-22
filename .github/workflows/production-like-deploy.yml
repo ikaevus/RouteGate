@@ -103,13 +103,12 @@ jobs:
           "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
           "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
 
-          # A VPN core can legitimately be in systemd's transient "activating"
-          # state when a deploy starts. Wait for it to settle before the deploy
-          # script takes its strict preflight snapshot instead of reporting a
-          # false failure immediately.
+          # Platform deployment depends on the RouteGate control plane only.
+          # VPN runtimes are independent data-plane components and are diagnosed
+          # by the deploy script without blocking an otherwise healthy update.
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" 'sudo bash -s' <<'REMOTE_PREFLIGHT'
           set -euo pipefail
-          for service in routegate-manager routegate-agent sing-box; do
+          for service in routegate-manager routegate-agent; do
             state="$(systemctl is-active "$service" || true)"
             if [[ "$state" == "activating" || "$state" == "reloading" ]]; then
               for _ in $(seq 1 30); do
@@ -118,7 +117,7 @@ jobs:
                 [[ "$state" == "activating" || "$state" == "reloading" ]] || break
               done
             fi
-            printf '[production-like] stabilized preflight %s=%s\n' "$service" "$state"
+            printf '[production-like] stabilized control-plane preflight %s=%s\n' "$service" "$state"
             if [[ "$state" != "active" ]]; then
               systemctl --no-pager --full status "$service" || true
               exit 1
