@@ -2,6 +2,7 @@ package vpncoreinstall
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -93,26 +94,22 @@ WantedBy=multi-user.target
 `
 
 // SupportedOperations returns every runtime capability this Agent can install
-// through the existing vpn_core_install task channel. The task kind is kept for
-// wire compatibility; operations are runtime-oriented rather than protocol-oriented.
+// through the existing vpn_core_install task channel. The task kind remains for
+// wire compatibility; operations identify concrete runtimes.
 func SupportedOperations() []string {
-	return SupportedOperationsForEnvironment(
-		defaultOSRelease, runtime.GOARCH, runtime.GOOS, defaultAPTGet, defaultSystemctl, defaultSystemdRun,
-	)
-}
-
-func IsSupportedOperation(operation string) bool {
-	operation = strings.TrimSpace(operation)
-	for _, supported := range SupportedOperations() {
-		if operation == supported {
-			return true
-		}
+	if runtime.GOOS != "linux" || !regularExecutable(defaultAPTGet) ||
+		!regularExecutable(defaultSystemctl) || !directoryExists(defaultSystemdRun) {
+		return nil
 	}
-	return false
+	platform, err := DetectPlatform(defaultOSRelease, runtime.GOARCH)
+	if err != nil || !platform.Supported() {
+		return nil
+	}
+	return []string{OperationInstall, OperationInstallWireGuard, OperationInstallHysteria2, OperationInstallMTG}
 }
 
 // Execute dispatches runtime installation while preserving the mature sing-box
-// installer and its report contract.
+// installer and its existing report contract.
 func Execute(ctx context.Context, operation string) (Report, error) {
 	operation = strings.TrimSpace(operation)
 	if operation == OperationInstall {
@@ -141,12 +138,7 @@ type runtimeInstaller struct {
 }
 
 func (i runtimeInstaller) Execute(ctx context.Context, operation string) (Report, error) {
-	report := Report{
-		Kind:      TaskKind,
-		Operation: strings.TrimSpace(operation),
-		Status:    "failed",
-		Stages:    make([]StageResult, 0, 8),
-	}
+	report := Report{Kind: TaskKind, Operation: strings.TrimSpace(operation), Status: "failed", Stages: make([]StageResult, 0, 8)}
 	if report.Operation != OperationInstallWireGuard && report.Operation != OperationInstallHysteria2 && report.Operation != OperationInstallMTG {
 		return i.fail(report, "detect_platform", "unsupported_installation_operation")
 	}
@@ -183,15 +175,10 @@ func (i runtimeInstaller) Execute(ctx context.Context, operation string) (Report
 }
 
 func (i runtimeInstaller) installWireGuard(ctx context.Context, report *Report) error {
-	report.Runtime = "wireguard"
 	wgPath, wgErr := exec.LookPath("wg")
-	wgQuickPath, quickErr := exec.LookPath("wg-quick")
+	_, quickErr := exec.LookPath("wg-quick")
 	alreadyInstalled := wgErr == nil && quickErr == nil
-	code := "not_installed"
-	if alreadyInstalled {
-		code = "already_installed"
-	}
-	report.Stages = append(report.Stages, StageResult{Stage: "check_existing_installation", Status: "succeeded", Code: code})
+	report.Stages = append(report.Stages, StageResult{Stage: "check_existing_installation", Status: "succeeded", Code: installedCode(alreadyInstalled)})
 	if !alreadyInstalled {
 		if _, err := i.runWithTimeout(ctx, commandTimeout, i.aptGetPath, "update"); err != nil {
 			return &InstallError{Stage: "refresh_package_index", Code: "package_index_refresh_failed"}
@@ -202,7 +189,7 @@ func (i runtimeInstaller) installWireGuard(ctx context.Context, report *Report) 
 		}
 		report.Stages = append(report.Stages, StageResult{Stage: "install_package", Status: "succeeded"})
 		wgPath, wgErr = exec.LookPath("wg")
-		wgQuickPath, quickErr = exec.LookPath("wg-quick")
+		_, quickErr = exec.LookPath("wg-quick")
 	} else {
 		report.Stages = append(report.Stages,
 			StageResult{Stage: "refresh_package_index", Status: "skipped", Code: "already_installed"},
@@ -212,22 +199,16 @@ func (i runtimeInstaller) installWireGuard(ctx context.Context, report *Report) 
 	if wgErr != nil || quickErr != nil {
 		return &InstallError{Stage: "verify_binary", Code: "installed_binary_not_found"}
 	}
-	versionOutput, err := i.runWithTimeout(ctx, verificationTimeout, wgPath, "--version")
-	if err != nil {
+	output, err := i.runWithTimeout(ctx, verificationTimeout, wgPath, "--version")
+	if err != nil || firstNonEmptyLine(string(output)) == "" {
 		return &InstallError{Stage: "verify_binary", Code: "binary_verification_failed"}
 	}
 	report.BinaryPath = wgPath
-	report.HelperPath = wgQuickPath
-	report.Version = truncateString(firstNonEmptyLine(string(versionOutput)), 256)
-	if report.Version == "" {
-		return &InstallError{Stage: "verify_binary", Code: "binary_version_unavailable"}
-	}
 	report.Stages = append(report.Stages, StageResult{Stage: "verify_binary", Status: "succeeded"})
 	return nil
 }
 
 func (i runtimeInstaller) installHysteria2(ctx context.Context, report *Report) error {
-	report.Runtime = "hysteria2"
 	report.ServiceName = "hysteria-server.service"
 	managed, installed, err := inspectManagedRuntime(defaultHysteria2Path, defaultHysteria2Service, hysteria2ServiceUnit)
 	if err != nil {
@@ -236,11 +217,7 @@ func (i runtimeInstaller) installHysteria2(ctx context.Context, report *Report) 
 	if installed && !managed {
 		return &InstallError{Stage: "check_existing_installation", Code: "unmanaged_runtime_conflict"}
 	}
-	code := "not_installed"
-	if installed {
-		code = "already_installed"
-	}
-	report.Stages = append(report.Stages, StageResult{Stage: "check_existing_installation", Status: "succeeded", Code: code})
+	report.Stages = append(report.Stages, StageResult{Stage: "check_existing_installation", Status: "succeeded", Code: installedCode(installed)})
 	if !installed {
 		asset := "hysteria-linux-" + normalizeArchitecture(i.architecture)
 		base := "https://github.com/apernet/hysteria/releases/download/app%2Fv" + defaultHysteria2Version
@@ -273,11 +250,10 @@ func (i runtimeInstaller) installHysteria2(ctx context.Context, report *Report) 
 	} else {
 		report.Stages = append(report.Stages, StageResult{Stage: "install_package", Status: "skipped", Code: "already_installed"})
 	}
-	return i.verifyRuntime(ctx, report, defaultHysteria2Path, "version")
+	return i.verifyManagedServiceRuntime(ctx, report, defaultHysteria2Path, "version")
 }
 
 func (i runtimeInstaller) installMTG(ctx context.Context, report *Report) error {
-	report.Runtime = "mtg"
 	report.ServiceName = "routegate-mtproto.service"
 	managed, installed, err := inspectManagedRuntime(defaultMTGPath, defaultMTGService, mtgServiceUnit)
 	if err != nil {
@@ -286,11 +262,7 @@ func (i runtimeInstaller) installMTG(ctx context.Context, report *Report) error 
 	if installed && !managed {
 		return &InstallError{Stage: "check_existing_installation", Code: "unmanaged_runtime_conflict"}
 	}
-	code := "not_installed"
-	if installed {
-		code = "already_installed"
-	}
-	report.Stages = append(report.Stages, StageResult{Stage: "check_existing_installation", Status: "succeeded", Code: code})
+	report.Stages = append(report.Stages, StageResult{Stage: "check_existing_installation", Status: "succeeded", Code: installedCode(installed)})
 	if !installed {
 		arch := normalizeArchitecture(i.architecture)
 		asset := fmt.Sprintf("mtg-%s-linux-%s.tar.gz", defaultMTGVersion, arch)
@@ -327,22 +299,18 @@ func (i runtimeInstaller) installMTG(ctx context.Context, report *Report) error 
 	} else {
 		report.Stages = append(report.Stages, StageResult{Stage: "install_package", Status: "skipped", Code: "already_installed"})
 	}
-	return i.verifyRuntime(ctx, report, defaultMTGPath, "--version")
+	return i.verifyManagedServiceRuntime(ctx, report, defaultMTGPath, "--version")
 }
 
-func (i runtimeInstaller) verifyRuntime(ctx context.Context, report *Report, binaryPath string, versionArg string) error {
+func (i runtimeInstaller) verifyManagedServiceRuntime(ctx context.Context, report *Report, binaryPath, versionArg string) error {
 	if !regularExecutable(binaryPath) {
 		return &InstallError{Stage: "verify_binary", Code: "installed_binary_not_found"}
 	}
 	output, err := i.runWithTimeout(ctx, verificationTimeout, binaryPath, versionArg)
-	if err != nil {
+	if err != nil || firstNonEmptyLine(string(output)) == "" {
 		return &InstallError{Stage: "verify_binary", Code: "binary_verification_failed"}
 	}
 	report.BinaryPath = binaryPath
-	report.Version = truncateString(firstNonEmptyLine(string(output)), 256)
-	if report.Version == "" {
-		return &InstallError{Stage: "verify_binary", Code: "binary_version_unavailable"}
-	}
 	report.Stages = append(report.Stages, StageResult{Stage: "verify_binary", Status: "succeeded"})
 	serviceOutput, err := i.runWithTimeout(ctx, verificationTimeout, i.systemctlPath, "show", "--property", "LoadState", "--value", report.ServiceName)
 	if err != nil || strings.TrimSpace(string(serviceOutput)) != "loaded" {
@@ -389,7 +357,14 @@ func (i runtimeInstaller) fail(report Report, stage, code string) (Report, error
 	return report, &InstallError{Stage: stage, Code: code}
 }
 
-func inspectManagedRuntime(binaryPath, servicePath, expectedUnit string) (managed bool, installed bool, err error) {
+func installedCode(installed bool) string {
+	if installed {
+		return "already_installed"
+	}
+	return "not_installed"
+}
+
+func inspectManagedRuntime(binaryPath, servicePath, expectedUnit string) (managed, installed bool, err error) {
 	binaryExists := regularExecutable(binaryPath)
 	unit, unitErr := os.ReadFile(servicePath)
 	unitExists := unitErr == nil
@@ -481,7 +456,7 @@ func verifyNamedSHA256(payload, checksumFile []byte, asset string) error {
 }
 
 func extractSingleRegularTarGzipFile(archive []byte, expectedPath string) ([]byte, error) {
-	gzipReader, err := gzip.NewReader(strings.NewReader(string(archive)))
+	gzipReader, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return nil, err
 	}
@@ -510,8 +485,7 @@ func extractSingleRegularTarGzipFile(archive []byte, expectedPath string) ([]byt
 		if header.Typeflag != tar.TypeReg || header.Size <= 0 || header.Size > maxRuntimeDownloadBytes {
 			return nil, fmt.Errorf("invalid runtime binary entry")
 		}
-		limited := io.LimitReader(tarReader, maxRuntimeDownloadBytes+1)
-		payload, err := io.ReadAll(limited)
+		payload, err := io.ReadAll(io.LimitReader(tarReader, maxRuntimeDownloadBytes+1))
 		if err != nil || int64(len(payload)) != header.Size {
 			return nil, fmt.Errorf("read runtime binary")
 		}
@@ -529,8 +503,7 @@ func downloadRuntimeAsset(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: 5 * time.Minute}
-	response, err := client.Do(request)
+	response, err := (&http.Client{Timeout: 5 * time.Minute}).Do(request)
 	if err != nil {
 		return nil, err
 	}
