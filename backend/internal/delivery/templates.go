@@ -34,7 +34,6 @@ func (r *Renderer) Render(templateKey, locale string, data TemplateData) (Messag
 	if !validTemplateKey(templateKey) || !validLocale(locale) {
 		return Message{}, Failure{Class: ErrorClassPermanent, Code: "template_not_found"}
 	}
-	data.Branding = normalizeDeliveryBranding(locale, data.Branding)
 
 	content, err := fs.ReadFile(r.files, path.Join("templates", locale, templateKey+".tmpl"))
 	if err != nil {
@@ -72,7 +71,6 @@ func (r *Renderer) Render(templateKey, locale string, data TemplateData) (Messag
 	if subject == "" || text == "" {
 		return Message{}, Failure{Class: ErrorClassPermanent, Code: "template_empty"}
 	}
-	text, html = appendDeliveryBranding(text, html, data.Branding)
 	return Message{Subject: subject, Text: text, HTML: html}, nil
 }
 

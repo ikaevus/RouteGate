@@ -113,41 +113,12 @@ type Provider interface {
 	Send(context.Context, Message) ProviderResult
 }
 
-// ProtocolAccessBundle is the provider-neutral representation of effective
-// client onboarding material. It deliberately models capabilities rather than
-// assuming every protocol can be represented by one share URL.
-type ProtocolAccessBundle struct {
-	Protocol        string
-	DisplayName     string
-	PrimaryAction   string
-	URI             string
-	AlternativeURI  string
-	ConfigText      string
-	ConfigFilename  string
-	QRPayload       string
-	SubscriptionURL string
-	ClientHint      string
-}
-
-// DeliveryBranding is applied by the renderer after the message-purpose
-// template has rendered, so branding is shared by all locales/templates and
-// can be replaced later by Appliance/Business/Enterprise configuration.
-type DeliveryBranding struct {
-	BrandName  string
-	WebsiteURL string
-	LogoURL    string
-	FooterText string
-	ShowBranding bool
-}
-
 type TemplateData struct {
 	RecipientName string
 	ProfileName   string
 	ConnectURL    string
 	Title         string
 	Message       string
-	Access        ProtocolAccessBundle
-	Branding      DeliveryBranding
 }
 
 type ResolvedMaterial struct {
