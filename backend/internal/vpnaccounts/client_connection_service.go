@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	ErrVPNAccountUnassigned      = errors.New("vpn account is not assigned to a server")
+	ErrVPNAccountUnassigned        = errors.New("vpn account is not assigned to a server")
 	ErrClientConnectionUnavailable = errors.New("client connection is unavailable")
 )
 
@@ -17,6 +17,9 @@ type ClientConnectionSource interface {
 	GetOrCreateClientProfile(context.Context, string) (ClientProfile, error)
 }
 
+// resolveEffectiveClientProtocol resolves the administrator's requested
+// protocol. It is used for validation, preparation, and config rendering. The
+// protocol served to clients is resolved separately from active_protocol.
 func resolveEffectiveClientProtocol(profile ClientProfile, server *SubscriptionServer) string {
 	preference := strings.ToLower(strings.TrimSpace(profile.Protocol))
 	if preference != "" && preference != ClientProtocolAuto {
@@ -37,11 +40,15 @@ func unavailableClientConnection(err error) (ClientConnectionResponse, error) {
 }
 
 func buildClientConnectionResponse(accountID string, subscription SubscriptionProfile, profile ClientProfile) (ClientConnectionResponse, error) {
+	return buildClientConnectionResponseForProtocol(accountID, subscription, profile, resolveEffectiveClientProtocol(profile, subscription.Server))
+}
+
+func buildClientConnectionResponseForProtocol(accountID string, subscription SubscriptionProfile, profile ClientProfile, protocol string) (ClientConnectionResponse, error) {
 	if subscription.Server == nil {
 		return ClientConnectionResponse{}, ErrVPNAccountUnassigned
 	}
 	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
-	protocol := resolveEffectiveClientProtocol(profile, subscription.Server)
+	protocol = normalizeConcreteClientProtocol(protocol)
 
 	switch protocol {
 	case ClientProtocolWireGuard:
@@ -136,5 +143,9 @@ func BuildClientConnection(ctx context.Context, source ClientConnectionSource, a
 	if err := validateClientProtocolTopologyForSource(ctx, source, subscription, profile); err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	return buildClientConnectionResponse(accountID, subscription, profile)
+	protocol, err := resolveActiveClientProtocol(ctx, source, accountID, profile, subscription.Server)
+	if err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	return buildClientConnectionResponseForProtocol(accountID, subscription, profile, protocol)
 }
