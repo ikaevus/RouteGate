@@ -3,6 +3,7 @@ package systeminfo
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -34,9 +35,7 @@ func TestParseLoadAverageRejectsInvalidPayload(t *testing.T) {
 
 func TestDetectVPNCoreNotInstalled(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-
 	status := detectVPNCore()
-
 	if installed, _ := status["installed"].(bool); installed {
 		t.Fatalf("expected VPN core to be absent, got %#v", status)
 	}
@@ -49,14 +48,11 @@ func TestDetectVPNCoreRunning(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses executable shell scripts")
 	}
-
 	binDir := t.TempDir()
 	writeExecutable(t, filepath.Join(binDir, "sing-box"), "#!/bin/sh\necho 'sing-box version 1.12.0'\n")
 	writeExecutable(t, filepath.Join(binDir, "systemctl"), "#!/bin/sh\necho active\n")
 	t.Setenv("PATH", binDir)
-
 	status := detectVPNCore()
-
 	if installed, _ := status["installed"].(bool); !installed {
 		t.Fatalf("expected VPN core to be installed, got %#v", status)
 	}
@@ -75,14 +71,11 @@ func TestDetectVPNCoreStopped(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses executable shell scripts")
 	}
-
 	binDir := t.TempDir()
 	writeExecutable(t, filepath.Join(binDir, "sing-box"), "#!/bin/sh\necho 'sing-box version 1.12.0'\n")
 	writeExecutable(t, filepath.Join(binDir, "systemctl"), "#!/bin/sh\necho inactive\nexit 3\n")
 	t.Setenv("PATH", binDir)
-
 	status := detectVPNCore()
-
 	if got := status["state"]; got != "stopped" {
 		t.Fatalf("expected stopped state, got %v", got)
 	}
@@ -90,7 +83,6 @@ func TestDetectVPNCoreStopped(t *testing.T) {
 
 func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-
 	capabilities := DetectCapabilities()
 	vpnCore, ok := capabilities["vpnCore"].(map[string]any)
 	if !ok {
@@ -130,10 +122,11 @@ func TestDetectCapabilitiesIncludesVPNCore(t *testing.T) {
 		t.Fatalf("unexpected VPN Core service operations capability: %#v", capabilities["vpnCoreServiceOperations"])
 	}
 	installationOperations, advertised := capabilities["vpnCoreInstallationOperations"]
-	if vpncoreinstall.SupportsCurrentPlatform() {
+	expectedInstallations := vpncoreinstall.SupportedOperations()
+	if len(expectedInstallations) > 0 {
 		operations, ok := installationOperations.([]string)
-		if !advertised || !ok || len(operations) != 1 || operations[0] != vpncoreinstall.OperationInstall {
-			t.Fatalf("unexpected installation capability: %#v", installationOperations)
+		if !advertised || !ok || !reflect.DeepEqual(operations, expectedInstallations) {
+			t.Fatalf("unexpected installation capability: %#v, want %#v", installationOperations, expectedInstallations)
 		}
 	} else if advertised {
 		t.Fatalf("installation capability advertised on unsupported environment: %#v", installationOperations)

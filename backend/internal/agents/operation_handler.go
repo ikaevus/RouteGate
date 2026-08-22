@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -23,6 +24,10 @@ type agentOperationQueryRepository interface {
 }
 
 type CreateVPNCoreOperationRequest struct {
+	Operation string `json:"operation"`
+}
+
+type CreateVPNCoreInstallationRequest struct {
 	Operation string `json:"operation"`
 }
 
@@ -94,9 +99,16 @@ func (h *Handler) GetVPNCoreOperation(w http.ResponseWriter, r *http.Request) {
 func sanitizeVPNCoreInstallationJob(job AgentConfigTask) AgentConfigTask {
 	job.ErrorMessage = safeInstallationErrorCode(job.ErrorMessage)
 	raw := job.ResultPayload
+	operation := strings.TrimSpace(job.Operation)
+	if !ValidVPNCoreInstallationOperation(operation) {
+		operation = boundedString(raw["operation"], 64)
+	}
+	if !ValidVPNCoreInstallationOperation(operation) {
+		operation = VPNCoreOperationInstallSingBox
+	}
 	safe := map[string]any{
 		"kind":      AgentTaskKindVPNCoreInstall,
-		"operation": VPNCoreOperationInstallSingBox,
+		"operation": operation,
 		"status":    boundedString(raw["status"], 32),
 	}
 	if platform, ok := raw["platform"].(map[string]any); ok {
@@ -116,9 +128,9 @@ func sanitizeVPNCoreInstallationJob(job AgentConfigTask) AgentConfigTask {
 		}
 	}
 	if stages, ok := raw["stages"].([]any); ok {
-		safeStages := make([]map[string]any, 0, min(len(stages), 8))
+		safeStages := make([]map[string]any, 0, min(len(stages), 12))
 		for _, rawStage := range stages {
-			if len(safeStages) == 8 {
+			if len(safeStages) == 12 {
 				break
 			}
 			stage, ok := rawStage.(map[string]any)
@@ -170,6 +182,17 @@ func safeInstallationErrorCode(value string) string {
 		"binary_verification_failed",
 		"binary_version_unavailable",
 		"service_verification_failed",
+		"runtime_download_failed",
+		"checksum_download_failed",
+		"checksum_verification_failed",
+		"unsafe_or_invalid_runtime_archive",
+		"unmanaged_runtime_conflict",
+		"runtime_binary_installation_failed",
+		"service_unit_installation_failed",
+		"runtime_directory_creation_failed",
+		"systemd_reload_failed",
+		"service_stop_disable_failed",
+		"runtime_installation_failed",
 		"unsupported_installation_task",
 		"unsupported_installation_operation":
 		return strings.TrimSpace(value)
@@ -181,7 +204,25 @@ func safeInstallationErrorCode(value string) string {
 func (h *Handler) CreateVPNCoreInstallation(w http.ResponseWriter, r *http.Request) {
 	repository, ok := h.repository.(agentOperationCreateRepository)
 	if !ok {
-		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("installation_not_supported", "VPN Core installation is not supported by this Manager."))
+		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("installation_not_supported", "VPN runtime installation is not supported by this Manager."))
+		return
+	}
+
+	request := CreateVPNCoreInstallationRequest{Operation: VPNCoreOperationInstallSingBox}
+	if r.Body != nil {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&request); err != nil && !errors.Is(err, io.EOF) {
+			httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Request body must be valid JSON."))
+			return
+		}
+	}
+	request.Operation = strings.TrimSpace(request.Operation)
+	if request.Operation == "" {
+		request.Operation = VPNCoreOperationInstallSingBox
+	}
+	if !ValidVPNCoreInstallationOperation(request.Operation) {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_installation_operation", "Unsupported VPN runtime installation operation."))
 		return
 	}
 
@@ -189,10 +230,10 @@ func (h *Handler) CreateVPNCoreInstallation(w http.ResponseWriter, r *http.Reque
 	job, err := repository.CreateAgentOperationJob(r.Context(), CreateAgentOperationJobInput{
 		ServerID:  serverID,
 		Kind:      AgentTaskKindVPNCoreInstall,
-		Operation: VPNCoreOperationInstallSingBox,
+		Operation: request.Operation,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("agent_installation_unsupported", "The connected Agent does not support sing-box installation on this server."))
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("agent_installation_unsupported", "The connected Agent does not advertise this VPN runtime installation capability."))
 		return
 	}
 	var pgErr *pgconn.PgError
@@ -201,8 +242,8 @@ func (h *Handler) CreateVPNCoreInstallation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err != nil {
-		h.logger.Error("create VPN Core installation job failed", "error", err, "server_id", serverID)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create VPN Core installation."))
+		h.logger.Error("create VPN runtime installation job failed", "error", err, "server_id", serverID, "operation", request.Operation)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create VPN runtime installation."))
 		return
 	}
 
@@ -216,17 +257,17 @@ func (h *Handler) CreateVPNCoreInstallation(w http.ResponseWriter, r *http.Reque
 func (h *Handler) GetVPNCoreInstallation(w http.ResponseWriter, r *http.Request) {
 	repository, ok := h.repository.(agentOperationQueryRepository)
 	if !ok {
-		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("installation_not_supported", "VPN Core installation is not supported by this Manager."))
+		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("installation_not_supported", "VPN runtime installation is not supported by this Manager."))
 		return
 	}
 	job, err := repository.GetAgentOperationJob(r.Context(), strings.TrimSpace(r.PathValue("server_id")), strings.TrimSpace(r.PathValue("job_id")))
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && job.Kind != AgentTaskKindVPNCoreInstall) {
-		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("installation_not_found", "VPN Core installation was not found."))
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("installation_not_found", "VPN runtime installation was not found."))
 		return
 	}
 	if err != nil {
-		h.logger.Error("read VPN Core installation job failed", "error", err)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to read VPN Core installation."))
+		h.logger.Error("read VPN runtime installation job failed", "error", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to read VPN runtime installation."))
 		return
 	}
 	job = sanitizeVPNCoreInstallationJob(job)

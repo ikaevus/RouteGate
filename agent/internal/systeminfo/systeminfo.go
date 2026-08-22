@@ -90,7 +90,6 @@ func collectRuntimeMetrics() *RuntimeMetrics {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
-
 	payload, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
 		return nil
@@ -103,14 +102,7 @@ func collectRuntimeMetrics() *RuntimeMetrics {
 	if logicalCPUs <= 0 {
 		return nil
 	}
-
-	return &RuntimeMetrics{
-		Load1:       load1,
-		Load5:       load5,
-		Load15:      load15,
-		LogicalCPUs: logicalCPUs,
-		CollectedAt: time.Now().UTC(),
-	}
+	return &RuntimeMetrics{Load1: load1, Load5: load5, Load15: load15, LogicalCPUs: logicalCPUs, CollectedAt: time.Now().UTC()}
 }
 
 func collectTelemetry(runtimeMetrics *RuntimeMetrics, vpnCore map[string]any) *TelemetrySnapshot {
@@ -122,7 +114,6 @@ func collectTelemetry(runtimeMetrics *RuntimeMetrics, vpnCore map[string]any) *T
 		host.Load15 = float64Pointer(runtimeMetrics.Load15)
 		host.LogicalCPUs = intPointer(runtimeMetrics.LogicalCPUs)
 	}
-
 	if runtime.GOOS == "linux" {
 		if payload, err := os.ReadFile("/proc/meminfo"); err == nil {
 			if total, available, ok := parseMemoryInfo(payload); ok {
@@ -140,13 +131,7 @@ func collectTelemetry(runtimeMetrics *RuntimeMetrics, vpnCore map[string]any) *T
 			host.RootFSFreeBytes = uint64Pointer(free)
 		}
 	}
-
-	return &TelemetrySnapshot{
-		SchemaVersion: telemetrySchemaVersion,
-		CollectedAt:   now,
-		Host:          host,
-		VPNCore:       telemetryVPNCore(vpnCore),
-	}
+	return &TelemetrySnapshot{SchemaVersion: telemetrySchemaVersion, CollectedAt: now, Host: host, VPNCore: telemetryVPNCore(vpnCore)}
 }
 
 func parseLoadAverage(payload []byte) (float64, float64, float64, bool) {
@@ -154,7 +139,6 @@ func parseLoadAverage(payload []byte) (float64, float64, float64, bool) {
 	if len(fields) < 3 {
 		return 0, 0, 0, false
 	}
-
 	values := make([]float64, 3)
 	for index := 0; index < 3; index++ {
 		value, err := strconv.ParseFloat(fields[index], 64)
@@ -163,7 +147,6 @@ func parseLoadAverage(payload []byte) (float64, float64, float64, bool) {
 		}
 		values[index] = value
 	}
-
 	return values[0], values[1], values[2], true
 }
 
@@ -245,43 +228,57 @@ func detectCapabilitiesWithWireGuard(vpnCore, wireGuardCore map[string]any, addi
 	caps["vpnCores"] = []map[string]any{vpnCore, wireGuardCore, hysteria2Core, mtprotoCore}
 	caps["routegate"] = routeGatePlatformCapabilities()
 	caps["vpnCoreServiceOperations"] = []string{"start", "stop", "restart"}
-	if vpncoreinstall.SupportsCurrentPlatform() {
-		caps["vpnCoreInstallationOperations"] = []string{vpncoreinstall.OperationInstall}
+	if operations := vpncoreinstall.SupportedOperations(); len(operations) > 0 {
+		caps["vpnCoreInstallationOperations"] = operations
 	}
 	return caps
 }
 
 func detectMTProtoCore() map[string]any {
-	status := map[string]any{
-		"type": "mtg", "installed": false, "state": "not_installed",
-		"checkedAt": time.Now().UTC().Format(time.RFC3339),
-	}
+	status := map[string]any{"type": "mtg", "installed": false, "state": "not_installed", "checkedAt": time.Now().UTC().Format(time.RFC3339)}
 	binaryPath, err := exec.LookPath("mtg")
-	if err != nil { return status }
+	if err != nil {
+		return status
+	}
 	status["installed"], status["binaryPath"], status["state"] = true, binaryPath, "installed"
-	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
-		if version := firstNonEmptyLine(string(output)); version != "" { status["version"] = version }
-	} else if timedOut { status["versionError"] = "version_check_timeout" } else { status["versionError"] = "version_check_failed" }
-	if _, systemctlErr := exec.LookPath("systemctl"); systemctlErr != nil { status["serviceState"] = "unknown"; return status }
+	if output, commandErr, timedOut := runCommand(binaryPath, "--version"); commandErr == nil {
+		if version := firstNonEmptyLine(string(output)); version != "" {
+			status["version"] = version
+		}
+	} else if timedOut {
+		status["versionError"] = "version_check_timeout"
+	} else {
+		status["versionError"] = "version_check_failed"
+	}
+	if _, systemctlErr := exec.LookPath("systemctl"); systemctlErr != nil {
+		status["serviceState"] = "unknown"
+		return status
+	}
 	serviceOutput, serviceErr, timedOut := runCommand("systemctl", "is-active", "routegate-mtproto")
 	serviceState := strings.TrimSpace(string(serviceOutput))
-	if timedOut { serviceState, status["serviceError"] = "unknown", "service_check_timeout" } else if serviceState == "" { serviceState = "unknown" }
+	if timedOut {
+		serviceState, status["serviceError"] = "unknown", "service_check_timeout"
+	} else if serviceState == "" {
+		serviceState = "unknown"
+	}
 	status["serviceName"], status["serviceState"] = "routegate-mtproto.service", serviceState
 	switch serviceState {
-	case "active": status["state"] = "running"
-	case "inactive", "deactivating": status["state"] = "stopped"
-	case "failed": status["state"] = "failed"
+	case "active":
+		status["state"] = "running"
+	case "inactive", "deactivating":
+		status["state"] = "stopped"
+	case "failed":
+		status["state"] = "failed"
 	default:
-		if serviceErr != nil { status["state"] = "unknown" }
+		if serviceErr != nil {
+			status["state"] = "unknown"
+		}
 	}
 	return status
 }
 
 func detectHysteria2Core() map[string]any {
-	status := map[string]any{
-		"type": "hysteria", "installed": false, "state": "not_installed",
-		"checkedAt": time.Now().UTC().Format(time.RFC3339),
-	}
+	status := map[string]any{"type": "hysteria", "installed": false, "state": "not_installed", "checkedAt": time.Now().UTC().Format(time.RFC3339)}
 	binaryPath, err := exec.LookPath("hysteria")
 	if err != nil {
 		return status
@@ -290,7 +287,9 @@ func detectHysteria2Core() map[string]any {
 	status["binaryPath"] = binaryPath
 	status["state"] = "installed"
 	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
-		if version := firstNonEmptyLine(string(output)); version != "" { status["version"] = version }
+		if version := firstNonEmptyLine(string(output)); version != "" {
+			status["version"] = version
+		}
 	} else if timedOut {
 		status["versionError"] = "version_check_timeout"
 	} else {
@@ -311,20 +310,22 @@ func detectHysteria2Core() map[string]any {
 	status["serviceName"] = "hysteria-server.service"
 	status["serviceState"] = serviceState
 	switch serviceState {
-	case "active": status["state"] = "running"
-	case "inactive", "deactivating": status["state"] = "stopped"
-	case "failed": status["state"] = "failed"
+	case "active":
+		status["state"] = "running"
+	case "inactive", "deactivating":
+		status["state"] = "stopped"
+	case "failed":
+		status["state"] = "failed"
 	default:
-		if serviceErr != nil { status["state"] = "unknown" }
+		if serviceErr != nil {
+			status["state"] = "unknown"
+		}
 	}
 	return status
 }
 
 func detectWireGuardCore() map[string]any {
-	status := map[string]any{
-		"type": "wireguard", "installed": false, "state": "not_installed",
-		"checkedAt": time.Now().UTC().Format(time.RFC3339),
-	}
+	status := map[string]any{"type": "wireguard", "installed": false, "state": "not_installed", "checkedAt": time.Now().UTC().Format(time.RFC3339)}
 	wgPath, wgErr := exec.LookPath("wg")
 	wgQuickPath, wgQuickErr := exec.LookPath("wg-quick")
 	if wgErr != nil || wgQuickErr != nil {
@@ -349,11 +350,16 @@ func detectWireGuardCore() map[string]any {
 	status["serviceName"] = "wg-quick@routegate-wg0.service"
 	status["serviceState"] = serviceState
 	switch serviceState {
-	case "active": status["state"] = "running"
-	case "inactive", "deactivating": status["state"] = "stopped"
-	case "failed": status["state"] = "failed"
+	case "active":
+		status["state"] = "running"
+	case "inactive", "deactivating":
+		status["state"] = "stopped"
+	case "failed":
+		status["state"] = "failed"
 	default:
-		if serviceErr != nil { status["state"] = "unknown" }
+		if serviceErr != nil {
+			status["state"] = "unknown"
+		}
 	}
 	return status
 }
@@ -375,22 +381,14 @@ func routeGatePlatformCapabilities() map[string]any {
 }
 
 func detectVPNCore() map[string]any {
-	status := map[string]any{
-		"type":      "sing-box",
-		"installed": false,
-		"state":     "not_installed",
-		"checkedAt": time.Now().UTC().Format(time.RFC3339),
-	}
-
+	status := map[string]any{"type": "sing-box", "installed": false, "state": "not_installed", "checkedAt": time.Now().UTC().Format(time.RFC3339)}
 	binaryPath, err := exec.LookPath("sing-box")
 	if err != nil {
 		return status
 	}
-
 	status["installed"] = true
 	status["binaryPath"] = binaryPath
 	status["state"] = "installed"
-
 	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
 		if version := firstNonEmptyLine(string(output)); version != "" {
 			status["version"] = version
@@ -400,12 +398,10 @@ func detectVPNCore() map[string]any {
 	} else {
 		status["versionError"] = "version_check_failed"
 	}
-
 	if _, systemctlErr := exec.LookPath("systemctl"); systemctlErr != nil {
 		status["serviceState"] = "unknown"
 		return status
 	}
-
 	serviceOutput, serviceErr, timedOut := runCommand("systemctl", "is-active", "sing-box")
 	serviceState := strings.TrimSpace(string(serviceOutput))
 	if timedOut {
@@ -416,7 +412,6 @@ func detectVPNCore() map[string]any {
 	}
 	status["serviceName"] = "sing-box.service"
 	status["serviceState"] = serviceState
-
 	switch serviceState {
 	case "active":
 		status["state"] = "running"
@@ -431,7 +426,6 @@ func detectVPNCore() map[string]any {
 			status["state"] = "unknown"
 		}
 	}
-
 	return status
 }
 
