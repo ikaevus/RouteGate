@@ -96,7 +96,7 @@ func operationCapability(kind, operation string) (string, error) {
 	switch {
 	case kind == AgentTaskKindVPNCoreService && ValidVPNCoreOperation(operation):
 		return "vpnCoreServiceOperations", nil
-	case kind == AgentTaskKindVPNCoreInstall && operation == VPNCoreOperationInstallSingBox:
+	case kind == AgentTaskKindVPNCoreInstall && ValidVPNCoreInstallationOperation(operation):
 		return "vpnCoreInstallationOperations", nil
 	case kind == AgentTaskKindDiagnostic && ValidDiagnosticOperation(operation):
 		return "diagnosticProfiles", nil
