@@ -36,6 +36,9 @@ func (h *Handler) PreviewForVPNAccount(w http.ResponseWriter, r *http.Request) {
 	request.Locale = strings.ToLower(strings.TrimSpace(request.Locale))
 	request.Template = strings.ToLower(strings.TrimSpace(request.Template))
 	request.Channel = strings.ToLower(strings.TrimSpace(request.Channel))
+	if request.Channel == "" {
+		request.Channel = "email"
+	}
 	if !validLocale(request.Locale) {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("delivery_locale_unsupported", "Delivery locale must be en or ru."))
 		return
