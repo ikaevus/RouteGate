@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000131_security_event_visibility" {
-		t.Fatalf("applied schema version = %q, want 000131_security_event_visibility", version)
+	if version != "000132_safe_client_protocol_activation" {
+		t.Fatalf("applied schema version = %q, want 000132_safe_client_protocol_activation", version)
 	}
 }
