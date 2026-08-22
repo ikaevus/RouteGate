@@ -8,12 +8,40 @@ log() {
   printf '[production-like-deploy] %s\n' "$*"
 }
 
-for service in routegate-manager routegate-agent sing-box; do
+runtime_status() {
+  local label=$1
+  local service=$2
+  local load_state
+  local state
+
+  load_state=$(systemctl show --property=LoadState --value "$service" 2>/dev/null || true)
+  if [[ "$load_state" != "loaded" ]]; then
+    log "runtime ${label}=not-installed-or-unmanaged"
+    return 0
+  fi
+
+  state=$(systemctl is-active "$service" 2>/dev/null || true)
+  [[ -n "$state" ]] || state=unknown
+  log "runtime ${label} service=${service} state=${state}"
+}
+
+for service in routegate-manager routegate-agent; do
   systemctl is-active --quiet "$service"
-  log "${service}=active"
+  log "control-plane ${service}=active"
 done
 
-/usr/bin/sing-box check -c /etc/sing-box/config.json >/dev/null
+runtime_status sing-box sing-box
+runtime_status wireguard wg-quick@routegate-wg0
+runtime_status hysteria2 hysteria-server
+runtime_status mtproto routegate-mtproto
+
+if command -v sing-box >/dev/null 2>&1 && [[ -r /etc/sing-box/config.json ]]; then
+  if sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1; then
+    log "runtime sing-box config=valid"
+  else
+    log "runtime sing-box config=invalid"
+  fi
+fi
 
 manager_status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/admin/health)
 [[ "$manager_status" == 200 ]]
