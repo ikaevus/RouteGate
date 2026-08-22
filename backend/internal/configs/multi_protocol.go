@@ -8,46 +8,104 @@ import (
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
-type accountProtocolResolver interface {
-	ResolveServerAccountProtocols(context.Context, string) (map[string]string, error)
+type accountProtocolSelection struct {
+	Primary   string
+	Protocols []string
 }
 
-// ResolveServerAccountProtocols returns the effective protocol for every
-// account assigned to a node. "auto" inherits the node default. WireGuard peer
-// material is created before ServerConfigInfo is loaded so the same render can
-// immediately include newly-selected WireGuard accounts.
-func (r *Repository) ResolveServerAccountProtocols(ctx context.Context, serverID string) (map[string]string, error) {
+type accountProtocolResolver interface {
+	ResolveServerAccountProtocols(context.Context, string) (map[string]accountProtocolSelection, error)
+}
+
+var accountProtocolOrder = []string{
+	platform.VPNProtocolVLESS,
+	platform.VPNProtocolWireGuard,
+	platform.VPNProtocolHysteria2,
+	platform.VPNProtocolShadowsocks,
+	platform.VPNProtocolMTProto,
+}
+
+func normalizeAccountProtocol(value string) string {
+	protocol := strings.ToLower(strings.TrimSpace(value))
+	if protocol == "" || protocol == "auto" {
+		return platform.VPNProtocolVLESS
+	}
+	return protocol
+}
+
+func orderedAccountProtocols(values []string) []string {
+	wanted := map[string]bool{}
+	for _, value := range values {
+		protocol := strings.ToLower(strings.TrimSpace(value))
+		if protocol == "" {
+			continue
+		}
+		if protocol == "auto" {
+			protocol = platform.VPNProtocolVLESS
+		}
+		wanted[protocol] = true
+	}
+	ordered := make([]string, 0, len(wanted))
+	for _, protocol := range accountProtocolOrder {
+		if wanted[protocol] {
+			ordered = append(ordered, protocol)
+			delete(wanted, protocol)
+		}
+	}
+	for protocol := range wanted {
+		ordered = append(ordered, protocol)
+	}
+	return ordered
+}
+
+func (r *Repository) ResolveServerAccountProtocols(ctx context.Context, serverID string) (map[string]accountProtocolSelection, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT
 			a.id::text,
-			COALESCE(NULLIF(cp.protocol, 'auto'), s.vpn_protocol, 'vless')
+			COALESCE(NULLIF(cp.protocol, 'auto'), NULLIF(s.vpn_protocol, 'auto'), 'vless') AS primary_protocol,
+			COALESCE(pap.protocol, '') AS enabled_protocol
 		FROM vpn_accounts a
 		JOIN servers s ON s.id = a.server_id
 		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
+		LEFT JOIN vpn_account_protocols pap
+			ON pap.vpn_account_id = a.id
+			AND pap.desired_enabled = TRUE
 		WHERE a.server_id = $1::uuid
-		ORDER BY a.created_at ASC, a.id ASC
+		ORDER BY a.created_at ASC, a.id ASC, pap.protocol ASC
 	`, serverID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	resolved := map[string]string{}
-	wireGuardRequired := false
+	resolved := map[string]accountProtocolSelection{}
 	for rows.Next() {
-		var accountID, protocol string
-		if err := rows.Scan(&accountID, &protocol); err != nil {
+		var accountID, primaryProtocol, enabledProtocol string
+		if err := rows.Scan(&accountID, &primaryProtocol, &enabledProtocol); err != nil {
 			return nil, err
 		}
-		protocol = strings.ToLower(strings.TrimSpace(protocol))
-		if protocol == "" {
-			protocol = platform.VPNProtocolVLESS
+		selection := resolved[accountID]
+		selection.Primary = normalizeAccountProtocol(primaryProtocol)
+		if strings.TrimSpace(enabledProtocol) != "" {
+			selection.Protocols = append(selection.Protocols, enabledProtocol)
 		}
-		resolved[accountID] = protocol
-		wireGuardRequired = wireGuardRequired || protocol == platform.VPNProtocolWireGuard
+		resolved[accountID] = selection
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	wireGuardRequired := false
+	for accountID, selection := range resolved {
+		if len(selection.Protocols) == 0 {
+			selection.Protocols = []string{selection.Primary}
+		}
+		selection.Protocols = orderedAccountProtocols(selection.Protocols)
+		if !protocolListContains(selection.Protocols, selection.Primary) {
+			selection.Primary = selection.Protocols[0]
+		}
+		wireGuardRequired = wireGuardRequired || protocolListContains(selection.Protocols, platform.VPNProtocolWireGuard)
+		resolved[accountID] = selection
 	}
 	if wireGuardRequired {
 		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.pool, serverID); err != nil {
@@ -57,60 +115,51 @@ func (r *Repository) ResolveServerAccountProtocols(ctx context.Context, serverID
 	return resolved, nil
 }
 
-func resolveServerAccountProtocols(ctx context.Context, repository configRepository, serverID string) (map[string]string, error) {
+func resolveServerAccountProtocols(ctx context.Context, repository configRepository, serverID string) (map[string]accountProtocolSelection, error) {
 	resolver, ok := repository.(accountProtocolResolver)
 	if !ok {
-		return map[string]string{}, nil
+		return map[string]accountProtocolSelection{}, nil
 	}
 	return resolver.ResolveServerAccountProtocols(ctx, serverID)
 }
 
-func applyResolvedAccountProtocols(info *ServerConfigInfo, resolved map[string]string) {
-	defaultProtocol := strings.ToLower(strings.TrimSpace(info.VPNProtocol))
-	if defaultProtocol == "" {
-		defaultProtocol = platform.VPNProtocolVLESS
-	}
+func applyResolvedAccountProtocols(info *ServerConfigInfo, resolved map[string]accountProtocolSelection) {
+	defaultProtocol := normalizeAccountProtocol(info.VPNProtocol)
 	for index := range info.VPNAccounts {
-		protocol := strings.ToLower(strings.TrimSpace(resolved[info.VPNAccounts[index].ID]))
-		if protocol == "" || protocol == "auto" {
-			protocol = defaultProtocol
+		selection, ok := resolved[info.VPNAccounts[index].ID]
+		if !ok || len(selection.Protocols) == 0 {
+			selection = accountProtocolSelection{Primary: defaultProtocol, Protocols: []string{defaultProtocol}}
 		}
-		info.VPNAccounts[index].VPNProtocol = protocol
+		info.VPNAccounts[index].VPNProtocol = selection.Primary
+		info.VPNAccounts[index].VPNProtocols = append([]string(nil), selection.Protocols...)
 	}
 }
 
 func selectedVPNCoreAdapters(info ServerConfigInfo) []vpnCoreAdapter {
 	wanted := map[string]bool{}
+	defaultProtocol := normalizeAccountProtocol(info.VPNProtocol)
 	for _, account := range info.VPNAccounts {
 		if account.Status != "active" || account.TrafficEnforcementStatus == "over_limit" {
 			continue
 		}
-		protocol := strings.ToLower(strings.TrimSpace(account.VPNProtocol))
-		if protocol == "" || protocol == "auto" {
-			protocol = strings.ToLower(strings.TrimSpace(info.VPNProtocol))
+		protocols := account.VPNProtocols
+		if len(protocols) == 0 {
+			legacyProtocol := strings.ToLower(strings.TrimSpace(account.VPNProtocol))
+			if legacyProtocol == "" || legacyProtocol == "auto" {
+				legacyProtocol = defaultProtocol
+			}
+			protocols = []string{legacyProtocol}
 		}
-		if protocol == "" {
-			protocol = platform.VPNProtocolVLESS
+		for _, protocol := range protocols {
+			wanted[normalizeAccountProtocol(protocol)] = true
 		}
-		wanted[protocol] = true
 	}
 	if len(wanted) == 0 {
-		protocol := strings.ToLower(strings.TrimSpace(info.VPNProtocol))
-		if protocol == "" {
-			protocol = platform.VPNProtocolVLESS
-		}
-		wanted[protocol] = true
+		wanted[defaultProtocol] = true
 	}
 
-	order := []string{
-		platform.VPNProtocolVLESS,
-		platform.VPNProtocolWireGuard,
-		platform.VPNProtocolHysteria2,
-		platform.VPNProtocolShadowsocks,
-		platform.VPNProtocolMTProto,
-	}
 	adapters := make([]vpnCoreAdapter, 0, len(wanted))
-	for _, protocol := range order {
+	for _, protocol := range accountProtocolOrder {
 		if !wanted[protocol] {
 			continue
 		}
@@ -127,12 +176,7 @@ func configVPNCoreFromAdapter(adapter vpnCoreAdapter, realityEnabled bool) Confi
 	if len(descriptor.Transports) > 0 {
 		transport = descriptor.Transports[0]
 	}
-	return ConfigVPNCore{
-		Core:      descriptor.Core,
-		Protocol:  descriptor.Protocol,
-		Transport: transport,
-		Security:  selectedAdapterSecurity(descriptor, realityEnabled),
-	}
+	return ConfigVPNCore{Core: descriptor.Core, Protocol: descriptor.Protocol, Transport: transport, Security: selectedAdapterSecurity(descriptor, realityEnabled)}
 }
 
 func renderSelectedVPNCoreAdapters(config *RenderedConfig, info ServerConfigInfo) {
@@ -146,6 +190,7 @@ func renderSelectedVPNCoreAdapters(config *RenderedConfig, info ServerConfigInfo
 	for _, adapter := range adapters {
 		adapter.Render(config, info)
 	}
+	mergeRenderedVPNAccounts(config)
 }
 
 func configuredVPNCoreAdapters(config RenderedConfig) ([]vpnCoreAdapter, bool) {
@@ -159,24 +204,15 @@ func configuredVPNCoreAdapters(config RenderedConfig) ([]vpnCoreAdapter, bool) {
 	for _, descriptor := range descriptors {
 		if strings.TrimSpace(descriptor.Core) == "" {
 			adapter, ok := adapterForRenderedConfig(config)
-			if !ok {
-				return nil, false
-			}
+			if !ok { return nil, false }
 			key := adapter.Descriptor().Core + "/" + adapter.Descriptor().Protocol
-			if _, exists := seen[key]; !exists {
-				adapters = append(adapters, adapter)
-				seen[key] = struct{}{}
-			}
+			if _, exists := seen[key]; !exists { adapters = append(adapters, adapter); seen[key] = struct{}{} }
 			continue
 		}
 		adapter, ok := registry.Resolve(descriptor.Core, descriptor.Protocol, descriptor.Transport, descriptor.Security)
-		if !ok {
-			return nil, false
-		}
+		if !ok { return nil, false }
 		key := descriptor.Core + "/" + descriptor.Protocol
-		if _, exists := seen[key]; exists {
-			continue
-		}
+		if _, exists := seen[key]; exists { continue }
 		seen[key] = struct{}{}
 		adapters = append(adapters, adapter)
 	}
@@ -190,46 +226,68 @@ func validateConfiguredVPNCoreAdapters(config RenderedConfig, result *Validation
 		result.Errors = append(result.Errors, "metadata.vpnCores selects an unsupported adapter composition.")
 		return
 	}
-	for _, adapter := range adapters {
-		adapter.Validate(config, result)
-	}
+	for _, adapter := range adapters { adapter.Validate(config, result) }
 }
 
 func configuredVPNServicesReady(config RenderedConfig) bool {
 	adapters, ok := configuredVPNCoreAdapters(config)
-	if !ok {
-		return false
-	}
-	for _, adapter := range adapters {
-		if !adapter.Ready(config) {
-			return false
-		}
-	}
+	if !ok { return false }
+	for _, adapter := range adapters { if !adapter.Ready(config) { return false } }
 	return true
 }
 
 func ensureSingBoxBase(config *RenderedConfig) {
-	if config.SingBox.Log.Level == "" {
-		config.SingBox.Log = SingBoxLog{Level: "info"}
-	}
-	if config.SingBox.Inbounds == nil {
-		config.SingBox.Inbounds = []map[string]any{}
-	}
-	if config.SingBox.Outbounds == nil {
-		config.SingBox.Outbounds = []SingBoxOutbound{}
-	}
+	if config.SingBox.Log.Level == "" { config.SingBox.Log = SingBoxLog{Level: "info"} }
+	if config.SingBox.Inbounds == nil { config.SingBox.Inbounds = []map[string]any{} }
+	if config.SingBox.Outbounds == nil { config.SingBox.Outbounds = []SingBoxOutbound{} }
 	ensureSingBoxOutbound(config, SingBoxOutbound{Type: "direct", Tag: singBoxDirectTag})
-	if config.SingBox.Route.Rules == nil {
-		config.SingBox.Route.Rules = []map[string]any{}
+	if config.SingBox.Route.Rules == nil { config.SingBox.Route.Rules = []map[string]any{} }
+	if config.SingBox.Route.Final == "" { config.SingBox.Route.Final = singBoxDirectTag }
+}
+
+func protocolListContains(protocols []string, protocol string) bool {
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	for _, candidate := range protocols {
+		if strings.ToLower(strings.TrimSpace(candidate)) == protocol { return true }
 	}
-	if config.SingBox.Route.Final == "" {
-		config.SingBox.Route.Final = singBoxDirectTag
-	}
+	return false
 }
 
 func accountUsesProtocol(account VPNAccountConfigInfo, protocol string) bool {
+	if len(account.VPNProtocols) > 0 { return protocolListContains(account.VPNProtocols, protocol) }
 	selected := strings.ToLower(strings.TrimSpace(account.VPNProtocol))
-	// Empty preserves pre-RG-114J unit fixtures where the adapter itself defines
-	// the only protocol under test.
 	return selected == "" || selected == strings.ToLower(strings.TrimSpace(protocol))
+}
+
+func renderedAccountProtocols(account ConfigVPNAccount) []string {
+	protocols := append([]string(nil), account.Protocols...)
+	if strings.TrimSpace(account.Protocol) != "" { protocols = append(protocols, account.Protocol) }
+	if strings.TrimSpace(account.VLESSUUID) != "" { protocols = append(protocols, platform.VPNProtocolVLESS) }
+	if strings.TrimSpace(account.WireGuardPublicKey) != "" || strings.TrimSpace(account.WireGuardAddress) != "" { protocols = append(protocols, platform.VPNProtocolWireGuard) }
+	if strings.TrimSpace(account.Hysteria2Username) != "" { protocols = append(protocols, platform.VPNProtocolHysteria2) }
+	if strings.TrimSpace(account.ShadowsocksUsername) != "" { protocols = append(protocols, platform.VPNProtocolShadowsocks) }
+	return orderedAccountProtocols(protocols)
+}
+
+func mergeRenderedVPNAccounts(config *RenderedConfig) {
+	if config == nil || len(config.VPNAccounts) == 0 { return }
+	merged := make([]ConfigVPNAccount, 0, len(config.VPNAccounts))
+	byID := map[string]int{}
+	for _, account := range config.VPNAccounts {
+		account.Protocols = renderedAccountProtocols(account)
+		index, exists := byID[account.ID]
+		if !exists {
+			merged = append(merged, account)
+			byID[account.ID] = len(merged) - 1
+			continue
+		}
+		target := &merged[index]
+		target.Protocols = orderedAccountProtocols(append(target.Protocols, account.Protocols...))
+		if target.VLESSUUID == "" { target.VLESSUUID = account.VLESSUUID }
+		if target.WireGuardPublicKey == "" { target.WireGuardPublicKey = account.WireGuardPublicKey }
+		if target.WireGuardAddress == "" { target.WireGuardAddress = account.WireGuardAddress }
+		if target.Hysteria2Username == "" { target.Hysteria2Username = account.Hysteria2Username }
+		if target.ShadowsocksUsername == "" { target.ShadowsocksUsername = account.ShadowsocksUsername }
+	}
+	config.VPNAccounts = merged
 }

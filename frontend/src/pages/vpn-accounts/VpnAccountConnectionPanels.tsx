@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { VpnAccountProtocolPreferencePanel } from './VpnAccountProtocolPreferencePanel';
+import { VpnMultiProtocolAccessPanel } from './VpnMultiProtocolAccessPanel';
 import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
+import './multi-protocol-access.css';
 
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
@@ -11,7 +13,7 @@ function getCopy() {
       loading: 'Проверяем назначение VPN-узла...',
       unavailable: 'Не удалось загрузить назначение VPN-узла.',
       nodeRequiredTitle: 'Сначала назначьте VPN-узел',
-      nodeRequiredDescription: 'Этот VPN-аккаунт ещё не назначен серверу. Выберите VPN-узел в блоке управления аккаунтом выше. После назначения здесь появятся выбор протокола, QR-код и готовая конфигурация клиента.',
+      nodeRequiredDescription: 'Этот VPN-аккаунт ещё не назначен серверу. Выберите VPN-узел в блоке управления аккаунтом выше. После назначения здесь появятся выбор протоколов, QR-коды и готовые конфигурации клиента.',
       assignNodeAction: 'Перейти к назначению VPN-узла',
     } as const;
   }
@@ -21,7 +23,7 @@ function getCopy() {
     loading: 'Checking VPN node assignment...',
     unavailable: 'Could not load the VPN node assignment.',
     nodeRequiredTitle: 'Assign a VPN node first',
-    nodeRequiredDescription: 'This VPN account is not assigned to a server yet. Choose a VPN node in the account management panel above. After assignment, protocol selection, QR code, and the ready client configuration will appear here.',
+    nodeRequiredDescription: 'This VPN account is not assigned to a server yet. Choose a VPN node in the account management panel above. After assignment, protocol selection, QR codes, and ready client configurations will appear here.',
     assignNodeAction: 'Go to VPN node assignment',
   } as const;
 }
@@ -78,6 +80,7 @@ export function VpnAccountConnectionPanels({ accountId }: { accountId: string })
   return (
     <>
       <VpnAccountProtocolPreferencePanel accountId={accountId} />
+      <VpnMultiProtocolAccessPanel accountId={accountId} />
       <VpnClientConnectionPanel accountId={accountId} />
     </>
   );

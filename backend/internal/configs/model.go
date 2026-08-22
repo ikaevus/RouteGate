@@ -116,6 +116,7 @@ type VPNAccountConfigInfo struct {
 	DisplayName              string
 	Status                   string
 	VPNProtocol              string
+	VPNProtocols             []string
 	VLESSUUID                string
 	VLESSFlow                string
 	VLESSNetwork             string
@@ -183,15 +184,16 @@ type ConfigAgent struct {
 }
 
 type ConfigVPNAccount struct {
-	ID                  string `json:"id"`
-	DisplayName         string `json:"displayName"`
-	Status              string `json:"status"`
-	Protocol            string `json:"-"`
-	VLESSUUID           string `json:"vlessUuid,omitempty"`
-	WireGuardPublicKey  string `json:"wireGuardPublicKey,omitempty"`
-	WireGuardAddress    string `json:"wireGuardAddress,omitempty"`
-	Hysteria2Username   string `json:"hysteria2Username,omitempty"`
-	ShadowsocksUsername string `json:"shadowsocksUsername,omitempty"`
+	ID                  string   `json:"id"`
+	DisplayName         string   `json:"displayName"`
+	Status              string   `json:"status"`
+	Protocol            string   `json:"-"`
+	Protocols           []string `json:"protocols,omitempty"`
+	VLESSUUID           string   `json:"vlessUuid,omitempty"`
+	WireGuardPublicKey  string   `json:"wireGuardPublicKey,omitempty"`
+	WireGuardAddress    string   `json:"wireGuardAddress,omitempty"`
+	Hysteria2Username   string   `json:"hysteria2Username,omitempty"`
+	ShadowsocksUsername string   `json:"shadowsocksUsername,omitempty"`
 }
 
 type ConfigRoutingProfile struct {

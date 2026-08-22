@@ -18,8 +18,9 @@ type ClientConnectionSource interface {
 }
 
 // resolveEffectiveClientProtocol resolves the administrator's requested
-// protocol. It is used for validation, preparation, and config rendering. The
-// protocol served to clients is resolved separately from active_protocol.
+// primary protocol. Multi-protocol account access is represented separately by
+// ClientProfile.EnabledProtocols. The protocol served in legacy single-protocol
+// fields continues to use active_protocol until Agent-confirmed apply succeeds.
 func resolveEffectiveClientProtocol(profile ClientProfile, server *SubscriptionServer) string {
 	preference := strings.ToLower(strings.TrimSpace(profile.Protocol))
 	if preference != "" && preference != ClientProtocolAuto {
@@ -140,12 +141,24 @@ func BuildClientConnection(ctx context.Context, source ClientConnectionSource, a
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	if err := validateClientProtocolTopologyForSource(ctx, source, subscription, profile); err != nil {
+	if err := hydrateClientProtocolSets(ctx, source, accountID, &profile); err != nil {
 		return ClientConnectionResponse{}, err
 	}
 	protocol, err := resolveActiveClientProtocol(ctx, source, accountID, profile, subscription.Server)
 	if err != nil {
 		return ClientConnectionResponse{}, err
 	}
-	return buildClientConnectionResponseForProtocol(accountID, subscription, profile, protocol)
+	activeProfile := profile
+	activeProfile.Protocol = protocol
+	if err := validateClientProtocolTopologyForSource(ctx, source, subscription, activeProfile); err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	response, err := buildClientConnectionResponseForProtocol(accountID, subscription, profile, protocol)
+	if err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	if err := attachActiveProtocolConnections(accountID, subscription, profile, &response); err != nil {
+		return ClientConnectionResponse{}, err
+	}
+	return response, nil
 }
