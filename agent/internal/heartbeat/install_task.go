@@ -3,6 +3,7 @@ package heartbeat
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 )
 
 const installedServiceEnableTimeout = 10 * time.Second
+const wireGuardPrerequisiteTimeout = 2 * time.Minute
+const wireGuardSysctlPath = "/etc/sysctl.d/99-routegate-wireguard.conf"
 
 func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.ConfigTask) error {
 	if validationErr := tasks.ValidateVPNCoreInstallTask(task); validationErr != nil {
@@ -37,6 +40,12 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 		}
 		return err
 	}
+	if err := ensureWireGuardHostPrerequisites(ctx, &report); err != nil {
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), reportMap(report)); completeErr != nil {
+			return fmt.Errorf("prepare WireGuard host prerequisites: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
 	if err := ensureInstalledServicePersistent(ctx, &report); err != nil {
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), reportMap(report)); completeErr != nil {
 			return fmt.Errorf("enable installed VPN runtime service: %v; report failure: %w", err, completeErr)
@@ -52,6 +61,36 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 		"binary_path", report.BinaryPath,
 		"service", report.ServiceName,
 	)
+	return nil
+}
+
+// WireGuard's managed configuration uses iptables forwarding/NAT hooks and
+// requires IPv4 forwarding on the host. Runtime installation is the right place
+// to reconcile these host prerequisites because it is idempotent and runs before
+// the transactional config apply.
+func ensureWireGuardHostPrerequisites(ctx context.Context, report *vpncoreinstall.Report) error {
+	if report == nil || strings.TrimSpace(report.Operation) != vpncoreinstall.OperationInstallWireGuard {
+		return nil
+	}
+
+	prereqCtx, cancel := context.WithTimeout(ctx, wireGuardPrerequisiteTimeout)
+	defer cancel()
+	if err := exec.CommandContext(prereqCtx, "/usr/bin/apt-get", "install", "--yes", "--no-install-recommends", "iptables").Run(); err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_host", Status: "failed", Code: "iptables_install_failed"})
+		return fmt.Errorf("wireguard_iptables_install_failed")
+	}
+	if err := os.WriteFile(wireGuardSysctlPath, []byte("net.ipv4.ip_forward=1\n"), 0o644); err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_host", Status: "failed", Code: "ip_forward_persistence_failed"})
+		return fmt.Errorf("wireguard_ip_forward_persistence_failed")
+	}
+	if err := exec.CommandContext(prereqCtx, "/usr/sbin/sysctl", "-w", "net.ipv4.ip_forward=1").Run(); err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_host", Status: "failed", Code: "ip_forward_enable_failed"})
+		return fmt.Errorf("wireguard_ip_forward_enable_failed")
+	}
+	report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "prepare_host", Status: "succeeded"})
 	return nil
 }
 
