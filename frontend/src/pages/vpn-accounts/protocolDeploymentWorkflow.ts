@@ -95,9 +95,10 @@ async function waitForInstallation(serverId: string, jobId: string): Promise<voi
       return;
     }
     if (job.status === 'failed') {
+      const detail = job.errorMessage?.trim();
       throw new ProtocolDeploymentError(
-        job.errorMessage || 'runtime_installation_failed',
-        'VPN runtime installation failed.',
+        detail || 'runtime_installation_failed',
+        detail || 'VPN runtime installation failed.',
       );
     }
     await delay(POLL_INTERVAL_MS);
@@ -119,9 +120,10 @@ async function waitForApply(serverId: string, jobId: string): Promise<void> {
       return;
     }
     if (job.status === 'failed') {
+      const detail = job.errorMessage?.trim();
       throw new ProtocolDeploymentError(
-        job.errorMessage || 'config_apply_failed',
-        'VPN configuration deployment failed.',
+        detail || 'config_apply_failed',
+        detail || 'VPN configuration deployment failed.',
       );
     }
     await delay(POLL_INTERVAL_MS);
