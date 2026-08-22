@@ -64,7 +64,7 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 		VALUES ('RG-114H integration group', 'weighted')
 		RETURNING id::text
 	`).Scan(&nodeGroupID); err != nil {
-		t.Fatalf("create node group member: %v", err)
+		t.Fatalf("create node group: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO node_group_members (node_group_id, server_id, priority, weight)
@@ -264,7 +264,7 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 				"collectedAt": collectedAt,
 			},
 		},
-		Status:        agents.StatusOnline,
+		Status:       agents.StatusOnline,
 		RegisteredAt: &now,
 		LastSeenAt:   &now,
 	})
