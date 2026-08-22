@@ -151,15 +151,32 @@ func TestCreateVPNCoreOperationRejectsUnknownOperation(t *testing.T) {
 	}
 }
 
-func TestCreateVPNCoreInstallationUsesFixedAllowListedTask(t *testing.T) {
+func TestCreateVPNCoreInstallationRejectsUnknownRequestFields(t *testing.T) {
+	repository := newOperationAwareFakeRepository()
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/vpn-core/installations", strings.NewReader(`{"package":"xray","command":"sh -c anything"}`))
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.CreateVPNCoreInstallation(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+	if repository.operationCreateInput.Operation != "" {
+		t.Fatalf("unknown request fields crossed Manager allow-list boundary: %+v", repository.operationCreateInput)
+	}
+}
+
+func TestCreateVPNCoreInstallationAcceptsAllowListedRuntime(t *testing.T) {
 	repository := newOperationAwareFakeRepository()
 	repository.operationCreatedTask = AgentConfigTask{
 		ID: "install-job", Kind: AgentTaskKindVPNCoreInstall,
-		ServerID: "server-id", Operation: VPNCoreOperationInstallSingBox,
+		ServerID: "server-id", Operation: VPNCoreOperationInstallMTG,
 		Status: AgentOperationJobStatusPending,
 	}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/vpn-core/installations", strings.NewReader(`{"package":"xray","command":"sh -c anything"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/vpn-core/installations", strings.NewReader(`{"operation":"install_mtg"}`))
 	request.SetPathValue("server_id", "server-id")
 	response := httptest.NewRecorder()
 
@@ -169,9 +186,31 @@ func TestCreateVPNCoreInstallationUsesFixedAllowListedTask(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusAccepted, response.Body.String())
 	}
 	if repository.operationCreateInput != (CreateAgentOperationJobInput{
-		ServerID: "server-id", Kind: AgentTaskKindVPNCoreInstall, Operation: VPNCoreOperationInstallSingBox,
+		ServerID: "server-id", Kind: AgentTaskKindVPNCoreInstall, Operation: VPNCoreOperationInstallMTG,
 	}) {
-		t.Fatalf("request data crossed Manager allow-list boundary: %+v", repository.operationCreateInput)
+		t.Fatalf("unexpected installation request: %+v", repository.operationCreateInput)
+	}
+}
+
+func TestCreateVPNCoreInstallationDefaultsToSingBoxForEmptyBody(t *testing.T) {
+	repository := newOperationAwareFakeRepository()
+	repository.operationCreatedTask = AgentConfigTask{
+		ID: "install-job", Kind: AgentTaskKindVPNCoreInstall,
+		ServerID: "server-id", Operation: VPNCoreOperationInstallSingBox,
+		Status: AgentOperationJobStatusPending,
+	}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/vpn-core/installations", nil)
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.CreateVPNCoreInstallation(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusAccepted, response.Body.String())
+	}
+	if repository.operationCreateInput.Operation != VPNCoreOperationInstallSingBox {
+		t.Fatalf("default installation operation = %q, want sing-box", repository.operationCreateInput.Operation)
 	}
 }
 
@@ -262,6 +301,9 @@ func TestSafeInstallationErrorCodeAllowsRepositoryReliabilityFailures(t *testing
 		"signing_key_download_timeout",
 		"signing_key_conflict",
 		"repository_source_conflict",
+		"runtime_download_failed",
+		"checksum_verification_failed",
+		"unmanaged_runtime_conflict",
 	} {
 		if got := safeInstallationErrorCode(code); got != code {
 			t.Fatalf("safeInstallationErrorCode(%q) = %q", code, got)
