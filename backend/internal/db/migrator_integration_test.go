@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000132_safe_client_protocol_activation" {
-		t.Fatalf("applied schema version = %q, want 000132_safe_client_protocol_activation", version)
+	if version != "000133_multi_protocol_account_access" {
+		t.Fatalf("applied schema version = %q, want 000133_multi_protocol_account_access", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -64,7 +64,7 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 		VALUES ('RG-114H integration group', 'weighted')
 		RETURNING id::text
 	`).Scan(&nodeGroupID); err != nil {
-		t.Fatalf("create node group: %v", err)
+		t.Fatalf("create node group member: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO node_group_members (node_group_id, server_id, priority, weight)
@@ -264,7 +264,7 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 				"collectedAt": collectedAt,
 			},
 		},
-		Status:       agents.StatusOnline,
+		Status:        agents.StatusOnline,
 		RegisteredAt: &now,
 		LastSeenAt:   &now,
 	})
@@ -387,8 +387,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000132_safe_client_protocol_activation" {
-		t.Fatalf("applied schema version = %q, want 000132_safe_client_protocol_activation", version)
+	if version != "000133_multi_protocol_account_access" {
+		t.Fatalf("applied schema version = %q, want 000133_multi_protocol_account_access", version)
 	}
 }
 
