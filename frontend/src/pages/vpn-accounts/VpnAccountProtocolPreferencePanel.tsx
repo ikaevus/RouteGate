@@ -43,6 +43,7 @@ function getCopy() {
       loading: 'Загрузка протокола...',
       loadError: 'Не удалось определить клиентский профиль. Если аккаунту ещё не назначен сервер, сначала назначьте VPN-узел.',
       saveError: 'Не удалось завершить переключение. Рабочий протокол остаётся активным; выбранное предпочтение можно повторно применить после устранения причины.',
+      errorDetail: 'Причина',
       noServer: 'Сначала назначьте этому аккаунту VPN-узел.',
       stages: {
         saving_preference: 'Сохраняю предпочтение…',
@@ -79,6 +80,7 @@ function getCopy() {
     loading: 'Loading protocol...',
     loadError: 'Could not resolve the client profile. If the account has no server yet, assign a VPN node first.',
     saveError: 'The switch could not be completed. The working protocol remains active; retry the selected preference after resolving the reported condition.',
+    errorDetail: 'Reason',
     noServer: 'Assign a VPN node to this account first.',
     stages: {
       saving_preference: 'Saving protocol preference…',
@@ -108,6 +110,16 @@ function protocolLabel(protocol: string, copy: ReturnType<typeof getCopy>): stri
     default:
       return protocol || '—';
   }
+}
+
+function mutationErrorDetail(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.trim();
+  }
+  if (typeof error === 'string') {
+    return error.trim();
+  }
+  return '';
 }
 
 export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
@@ -234,6 +246,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const changed = protocol !== currentPreference;
   const stageText = deploymentStage ? copy.stages[deploymentStage] : null;
   const canRetryActivation = !changed && activationPending;
+  const errorDetail = mutationErrorDetail(saveMutation.error);
 
   return (
     <div className="panel feature-detail-panel vpn-account-protocol-preference-panel">
@@ -291,7 +304,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <div className="form-message" role="status">{stageText}</div>
           )}
           {saveMutation.isError && (
-            <div className="form-message form-message-error">{copy.saveError}</div>
+            <div className="form-message form-message-error">
+              {copy.saveError}
+              {errorDetail && <div>{copy.errorDetail}: {errorDetail}</div>}
+            </div>
           )}
           {saved && <div className="form-message" role="status">{copy.saved}</div>}
 
