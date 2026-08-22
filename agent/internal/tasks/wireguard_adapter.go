@@ -93,11 +93,26 @@ func (a wireGuardAdapter) Validate(ctx context.Context, configPath string) (Vali
 	if _, err := parseWireGuardConfig(string(payload)); err != nil {
 		return ValidationResult{}, err
 	}
+
+	// wg-quick derives an interface name from the config filename and rejects
+	// names longer than Linux's 15-character interface-name limit. RouteGate's
+	// staged configs are named by UUID, so validate a private copy with the
+	// canonical managed interface filename instead of passing the UUID path.
+	validationDir, err := os.MkdirTemp("", "routegate-wg-validate-")
+	if err != nil {
+		return ValidationResult{}, fmt.Errorf("create WireGuard validation dir: %w", err)
+	}
+	defer os.RemoveAll(validationDir)
+	validationPath := filepath.Join(validationDir, "routegate-wg0.conf")
+	if err := os.WriteFile(validationPath, payload, 0o600); err != nil {
+		return ValidationResult{}, fmt.Errorf("write WireGuard validation config: %w", err)
+	}
+
 	checkCtx, cancel := context.WithTimeout(ctx, wireGuardValidationTimeout)
 	defer cancel()
-	args := []string{"strip", configPath}
+	args := []string{"strip", validationPath}
 	_, err = a.run(checkCtx, a.wgQuickPath, args...)
-	result := ValidationResult{Command: a.wgQuickPath + " " + strings.Join(args, " ")}
+	result := ValidationResult{Command: a.wgQuickPath + " strip <staged-wireguard-config>"}
 	if err != nil {
 		if checkCtx.Err() != nil {
 			return result, fmt.Errorf("wg-quick validation timed out: %w", checkCtx.Err())
