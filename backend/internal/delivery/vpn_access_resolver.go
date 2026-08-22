@@ -31,11 +31,7 @@ func (r *VPNAccessResolver) Resolve(ctx context.Context, delivery Delivery) (Res
 	if err != nil {
 		return ResolvedMaterial{}, classifyAccessMaterialError(err)
 	}
-	protocol, accessMaterial, err := clientConnectionAccessMaterial(connection)
-	if err != nil {
-		return ResolvedMaterial{}, err
-	}
-	connectURL, err := BuildProtocolConnectURL(r.publicURL, protocol, accessMaterial)
+	bundle, err := buildProtocolAccessBundle(connection, delivery.Locale)
 	if err != nil {
 		return ResolvedMaterial{}, err
 	}
@@ -43,19 +39,29 @@ func (r *VPNAccessResolver) Resolve(ctx context.Context, delivery Delivery) (Res
 	material := ResolvedMaterial{
 		TemplateData: TemplateData{
 			ProfileName: strings.TrimSpace(connection.Profile.Name),
-			ConnectURL:  connectURL,
+			ConnectURL:  bundle.URI,
+			Access:      bundle,
+			Branding:    DefaultDeliveryBranding(delivery.Locale),
 		},
 	}
-	if delivery.AttachQR {
-		png, err := RenderQRCodePNG(accessMaterial)
+
+	if delivery.AttachQR && strings.TrimSpace(bundle.QRPayload) != "" {
+		png, err := RenderQRCodePNG(bundle.QRPayload)
 		if err != nil {
 			return ResolvedMaterial{}, err
 		}
-		material.Attachments = []Attachment{{
+		material.Attachments = append(material.Attachments, Attachment{
 			Filename:    qrAttachmentFilename(connection.Profile.Name),
 			ContentType: "image/png",
 			Content:     png,
-		}}
+		})
+	}
+	if strings.EqualFold(strings.TrimSpace(delivery.Channel), "email") && bundle.ConfigText != "" && bundle.ConfigFilename != "" {
+		material.Attachments = append(material.Attachments, Attachment{
+			Filename:    bundle.ConfigFilename,
+			ContentType: "text/plain; charset=utf-8",
+			Content:     []byte(bundle.ConfigText),
+		})
 	}
 	return material, nil
 }
