@@ -3,10 +3,15 @@ package heartbeat
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
+	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 	"github.com/ikaevus/routegate/agent/internal/vpncoreinstall"
 )
+
+const installedServiceEnableTimeout = 10 * time.Second
 
 func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.ConfigTask) error {
 	if validationErr := tasks.ValidateVPNCoreInstallTask(task); validationErr != nil {
@@ -32,6 +37,12 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 		}
 		return err
 	}
+	if err := ensureInstalledServicePersistent(ctx, &report); err != nil {
+		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), reportMap(report)); completeErr != nil {
+			return fmt.Errorf("enable installed VPN runtime service: %v; report failure: %w", err, completeErr)
+		}
+		return err
+	}
 	if err := r.client.CompleteTaskSucceeded(ctx, r.cfg.AgentToken, task.ID, reportMap(report)); err != nil {
 		return err
 	}
@@ -41,6 +52,30 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 		"binary_path", report.BinaryPath,
 		"service", report.ServiceName,
 	)
+	return nil
+}
+
+// Runtime installers deliberately leave newly-created services inactive until a
+// validated RouteGate configuration is present. They still need to be enabled
+// for reboot persistence because the normal config-apply transaction verifies
+// both runtime health and systemd enablement before it can commit the protocol
+// as active.
+func ensureInstalledServicePersistent(ctx context.Context, report *vpncoreinstall.Report) error {
+	serviceName := strings.TrimSpace(report.ServiceName)
+	if serviceName == "" {
+		return nil
+	}
+	enableCtx, cancel := context.WithTimeout(ctx, installedServiceEnableTimeout)
+	defer cancel()
+	output, err := exec.CommandContext(enableCtx, "systemctl", "enable", "--quiet", serviceName).CombinedOutput()
+	if err != nil {
+		report.Status = "failed"
+		report.Stages = append(report.Stages, vpncoreinstall.StageResult{
+			Stage: "enable_service", Status: "failed", Code: "service_persistence_enable_failed",
+		})
+		return fmt.Errorf("service_persistence_enable_failed: %s", strings.TrimSpace(string(output)))
+	}
+	report.Stages = append(report.Stages, vpncoreinstall.StageResult{Stage: "enable_service", Status: "succeeded"})
 	return nil
 }
 
