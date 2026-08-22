@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,18 +24,22 @@ func TestNewWireGuardAdapterNormalizesLegacyBinaryPaths(t *testing.T) {
 
 func TestWireGuardAdapterStagesAndValidatesWithoutReturningKeyMaterial(t *testing.T) {
 	adapter := NewWireGuardAdapter(t.TempDir(), "wg-quick-test", "wg-test", "wg-quick@test", "test0").(wireGuardAdapter)
-	task := ConfigTask{ID: "task-id", ConfigVersionID: "version-id", RenderedConfig: []byte(`{"schemaVersion":"routegate.config.v1","wireGuard":` + mustJSONString(t, testWireGuardConfig()) + `}`)}
+	task := ConfigTask{ID: "task-id", ConfigVersionID: "550e8400-e29b-41d4-a716-446655440000", RenderedConfig: []byte(`{"schemaVersion":"routegate.config.v1","wireGuard":` + mustJSONString(t, testWireGuardConfig()) + `}`)}
 	staged, err := adapter.Stage(task)
 	if err != nil { t.Fatalf("stage: %v", err) }
 	content, err := os.ReadFile(staged.StagedPath)
 	if err != nil || !strings.Contains(string(content), "[Peer]") { t.Fatalf("staged config: %v %s", err, content) }
+	if len(strings.TrimSuffix(filepath.Base(staged.StagedPath), ".conf")) <= 15 { t.Fatalf("expected UUID staging filename to exceed WireGuard interface limit: %s", staged.StagedPath) }
 	adapter.run = func(_ context.Context, name string, args ...string) ([]byte, error) {
 		if name != "wg-quick-test" || len(args) != 2 || args[0] != "strip" { t.Fatalf("unexpected command: %s %v", name, args) }
+		if filepath.Base(args[1]) != "routegate-wg0.conf" { t.Fatalf("expected canonical validation filename, got %s", args[1]) }
+		if args[1] == staged.StagedPath { t.Fatalf("wg-quick must not validate the UUID staging path directly") }
 		return []byte(testWireGuardKey), nil
 	}
 	result, err := adapter.Validate(context.Background(), staged.StagedPath)
 	if err != nil { t.Fatalf("validate: %v", err) }
 	if result.Output != "" || strings.Contains(result.Command, testWireGuardKey) { t.Fatalf("validation leaked key material: %+v", result) }
+	if strings.Contains(result.Command, "550e8400") { t.Fatalf("validation command exposed staging identity: %+v", result) }
 }
 
 func TestWireGuardParserRejectsArbitraryHooks(t *testing.T) {
