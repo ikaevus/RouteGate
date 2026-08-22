@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import {
   createVpnAccountSubscriptionToken,
   getVpnAccountClientConnection,
@@ -38,11 +37,11 @@ function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       title: 'Подключение VPN-клиента',
-      subtitle: 'Получите готовый QR-код или конфигурацию для выбранного выше протокола.',
+      subtitle: 'QR-код, ссылка или конфигурация автоматически соответствуют фактически выбранному протоколу.',
       loading: 'Загрузка клиентского профиля...',
       loadError: 'Не удалось загрузить клиентский профиль.',
       ready: 'Готово к подключению',
-      readyDescription: 'QR-код и VLESS-ссылка используют сохранённые параметры этого профиля.',
+      readyDescription: 'QR-код и конфигурация соответствуют текущему протоколу подключения.',
       format: 'VLESS Reality',
       showQr: 'Показать QR',
       copyVless: 'Скопировать VLESS-ссылку',
@@ -68,16 +67,6 @@ function getCopy() {
       credentialWarning: 'QR-код, URI и конфигурация предоставляют VPN-доступ. Не публикуйте их.',
       profileSettings: 'Настройки клиентского профиля',
       profileName: 'Название профиля',
-      protocol: 'Протокол подключения',
-      protocolAuto: 'Автоматически — наследовать протокол узла',
-      protocolVless: 'VLESS / Reality',
-      protocolWireGuard: 'WireGuard',
-      protocolHysteria2: 'Hysteria2',
-      protocolShadowsocks: 'Shadowsocks 2022',
-      protocolMTProto: 'MTProto / FakeTLS',
-      protocolHint: 'Auto сохраняет текущий default узла. Явный выбор закрепляет протокол за этим VPN-аккаунтом.',
-      protocolDeployNotice: 'Протокол профиля изменён. Отрендерьте и разверните новую конфигурацию назначенного узла.',
-      openDeploy: 'Открыть развёртывание конфигов',
       clientType: 'VPN-клиент',
       deviceType: 'Устройство',
       other: 'Другое',
@@ -87,6 +76,10 @@ function getCopy() {
       fingerprint: 'TLS fingerprint',
       resolvedFingerprint: 'Фактически выбран',
       autoHint: 'Auto сохраняет совместимый вариант. Сейчас RouteGate выбирает Firefox как безопасный профиль совместимости.',
+      effectiveProtocol: 'Активный протокол',
+      selectionMode: 'Режим выбора',
+      automaticSelection: 'Auto — протокол узла по умолчанию',
+      pinnedSelection: 'Выбран администратором',
       endpoint: 'Endpoint',
       serverName: 'Reality SNI',
       network: 'Transport',
@@ -117,11 +110,11 @@ function getCopy() {
 
   return {
     title: 'Connect VPN client',
-    subtitle: 'Get a ready QR code or configuration for the protocol selected above.',
+    subtitle: 'The QR code, link, or configuration automatically follows the effective connection protocol.',
     loading: 'Loading client profile...',
     loadError: 'Could not load the client profile.',
     ready: 'Ready to connect',
-    readyDescription: 'The QR code and VLESS link use the saved settings of this profile.',
+    readyDescription: 'The QR code and configuration match the current connection protocol.',
     format: 'VLESS Reality',
     showQr: 'Show QR',
     copyVless: 'Copy VLESS link',
@@ -147,16 +140,6 @@ function getCopy() {
     credentialWarning: 'The QR code, URI, and configuration grant VPN access. Do not publish them.',
     profileSettings: 'Client profile settings',
     profileName: 'Profile name',
-    protocol: 'Connection protocol',
-    protocolAuto: 'Automatic — inherit node default',
-    protocolVless: 'VLESS / Reality',
-    protocolWireGuard: 'WireGuard',
-    protocolHysteria2: 'Hysteria2',
-    protocolShadowsocks: 'Shadowsocks 2022',
-    protocolMTProto: 'MTProto / FakeTLS',
-    protocolHint: 'Auto follows the node default. An explicit choice pins this VPN account to that protocol.',
-    protocolDeployNotice: 'The profile protocol changed. Render and deploy a new configuration for the assigned node.',
-    openDeploy: 'Open config deployment',
     clientType: 'VPN client',
     deviceType: 'Device',
     other: 'Other',
@@ -166,6 +149,10 @@ function getCopy() {
     fingerprint: 'TLS fingerprint',
     resolvedFingerprint: 'Resolved value',
     autoHint: 'Auto stores a compatible option. RouteGate currently selects Firefox as the compatibility-safe profile.',
+    effectiveProtocol: 'Effective protocol',
+    selectionMode: 'Selection mode',
+    automaticSelection: 'Auto — inherit node default',
+    pinnedSelection: 'Pinned by administrator',
     endpoint: 'Endpoint',
     serverName: 'Reality SNI',
     network: 'Transport',
@@ -202,7 +189,6 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   const [isQrOpen, setIsQrOpen] = useState(false);
   const [subscriptionToken, setSubscriptionToken] = useState<SubscriptionTokenResponse | null>(null);
   const [saved, setSaved] = useState(false);
-  const [protocolChanged, setProtocolChanged] = useState(false);
   const [profileName, setProfileName] = useState('Default');
   const [protocol, setProtocol] = useState<ClientProtocolPreference>('auto');
   const [clientType, setClientType] = useState('other');
@@ -230,7 +216,6 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     setServerNameOverride(profile.serverNameOverride ?? '');
     setSpiderX(profile.spiderX || '/');
     setMtu(profile.mtu ? String(profile.mtu) : '');
-    setProtocolChanged(false);
   }, [connectionQuery.data]);
 
   useEffect(() => {
@@ -238,7 +223,6 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     setCopiedTarget(null);
     setIsQrOpen(false);
     setSaved(false);
-    setProtocolChanged(false);
   }, [accountId]);
 
   const saveMutation = useMutation({
@@ -258,8 +242,6 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
     },
     onMutate: () => {
       setSaved(false);
-      const current = connectionQuery.data?.profile;
-      setProtocolChanged((current?.protocol ?? 'auto') !== protocol);
     },
     onSuccess: async (connection) => {
       queryClient.setQueryData(queryKey, connection);
@@ -288,17 +270,18 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   };
 
   const connection = connectionQuery.data;
-  const isWireGuard = connection?.format === 'wireguard-config';
-  const isHysteria2 = connection?.format === 'hysteria2-uri';
-  const isShadowsocks = connection?.format === 'shadowsocks-uri';
-  const isMTProto = connection?.format === 'mtproto-uri';
+  const isWireGuard = connection?.protocol === 'wireguard';
+  const isHysteria2 = connection?.protocol === 'hysteria2';
+  const isShadowsocks = connection?.protocol === 'shadowsocks';
+  const isMTProto = connection?.protocol === 'mtproto';
   const isNonVLESS = isWireGuard || isHysteria2 || isShadowsocks || isMTProto;
-  const showVLESSSettings = protocol === 'vless' || (protocol === 'auto' && !isNonVLESS);
+  const showVLESSSettings = connection?.protocol === 'vless';
   const connectionText = connection?.wireGuardConfig ?? connection?.hysteria2Uri ?? connection?.shadowsocksUri ?? connection?.mtprotoUri ?? connection?.vlessLink ?? '';
   const readyDescription = isWireGuard ? copy.wireGuardReadyDescription : isHysteria2 ? copy.hysteria2ReadyDescription : isShadowsocks ? copy.shadowsocksReadyDescription : isMTProto ? copy.mtprotoReadyDescription : copy.readyDescription;
   const formatLabel = isWireGuard ? copy.wireGuardFormat : isHysteria2 ? copy.hysteria2Format : isShadowsocks ? copy.shadowsocksFormat : isMTProto ? copy.mtprotoFormat : copy.format;
   const copyLabel = isWireGuard ? copy.copyWireGuard : isHysteria2 ? copy.copyHysteria2 : isShadowsocks ? copy.copyShadowsocks : isMTProto ? copy.copyMTProto : copy.copyVless;
   const uriLabel = isWireGuard ? copy.wireGuardConfig : isHysteria2 ? copy.hysteria2Uri : isShadowsocks ? copy.shadowsocksUri : isMTProto ? copy.mtprotoUri : copy.vlessLink;
+  const selectionModeLabel = connection?.profile.protocol === 'auto' ? copy.automaticSelection : copy.pinnedSelection;
 
   return (
     <div className="panel subscription-panel feature-detail-panel vpn-client-connection-panel">
@@ -344,6 +327,8 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
             </div>
 
             <div className="vpn-client-runtime-grid">
+              <div><span>{copy.effectiveProtocol}</span><strong>{formatLabel}</strong></div>
+              <div><span>{copy.selectionMode}</span><strong>{selectionModeLabel}</strong></div>
               <div><span>{copy.endpoint}</span><strong>{connection.endpoint}</strong></div>
               {!isWireGuard && !isShadowsocks && !isMTProto && (
                 <div><span>{isHysteria2 ? copy.hysteria2ServerName : copy.serverName}</span><strong>{connection.serverName}</strong></div>
@@ -420,12 +405,6 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
 
               {saveMutation.isError && <div className="form-message form-message-error">{getErrorMessage(saveMutation.error, copy.saveError)}</div>}
               {saved && <div className="form-message form-message-success">{copy.saved}</div>}
-              {protocolChanged && !saveMutation.isPending && !saveMutation.isError && (
-                <div className="form-message vpn-account-config-notice">
-                  <span>{copy.protocolDeployNotice}</span>
-                  <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
-                </div>
-              )}
 
               <div className="form-actions">
                 <button className="primary-button" type="button" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
