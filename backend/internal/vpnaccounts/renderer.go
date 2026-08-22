@@ -273,7 +273,7 @@ func RenderWireGuardClientConfig(profile SubscriptionProfile) (string, error) {
 	if port < 1 || port > 65535 {
 		return "", errors.New("WireGuard server port is invalid.")
 	}
-	dns := strings.TrimSpace(profile.Server.WireGuardDNS)
+	dns := normalizeServerEndpoint(profile.Server.WireGuardDNS)
 	if _, err := netip.ParseAddr(dns); err != nil {
 		return "", errors.New("WireGuard DNS address is invalid.")
 	}
