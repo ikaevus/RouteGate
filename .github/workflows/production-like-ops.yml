@@ -1,0 +1,176 @@
+name: Production-like Ops
+
+on:
+  issues:
+    types:
+      - reopened
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Allow-listed production-like operation
+        required: true
+        type: choice
+        options:
+          - diagnose
+          - validate
+          - restart-control-plane
+          - restart-sing-box
+          - restart-wireguard
+          - restart-hysteria2
+          - restart-mtproto
+          - renew-certificate
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: routegate-production-like
+  cancel-in-progress: false
+
+jobs:
+  operate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.number == 268 &&
+       github.event.issue.title == 'RouteGate Ops Bridge' &&
+       github.event.issue.user.login == github.repository_owner)
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Resolve allow-listed operation
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_OPERATION: ${{ inputs.operation }}
+          REQUEST_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            operation="$DISPATCH_OPERATION"
+          else
+            case "$REQUEST_BODY" in
+              'operation=diagnose') operation=diagnose ;;
+              'operation=validate') operation=validate ;;
+              'operation=restart-control-plane') operation=restart-control-plane ;;
+              'operation=restart-sing-box') operation=restart-sing-box ;;
+              'operation=restart-wireguard') operation=restart-wireguard ;;
+              'operation=restart-hysteria2') operation=restart-hysteria2 ;;
+              'operation=restart-mtproto') operation=restart-mtproto ;;
+              'operation=renew-certificate') operation=renew-certificate ;;
+              *)
+                printf 'Unsupported ops request body.\n' >&2
+                exit 2
+                ;;
+            esac
+          fi
+
+          case "$operation" in
+            diagnose|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|renew-certificate) ;;
+            *) exit 2 ;;
+          esac
+          printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
+
+      - name: Validate ops script locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/production-like-ops.sh
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck scripts/production-like-ops.sh
+          fi
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run allow-listed remote operation
+        id: remote
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+          OPERATION: ${{ steps.request.outputs.operation }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          remote_script="/tmp/routegate-ops-${GITHUB_RUN_ID}.sh"
+          output_file="${RUNNER_TEMP}/routegate-ops-output.txt"
+
+          "${SCP[@]}" scripts/production-like-ops.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
+          set +e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo bash '$remote_script' '$OPERATION'" >"$output_file" 2>&1
+          rc=$?
+          set -e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true
+
+          cat "$output_file"
+          printf 'rc=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Publish sanitized audit result
+        if: always() && steps.request.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ steps.request.outputs.operation }}
+          REMOTE_RC: ${{ steps.remote.outputs.rc }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          rc=${REMOTE_RC:-1}
+          if [[ "$rc" == 0 ]]; then
+            status=PASSED
+          else
+            status=FAILED
+          fi
+
+          output_file="${RUNNER_TEMP}/routegate-ops-output.txt"
+          if [[ -f "$output_file" ]]; then
+            summary=$(tail -n 80 "$output_file")
+          else
+            summary='Remote operation did not produce output.'
+          fi
+
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body=$(jq -n \
+            --arg operation "$OPERATION" \
+            --arg status "$status" \
+            --arg summary "$summary" \
+            --arg run_url "$run_url" \
+            '{body:("Ops operation `" + $operation + "` **" + $status + "**.\n\n```text\n" + $summary + "\n```\n\nActions audit: " + $run_url)}')
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/268/comments" --input - <<<"$body" >/dev/null
+
+          if [[ "$EVENT_NAME" == issues ]]; then
+            baseline='Reserved control issue for RouteGate production-like operations.\n\nSet only an exact allow-listed `operation=...` request while this issue is closed, then reopen it. The workflow clears the request by closing the issue after every run. Arbitrary issue text is never executed as shell input.'
+            patch=$(jq -n --arg body "$baseline" '{state:"closed",body:$body}')
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/268" --input - <<<"$patch" >/dev/null
+          fi
+
+      - name: Propagate remote failure
+        if: always() && steps.request.outcome == 'success'
+        shell: bash
+        env:
+          REMOTE_RC: ${{ steps.remote.outputs.rc }}
+        run: |
+          set -euo pipefail
+          rc=${REMOTE_RC:-1}
+          [[ "$rc" == 0 ]]
