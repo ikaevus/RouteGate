@@ -12,10 +12,9 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 	if validationErr := tasks.ValidateVPNCoreInstallTask(task); validationErr != nil {
 		err := fmt.Errorf("unsupported_installation_task")
 		report := vpncoreinstall.Report{
-			Kind:        tasks.TaskKindVPNCoreInstall,
-			Operation:   task.Operation,
-			Status:      "failed",
-			ServiceName: vpncoreinstall.DefaultServiceName,
+			Kind:      tasks.TaskKindVPNCoreInstall,
+			Operation: task.Operation,
+			Status:    "failed",
 			Stages: []vpncoreinstall.StageResult{{
 				Stage: "detect_platform", Status: "failed", Code: "unsupported_installation_task",
 			}},
@@ -26,7 +25,7 @@ func (r *Runner) processVPNCoreInstallTask(ctx context.Context, task tasks.Confi
 		return err
 	}
 
-	report, err := vpncoreinstall.New().Execute(ctx, task.Operation)
+	report, err := vpncoreinstall.Execute(ctx, task.Operation)
 	if err != nil {
 		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, err.Error(), reportMap(report)); completeErr != nil {
 			return fmt.Errorf("execute VPN Core installation task: %v; report failure: %w", err, completeErr)
