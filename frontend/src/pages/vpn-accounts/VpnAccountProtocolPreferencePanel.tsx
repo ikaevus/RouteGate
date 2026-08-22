@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getServers } from '../../entities/server/api/serverApi';
+import { getProtocolSettings, getServers } from '../../entities/server/api/serverApi';
 import {
   getVpnAccountClientConnection,
   updateVpnAccountClientProfile,
@@ -9,6 +9,11 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
+import {
+  deployPendingProtocol,
+  ensureProtocolRuntime,
+  type ProtocolDeploymentStage,
+} from './protocolDeploymentWorkflow';
 
 type Props = {
   accountId: string;
@@ -29,13 +34,26 @@ function getCopy() {
       hysteria2Topology: 'Hysteria2 использует отдельный ACME HTTP-01 lifecycle сертификата и сейчас поддерживается только на dedicated VPN Node. Назначьте аккаунт отдельному VPN Node или выберите другой протокол.',
       shadowsocks: 'Shadowsocks 2022',
       mtproto: 'MTProto / FakeTLS',
-      save: 'Применить протокол',
-      saving: 'Применение...',
-      saved: 'Протокол сохранён.',
-      deploy: 'После смены протокола сформируйте и примените конфигурацию назначенного VPN-узла.',
+      save: 'Переключить протокол',
+      retry: 'Повторить активацию',
+      saving: 'Подготовка...',
+      saved: 'Протокол успешно развернут и активирован.',
+      pending: 'Предпочтение сохранено, но новый протокол ещё не активирован. Текущее рабочее подключение сохранено.',
+      deploy: 'RouteGate проверит нужный runtime, при необходимости установит его, сформирует конфигурацию и активирует новый протокол только после успешного применения.',
       loading: 'Загрузка протокола...',
       loadError: 'Не удалось определить клиентский профиль. Если аккаунту ещё не назначен сервер, сначала назначьте VPN-узел.',
-      saveError: 'Не удалось сохранить протокол подключения.',
+      saveError: 'Не удалось завершить переключение. Рабочий протокол остаётся активным; выбранное предпочтение можно повторно применить после устранения причины.',
+      noServer: 'Сначала назначьте этому аккаунту VPN-узел.',
+      stages: {
+        saving_preference: 'Сохраняю предпочтение…',
+        checking_runtime: 'Проверяю VPN runtime на узле…',
+        installing_runtime: 'Устанавливаю необходимый VPN runtime…',
+        rendering_config: 'Формирую конфигурацию узла…',
+        validating_config: 'Проверяю конфигурацию…',
+        applying_config: 'Передаю конфигурацию Agent…',
+        waiting_for_apply: 'Жду применения и healthcheck…',
+        completed: 'Новый протокол активирован.',
+      },
     } as const;
   }
 
@@ -52,13 +70,26 @@ function getCopy() {
     hysteria2Topology: 'Hysteria2 uses its own ACME HTTP-01 certificate lifecycle and is currently supported only on a dedicated VPN Node. Assign the account to a dedicated VPN Node or choose another protocol.',
     shadowsocks: 'Shadowsocks 2022',
     mtproto: 'MTProto / FakeTLS',
-    save: 'Apply protocol',
-    saving: 'Applying...',
-    saved: 'Protocol preference saved.',
-    deploy: 'After changing the protocol, render and deploy the assigned VPN node configuration.',
+    save: 'Switch protocol',
+    retry: 'Retry activation',
+    saving: 'Preparing...',
+    saved: 'Protocol deployed and activated successfully.',
+    pending: 'The preference is saved, but the new protocol is not active yet. The current working connection has been preserved.',
+    deploy: 'RouteGate will verify the required runtime, install it when needed, render the node configuration, and activate the new protocol only after a successful apply.',
     loading: 'Loading protocol...',
     loadError: 'Could not resolve the client profile. If the account has no server yet, assign a VPN node first.',
-    saveError: 'Could not save the connection protocol.',
+    saveError: 'The switch could not be completed. The working protocol remains active; retry the selected preference after resolving the reported condition.',
+    noServer: 'Assign a VPN node to this account first.',
+    stages: {
+      saving_preference: 'Saving protocol preference…',
+      checking_runtime: 'Checking VPN runtime on the node…',
+      installing_runtime: 'Installing the required VPN runtime…',
+      rendering_config: 'Rendering node configuration…',
+      validating_config: 'Validating configuration…',
+      applying_config: 'Sending configuration to Agent…',
+      waiting_for_apply: 'Waiting for apply and healthcheck…',
+      completed: 'New protocol activated.',
+    },
   } as const;
 }
 
@@ -85,6 +116,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const queryKey = ['vpn-account-client-connection', accountId] as const;
   const [protocol, setProtocol] = useState<ClientProtocolPreference>('auto');
   const [saved, setSaved] = useState(false);
+  const [deploymentStage, setDeploymentStage] = useState<ProtocolDeploymentStage | null>(null);
 
   const connectionQuery = useQuery({
     queryKey,
@@ -95,6 +127,12 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     queryFn: () => getVpnAccount(accountId),
   });
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
+  const assignedServerId = accountQuery.data?.serverId ?? '';
+  const protocolSettingsQuery = useQuery({
+    queryKey: ['server-protocol-settings', assignedServerId],
+    queryFn: () => getProtocolSettings(assignedServerId),
+    enabled: Boolean(assignedServerId),
+  });
 
   useEffect(() => {
     const preference = connectionQuery.data?.profile.protocol;
@@ -105,23 +143,28 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
 
   useEffect(() => {
     setSaved(false);
+    setDeploymentStage(null);
   }, [accountId]);
 
   const assignedServer = (serversQuery.data?.items ?? []).find(
-    (server) => server.id === accountQuery.data?.serverId,
+    (server) => server.id === assignedServerId,
   );
   const hysteria2TopologyBlocked = assignedServer?.deploymentRole === 'hybrid';
   const selectedTopologyBlocked = hysteria2TopologyBlocked && protocol === 'hysteria2';
 
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const profile = connectionQuery.data?.profile;
       if (!profile) {
         throw new Error(copy.loadError);
       }
+      if (!assignedServer) {
+        throw new Error(copy.noServer);
+      }
       if (selectedTopologyBlocked) {
         throw new Error(copy.hysteria2Topology);
       }
+
       const request: UpdateVpnClientProfileRequest = {
         name: profile.name,
         clientType: profile.clientType,
@@ -133,24 +176,59 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
         mtu: profile.mtu ?? null,
         protocol,
       };
-      return updateVpnAccountClientProfile(accountId, request);
+
+      setDeploymentStage('saving_preference');
+      await updateVpnAccountClientProfile(accountId, request);
+
+      let runtimeProtocol = protocol;
+      if (runtimeProtocol === 'auto') {
+        const settings = protocolSettingsQuery.data ?? await getProtocolSettings(assignedServer.id);
+        runtimeProtocol = settings.protocol as ClientProtocolPreference;
+      }
+      await ensureProtocolRuntime(assignedServer, runtimeProtocol, setDeploymentStage);
+      await deployPendingProtocol(assignedServer.id, setDeploymentStage);
+      return getVpnAccountClientConnection(accountId);
     },
-    onMutate: () => setSaved(false),
+    onMutate: () => {
+      setSaved(false);
+      setDeploymentStage('saving_preference');
+    },
     onSuccess: async (connection) => {
       queryClient.setQueryData(queryKey, connection);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
+        queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['servers'] }),
+        queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', assignedServerId] }),
+        queryClient.invalidateQueries({ queryKey: ['server-config-versions', assignedServerId] }),
+        queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', assignedServerId] }),
       ]);
       setProtocol(connection.profile.protocol ?? 'auto');
+      setDeploymentStage('completed');
       setSaved(true);
-      window.setTimeout(() => setSaved(false), 2200);
+      window.setTimeout(() => setSaved(false), 2600);
+    },
+    onError: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ['servers'] }),
+      ]);
     },
   });
 
   const currentPreference = connectionQuery.data?.profile.protocol ?? 'auto';
+  const desiredEffectiveProtocol = protocol === 'auto'
+    ? protocolSettingsQuery.data?.protocol
+    : protocol;
+  const activationPending = Boolean(
+    desiredEffectiveProtocol
+    && connectionQuery.data?.protocol
+    && connectionQuery.data.protocol !== desiredEffectiveProtocol,
+  );
   const changed = protocol !== currentPreference;
+  const stageText = deploymentStage ? copy.stages[deploymentStage] : null;
+  const canRetryActivation = !changed && activationPending;
 
   return (
     <div className="panel feature-detail-panel vpn-account-protocol-preference-panel">
@@ -176,8 +254,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
               <span>{copy.preference}</span>
               <select
                 value={protocol}
+                disabled={saveMutation.isPending}
                 onChange={(event) => {
                   setSaved(false);
+                  setDeploymentStage(null);
                   setProtocol(event.target.value as ClientProtocolPreference);
                 }}
               >
@@ -197,7 +277,13 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <div className="form-message form-message-warning">{copy.hysteria2Topology}</div>
           )}
           <div className="form-message form-message-warning">{copy.deploy}</div>
+          {canRetryActivation && !saveMutation.isPending && (
+            <div className="form-message form-message-warning">{copy.pending}</div>
+          )}
 
+          {saveMutation.isPending && stageText && (
+            <div className="form-message" role="status">{stageText}</div>
+          )}
           {saveMutation.isError && (
             <div className="form-message form-message-error">{copy.saveError}</div>
           )}
@@ -207,10 +293,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <button
               className="primary-button"
               type="button"
-              disabled={!changed || saveMutation.isPending || selectedTopologyBlocked}
+              disabled={(!changed && !activationPending) || saveMutation.isPending || selectedTopologyBlocked || !assignedServer}
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? copy.saving : copy.save}
+              {saveMutation.isPending ? copy.saving : canRetryActivation ? copy.retry : copy.save}
             </button>
           </div>
         </>
