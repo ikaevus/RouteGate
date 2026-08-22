@@ -158,6 +158,22 @@ func (h *Handler) GenerateSubscriptionAccess(w http.ResponseWriter, r *http.Requ
 
 	subscriptionURL := portalSubscriptionURL(r, rawToken)
 	locale := requestLocale(r)
+	qr := PortalQRCode{
+		ProfileID:    profile.ID,
+		Available:    true,
+		AccessStatus: profile.AccessStatus,
+		QRText:       subscriptionURL,
+		Format:       PortalQRFormat,
+	}
+	if source, ok := h.profiles.(vpnaccounts.ClientConnectionSource); ok {
+		directQR, qrErr := buildPortalDirectQRCode(r.Context(), source, profile, locale)
+		if qrErr != nil {
+			h.logger.Warn("render portal direct QR failed", "profile_id", profile.ID, "error", qrErr)
+		} else {
+			qr = directQR
+		}
+	}
+
 	response := SubscriptionAccessResponse{
 		Subscription: PortalSubscription{
 			ProfileID:             profile.ID,
@@ -169,13 +185,7 @@ func (h *Handler) GenerateSubscriptionAccess(w http.ResponseWriter, r *http.Requ
 			RequiresTokenRotation: false,
 			Message:               localizedSubscriptionGenerated(locale),
 		},
-		QR: PortalQRCode{
-			ProfileID:    profile.ID,
-			Available:    true,
-			AccessStatus: profile.AccessStatus,
-			QRText:       subscriptionURL,
-			Format:       PortalQRFormat,
-		},
+		QR: qr,
 	}
 
 	httpx.WriteJSON(w, http.StatusCreated, response)
@@ -188,17 +198,15 @@ func (h *Handler) GetQRCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	locale := requestLocale(r)
-	message := localizedQRCodeWarning(locale)
-	if profile.AccessStatus != AccessStatusActive {
-		message = localizedQRCodeInactive(locale)
+	source, ok := h.profiles.(vpnaccounts.ClientConnectionSource)
+	if !ok {
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("portal_connection_unavailable", "VPN connection material is unavailable."))
+		return
 	}
-
-	response := PortalQRCode{
-		ProfileID:    profile.ID,
-		Available:    false,
-		AccessStatus: profile.AccessStatus,
-		Format:       PortalQRFormat,
-		Message:      message,
+	response, err := buildPortalDirectQRCode(r.Context(), source, profile, locale)
+	if err != nil {
+		h.databaseError(w, "render portal direct QR", err)
+		return
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, QRCodeResponse{QR: response})
