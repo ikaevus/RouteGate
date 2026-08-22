@@ -1,10 +1,23 @@
 {{define "subject"}}RouteGate VPN access updated{{end}}
 {{define "text"}}Your RouteGate VPN access has been updated.
-{{if .ProfileName}}
-Profile: {{.ProfileName}}
-{{end}}
-Open the updated VPN access:
-{{.ConnectURL}}
+{{if .ProfileName}}Profile: {{.ProfileName}}
+{{end}}Protocol: {{.Access.DisplayName}}
 
-Use this updated access information instead of older copies. Do not share it with unauthorized people.{{end}}
-{{define "html"}}<p>Your RouteGate VPN access has been updated.</p>{{if .ProfileName}}<p>Profile: <strong>{{.ProfileName}}</strong></p>{{end}}<p><a href="{{.ConnectURL}}">Open updated VPN access</a></p><p>Use this updated access information instead of older copies. Do not share it with unauthorized people.</p>{{end}}
+{{.Access.PrimaryAction}}
+{{if .Access.URI}}
+Updated connection link:
+{{.Access.URI}}
+{{end}}{{if .Access.AlternativeURI}}
+Updated Telegram link:
+{{.Access.AlternativeURI}}
+{{end}}{{if .Access.ConfigText}}
+Updated WireGuard configuration:
+{{.Access.ConfigText}}
+{{end}}{{if .Access.SubscriptionURL}}
+Subscription:
+{{.Access.SubscriptionURL}}
+{{end}}{{if .Access.ClientHint}}
+{{.Access.ClientHint}}
+{{end}}
+Use this updated access information instead of older copies. Keep it private.{{end}}
+{{define "html"}}<p>Your RouteGate VPN access has been updated.</p>{{if .ProfileName}}<p>Profile: <strong>{{.ProfileName}}</strong></p>{{end}}<p>Protocol: <strong>{{.Access.DisplayName}}</strong></p><p>{{.Access.PrimaryAction}}</p>{{if .Access.URI}}<p>Updated connection link:<br><code style="word-break:break-all">{{.Access.URI}}</code></p>{{end}}{{if .Access.AlternativeURI}}<p><a href="{{.Access.AlternativeURI}}">Open updated proxy in Telegram</a></p>{{end}}{{if .Access.ConfigText}}<p>Updated WireGuard configuration:</p><pre style="white-space:pre-wrap;word-break:break-all;background:#f3f4f6;padding:12px;border-radius:8px">{{.Access.ConfigText}}</pre>{{end}}{{if .Access.SubscriptionURL}}<p><a href="{{.Access.SubscriptionURL}}">Open subscription</a></p>{{end}}{{if .Access.ClientHint}}<p>{{.Access.ClientHint}}</p>{{end}}<p>Use this updated access information instead of older copies. Keep it private.</p>{{end}}
