@@ -23,8 +23,9 @@ import (
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 const (
-	preflightLifecycleTimeout = 10 * time.Second
-	failurePersistTimeout     = 5 * time.Second
+	preflightLifecycleTimeout   = 10 * time.Second
+	failurePersistTimeout       = 5 * time.Second
+	preflightInsertAmbiguousCode = "preflight_insert_ambiguous"
 )
 
 type jobRepository interface {
@@ -78,6 +79,7 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.repo.CreatePreflight(lifecycleCtx, user.ID)
 	if err != nil {
+		h.reconcileAmbiguousCreate(lifecycleCtx, user.ID, job)
 		h.logError("create update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create update preflight job."))
 		return
@@ -155,6 +157,25 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, ListResponse{Items: items})
+}
+
+func (h *Handler) reconcileAmbiguousCreate(ctx context.Context, userID string, job Job) {
+	if !uuidPattern.MatchString(job.ID) {
+		return
+	}
+
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failurePersistTimeout)
+	defer cancel()
+
+	failed, err := h.repo.Fail(persistCtx, job.ID, preflightInsertAmbiguousCode)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return
+	}
+	if err != nil {
+		h.logError("reconcile ambiguous update preflight insert failed", err)
+		return
+	}
+	h.record(persistCtx, userID, "update.preflight.failed", failed, audit.ResultFailure, map[string]any{"error_code": preflightInsertAmbiguousCode})
 }
 
 func (h *Handler) failJob(ctx context.Context, userID string, job Job, errorCode string) {
