@@ -191,7 +191,11 @@ def verify_bundle(
         "bin/routegate-agent",
         "frontend/index.html",
         "metadata/manifest.env",
+        "tools/release_manifest.py",
         "tools/routegate-update-core.sh",
+        "tools/routegate-update-role.sh",
+        "tools/routegate-update-transaction.sh",
+        "tools/routegate-update-verified.sh",
         f"manager/migrations/{expected_migration}.up.sql",
     }
 
@@ -245,7 +249,9 @@ def require_string(obj: dict[str, Any], key: str) -> str:
     return value
 
 
-def verify_manifest(manifest_path: Path, artifacts_dir: Path) -> None:
+def validate_manifest_contract(
+    manifest_path: Path, checksum_path: Path
+) -> tuple[str, str, str, str, list[dict[str, Any]]]:
     manifest = load_manifest(manifest_path)
 
     if manifest.get("formatVersion") != FORMAT_VERSION:
@@ -276,9 +282,10 @@ def verify_manifest(manifest_path: Path, artifacts_dir: Path) -> None:
     if not isinstance(artifacts, list) or not artifacts:
         raise ManifestError("artifacts must be a non-empty array")
 
-    checksums = parse_checksum_file(artifacts_dir / "SHA256SUMS")
+    checksums = parse_checksum_file(checksum_path)
     seen_names: set[str] = set()
     seen_platforms: set[tuple[str, str]] = set()
+    normalized_artifacts: list[dict[str, Any]] = []
     manifest_checksums: dict[str, str] = {}
 
     for artifact in artifacts:
@@ -306,30 +313,19 @@ def verify_manifest(manifest_path: Path, artifacts_dir: Path) -> None:
             raise ManifestError(f"invalid sha256 for {name}")
         if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
             raise ManifestError(f"invalid size for {name}")
-
-        path = artifacts_dir / name
-        if path.is_symlink() or not path.is_file():
-            raise ManifestError(f"artifact is missing or is not a regular file: {path}")
-
-        actual_sha256 = sha256_file(path)
-        if actual_sha256 != sha256:
-            raise ManifestError(f"SHA-256 mismatch for {name}")
-        if path.stat().st_size != size:
-            raise ManifestError(f"size mismatch for {name}")
-
         if checksums.get(name) != sha256:
             raise ManifestError(f"SHA256SUMS does not match manifest for {name}")
-        manifest_checksums[name] = sha256
 
-        verify_bundle(
-            path,
-            version=version,
-            commit=commit,
-            build_date=build_date,
-            os_name=os_name,
-            arch=arch,
-            expected_migration=expected_migration,
+        normalized_artifacts.append(
+            {
+                "name": name,
+                "os": os_name,
+                "arch": arch,
+                "sha256": sha256,
+                "size": size,
+            }
         )
+        manifest_checksums[name] = sha256
 
     bundle_checksums = {
         name: digest
@@ -338,6 +334,89 @@ def verify_manifest(manifest_path: Path, artifacts_dir: Path) -> None:
     }
     if bundle_checksums != manifest_checksums:
         raise ManifestError("release manifest artifact set does not match SHA256SUMS")
+
+    return version, commit, build_date, expected_migration, normalized_artifacts
+
+
+def verify_artifact_file(
+    artifact: dict[str, Any],
+    *,
+    artifacts_dir: Path,
+    version: str,
+    commit: str,
+    build_date: str,
+    expected_migration: str,
+) -> None:
+    path = artifacts_dir / artifact["name"]
+    if path.is_symlink() or not path.is_file():
+        raise ManifestError(f"artifact is missing or is not a regular file: {path}")
+
+    actual_sha256 = sha256_file(path)
+    if actual_sha256 != artifact["sha256"]:
+        raise ManifestError(f"SHA-256 mismatch for {artifact['name']}")
+    if path.stat().st_size != artifact["size"]:
+        raise ManifestError(f"size mismatch for {artifact['name']}")
+
+    verify_bundle(
+        path,
+        version=version,
+        commit=commit,
+        build_date=build_date,
+        os_name=artifact["os"],
+        arch=artifact["arch"],
+        expected_migration=expected_migration,
+    )
+
+
+def verify_manifest(manifest_path: Path, artifacts_dir: Path) -> None:
+    version, commit, build_date, expected_migration, artifacts = validate_manifest_contract(
+        manifest_path, artifacts_dir / "SHA256SUMS"
+    )
+    for artifact in artifacts:
+        verify_artifact_file(
+            artifact,
+            artifacts_dir=artifacts_dir,
+            version=version,
+            commit=commit,
+            build_date=build_date,
+            expected_migration=expected_migration,
+        )
+
+
+def verify_target(
+    manifest_path: Path, artifacts_dir: Path, os_name: str, arch: str
+) -> dict[str, Any]:
+    if (os_name, arch) not in SUPPORTED_PLATFORMS:
+        raise ManifestError(f"unsupported target platform: {os_name}/{arch}")
+
+    version, commit, build_date, expected_migration, artifacts = validate_manifest_contract(
+        manifest_path, artifacts_dir / "SHA256SUMS"
+    )
+    selected = next(
+        (artifact for artifact in artifacts if artifact["os"] == os_name and artifact["arch"] == arch),
+        None,
+    )
+    if selected is None:
+        raise ManifestError(f"release manifest has no artifact for {os_name}/{arch}")
+
+    verify_artifact_file(
+        selected,
+        artifacts_dir=artifacts_dir,
+        version=version,
+        commit=commit,
+        build_date=build_date,
+        expected_migration=expected_migration,
+    )
+
+    return {
+        "formatVersion": FORMAT_VERSION,
+        "product": PRODUCT,
+        "version": version,
+        "commit": commit,
+        "buildDate": build_date,
+        "database": {"expectedMigration": expected_migration},
+        "artifact": selected,
+    }
 
 
 def command_build(args: argparse.Namespace) -> None:
@@ -361,6 +440,16 @@ def command_verify(args: argparse.Namespace) -> None:
     print(f"verified {manifest_path}")
 
 
+def command_verify_target(args: argparse.Namespace) -> None:
+    descriptor = verify_target(
+        Path(args.manifest).resolve(),
+        Path(args.artifacts_dir).resolve(),
+        args.os,
+        args.arch,
+    )
+    print(json.dumps(descriptor, sort_keys=True, separators=(",", ":")))
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Build and verify RouteGate release manifests")
     commands = root.add_subparsers(dest="command", required=True)
@@ -373,10 +462,20 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--migrations-dir", required=True)
     build.set_defaults(func=command_build)
 
-    verify = commands.add_parser("verify", help="verify a release manifest and its artifacts")
+    verify = commands.add_parser("verify", help="verify a release manifest and all local artifacts")
     verify.add_argument("--manifest", required=True)
     verify.add_argument("--artifacts-dir", required=True)
     verify.set_defaults(func=command_verify)
+
+    verify_target_parser = commands.add_parser(
+        "verify-target",
+        help="verify the full manifest/checksum contract and one local target artifact",
+    )
+    verify_target_parser.add_argument("--manifest", required=True)
+    verify_target_parser.add_argument("--artifacts-dir", required=True)
+    verify_target_parser.add_argument("--os", required=True)
+    verify_target_parser.add_argument("--arch", required=True)
+    verify_target_parser.set_defaults(func=command_verify_target)
 
     return root
 
