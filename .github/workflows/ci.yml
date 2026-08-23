@@ -114,11 +114,14 @@ jobs:
             scripts/production-like-ops.sh \
             scripts/routegate-recovery \
             scripts/routegate-update-core.sh \
+            scripts/routegate-update-role.sh \
+            scripts/routegate-update-transaction.sh \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-core.sh \
+            scripts/test-update-role.sh \
             scripts/validate-production-like-deploy.sh
 
       - name: Run ShellCheck
@@ -132,11 +135,14 @@ jobs:
             scripts/production-like-ops.sh \
             scripts/routegate-recovery \
             scripts/routegate-update-core.sh \
+            scripts/routegate-update-role.sh \
+            scripts/routegate-update-transaction.sh \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-core.sh \
+            scripts/test-update-role.sh \
             scripts/validate-production-like-deploy.sh
 
       - name: Run installer and host-operation unit tests
@@ -146,6 +152,8 @@ jobs:
           bash scripts/test-grafana-installer.sh
           bash scripts/test-recovery-tool.sh
           bash scripts/test-update-core.sh
+          bash scripts/test-update-role.sh
+          bash scripts/routegate-update-transaction.sh --help >/dev/null
 
       - name: Run release manifest tests
         run: python3 -m unittest scripts/test_release_manifest.py
@@ -170,6 +178,8 @@ jobs:
           grep -Fq './manager/migrations/' bundle-files.txt
           grep -Fxq './tools/routegate-recovery' bundle-files.txt
           grep -Fxq './tools/routegate-update-core.sh' bundle-files.txt
+          grep -Fxq './tools/routegate-update-role.sh' bundle-files.txt
+          grep -Fxq './tools/routegate-update-transaction.sh' bundle-files.txt
           grep -Fxq './metadata/manifest.env' bundle-files.txt
           test -s release-manifest.json
 

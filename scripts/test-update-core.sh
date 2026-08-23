@@ -118,13 +118,13 @@ install_command_stubs() {
   cat >"$stub_dir/systemctl" <<'EOF_SYSTEMCTL'
 #!/usr/bin/env bash
 set -euo pipefail
-case "${1:-}" in
-  is-active)
-    exit 0
-    ;;
-  *)
-    exit 0
-    ;;
+action=${1:-}
+if [[ -n ${RG_TEST_SYSTEMCTL_FAIL_ACTION:-} && "$action" == "$RG_TEST_SYSTEMCTL_FAIL_ACTION" ]]; then
+  exit 73
+fi
+case "$action" in
+  is-active) exit 0 ;;
+  *) exit 0 ;;
 esac
 EOF_SYSTEMCTL
 
@@ -149,6 +149,8 @@ EOF_PG_DUMP
 
   cat >"$stub_dir/pg_restore" <<'EOF_PG_RESTORE'
 #!/usr/bin/env bash
+set -euo pipefail
+[[ ${RG_TEST_PG_RESTORE_FAIL:-0} != 1 ]] || exit 75
 exit 0
 EOF_PG_RESTORE
 
@@ -173,6 +175,19 @@ populate_fake_host() {
   printf 'ROUTEGATE_DATABASE_URL=test\n' >"$root/etc/routegate/manager.env"
 }
 
+mutate_fake_host() {
+  local root=$1
+  printf 'manager-mutated\n' >"$root/usr/local/bin/routegate-manager"
+  printf 'agent-mutated\n' >"$root/usr/local/bin/routegate-agent"
+  rm -rf "$root/opt/routegate-manager/migrations"
+  mkdir -p "$root/opt/routegate-manager/migrations"
+  printf 'migration-mutated\n' >"$root/opt/routegate-manager/migrations/changed.up.sql"
+  printf 'frontend-mutated\n' >"$root/var/www/routegate/index.html"
+  printf 'manager-unit-mutated\n' >"$root/etc/systemd/system/routegate-manager.service"
+  printf 'agent-unit-mutated\n' >"$root/etc/systemd/system/routegate-agent.service"
+  printf 'mutated=1\n' >"$root/etc/routegate/manager.env"
+}
+
 test_backup_restore_round_trip() {
   local fake_root="$TMP_DIR/root"
   local backup="$TMP_DIR/backups/roundtrip"
@@ -189,16 +204,7 @@ test_backup_restore_round_trip() {
   rg_update_create_backup "$backup" "postgres://example/test"
   [[ -s "$backup/routegate.pgdump" ]] || fail "database backup was not created"
 
-  printf 'manager-mutated\n' >"$fake_root/usr/local/bin/routegate-manager"
-  printf 'agent-mutated\n' >"$fake_root/usr/local/bin/routegate-agent"
-  rm -rf "$fake_root/opt/routegate-manager/migrations"
-  mkdir -p "$fake_root/opt/routegate-manager/migrations"
-  printf 'migration-mutated\n' >"$fake_root/opt/routegate-manager/migrations/changed.up.sql"
-  printf 'frontend-mutated\n' >"$fake_root/var/www/routegate/index.html"
-  printf 'manager-unit-mutated\n' >"$fake_root/etc/systemd/system/routegate-manager.service"
-  printf 'agent-unit-mutated\n' >"$fake_root/etc/systemd/system/routegate-agent.service"
-  printf 'mutated=1\n' >"$fake_root/etc/routegate/manager.env"
-
+  mutate_fake_host "$fake_root"
   rg_update_restore_backup "$backup" "postgres://example/test" 1
 
   assert_file_content "$fake_root/usr/local/bin/routegate-manager" "manager-old"
@@ -214,9 +220,68 @@ test_backup_restore_round_trip() {
   RG_UPDATE_ROOT=""
 }
 
+test_restore_reports_systemd_failure_after_restoring_files() {
+  local fake_root="$TMP_DIR/root-systemd-failure"
+  local backup="$TMP_DIR/backups/systemd-failure"
+  local stub_dir="$TMP_DIR/stubs-systemd-failure"
+  local old_path=$PATH
+
+  populate_fake_host "$fake_root"
+  install_command_stubs "$stub_dir"
+  PATH="$stub_dir:$PATH"
+  RG_UPDATE_ROOT="$fake_root"
+  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
+
+  rg_update_create_backup "$backup" "postgres://example/test"
+  mutate_fake_host "$fake_root"
+
+  export RG_TEST_SYSTEMCTL_FAIL_ACTION=daemon-reload
+  if rg_update_restore_backup "$backup" "postgres://example/test" 1 >/dev/null 2>&1; then
+    fail "shared rollback with failed daemon-reload unexpectedly returned success"
+  fi
+  unset RG_TEST_SYSTEMCTL_FAIL_ACTION
+
+  assert_file_content "$fake_root/usr/local/bin/routegate-manager" "manager-old"
+  assert_file_content "$fake_root/usr/local/bin/routegate-agent" "agent-old"
+
+  PATH=$old_path
+  RG_UPDATE_ROOT=""
+}
+
+test_restore_reports_database_failure_after_restoring_files() {
+  local fake_root="$TMP_DIR/root-db-failure"
+  local backup="$TMP_DIR/backups/db-failure"
+  local stub_dir="$TMP_DIR/stubs-db-failure"
+  local old_path=$PATH
+
+  populate_fake_host "$fake_root"
+  install_command_stubs "$stub_dir"
+  PATH="$stub_dir:$PATH"
+  RG_UPDATE_ROOT="$fake_root"
+  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
+
+  rg_update_create_backup "$backup" "postgres://example/test"
+  mutate_fake_host "$fake_root"
+
+  export RG_TEST_PG_RESTORE_FAIL=1
+  if rg_update_restore_backup "$backup" "postgres://example/test" 1 >/dev/null 2>&1; then
+    fail "shared rollback with failed database restore unexpectedly returned success"
+  fi
+  unset RG_TEST_PG_RESTORE_FAIL
+
+  assert_eq "$RG_UPDATE_DB_RESTORE_RC" "75" "database restore failure result"
+  assert_file_content "$fake_root/usr/local/bin/routegate-manager" "manager-old"
+  assert_file_content "$fake_root/usr/local/bin/routegate-agent" "agent-old"
+
+  PATH=$old_path
+  RG_UPDATE_ROOT=""
+}
+
 test_bundle_verification
 test_metadata_is_never_evaluated
 test_unsafe_archive_is_rejected
 test_backup_restore_round_trip
+test_restore_reports_systemd_failure_after_restoring_files
+test_restore_reports_database_failure_after_restoring_files
 
 printf 'RouteGate host update core tests passed.\n'
