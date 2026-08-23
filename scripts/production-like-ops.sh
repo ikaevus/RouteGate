@@ -64,6 +64,33 @@ runtime_diagnostics() {
   fi
 }
 
+classify_sing_box_failure() {
+  local journal lower failure_class
+  journal=$(journalctl -u sing-box.service -n 120 --no-pager -o cat 2>/dev/null || true)
+  lower=$(printf '%s' "$journal" | tr '[:upper:]' '[:lower:]')
+  failure_class=unknown
+
+  if [[ -z "$lower" ]]; then
+    failure_class=no-journal-data
+  elif [[ "$lower" == *"address already in use"* ]] || [[ "$lower" == *"bind: address already in use"* ]]; then
+    failure_class=address-in-use
+  elif [[ "$lower" == *"permission denied"* ]]; then
+    failure_class=permission-denied
+  elif [[ "$lower" == *"operation not permitted"* ]]; then
+    failure_class=operation-not-permitted
+  elif [[ "$lower" == *"no such file or directory"* ]]; then
+    failure_class=missing-file
+  elif [[ "$lower" == *"certificate"* ]] && [[ "$lower" == *"error"* || "$lower" == *"failed"* ]]; then
+    failure_class=certificate-error
+  elif [[ "$lower" == *"unknown field"* ]] || [[ "$lower" == *"unknown option"* ]] || [[ "$lower" == *"invalid argument"* ]]; then
+    failure_class=runtime-compatibility
+  elif [[ "$lower" == *"network is unreachable"* ]]; then
+    failure_class=network-unreachable
+  fi
+
+  log "runtime=sing-box failure-class=${failure_class}"
+}
+
 sing_box_diagnostics() {
   service_state sing-box sing-box.service
   command -v sing-box >/dev/null 2>&1 || die "sing-box binary is unavailable"
@@ -92,10 +119,10 @@ sing_box_diagnostics() {
   log "runtime=sing-box config=${config_state}"
   log "runtime=sing-box directory-config=${directory_state} files=${config_count:-0} names=${config_names:-none}"
   log "runtime=sing-box unit-execstart=${unit_execstart:-unknown}"
+  classify_sing_box_failure
 
-  # Deliberately expose only systemd metadata, config file basenames and
-  # command/config compatibility. Raw journal/config output remains outside the
-  # bridge because it may contain connection material or deployment secrets.
+  # Raw journal/config output never leaves the host. Only a fixed failure class,
+  # systemd metadata, config file basenames and validation outcomes are exposed.
 }
 
 http_diagnostics() {
