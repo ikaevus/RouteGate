@@ -21,10 +21,14 @@ The supported policy is intentionally narrow:
 
 ## MTProto / FakeTLS
 
-Select **MTProto / FakeTLS** and set the TCP port (default `8443`). RouteGate
+Select **MTProto / FakeTLS** and set the TCP port (default `9443`). RouteGate
 renders a strict mtg TOML config, applies it through the Agent with atomic
 backup/rollback, and supplies `tg://proxy` links and QR codes. The secret is
 shared by the node and this is made explicit in the protected credential view.
+
+VLESS / Reality uses `8443` in the recommended Hybrid-node setup, so MTProto
+uses a distinct TCP listener by default. RouteGate also enforces distinct TCP
+ports for VLESS, Shadowsocks and MTProto at the database boundary.
 
 The supported policy is:
 
