@@ -197,7 +197,7 @@ main() {
 
   local arch bundle_name
   arch=$(platform_architecture "$(uname -m)") || die "unsupported host architecture: $(uname -m)"
-  bundle_name=$(basename "$BUNDLE")
+  bundle_name=$(basename -- "$BUNDLE")
   [[ "$bundle_name" =~ ^routegate-[A-Za-z0-9][A-Za-z0-9._+-]*-linux-(amd64|arm64)\.tar\.gz$ ]] \
     || die "release bundle name is not canonical"
 
@@ -211,11 +211,11 @@ main() {
   local descriptor="$WORK_DIR/target.json"
 
   mkdir -m 0700 "$artifacts_dir"
-  cp "$MANIFEST" "$frozen_manifest"
-  cp "$MANIFEST_ATTESTATION" "$frozen_manifest_attestation"
-  cp "$CHECKSUMS" "$artifacts_dir/SHA256SUMS"
-  cp "$BUNDLE" "$frozen_bundle"
-  cp "$BUNDLE_ATTESTATION" "$frozen_bundle_attestation"
+  cp -- "$MANIFEST" "$frozen_manifest"
+  cp -- "$MANIFEST_ATTESTATION" "$frozen_manifest_attestation"
+  cp -- "$CHECKSUMS" "$artifacts_dir/SHA256SUMS"
+  cp -- "$BUNDLE" "$frozen_bundle"
+  cp -- "$BUNDLE_ATTESTATION" "$frozen_bundle_attestation"
   chmod 0600 \
     "$frozen_manifest" \
     "$frozen_manifest_attestation" \
