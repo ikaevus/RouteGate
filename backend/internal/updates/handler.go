@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,11 @@ import (
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+const (
+	preflightLifecycleTimeout = 10 * time.Second
+	failurePersistTimeout     = 5 * time.Second
+)
 
 type jobRepository interface {
 	CreatePreflight(context.Context, string) (Job, error)
@@ -74,34 +80,37 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.record(r.Context(), user.ID, "update.preflight.requested", job, audit.ResultSuccess, nil)
+	lifecycleCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), preflightLifecycleTimeout)
+	defer cancel()
 
-	job, err = h.repo.MarkRunning(r.Context(), job.ID)
+	h.record(lifecycleCtx, user.ID, "update.preflight.requested", job, audit.ResultSuccess, nil)
+
+	job, err = h.repo.MarkRunning(lifecycleCtx, job.ID)
 	if err != nil {
-		h.failJob(r.Context(), user.ID, job, "job_state_transition_failed")
+		h.failJob(lifecycleCtx, user.ID, job, "job_state_transition_failed")
 		h.logError("start update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to start update preflight job."))
 		return
 	}
 
-	appliedMigration, err := h.reader.AppliedSchemaVersion(r.Context())
+	appliedMigration, err := h.reader.AppliedSchemaVersion(lifecycleCtx)
 	if err != nil {
-		h.failJob(r.Context(), user.ID, job, "database_preflight_failed")
+		h.failJob(lifecycleCtx, user.ID, job, "database_preflight_failed")
 		h.logError("read database schema during update preflight failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Update preflight could not read the database schema state."))
 		return
 	}
 
 	result := EvaluatePreflight(h.info(), appliedMigration)
-	job, err = h.repo.CompletePreflight(r.Context(), job.ID, result)
+	job, err = h.repo.CompletePreflight(lifecycleCtx, job.ID, result)
 	if err != nil {
-		h.failJob(r.Context(), user.ID, job, "job_completion_failed")
+		h.failJob(lifecycleCtx, user.ID, job, "job_completion_failed")
 		h.logError("complete update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to complete update preflight job."))
 		return
 	}
 
-	h.record(r.Context(), user.ID, "update.preflight.completed", job, audit.ResultSuccess, map[string]any{
+	h.record(lifecycleCtx, user.ID, "update.preflight.completed", job, audit.ResultSuccess, map[string]any{
 		"decision": result.Decision,
 		"blockers": result.Blockers,
 	})
@@ -149,12 +158,15 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) failJob(ctx context.Context, userID string, job Job, errorCode string) {
-	failed, err := h.repo.Fail(ctx, job.ID, errorCode)
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failurePersistTimeout)
+	defer cancel()
+
+	failed, err := h.repo.Fail(persistCtx, job.ID, errorCode)
 	if err != nil {
 		h.logError("mark update preflight failed", err)
 		return
 	}
-	h.record(ctx, userID, "update.preflight.failed", failed, audit.ResultFailure, map[string]any{"error_code": errorCode})
+	h.record(persistCtx, userID, "update.preflight.failed", failed, audit.ResultFailure, map[string]any{"error_code": errorCode})
 }
 
 func (h *Handler) record(ctx context.Context, userID, action string, job Job, result string, metadata map[string]any) {
