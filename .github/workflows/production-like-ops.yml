@@ -26,7 +26,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: routegate-production-like
+  group: routegate-production-like-ops
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
        github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-24.04
     environment: production-like
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout trusted main
@@ -120,7 +120,7 @@ jobs:
 
           "${SCP[@]}" scripts/production-like-ops.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
           set +e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo bash '$remote_script' '$OPERATION'" >"$output_file" 2>&1
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script' '$OPERATION'" >"$output_file" 2>&1
           rc=$?
           set -e
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true
