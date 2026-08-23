@@ -12,7 +12,7 @@ RouteGate components remain independently observable even when they are shipped 
 | Web UI | Manager system-version response; release bundles ship the UI built from the same source commit. |
 | Agent | `agent/internal/buildinfo` with linker-overridable `Version`, `GitCommit`, and `BuildDate`. |
 | Agent protocol | Numeric protocol version reported by Agents during registration and heartbeat. |
-| Database schema | Applied migration identifiers in `schema_migrations`; the current canonical migration line reaches `000134_distinct_tcp_listener_ports`. |
+| Database schema | Applied migration identifiers in `schema_migrations`; the current canonical migration line reaches `000135_update_jobs`. |
 
 The authenticated system-version endpoint still exposes the numeric expected schema generation for operator compatibility. Release artifacts use the exact migration identifier because it is the stronger deployment contract and naturally includes repair-migration naming.
 
@@ -68,7 +68,7 @@ Example shape:
   "commit": "<40-character Git SHA>",
   "buildDate": "2026-08-23T12:00:00Z",
   "database": {
-    "expectedMigration": "000134_distinct_tcp_listener_ports"
+    "expectedMigration": "000135_update_jobs"
   },
   "artifacts": [
     {
@@ -97,7 +97,7 @@ The release workflow creates separate SLSA provenance attestations for:
 
 The workflow uses GitHub Actions OIDC to obtain a short-lived Sigstore signing certificate. RouteGate therefore does not store a long-lived release-signing private key in repository or environment secrets. For the public RouteGate repository, the attestation is signed through the public-good Sigstore trust infrastructure and associated with the RouteGate repository through GitHub's attestation service.
 
-The workflow preserves the generated Sigstore bundles as stable release assets:
+The release workflow preserves the generated Sigstore bundles as stable release assets:
 
 - `release-manifest.attestation.json`;
 - `release-bundles.attestation.json`.
@@ -179,6 +179,22 @@ VPN runtimes are deliberately outside the platform-update rollback transaction. 
 
 The production-like deploy remains CI/CD infrastructure, not the product self-update API. A customer installation must not depend on RouteGate maintainers having SSH access or on a GitHub Actions workflow to update itself.
 
+## Manager update preflight jobs
+
+RG-96C1 introduces the first durable Manager-side update-job contract without enabling product self-update execution.
+
+The Manager stores typed `preflight` jobs with a durable `pending -> running -> succeeded|failed` lifecycle and exposes them through authenticated `system:manage` API endpoints. A preflight records a bounded snapshot of the current Manager build metadata, update mode/channel, automatic-update capability, and applied database migration.
+
+The job execution status and the preflight decision are deliberately separate:
+
+- `decision: proceed` means the Manager-side checks found no blocker;
+- `decision: blocked` means the preflight completed successfully but advises against continuing;
+- `status: failed` is reserved for failure of the preflight pipeline itself.
+
+C1 is intentionally read-only. It does not discover or download releases, accept caller-controlled release URLs or trust roots, execute shell commands, invoke the privileged host updater, or mutate RouteGate installation files. Manager-side preflight is not a replacement for the RG-96B privileged trust and host-safety checks; future mutating jobs must pass through that existing boundary.
+
+Update preflight lifecycle events use the existing audit subsystem. The durable job history is the foundation for later discovery, execution progress, result, and rollback state rather than a second parallel update mechanism.
+
 ## Current product update status
 
 The Manager continues to report:
@@ -187,7 +203,7 @@ The Manager continues to report:
 - update channel: `development`;
 - `automaticUpdatesSupported: false`.
 
-No one-click or unattended product updater is enabled by RG-96A or RG-96B1.
+No one-click or unattended product updater is enabled by RG-96A, RG-96B, or RG-96C1.
 
 Official builds remain builds of the auditable AGPLv3-or-later project. Update behavior must avoid hidden license checks, silent forced updates, opaque telemetry, undocumented outbound update calls, and arbitrary remote shell execution.
 
@@ -199,10 +215,11 @@ The intended sequence is:
    - A1 complete: manifest contract, deterministic release metadata, artifact verification and publication;
    - A2 complete: cryptographic build provenance, offline attestation bundles, and pinned repository/signer-workflow verification policy.
 2. **RG-96B — Host Update Engine**
-   - B1: extract and prove the reusable backup/apply/migrate/health/rollback core through production-like deployment;
-   - B2: expose a narrow, role-aware privileged host-operation transaction suitable for Manager orchestration.
+   - B1 complete: reusable backup/apply/migrate/health/rollback core proven through production-like deployment;
+   - B2 complete: narrow, role-aware privileged host-operation transaction suitable for Manager orchestration.
 3. **RG-96C — Update Jobs & API**
-   - durable discovery, preflight, progress, result and rollback state in Manager.
+   - C1 complete: durable, auditable Manager-side preflight job foundation;
+   - next: release discovery, target selection, execution progress/result state, privileged dispatch, and rollback state.
 4. **RG-96D — One-Click Admin UI**
    - explicit administrator-approved update workflow with clear risk and progress reporting.
 5. **RG-96E — Multi-Node Rolling Updates**
