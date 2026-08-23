@@ -77,6 +77,11 @@ jobs:
             grep -Fxq './bin/routegate-agent' "$listing"
             grep -Fxq './frontend/index.html' "$listing"
             grep -Fq './manager/migrations/' "$listing"
+            grep -Fxq './tools/release_manifest.py' "$listing"
+            grep -Fxq './tools/routegate-update-core.sh' "$listing"
+            grep -Fxq './tools/routegate-update-role.sh' "$listing"
+            grep -Fxq './tools/routegate-update-transaction.sh' "$listing"
+            grep -Fxq './tools/routegate-update-verified.sh' "$listing"
             grep -Fxq './metadata/manifest.env' "$listing"
           done
           test -s release-manifest.json
@@ -107,16 +112,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SIGNER_WORKFLOW: ${{ github.repository }}/.github/workflows/release.yml
+          PREDICATE_TYPE: https://slsa.dev/provenance/v1
         run: |
           gh attestation verify dist/release-manifest.json \
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$SIGNER_WORKFLOW" \
+            --predicate-type "$PREDICATE_TYPE" \
             --bundle dist/release-manifest.attestation.json
 
           for bundle in dist/routegate-*.tar.gz; do
             gh attestation verify "$bundle" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$SIGNER_WORKFLOW" \
+              --predicate-type "$PREDICATE_TYPE" \
               --bundle dist/release-bundles.attestation.json
           done
 
