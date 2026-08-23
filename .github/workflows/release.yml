@@ -13,6 +13,9 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   bundles:
@@ -78,6 +81,45 @@ jobs:
           done
           test -s release-manifest.json
 
+      - name: Attest release manifest provenance
+        id: attest_manifest
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: dist/release-manifest.json
+
+      - name: Attest release bundle provenance
+        id: attest_bundles
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: dist/routegate-*.tar.gz
+
+      - name: Preserve offline attestation bundles
+        env:
+          MANIFEST_ATTESTATION: ${{ steps.attest_manifest.outputs.bundle-path }}
+          BUNDLE_ATTESTATION: ${{ steps.attest_bundles.outputs.bundle-path }}
+        run: |
+          test -s "$MANIFEST_ATTESTATION"
+          test -s "$BUNDLE_ATTESTATION"
+          cp "$MANIFEST_ATTESTATION" dist/release-manifest.attestation.json
+          cp "$BUNDLE_ATTESTATION" dist/release-bundles.attestation.json
+
+      - name: Verify release provenance policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER_WORKFLOW: ${{ github.repository }}/.github/workflows/release.yml
+        run: |
+          gh attestation verify dist/release-manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$SIGNER_WORKFLOW" \
+            --bundle dist/release-manifest.attestation.json
+
+          for bundle in dist/routegate-*.tar.gz; do
+            gh attestation verify "$bundle" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$SIGNER_WORKFLOW" \
+              --bundle dist/release-bundles.attestation.json
+          done
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -86,6 +128,8 @@ jobs:
             dist/routegate-*.tar.gz
             dist/SHA256SUMS
             dist/release-manifest.json
+            dist/release-manifest.attestation.json
+            dist/release-bundles.attestation.json
           if-no-files-found: error
 
       - name: Publish GitHub release assets
@@ -99,6 +143,8 @@ jobs:
               dist/routegate-*.tar.gz \
               dist/SHA256SUMS \
               dist/release-manifest.json \
+              dist/release-manifest.attestation.json \
+              dist/release-bundles.attestation.json \
               --clobber
           else
             notes_file="docs/release/${TAG_NAME}.md"
@@ -107,6 +153,8 @@ jobs:
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
                 dist/release-manifest.json \
+                dist/release-manifest.attestation.json \
+                dist/release-bundles.attestation.json \
                 --verify-tag \
                 --notes-file "$notes_file" \
                 --title "RouteGate $TAG_NAME"
@@ -115,6 +163,8 @@ jobs:
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
                 dist/release-manifest.json \
+                dist/release-manifest.attestation.json \
+                dist/release-bundles.attestation.json \
                 --verify-tag \
                 --generate-notes \
                 --title "RouteGate $TAG_NAME"
