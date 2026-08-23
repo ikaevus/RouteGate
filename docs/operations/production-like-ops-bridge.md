@@ -41,6 +41,17 @@ checks the same allow-list before doing anything.
 After every issue-triggered run the workflow posts a sanitized result to #268
 and closes the issue again, making the next reopen a distinct audited request.
 
+## Serialization
+
+GitHub Actions deploy jobs and ops jobs use separate concurrency groups. Cross-
+workflow serialization is enforced on the production-like host itself with an
+exclusive `flock` on `/run/lock/routegate-production-like.lock`.
+
+This avoids GitHub's one-pending-run concurrency behavior silently replacing a
+queued ops request with a later deploy (or vice versa), while still guaranteeing
+that a mutating ops action cannot overlap a platform deployment. Both workflows
+wait up to ten minutes for the host lock before failing explicitly.
+
 ## Security boundary
 
 The bridge deliberately does **not** support:
