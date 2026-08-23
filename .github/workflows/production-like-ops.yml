@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - diagnose
+          - diagnose-sing-box
           - validate
           - restart-control-plane
           - restart-sing-box
@@ -60,6 +61,7 @@ jobs:
           else
             case "$REQUEST_BODY" in
               'operation=diagnose') operation=diagnose ;;
+              'operation=diagnose-sing-box') operation=diagnose-sing-box ;;
               'operation=validate') operation=validate ;;
               'operation=restart-control-plane') operation=restart-control-plane ;;
               'operation=restart-sing-box') operation=restart-sing-box ;;
@@ -75,7 +77,7 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|renew-certificate) ;;
+            diagnose|diagnose-sing-box|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|renew-certificate) ;;
             *) exit 2 ;;
           esac
           printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
