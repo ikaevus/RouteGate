@@ -13,10 +13,12 @@ import (
 type portalClientConnectionSource struct {
 	subscription vpnaccounts.SubscriptionProfile
 	profile      vpnaccounts.ClientProfile
-	profileReads int
+	subscriptionReads int
+	profileReads      int
 }
 
 func (s *portalClientConnectionSource) GetSubscriptionProfileByAccountID(context.Context, string) (vpnaccounts.SubscriptionProfile, error) {
+	s.subscriptionReads++
 	return s.subscription, nil
 }
 
@@ -73,8 +75,8 @@ func TestBuildPortalDirectQRCodeDoesNotResolveInactiveProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("inactive QR: %v", err)
 	}
-	if qr.Available || qr.QRText != "" || source.profileReads != 0 {
-		t.Fatalf("inactive profile unexpectedly resolved connection material: qr=%+v reads=%d", qr, source.profileReads)
+	if qr.Available || qr.QRText != "" || source.subscriptionReads != 0 || source.profileReads != 0 {
+		t.Fatalf("inactive profile unexpectedly resolved connection material: qr=%+v subscription_reads=%d profile_reads=%d", qr, source.subscriptionReads, source.profileReads)
 	}
 }
 
@@ -96,5 +98,31 @@ func TestPortalConnectionMaterialSelectsProtocolSpecificField(t *testing.T) {
 				t.Fatalf("material=%q want=%q", got, test.want)
 			}
 		})
+	}
+}
+
+
+func TestBuildPortalDirectQRCodeWithoutConnectionSourceIsUnavailable(t *testing.T) {
+	qr, err := buildPortalDirectQRCode(context.Background(), nil, PortalProfile{
+		ID: "account-1", AccessStatus: AccessStatusActive,
+	}, "en")
+	if err != nil {
+		t.Fatalf("active QR without source: %v", err)
+	}
+	if qr.Available || qr.QRText != "" || qr.Message != localizedQRCodeNotReady("en") {
+		t.Fatalf("expected unavailable QR metadata, got %+v", qr)
+	}
+}
+
+func TestPortalConnectionMaterialRejectsUnknownProtocolAndEmptyPayload(t *testing.T) {
+	if got := portalConnectionMaterial(vpnaccounts.ClientConnectionResponse{
+		Protocol: "unknown", VLESSLink: "vless://must-not-be-used",
+	}); got != "" {
+		t.Fatalf("unknown protocol material=%q, want empty", got)
+	}
+	if got := portalConnectionMaterial(vpnaccounts.ClientConnectionResponse{
+		Protocol: vpnaccounts.ClientProtocolVLESS, VLESSLink: "   ",
+	}); got != "" {
+		t.Fatalf("empty VLESS material=%q, want empty", got)
 	}
 }
