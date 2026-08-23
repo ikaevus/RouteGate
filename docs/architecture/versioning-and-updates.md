@@ -97,7 +97,7 @@ The release workflow creates separate SLSA provenance attestations for:
 
 The workflow uses GitHub Actions OIDC to obtain a short-lived Sigstore signing certificate. RouteGate therefore does not store a long-lived release-signing private key in repository or environment secrets. For the public RouteGate repository, the attestation is signed through the public-good Sigstore trust infrastructure and associated with the RouteGate repository through GitHub's attestation service.
 
-The release workflow preserves the generated Sigstore bundles as stable release assets:
+The workflow preserves the generated Sigstore bundles as stable release assets:
 
 - `release-manifest.attestation.json`;
 - `release-bundles.attestation.json`.
