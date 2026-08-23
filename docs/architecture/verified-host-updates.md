@@ -88,19 +88,52 @@ A canonical RouteGate release manifest can describe multiple architectures. A ho
 
 This keeps the global release contract strict without requiring cross-architecture bundle downloads.
 
-## Trust bootstrap and updater-tool promotion
+## B2c1: trusted updater promotion
 
 The updater code inside a candidate bundle is not trusted merely because it is inside that bundle.
 
-The verifier used to establish trust in version N+1 must already belong to the trusted version N installation or another equally trusted local administrative context. An unverified candidate must never be extracted and allowed to execute its own `routegate-update-verified.sh` as the mechanism that establishes the candidate's authenticity.
+The verifier used to establish trust in version N+1 must already belong to trusted version N, or to another equally trusted local administrative context. Candidate code never establishes its own trust.
 
-Every release bundle carries the manifest verifier and host-update toolchain so that a future trusted promotion step can advance the local verifier together with the platform. **B2b itself does not yet install or promote those tools on the host.** The current B2a platform apply path updates Manager/Agent/UI/migrations, not the updater toolchain.
+After B2b provenance succeeds, the B2a transaction treats the local updater toolchain as recoverable host state. The canonical installed locations are fixed in privileged code:
 
-A later privileged integration step must therefore promote the verified updater files only after candidate provenance has succeeded, and that promotion must participate in backup/rollback. Until such a step exists, the previously trusted local verifier remains authoritative.
+- `/usr/local/lib/routegate/update` for the trusted updater toolchain;
+- `/usr/local/sbin/routegate-update` for the operator-facing entrypoint.
 
-The intended eventual chain is:
+Before the first platform mutation, the transaction validates the current updater state and records it as either `absent` or `complete`. A complete state is backed up. Partial or unsafe state fails closed.
 
-`trusted version N verifier -> verifies N+1 -> trusted transaction promotes N+1 platform + updater toolchain -> N+1 verifier may verify N+2`.
+The transaction order is:
+
+1. validate the current trusted updater state;
+2. verify and extract the already-approved release bundle;
+3. create the role/platform backup;
+4. create the updater-toolchain backup;
+5. apply only the platform files owned by the detected node role;
+6. pass Manager/Agent health and database-schema gates applicable to that role;
+7. promote the candidate updater files from the verified release bundle;
+8. validate local trusted-path security and run updater self-checks;
+9. complete the transaction.
+
+If promotion or self-check fails, rollback attempts both platform recovery and updater recovery. A legacy host that entered with no local updater returns to `absent`. A host that entered with a complete trusted updater returns to that previous trusted toolchain.
+
+The trusted updater boundary is deliberately stricter than a normal application directory. Before it is accepted, privileged code rejects:
+
+- partial updater layouts;
+- unexpected files in the trusted updater directory;
+- symlinked fixed updater paths or fixed parents;
+- updater files not owned by the privileged updater user (root in production);
+- group- or world-writable trusted updater paths;
+- non-executable privileged transaction/verifier scripts;
+- non-canonical operator entrypoint content.
+
+The fixed updater installation paths are not caller-configurable. Manager cannot redirect the privileged update boundary to an alternate executable tree.
+
+The trust chain is therefore:
+
+`trusted version N verifier -> verifies N+1 -> transaction updates platform -> health/schema gates -> promotes and self-checks N+1 updater -> N+1 verifier may verify N+2`.
+
+B2c1 deliberately does not bootstrap this updater onto a fresh installation. Clean VPS and VPN Node installer bootstrap remains B2c2 work, so new hosts are not yet considered self-update-ready merely because release bundles contain the updater files.
+
+The promotion path is recoverable for runtime failures through the transaction backup/rollback contract. It should not be described as power-loss-atomic; crash-recovery semantics for interruption at an arbitrary filesystem instruction remain a separate hardening concern if later required.
 
 ## GitHub CLI dependency
 
@@ -112,13 +145,14 @@ CI checks that the available GitHub CLI supports the pinned `--predicate-type` p
 
 ## Manager boundary
 
-Neither B2a nor B2b is exposed to Manager or Web UI yet.
+B2a, B2b, and B2c1 remain outside Manager and Web UI control.
 
 A future RG-96C orchestration layer may discover releases and stage candidate files, but the privileged boundary must remain narrow:
 
 - Manager may request an update operation;
 - Manager may not override trust roots;
 - Manager may not choose the commit/SHA passed to the root transaction;
+- Manager may not redirect the trusted updater executable tree;
 - Manager may not request arbitrary shell commands;
 - privileged code must continue to detect the host role itself;
 - update state, progress, audit, and administrator approval belong above this boundary.
@@ -131,8 +165,9 @@ Until that orchestration exists, the Manager continues to report manual update s
 - RG-96A2 — GitHub Artifact Attestation/Sigstore provenance contract: implemented; live release-workflow acceptance remains an operational validation step when a real/manual release run is exercised.
 - RG-96B1 — shared host update core proven through production-like deployment: complete.
 - RG-96B2a — role-aware root-only host transaction: complete.
-- RG-96B2b — fixed-policy verified release gate: implemented by this change and gated on CI/review before merge.
-- trusted updater-tool promotion/installation: still required before Manager orchestration can safely depend on the local B2b gate.
+- RG-96B2b — fixed-policy verified release gate: complete.
+- RG-96B2c1 — trusted updater promotion/rollback inside the host transaction: implemented by this change and gated on CI/review before merge.
+- RG-96B2c2 — bootstrap the trusted updater on fresh Clean VPS and VPN Node installations: still required before Manager orchestration can rely on the local update boundary on newly installed hosts.
 - RG-96C — durable update jobs, discovery, preflight, progress, result, audit and rollback API: planned.
 - RG-96D — explicit one-click Admin UI workflow: planned.
 - RG-96E — multi-node rolling updates: planned.
