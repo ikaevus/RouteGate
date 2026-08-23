@@ -11,6 +11,13 @@ VERSION = "v0.2.0"
 COMMIT = "a" * 40
 BUILD_DATE = "2026-08-23T12:00:00Z"
 MIGRATION = "000134_distinct_tcp_listener_ports"
+REQUIRED_TOOLS = {
+    "release_manifest.py",
+    "routegate-update-core.sh",
+    "routegate-update-role.sh",
+    "routegate-update-transaction.sh",
+    "routegate-update-verified.sh",
+}
 
 
 class ReleaseManifestTests(unittest.TestCase):
@@ -32,7 +39,7 @@ class ReleaseManifestTests(unittest.TestCase):
         *,
         metadata_version=VERSION,
         unsafe=False,
-        include_update_core=True,
+        omit_tool=None,
     ):
         stage = self.root / f"stage-{arch}"
         for directory in ("bin", "frontend", "metadata", "manager/migrations", "tools"):
@@ -43,10 +50,9 @@ class ReleaseManifestTests(unittest.TestCase):
         (stage / f"manager/migrations/{MIGRATION}.up.sql").write_text(
             "SELECT 1;\n", encoding="utf-8"
         )
-        if include_update_core:
-            (stage / "tools/routegate-update-core.sh").write_text(
-                "#!/usr/bin/env bash\n", encoding="utf-8"
-            )
+        for tool in REQUIRED_TOOLS:
+            if tool != omit_tool:
+                (stage / "tools" / tool).write_text("#!/usr/bin/env bash\n", encoding="utf-8")
         (stage / "metadata/manifest.env").write_text(
             "\n".join(
                 [
@@ -98,6 +104,59 @@ class ReleaseManifestTests(unittest.TestCase):
             [item["arch"] for item in payload["artifacts"]], ["amd64", "arm64"]
         )
 
+    def test_verify_target_does_not_require_unselected_bundle_file(self):
+        amd64 = self.make_bundle("amd64")
+        arm64 = self.make_bundle("arm64")
+        self.write_checksums()
+        path = self.build()
+        arm64.unlink()
+
+        descriptor = release_manifest.verify_target(path, self.dist, "linux", "amd64")
+
+        self.assertEqual(descriptor["version"], VERSION)
+        self.assertEqual(descriptor["commit"], COMMIT)
+        self.assertEqual(descriptor["artifact"]["name"], amd64.name)
+        self.assertEqual(descriptor["artifact"]["arch"], "amd64")
+        self.assertEqual(
+            descriptor["artifact"]["sha256"], release_manifest.sha256_file(amd64)
+        )
+
+    def test_verify_target_requires_selected_bundle_file(self):
+        amd64 = self.make_bundle("amd64")
+        self.make_bundle("arm64")
+        self.write_checksums()
+        path = self.build()
+        amd64.unlink()
+
+        with self.assertRaisesRegex(release_manifest.ManifestError, "artifact is missing"):
+            release_manifest.verify_target(path, self.dist, "linux", "amd64")
+
+    def test_verify_target_validates_unselected_checksum_contract(self):
+        self.make_bundle("amd64")
+        self.make_bundle("arm64")
+        self.write_checksums()
+        path = self.build()
+        checksums = self.dist / "SHA256SUMS"
+        lines = checksums.read_text(encoding="utf-8").splitlines()
+        checksums.write_text(
+            "\n".join(
+                ("b" * 64 + line[64:]) if "arm64" in line else line for line in lines
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(release_manifest.ManifestError, "SHA256SUMS"):
+            release_manifest.verify_target(path, self.dist, "linux", "amd64")
+
+    def test_verify_target_rejects_unsupported_platform(self):
+        self.make_bundle("amd64")
+        self.write_checksums()
+        path = self.build()
+
+        with self.assertRaisesRegex(release_manifest.ManifestError, "unsupported target platform"):
+            release_manifest.verify_target(path, self.dist, "linux", "riscv64")
+
     def test_rejects_tampered_bundle(self):
         bundle = self.make_bundle()
         self.write_checksums()
@@ -123,13 +182,13 @@ class ReleaseManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(release_manifest.ManifestError, "unsafe bundle path"):
             release_manifest.verify_manifest(path, self.dist)
 
-    def test_rejects_bundle_without_update_core(self):
-        self.make_bundle(include_update_core=False)
+    def test_rejects_bundle_without_verified_update_gate(self):
+        self.make_bundle(omit_tool="routegate-update-verified.sh")
         self.write_checksums()
         path = self.build()
 
         with self.assertRaisesRegex(
-            release_manifest.ManifestError, "tools/routegate-update-core.sh"
+            release_manifest.ManifestError, "tools/routegate-update-verified.sh"
         ):
             release_manifest.verify_manifest(path, self.dist)
 
