@@ -14,6 +14,7 @@ GH_VERIFIER_VERSION="2.97.0"
 GH_VERIFIER_PARENT="/usr/local/lib/routegate"
 GH_VERIFIER_DIR="${GH_VERIFIER_PARENT}/verifier"
 GH_VERIFIER="${GH_VERIFIER_DIR}/gh"
+GH_VERIFIER_METADATA="${GH_VERIFIER_DIR}/runtime.env"
 GH_VERIFIER_RELEASE_BASE="https://github.com/cli/cli/releases/download/v${GH_VERIFIER_VERSION}"
 GH_VERIFIER_SHA_AMD64="a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112"
 GH_VERIFIER_SHA_ARM64="73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5"
@@ -193,12 +194,16 @@ verifier_supports_policy() {
 }
 
 validate_attestation_verifier() {
-  local arch expected_sha actual_sha
+  local arch expected_archive_sha expected_source actual_binary_sha path unexpected=0
+  local meta_format="" meta_version="" meta_arch="" meta_archive_sha=""
+  local meta_binary_sha="" meta_source="" key value
+
   arch=$(platform_architecture "$(uname -m)") || {
     printf '[routegate-verified-update] ERROR: unsupported host architecture for attestation verifier\n' >&2
     return 1
   }
-  expected_sha=$(verifier_expected_sha "$arch") || return 1
+  expected_archive_sha=$(verifier_expected_sha "$arch") || return 1
+  expected_source="${GH_VERIFIER_RELEASE_BASE}/gh_${GH_VERIFIER_VERSION}_linux_${arch}.tar.gz"
 
   validate_verifier_parent || return 1
   [[ -d "$GH_VERIFIER_DIR" && ! -L "$GH_VERIFIER_DIR" ]] || {
@@ -210,11 +215,68 @@ validate_attestation_verifier() {
     printf '[routegate-verified-update] ERROR: pinned attestation verifier is missing or unsafe: %s\n' "$GH_VERIFIER" >&2
     return 1
   }
+  [[ -f "$GH_VERIFIER_METADATA" && ! -L "$GH_VERIFIER_METADATA" ]] || {
+    printf '[routegate-verified-update] ERROR: verifier metadata is missing or unsafe: %s\n' "$GH_VERIFIER_METADATA" >&2
+    return 1
+  }
   trusted_path_is_secure "$GH_VERIFIER" "attestation verifier" || return 1
+  trusted_path_is_secure "$GH_VERIFIER_METADATA" "verifier metadata" || return 1
 
-  actual_sha=$(sha256sum "$GH_VERIFIER" | awk '{print $1}') || return 1
-  [[ "$actual_sha" == "$expected_sha" ]] || {
-    printf '[routegate-verified-update] ERROR: pinned attestation verifier digest mismatch\n' >&2
+  while IFS= read -r path; do
+    case "$(basename -- "$path")" in
+      gh|runtime.env) ;;
+      *) unexpected=1 ;;
+    esac
+  done < <(find "$GH_VERIFIER_DIR" -mindepth 1 -maxdepth 1 -print)
+  ((unexpected == 0)) || {
+    printf '[routegate-verified-update] ERROR: verifier directory contains unexpected entries\n' >&2
+    return 1
+  }
+
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    [[ -n "$key" ]] || continue
+    case "$key" in
+      FORMAT_VERSION)
+        [[ -z "$meta_format" ]] || return 1
+        meta_format=$value
+        ;;
+      VERSION)
+        [[ -z "$meta_version" ]] || return 1
+        meta_version=$value
+        ;;
+      ARCH)
+        [[ -z "$meta_arch" ]] || return 1
+        meta_arch=$value
+        ;;
+      ARCHIVE_SHA256)
+        [[ -z "$meta_archive_sha" ]] || return 1
+        meta_archive_sha=$value
+        ;;
+      BINARY_SHA256)
+        [[ -z "$meta_binary_sha" ]] || return 1
+        meta_binary_sha=$value
+        ;;
+      SOURCE_URL)
+        [[ -z "$meta_source" ]] || return 1
+        meta_source=$value
+        ;;
+      *)
+        printf '[routegate-verified-update] ERROR: unsupported verifier metadata key: %s\n' "$key" >&2
+        return 1
+        ;;
+    esac
+  done <"$GH_VERIFIER_METADATA"
+
+  [[ "$meta_format" == "1" ]] || return 1
+  [[ "$meta_version" == "$GH_VERIFIER_VERSION" ]] || return 1
+  [[ "$meta_arch" == "$arch" ]] || return 1
+  [[ "$meta_archive_sha" == "$expected_archive_sha" ]] || return 1
+  [[ "$meta_binary_sha" =~ ^[a-f0-9]{64}$ ]] || return 1
+  [[ "$meta_source" == "$expected_source" ]] || return 1
+
+  actual_binary_sha=$(sha256sum "$GH_VERIFIER" | awk '{print $1}') || return 1
+  [[ "$actual_binary_sha" == "$meta_binary_sha" ]] || {
+    printf '[routegate-verified-update] ERROR: pinned attestation verifier binary digest mismatch\n' >&2
     return 1
   }
   verifier_supports_policy "$GH_VERIFIER" || {
@@ -239,7 +301,8 @@ install_verifier_archive() {
   local archive=$1
   local arch=$2
   local expected_sha=$3
-  local actual_sha extract_dir expected_binary
+  local source_url=$4
+  local actual_sha extract_dir expected_binary binary_sha
 
   actual_sha=$(sha256sum "$archive" | awk '{print $1}') || return 1
   [[ "$actual_sha" == "$expected_sha" ]] || {
@@ -265,15 +328,27 @@ install_verifier_archive() {
     printf '[routegate-verified-update] ERROR: downloaded verifier does not satisfy the required version/capability policy\n' >&2
     return 1
   }
+  binary_sha=$(sha256sum "$expected_binary" | awk '{print $1}') || return 1
 
   install -d -m 0755 "$GH_VERIFIER_DIR" || return 1
   install -m 0755 "$expected_binary" "$GH_VERIFIER" || return 1
+  install -m 0644 /dev/null "$GH_VERIFIER_METADATA" || return 1
+  cat >"$GH_VERIFIER_METADATA" <<EOF_METADATA
+FORMAT_VERSION=1
+VERSION=${GH_VERIFIER_VERSION}
+ARCH=${arch}
+ARCHIVE_SHA256=${expected_sha}
+BINARY_SHA256=${binary_sha}
+SOURCE_URL=${source_url}
+EOF_METADATA
+  chmod 0644 "$GH_VERIFIER_METADATA" || return 1
   validate_attestation_verifier || return 1
 }
 
 install_attestation_verifier() {
   require_root
   require_command awk
+  require_command basename
   require_command curl
   require_command find
   require_command grep
@@ -287,7 +362,7 @@ install_attestation_verifier() {
 
   validate_verifier_parent || die "trusted RouteGate verifier parent is unavailable"
 
-  if [[ -e "$GH_VERIFIER_DIR" || -L "$GH_VERIFIER_DIR" || -e "$GH_VERIFIER" || -L "$GH_VERIFIER" ]]; then
+  if [[ -e "$GH_VERIFIER_DIR" || -L "$GH_VERIFIER_DIR" || -e "$GH_VERIFIER" || -L "$GH_VERIFIER" || -e "$GH_VERIFIER_METADATA" || -L "$GH_VERIFIER_METADATA" ]]; then
     validate_attestation_verifier || die "existing attestation verifier state is not the pinned trusted runtime"
     log "pinned attestation verifier already installed: gh ${GH_VERIFIER_VERSION}"
     return 0
@@ -315,7 +390,7 @@ install_attestation_verifier() {
     --output "$archive" \
     "$url" || die "failed to download pinned attestation verifier"
 
-  if ! install_verifier_archive "$archive" "$arch" "$expected_sha"; then
+  if ! install_verifier_archive "$archive" "$arch" "$expected_sha" "$url"; then
     rm -rf -- "$GH_VERIFIER_DIR"
     die "failed to install pinned attestation verifier"
   fi
@@ -360,6 +435,7 @@ apply_verified_update() {
   require_command basename
   require_command chmod
   require_command cp
+  require_command find
   require_command grep
   require_command head
   require_command mkdir
