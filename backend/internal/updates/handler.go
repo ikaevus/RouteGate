@@ -73,15 +73,15 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := h.repo.CreatePreflight(r.Context(), user.ID)
+	lifecycleCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), preflightLifecycleTimeout)
+	defer cancel()
+
+	job, err := h.repo.CreatePreflight(lifecycleCtx, user.ID)
 	if err != nil {
 		h.logError("create update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create update preflight job."))
 		return
 	}
-
-	lifecycleCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), preflightLifecycleTimeout)
-	defer cancel()
 
 	h.record(lifecycleCtx, user.ID, "update.preflight.requested", job, audit.ResultSuccess, nil)
 
