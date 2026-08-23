@@ -16,27 +16,31 @@ type interruptedJobRepository interface {
 }
 
 func RecoverInterruptedJobs(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool) error {
-	repo := NewRepository(pool)
+	return recoverInterruptedJobs(ctx, logger, NewRepository(pool), audit.NewRecorder(logger, pool))
+}
+
+func recoverInterruptedJobs(ctx context.Context, logger *slog.Logger, repo interruptedJobRepository, recorder auditRecorder) error {
 	jobs, err := repo.RecoverInterruptedPreflights(ctx)
 	if err != nil {
 		return err
 	}
 
-	recorder := audit.NewRecorder(logger, pool)
 	for _, job := range jobs {
-		recorder.RecordSafe(ctx, audit.EventInput{
-			ActorType:    audit.ActorTypeSystem,
-			Action:       "update.preflight.interrupted",
-			ResourceType: "update_job",
-			ResourceID:   job.ID,
-			Result:       audit.ResultFailure,
-			Metadata: map[string]any{
-				"operation":  job.Operation,
-				"stage":      job.Stage,
-				"status":     job.Status,
-				"error_code": ErrorCodePreflightInterrupted,
-			},
-		})
+		if recorder != nil {
+			recorder.RecordSafe(ctx, audit.EventInput{
+				ActorType:    audit.ActorTypeSystem,
+				Action:       "update.preflight.interrupted",
+				ResourceType: "update_job",
+				ResourceID:   job.ID,
+				Result:       audit.ResultFailure,
+				Metadata: map[string]any{
+					"operation":  job.Operation,
+					"stage":      job.Stage,
+					"status":     job.Status,
+					"error_code": ErrorCodePreflightInterrupted,
+				},
+			})
+		}
 	}
 
 	if len(jobs) > 0 && logger != nil {
