@@ -14,6 +14,7 @@ import (
 	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
 	"github.com/ikaevus/routegate/backend/internal/observability"
 	"github.com/ikaevus/routegate/backend/internal/servers"
+	"github.com/ikaevus/routegate/backend/internal/updates"
 )
 
 type App struct {
@@ -41,6 +42,9 @@ func (a *App) Start(ctx context.Context) error {
 	a.pool = pool
 
 	if err := db.Migrate(ctx, pool, "migrations", a.logger); err != nil {
+		return err
+	}
+	if err := updates.RecoverInterruptedJobs(ctx, a.logger, pool); err != nil {
 		return err
 	}
 	if err := delivery.EnsureProviderSecretStore(ctx, pool, a.cfg, a.logger); err != nil {
