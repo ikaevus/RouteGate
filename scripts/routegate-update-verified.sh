@@ -10,6 +10,14 @@ TRUST_SIGNER_WORKFLOW="ikaevus/RouteGate/.github/workflows/release.yml"
 TRUST_PREDICATE_TYPE="https://slsa.dev/provenance/v1"
 TARGET_OS="linux"
 
+GH_VERIFIER_VERSION="2.97.0"
+GH_VERIFIER_PARENT="/usr/local/lib/routegate"
+GH_VERIFIER_DIR="${GH_VERIFIER_PARENT}/verifier"
+GH_VERIFIER="${GH_VERIFIER_DIR}/gh"
+GH_VERIFIER_RELEASE_BASE="https://github.com/cli/cli/releases/download/v${GH_VERIFIER_VERSION}"
+GH_VERIFIER_SHA_AMD64="a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112"
+GH_VERIFIER_SHA_ARM64="73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5"
+
 OPERATION=${1:-}
 if [[ -n "$OPERATION" ]]; then
   shift
@@ -37,6 +45,8 @@ usage() {
 RouteGate verified local update gate
 
 Usage:
+  sudo routegate-update-verified.sh install-verifier
+
   sudo routegate-update-verified.sh apply \
     --manifest /path/to/release-manifest.json \
     --manifest-attestation /path/to/release-manifest.attestation.json \
@@ -50,16 +60,20 @@ Trust policy is fixed in this executable:
   signer workflow: ikaevus/RouteGate/.github/workflows/release.yml
   predicate type: https://slsa.dev/provenance/v1
 
-The command performs no release discovery or artifact download. It snapshots the
-provided release files into a root-only temporary area, verifies those exact
-copies, derives the target commit and bundle digest from the verified contract,
-and only then invokes the privileged role-aware host transaction.
+The apply command performs no release discovery or RouteGate artifact download.
+It snapshots the provided release files into a root-only temporary area, verifies
+those exact copies with the fixed RouteGate-owned attestation verifier, derives
+the target commit and bundle digest from the verified contract, and only then
+invokes the privileged role-aware host transaction.
+
+The install-verifier command installs one pinned GitHub CLI release from its
+fixed upstream URL after checking the hard-coded SHA-256 for this architecture.
 USAGE
 }
 
 cleanup() {
   if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
-    rm -rf "$WORK_DIR"
+    rm -rf -- "$WORK_DIR"
   fi
 }
 
@@ -137,10 +151,182 @@ platform_architecture() {
   esac
 }
 
+verifier_expected_sha() {
+  case "$1" in
+    amd64) printf '%s\n' "$GH_VERIFIER_SHA_AMD64" ;;
+    arm64) printf '%s\n' "$GH_VERIFIER_SHA_ARM64" ;;
+    *) return 1 ;;
+  esac
+}
+
+trusted_path_is_secure() {
+  local path=$1
+  local label=$2
+  local owner permissions
+
+  owner=$(stat -c '%u' -- "$path") || return 1
+  permissions=$(stat -c '%A' -- "$path") || return 1
+  [[ "$owner" == "0" ]] || {
+    printf '[routegate-verified-update] ERROR: %s is not root-owned: %s\n' "$label" "$path" >&2
+    return 1
+  }
+  [[ "${permissions:5:1}" != "w" && "${permissions:8:1}" != "w" ]] || {
+    printf '[routegate-verified-update] ERROR: %s is group/world writable: %s\n' "$label" "$path" >&2
+    return 1
+  }
+}
+
+validate_verifier_parent() {
+  [[ -d "$GH_VERIFIER_PARENT" && ! -L "$GH_VERIFIER_PARENT" ]] || {
+    printf '[routegate-verified-update] ERROR: verifier parent is missing or unsafe: %s\n' "$GH_VERIFIER_PARENT" >&2
+    return 1
+  }
+  trusted_path_is_secure "$GH_VERIFIER_PARENT" "verifier parent" || return 1
+}
+
+verifier_supports_policy() {
+  local path=$1
+  local version_line
+  version_line=$("$path" --version 2>/dev/null | head -n1) || return 1
+  [[ "$version_line" == "gh version ${GH_VERIFIER_VERSION} "* ]] || return 1
+  "$path" attestation verify --help 2>/dev/null | grep -Fq -- '--predicate-type'
+}
+
+validate_attestation_verifier() {
+  local arch expected_sha actual_sha
+  arch=$(platform_architecture "$(uname -m)") || {
+    printf '[routegate-verified-update] ERROR: unsupported host architecture for attestation verifier\n' >&2
+    return 1
+  }
+  expected_sha=$(verifier_expected_sha "$arch") || return 1
+
+  validate_verifier_parent || return 1
+  [[ -d "$GH_VERIFIER_DIR" && ! -L "$GH_VERIFIER_DIR" ]] || {
+    printf '[routegate-verified-update] ERROR: verifier directory is missing or unsafe: %s\n' "$GH_VERIFIER_DIR" >&2
+    return 1
+  }
+  trusted_path_is_secure "$GH_VERIFIER_DIR" "verifier directory" || return 1
+  [[ -f "$GH_VERIFIER" && ! -L "$GH_VERIFIER" && -x "$GH_VERIFIER" ]] || {
+    printf '[routegate-verified-update] ERROR: pinned attestation verifier is missing or unsafe: %s\n' "$GH_VERIFIER" >&2
+    return 1
+  }
+  trusted_path_is_secure "$GH_VERIFIER" "attestation verifier" || return 1
+
+  actual_sha=$(sha256sum "$GH_VERIFIER" | awk '{print $1}') || return 1
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    printf '[routegate-verified-update] ERROR: pinned attestation verifier digest mismatch\n' >&2
+    return 1
+  }
+  verifier_supports_policy "$GH_VERIFIER" || {
+    printf '[routegate-verified-update] ERROR: pinned attestation verifier does not satisfy the required policy capability\n' >&2
+    return 1
+  }
+}
+
+validate_verifier_archive() {
+  local archive=$1
+  if tar -tzf "$archive" | awk '$0 ~ /^\// || $0 ~ /(^|\/)\.\.(\/|$)/ {found=1} END {exit !found}'; then
+    printf '[routegate-verified-update] ERROR: verifier archive contains an unsafe path\n' >&2
+    return 1
+  fi
+  if tar -tvzf "$archive" | awk '$1 ~ /^[lhbcp]/ {found=1} END {exit !found}'; then
+    printf '[routegate-verified-update] ERROR: verifier archive contains a link or special filesystem entry\n' >&2
+    return 1
+  fi
+}
+
+install_verifier_archive() {
+  local archive=$1
+  local arch=$2
+  local expected_sha=$3
+  local actual_sha extract_dir expected_binary
+
+  actual_sha=$(sha256sum "$archive" | awk '{print $1}') || return 1
+  [[ "$actual_sha" == "$expected_sha" ]] || {
+    printf '[routegate-verified-update] ERROR: downloaded verifier archive SHA-256 mismatch\n' >&2
+    return 1
+  }
+  validate_verifier_archive "$archive" || return 1
+
+  extract_dir="$WORK_DIR/extracted"
+  install -d -m 0700 "$extract_dir" || return 1
+  tar -xzf "$archive" -C "$extract_dir" --no-same-owner --no-same-permissions || return 1
+  expected_binary="$extract_dir/gh_${GH_VERIFIER_VERSION}_linux_${arch}/bin/gh"
+  [[ -f "$expected_binary" && ! -L "$expected_binary" ]] || {
+    printf '[routegate-verified-update] ERROR: verifier archive does not contain the expected binary path\n' >&2
+    return 1
+  }
+  [[ $(find "$extract_dir" -type f -path '*/bin/gh' | wc -l) -eq 1 ]] || {
+    printf '[routegate-verified-update] ERROR: verifier archive contains an ambiguous gh binary layout\n' >&2
+    return 1
+  }
+  chmod 0700 "$expected_binary" || return 1
+  verifier_supports_policy "$expected_binary" || {
+    printf '[routegate-verified-update] ERROR: downloaded verifier does not satisfy the required version/capability policy\n' >&2
+    return 1
+  }
+
+  install -d -m 0755 "$GH_VERIFIER_DIR" || return 1
+  install -m 0755 "$expected_binary" "$GH_VERIFIER" || return 1
+  validate_attestation_verifier || return 1
+}
+
+install_attestation_verifier() {
+  require_root
+  require_command awk
+  require_command curl
+  require_command find
+  require_command grep
+  require_command head
+  require_command install
+  require_command sha256sum
+  require_command stat
+  require_command tar
+  require_command uname
+  require_command wc
+
+  validate_verifier_parent || die "trusted RouteGate verifier parent is unavailable"
+
+  if [[ -e "$GH_VERIFIER_DIR" || -L "$GH_VERIFIER_DIR" || -e "$GH_VERIFIER" || -L "$GH_VERIFIER" ]]; then
+    validate_attestation_verifier || die "existing attestation verifier state is not the pinned trusted runtime"
+    log "pinned attestation verifier already installed: gh ${GH_VERIFIER_VERSION}"
+    return 0
+  fi
+
+  local arch expected_sha asset url
+  arch=$(platform_architecture "$(uname -m)") || die "unsupported host architecture: $(uname -m)"
+  expected_sha=$(verifier_expected_sha "$arch") || die "no pinned verifier digest for architecture: $arch"
+  asset="gh_${GH_VERIFIER_VERSION}_linux_${arch}.tar.gz"
+  url="${GH_VERIFIER_RELEASE_BASE}/${asset}"
+
+  WORK_DIR=$(mktemp -d /tmp/routegate-attestation-verifier.XXXXXX)
+  trap cleanup EXIT
+  local archive="$WORK_DIR/$asset"
+
+  log "downloading pinned GitHub CLI ${GH_VERIFIER_VERSION} verifier for linux/${arch}"
+  curl \
+    --fail \
+    --location \
+    --retry 3 \
+    --connect-timeout 15 \
+    --max-time 300 \
+    --proto '=https' \
+    --proto-redir '=https' \
+    --output "$archive" \
+    "$url" || die "failed to download pinned attestation verifier"
+
+  if ! install_verifier_archive "$archive" "$arch" "$expected_sha"; then
+    rm -rf -- "$GH_VERIFIER_DIR"
+    die "failed to install pinned attestation verifier"
+  fi
+
+  log "pinned attestation verifier installed: gh ${GH_VERIFIER_VERSION}"
+}
+
 verify_attestation() {
   local subject=$1
   local attestation=$2
-  gh attestation verify "$subject" \
+  "$GH_VERIFIER" attestation verify "$subject" \
     --repo "$TRUST_REPOSITORY" \
     --signer-workflow "$TRUST_SIGNER_WORKFLOW" \
     --predicate-type "$TRUST_PREDICATE_TYPE" \
@@ -167,21 +353,22 @@ print(value)
 PY
 }
 
-main() {
-  if [[ "$OPERATION" == "--help" || "$OPERATION" == "-h" || -z "$OPERATION" ]]; then
-    usage
-    if [[ -n "$OPERATION" ]]; then
-      exit 0
-    fi
-    exit 2
-  fi
-  [[ "$OPERATION" == "apply" ]] || die "unsupported operation: $OPERATION"
-
+apply_verified_update() {
   parse_args "$@"
   require_root
-  require_command gh
+  require_command awk
+  require_command basename
+  require_command chmod
+  require_command cp
+  require_command grep
+  require_command head
+  require_command mkdir
+  require_command mktemp
   require_command python3
+  require_command sha256sum
+  require_command stat
   require_command uname
+  validate_attestation_verifier || die "pinned attestation verifier is unavailable; run 'sudo routegate-update install-verifier'"
 
   local manifest_verifier="$SCRIPT_DIR/release_manifest.py"
   local transaction="$SCRIPT_DIR/routegate-update-transaction.sh"
@@ -252,6 +439,29 @@ main() {
     --sha256 "$verified_sha" \
     --commit "$verified_commit" \
     --role "$REQUESTED_ROLE"
+}
+
+main() {
+  if [[ "$OPERATION" == "--help" || "$OPERATION" == "-h" || -z "$OPERATION" ]]; then
+    usage
+    if [[ -n "$OPERATION" ]]; then
+      exit 0
+    fi
+    exit 2
+  fi
+
+  case "$OPERATION" in
+    install-verifier)
+      (($# == 0)) || die "install-verifier does not accept arguments"
+      install_attestation_verifier
+      ;;
+    apply)
+      apply_verified_update "$@"
+      ;;
+    *)
+      die "unsupported operation: $OPERATION"
+      ;;
+  esac
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
