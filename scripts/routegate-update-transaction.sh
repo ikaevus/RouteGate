@@ -111,18 +111,92 @@ cleanup() {
   fi
 }
 
+trusted_path_is_secure() {
+  local path=$1
+  local label=$2
+  local owner permissions
+
+  owner=$(stat -c '%u' -- "$path") || return 1
+  permissions=$(stat -c '%A' -- "$path") || return 1
+
+  [[ "$owner" == "$EUID" ]] || {
+    rg_update_die "$label is not owned by the privileged updater user: $path"
+    return 1
+  }
+  [[ "${permissions:5:1}" != "w" && "${permissions:8:1}" != "w" ]] || {
+    rg_update_die "$label is group/world writable: $path"
+    return 1
+  }
+}
+
+validate_trusted_toolchain_security() {
+  local state tool_dir entrypoint tool_parent entrypoint_parent path file
+  local expected_entrypoint actual_entrypoint
+
+  state=$(rg_update_toolchain_state) || return 1
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+  tool_parent=$(rg_update_path /usr/local/lib/routegate) || return 1
+  entrypoint_parent=$(dirname "$entrypoint") || return 1
+
+  for path in "$tool_parent" "$entrypoint_parent"; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      [[ -d "$path" && ! -L "$path" ]] || {
+        rg_update_die "trusted updater parent path is unsafe: $path"
+        return 1
+      }
+      trusted_path_is_secure "$path" "trusted updater parent" || return 1
+    fi
+  done
+
+  if [[ "$state" == "absent" ]]; then
+    return 0
+  fi
+
+  trusted_path_is_secure "$tool_dir" "trusted updater directory" || return 1
+  trusted_path_is_secure "$entrypoint" "trusted updater entrypoint" || return 1
+  while IFS= read -r file; do
+    trusted_path_is_secure "$tool_dir/$file" "trusted updater component" || return 1
+  done < <(rg_update_toolchain_files)
+
+  [[ -x "$tool_dir/routegate-update-transaction.sh" && -x "$tool_dir/routegate-update-verified.sh" ]] || {
+    rg_update_die "trusted updater executable components are not executable"
+    return 1
+  }
+
+  expected_entrypoint=$'#!/usr/bin/env bash\nset -Eeuo pipefail\nexec /usr/local/lib/routegate/update/routegate-update-verified.sh "$@"'
+  actual_entrypoint=$(cat -- "$entrypoint") || return 1
+  [[ "$actual_entrypoint" == "$expected_entrypoint" ]] || {
+    rg_update_die "trusted updater entrypoint content is not canonical"
+    return 1
+  }
+}
+
 rollback() {
   local rc=$?
-  local rollback_rc=0
+  local platform_rollback_rc=0
+  local toolchain_rollback_rc=0
   trap - ERR
   set +e
 
   if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" && -n "$ROLE" ]]; then
     log "failure stage=$STAGE; starting role-aware rollback"
-    rg_update_restore_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" || rollback_rc=$?
-    if ((rollback_rc != 0)); then
-      printf '[routegate-update-transaction] WARNING: rollback reported exit %d; backup=%s\n' \
-        "$rollback_rc" "$BACKUP_DIR" >&2
+
+    rg_update_restore_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" \
+      || platform_rollback_rc=$?
+    rg_update_restore_toolchain_backup "$BACKUP_DIR" \
+      || toolchain_rollback_rc=$?
+    if ((toolchain_rollback_rc == 0)); then
+      validate_trusted_toolchain_security || toolchain_rollback_rc=$?
+    fi
+
+    if ((platform_rollback_rc != 0)); then
+      printf '[routegate-update-transaction] WARNING: platform rollback reported exit %d; backup=%s\n' \
+        "$platform_rollback_rc" "$BACKUP_DIR" >&2
+    fi
+    if ((toolchain_rollback_rc != 0)); then
+      printf '[routegate-update-transaction] WARNING: trusted updater rollback reported exit %d; backup=%s\n' \
+        "$toolchain_rollback_rc" "$BACKUP_DIR" >&2
     fi
     if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
       printf '[routegate-update-transaction] WARNING: database restore reported exit %d; backup=%s\n' \
@@ -142,9 +216,33 @@ acquire_lock() {
 
 require_role_commands() {
   local role=$1
-  rg_update_require_commands awk cp date find flock install rm sed sha256sum tar systemctl uname || return 1
+  rg_update_require_commands \
+    awk \
+    bash \
+    basename \
+    cat \
+    chmod \
+    cp \
+    date \
+    dirname \
+    find \
+    flock \
+    grep \
+    head \
+    install \
+    mktemp \
+    python3 \
+    rm \
+    sed \
+    sha256sum \
+    sleep \
+    stat \
+    tar \
+    systemctl \
+    uname \
+    wc || return 1
   if rg_update_role_has_management "$role"; then
-    rg_update_require_commands curl pg_dump pg_restore psql || return 1
+    rg_update_require_commands chown curl pg_dump pg_restore psql || return 1
   fi
 }
 
@@ -169,6 +267,9 @@ main() {
   require_role_commands "$ROLE" || exit 1
   log "resolved role=$ROLE arch=$TARGET_ARCH"
 
+  STAGE=toolchain_preflight
+  validate_trusted_toolchain_security
+
   STAGE=preflight
   rg_update_role_preflight "$ROLE"
 
@@ -189,6 +290,7 @@ main() {
   STAGE=backup
   BACKUP_DIR="${BACKUP_ROOT%/}/update-${ROLE}-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
   rg_update_create_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL"
+  rg_update_create_toolchain_backup "$BACKUP_DIR"
   trap rollback ERR
 
   STAGE=apply
@@ -200,6 +302,13 @@ main() {
     DB_MAY_BE_MUTATED=1
   fi
   rg_update_start_and_validate_role "$ROLE" "$DB_URL" "$RG_UPDATE_EXPECTED_SCHEMA"
+
+  STAGE=toolchain_promotion
+  rg_update_apply_toolchain "$WORK_DIR"
+
+  STAGE=toolchain_validation
+  validate_trusted_toolchain_security
+  rg_update_validate_toolchain
 
   STAGE=complete
   trap - ERR

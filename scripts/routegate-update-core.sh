@@ -14,6 +14,8 @@ RG_UPDATE_MANAGER_SERVICE=${RG_UPDATE_MANAGER_SERVICE:-routegate-manager}
 RG_UPDATE_AGENT_SERVICE=${RG_UPDATE_AGENT_SERVICE:-routegate-agent}
 RG_UPDATE_HEALTH_URL=${RG_UPDATE_HEALTH_URL:-http://127.0.0.1:8080/api/admin/health}
 RG_UPDATE_MANAGER_OWNER=${RG_UPDATE_MANAGER_OWNER:-routegate:routegate}
+RG_UPDATE_TOOLCHAIN_DIR=/usr/local/lib/routegate/update
+RG_UPDATE_ENTRYPOINT=/usr/local/sbin/routegate-update
 
 RG_UPDATE_BUNDLE_VERSION=""
 RG_UPDATE_BUNDLE_COMMIT=""
@@ -165,6 +167,26 @@ rg_update_expected_schema_from_dir() {
   printf '%s\n' "$expected"
 }
 
+rg_update_toolchain_files() {
+  printf '%s\n' \
+    release_manifest.py \
+    routegate-update-core.sh \
+    routegate-update-role.sh \
+    routegate-update-transaction.sh \
+    routegate-update-verified.sh
+}
+
+rg_update_candidate_toolchain_complete() {
+  local work_dir=$1
+  local file
+  while IFS= read -r file; do
+    [[ -f "$work_dir/tools/$file" && ! -L "$work_dir/tools/$file" ]] || {
+      rg_update_die "release bundle is missing trusted updater component: tools/$file"
+      return 1
+    }
+  done < <(rg_update_toolchain_files)
+}
+
 rg_update_verify_and_extract_bundle() {
   local bundle=$1
   local expected_sha=$2
@@ -214,6 +236,7 @@ rg_update_verify_and_extract_bundle() {
       return 1
     }
   done
+  rg_update_candidate_toolchain_complete "$work_dir" || return 1
 
   rg_update_read_bundle_metadata \
     "$work_dir/metadata/manifest.env" \
@@ -222,6 +245,186 @@ rg_update_verify_and_extract_bundle() {
     "$expected_arch" || return 1
   rg_update_expected_schema_from_dir "$work_dir/manager/migrations" >/dev/null || return 1
   rg_update_log "verified bundle version=${RG_UPDATE_BUNDLE_VERSION} commit=${RG_UPDATE_BUNDLE_COMMIT} schema=${RG_UPDATE_EXPECTED_SCHEMA}"
+}
+
+rg_update_toolchain_state() {
+  local tool_dir entrypoint file path unexpected=0
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+
+  if [[ ! -e "$tool_dir" && ! -L "$tool_dir" && ! -e "$entrypoint" && ! -L "$entrypoint" ]]; then
+    printf 'absent\n'
+    return 0
+  fi
+
+  [[ -d "$tool_dir" && ! -L "$tool_dir" ]] || {
+    rg_update_die "trusted updater directory is partial or unsafe: $tool_dir"
+    return 1
+  }
+  [[ -f "$entrypoint" && ! -L "$entrypoint" && -x "$entrypoint" ]] || {
+    rg_update_die "trusted updater entrypoint is partial or unsafe: $entrypoint"
+    return 1
+  }
+
+  while IFS= read -r file; do
+    path="$tool_dir/$file"
+    [[ -f "$path" && ! -L "$path" ]] || {
+      rg_update_die "trusted updater toolchain is incomplete: $path"
+      return 1
+    }
+  done < <(rg_update_toolchain_files)
+
+  while IFS= read -r path; do
+    case "$(basename -- "$path")" in
+      release_manifest.py|routegate-update-core.sh|routegate-update-role.sh|routegate-update-transaction.sh|routegate-update-verified.sh) ;;
+      *) unexpected=1 ;;
+    esac
+  done < <(find "$tool_dir" -mindepth 1 -maxdepth 1 -print)
+  ((unexpected == 0)) || {
+    rg_update_die "trusted updater directory contains unexpected entries"
+    return 1
+  }
+
+  printf 'complete\n'
+}
+
+rg_update_create_toolchain_backup() {
+  local backup_dir=$1
+  local state tool_dir entrypoint backup_tools file
+  state=$(rg_update_toolchain_state) || return 1
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+
+  cat >"$backup_dir/update-toolchain.meta" <<EOF_TOOLCHAIN_META
+FORMAT_VERSION=1
+STATE=$state
+EOF_TOOLCHAIN_META
+  chmod 0600 "$backup_dir/update-toolchain.meta" || return 1
+
+  if [[ "$state" == "complete" ]]; then
+    backup_tools="$backup_dir/update-toolchain"
+    install -d -m 0700 "$backup_tools" || return 1
+    while IFS= read -r file; do
+      cp -a -- "$tool_dir/$file" "$backup_tools/$file" || return 1
+    done < <(rg_update_toolchain_files)
+    cp -a -- "$entrypoint" "$backup_dir/routegate-update-entrypoint" || return 1
+  fi
+
+  rg_update_log "trusted updater backup state=$state"
+}
+
+rg_update_write_entrypoint() {
+  local entrypoint
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+  install -d -m 0755 "$(dirname "$entrypoint")" || return 1
+  install -m 0755 /dev/null "$entrypoint" || return 1
+  cat >"$entrypoint" <<'EOF_ROUTEGATE_UPDATE_ENTRYPOINT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+exec /usr/local/lib/routegate/update/routegate-update-verified.sh "$@"
+EOF_ROUTEGATE_UPDATE_ENTRYPOINT
+  chmod 0755 "$entrypoint" || return 1
+}
+
+rg_update_apply_toolchain() {
+  local work_dir=$1
+  local tool_dir file
+  rg_update_candidate_toolchain_complete "$work_dir" || return 1
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+
+  rm -rf -- "$tool_dir" || return 1
+  install -d -m 0755 "$tool_dir" || return 1
+  install -m 0755 "$work_dir/tools/release_manifest.py" "$tool_dir/release_manifest.py" || return 1
+  install -m 0644 "$work_dir/tools/routegate-update-core.sh" "$tool_dir/routegate-update-core.sh" || return 1
+  install -m 0644 "$work_dir/tools/routegate-update-role.sh" "$tool_dir/routegate-update-role.sh" || return 1
+  install -m 0755 "$work_dir/tools/routegate-update-transaction.sh" "$tool_dir/routegate-update-transaction.sh" || return 1
+  install -m 0755 "$work_dir/tools/routegate-update-verified.sh" "$tool_dir/routegate-update-verified.sh" || return 1
+  rg_update_write_entrypoint || return 1
+  rg_update_log "trusted updater toolchain promoted"
+}
+
+rg_update_validate_toolchain() {
+  local tool_dir entrypoint state
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+  state=$(rg_update_toolchain_state) || return 1
+  [[ "$state" == "complete" ]] || {
+    rg_update_die "trusted updater toolchain is not complete after promotion"
+    return 1
+  }
+
+  bash -n \
+    "$tool_dir/routegate-update-core.sh" \
+    "$tool_dir/routegate-update-role.sh" \
+    "$tool_dir/routegate-update-transaction.sh" \
+    "$tool_dir/routegate-update-verified.sh" || return 1
+  python3 "$tool_dir/release_manifest.py" --help >/dev/null || return 1
+  bash "$tool_dir/routegate-update-transaction.sh" --help >/dev/null || return 1
+  bash "$tool_dir/routegate-update-verified.sh" --help >/dev/null || return 1
+  grep -Fxq 'exec /usr/local/lib/routegate/update/routegate-update-verified.sh "$@"' "$entrypoint" || {
+    rg_update_die "trusted updater entrypoint validation failed"
+    return 1
+  }
+  rg_update_log "trusted updater self-check passed"
+}
+
+rg_update_restore_toolchain_backup() {
+  local backup_dir=$1
+  local meta state tool_dir entrypoint backup_tools file rollback_rc=0
+  meta="$backup_dir/update-toolchain.meta"
+  [[ -f "$meta" && ! -L "$meta" ]] || {
+    rg_update_die "trusted updater backup metadata is missing"
+    return 1
+  }
+  [[ "$(sed -n 's/^FORMAT_VERSION=//p' "$meta" | head -n1)" == "1" ]] || {
+    rg_update_die "unsupported trusted updater backup metadata"
+    return 1
+  }
+  state=$(sed -n 's/^STATE=//p' "$meta" | head -n1) || return 1
+  [[ "$state" == "absent" || "$state" == "complete" ]] || {
+    rg_update_die "invalid trusted updater backup state: ${state:-missing}"
+    return 1
+  }
+
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+
+  if [[ "$state" == "absent" ]]; then
+    rm -rf -- "$tool_dir" || rollback_rc=1
+    rm -f -- "$entrypoint" || rollback_rc=1
+    rg_update_log "trusted updater rollback restored absent state"
+    return "$rollback_rc"
+  fi
+
+  backup_tools="$backup_dir/update-toolchain"
+  [[ -d "$backup_tools" && ! -L "$backup_tools" ]] || {
+    rg_update_die "trusted updater backup directory is missing"
+    return 1
+  }
+  [[ -f "$backup_dir/routegate-update-entrypoint" && ! -L "$backup_dir/routegate-update-entrypoint" ]] || {
+    rg_update_die "trusted updater entrypoint backup is missing"
+    return 1
+  }
+  while IFS= read -r file; do
+    [[ -f "$backup_tools/$file" && ! -L "$backup_tools/$file" ]] || {
+      rg_update_die "trusted updater backup is incomplete: $file"
+      return 1
+    }
+  done < <(rg_update_toolchain_files)
+
+  rm -rf -- "$tool_dir" || rollback_rc=1
+  install -d -m 0755 "$tool_dir" || rollback_rc=1
+  while IFS= read -r file; do
+    cp -a -- "$backup_tools/$file" "$tool_dir/$file" || rollback_rc=1
+  done < <(rg_update_toolchain_files)
+  install -d -m 0755 "$(dirname "$entrypoint")" || rollback_rc=1
+  install -m 0755 "$backup_dir/routegate-update-entrypoint" "$entrypoint" || rollback_rc=1
+
+  if ((rollback_rc == 0)); then
+    rg_update_validate_toolchain || rollback_rc=1
+  fi
+  rg_update_log "trusted updater rollback restored complete state"
+  return "$rollback_rc"
 }
 
 rg_update_require_hybrid_layout() {

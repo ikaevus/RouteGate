@@ -128,6 +128,7 @@ jobs:
             scripts/test-recovery-tool.sh \
             scripts/test-update-core.sh \
             scripts/test-update-role.sh \
+            scripts/test-update-toolchain.sh \
             scripts/test-update-verified.sh \
             scripts/validate-production-like-deploy.sh
 
@@ -151,6 +152,7 @@ jobs:
             scripts/test-recovery-tool.sh \
             scripts/test-update-core.sh \
             scripts/test-update-role.sh \
+            scripts/test-update-toolchain.sh \
             scripts/test-update-verified.sh \
             scripts/validate-production-like-deploy.sh
 
@@ -162,6 +164,7 @@ jobs:
           bash scripts/test-recovery-tool.sh
           bash scripts/test-update-core.sh
           bash scripts/test-update-role.sh
+          bash scripts/test-update-toolchain.sh
           bash scripts/test-update-verified.sh
           bash scripts/routegate-update-transaction.sh --help >/dev/null
           bash scripts/routegate-update-verified.sh --help >/dev/null
