@@ -60,8 +60,11 @@ jobs:
           COMMIT: ${{ github.sha }}
         run: scripts/build-release-bundle.sh
 
-      - name: Verify checksums and bundle structure
+      - name: Verify release manifest, checksums and bundle structure
         run: |
+          python3 scripts/release_manifest.py verify \
+            --manifest dist/release-manifest.json \
+            --artifacts-dir dist
           cd dist
           sha256sum -c SHA256SUMS
           for bundle in routegate-*.tar.gz; do
@@ -73,6 +76,7 @@ jobs:
             grep -Fq './manager/migrations/' "$listing"
             grep -Fxq './metadata/manifest.env' "$listing"
           done
+          test -s release-manifest.json
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -81,6 +85,7 @@ jobs:
           path: |
             dist/routegate-*.tar.gz
             dist/SHA256SUMS
+            dist/release-manifest.json
           if-no-files-found: error
 
       - name: Publish GitHub release assets
@@ -90,13 +95,18 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/routegate-*.tar.gz dist/SHA256SUMS --clobber
+            gh release upload "$TAG_NAME" \
+              dist/routegate-*.tar.gz \
+              dist/SHA256SUMS \
+              dist/release-manifest.json \
+              --clobber
           else
             notes_file="docs/release/${TAG_NAME}.md"
             if [[ -f "$notes_file" ]]; then
               gh release create "$TAG_NAME" \
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
+                dist/release-manifest.json \
                 --verify-tag \
                 --notes-file "$notes_file" \
                 --title "RouteGate $TAG_NAME"
@@ -104,6 +114,7 @@ jobs:
               gh release create "$TAG_NAME" \
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
+                dist/release-manifest.json \
                 --verify-tag \
                 --generate-notes \
                 --title "RouteGate $TAG_NAME"
