@@ -38,7 +38,12 @@ install_stubs() {
 
   cat >"$stub_dir/systemctl" <<'EOF_SYSTEMCTL'
 #!/usr/bin/env bash
-case "${1:-}" in
+set -euo pipefail
+action=${1:-}
+if [[ -n ${RG_TEST_SYSTEMCTL_FAIL_ACTION:-} && "$action" == "$RG_TEST_SYSTEMCTL_FAIL_ACTION" ]]; then
+  exit 73
+fi
+case "$action" in
   is-active) printf 'active\n'; exit 0 ;;
   *) exit 0 ;;
 esac
@@ -52,6 +57,7 @@ EOF_CHOWN
   cat >"$stub_dir/pg_dump" <<'EOF_PG_DUMP'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ ${RG_TEST_PG_DUMP_FAIL:-0} != 1 ]] || exit 74
 for arg in "$@"; do
   case "$arg" in
     --file=*) printf 'db-backup\n' >"${arg#--file=}"; exit 0 ;;
@@ -62,6 +68,8 @@ EOF_PG_DUMP
 
   cat >"$stub_dir/pg_restore" <<'EOF_PG_RESTORE'
 #!/usr/bin/env bash
+set -euo pipefail
+[[ ${RG_TEST_PG_RESTORE_FAIL:-0} != 1 ]] || exit 75
 exit 0
 EOF_PG_RESTORE
 
@@ -216,6 +224,46 @@ agent_token: "rg_agent_example"'
   RG_UPDATE_ROOT=""
 }
 
+test_backup_failure_propagates() {
+  local root="$TMP_DIR/backup-failure-root"
+  local backup="$TMP_DIR/backup-failure/one"
+  local db_url
+  populate_management "$root"
+  RG_UPDATE_ROOT=$root
+  db_url=$(rg_update_read_manager_database_url)
+
+  export RG_TEST_PG_DUMP_FAIL=1
+  if rg_update_create_role_backup management "$backup" "$db_url" >/dev/null 2>&1; then
+    fail "failed pg_dump unexpectedly produced a successful Management backup"
+  fi
+  unset RG_TEST_PG_DUMP_FAIL
+
+  RG_UPDATE_ROOT=""
+}
+
+test_rollback_failure_is_reported_after_best_effort_restore() {
+  local root="$TMP_DIR/rollback-failure-root"
+  local work="$TMP_DIR/rollback-failure-work"
+  local backup="$TMP_DIR/rollback-failure-backups/one"
+  populate_vpn "$root"
+  make_work_dir "$work"
+  RG_UPDATE_ROOT=$root
+
+  rg_update_create_role_backup vpn "$backup"
+  rg_update_apply_role_files vpn "$work"
+  assert_file_content "$root/usr/local/bin/routegate-agent" agent-new
+
+  export RG_TEST_SYSTEMCTL_FAIL_ACTION=daemon-reload
+  if rg_update_restore_role_backup vpn "$backup" >/dev/null 2>&1; then
+    fail "rollback with failed daemon-reload unexpectedly returned success"
+  fi
+  unset RG_TEST_SYSTEMCTL_FAIL_ACTION
+
+  assert_file_content "$root/usr/local/bin/routegate-agent" agent-old
+  assert_file_content "$root/etc/systemd/system/routegate-agent.service" agent-unit-old
+  RG_UPDATE_ROOT=""
+}
+
 STUB_DIR="$TMP_DIR/stubs"
 install_stubs "$STUB_DIR"
 PATH="$STUB_DIR:$PATH"
@@ -225,5 +273,7 @@ test_marker_policy
 test_manager_env_is_data
 test_management_round_trip
 test_vpn_round_trip
+test_backup_failure_propagates
+test_rollback_failure_is_reported_after_best_effort_restore
 
 printf 'RouteGate role-aware update tests passed.\n'
