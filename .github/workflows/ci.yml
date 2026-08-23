@@ -149,8 +149,6 @@ jobs:
             scripts/routegate-update-role.sh \
             scripts/routegate-update-transaction.sh \
             scripts/routegate-update-verified.sh \
-            scripts/test-agent-installer.sh \
-            scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-bootstrap.sh \
@@ -159,6 +157,10 @@ jobs:
             scripts/test-update-toolchain.sh \
             scripts/test-update-verified.sh \
             scripts/validate-production-like-deploy.sh
+          # These contract tests intentionally grep literal shell source containing "$helper".
+          shellcheck -x -e SC2016 \
+            scripts/test-agent-installer.sh \
+            scripts/test-clean-vps-installer.sh
 
       - name: Run installer and host-operation unit tests
         run: |
