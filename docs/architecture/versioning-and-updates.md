@@ -40,7 +40,9 @@ Each release output contains:
 
 - `routegate-<version>-linux-amd64.tar.gz` and/or `routegate-<version>-linux-arm64.tar.gz`;
 - `SHA256SUMS`;
-- `release-manifest.json`.
+- `release-manifest.json`;
+- `release-manifest.attestation.json`;
+- `release-bundles.attestation.json`.
 
 ## Release manifest contract
 
@@ -84,13 +86,55 @@ Example shape:
 
 CI exercises both positive and negative manifest cases and verifies the real amd64 release bundle. Tagged release workflows verify the complete manifest before publishing it as a GitHub Release asset.
 
-## Integrity is not authenticity
+## Release authenticity and provenance
 
-`SHA256SUMS` and the RG-96A manifest establish artifact integrity and internal consistency. They do **not** by themselves prove that a remote release was authorized by the RouteGate project, because an attacker controlling the publication channel could replace both an artifact and its unsigned digest/manifest.
+RG-96A2 adds cryptographic build provenance using GitHub Artifact Attestations and Sigstore.
 
-Therefore RG-96A does not yet make remote releases trusted input for unattended installation. The next trust milestone must add a cryptographic signature over the canonical release manifest and pin the corresponding verification identity/key in the updater trust policy.
+The release workflow creates separate SLSA provenance attestations for:
 
-RouteGate must not represent an unsigned manifest as a signed or trusted release.
+- the canonical `release-manifest.json`;
+- all RouteGate platform bundles produced by the same workflow run.
+
+The workflow uses GitHub Actions OIDC to obtain a short-lived Sigstore signing certificate. RouteGate therefore does not store a long-lived release-signing private key in repository or environment secrets. For the public RouteGate repository, the attestation is signed through the public-good Sigstore trust infrastructure and associated with the RouteGate repository through GitHub's attestation service.
+
+The workflow preserves the generated Sigstore bundles as stable release assets:
+
+- `release-manifest.attestation.json`;
+- `release-bundles.attestation.json`.
+
+The attestation step is pinned to an immutable full commit SHA rather than a mutable action tag.
+
+### Trust policy
+
+A future RouteGate updater must not treat "has a valid Sigstore signature" as sufficient. Verification must enforce all of these boundaries:
+
+1. the artifact or manifest digest matches the attestation subject;
+2. the attestation is associated with `ikaevus/RouteGate`;
+3. the signer workflow is exactly `ikaevus/RouteGate/.github/workflows/release.yml`;
+4. the attestation predicate is the expected SLSA build-provenance type;
+5. the manifest itself passes the strict RG-96A1 structural and artifact-integrity checks;
+6. the selected artifact matches the requested OS/architecture and its digest matches the verified manifest.
+
+The release workflow enforces the same repository + signer-workflow identity immediately after creating the attestations, using the local Sigstore bundles for deterministic verification before publishing any GitHub Release assets.
+
+An operator can perform the same offline-bundle verification with GitHub CLI, for example:
+
+```bash
+gh attestation verify release-manifest.json \
+  --repo ikaevus/RouteGate \
+  --signer-workflow ikaevus/RouteGate/.github/workflows/release.yml \
+  --bundle release-manifest.attestation.json
+```
+
+For a platform bundle, use the same policy with `release-bundles.attestation.json`.
+
+### What provenance does and does not prove
+
+The RG-96A1 SHA-256 manifest proves artifact integrity and internal consistency. RG-96A2 adds a cryptographically verifiable statement that the artifact was produced and attested by the expected RouteGate GitHub Actions release workflow.
+
+This still does not prove that a release is bug-free, secure, or appropriate for a particular installation. Release provenance is one trust gate in the update lifecycle, not a substitute for CI, compatibility checks, migration preflight, backup, health validation, or rollback.
+
+A compromised release workflow or authorized repository change can still produce a correctly attested malicious artifact. Protecting the release workflow and branch/review policy therefore remains part of the release trust boundary.
 
 ## Current deployment model
 
@@ -129,8 +173,8 @@ Official builds remain builds of the auditable AGPLv3-or-later project. Update b
 The intended sequence is:
 
 1. **RG-96A — Release Trust & Manifest**
-   - A1: manifest contract, deterministic release metadata, artifact verification and publication;
-   - A2: cryptographic manifest signing and pinned verification policy.
+   - A1 complete: manifest contract, deterministic release metadata, artifact verification and publication;
+   - A2 complete: cryptographic build provenance, offline attestation bundles, and pinned repository/signer-workflow verification policy.
 2. **RG-96B — Host Update Engine**
    - extract the reusable backup/apply/migrate/health/rollback lifecycle from production-like deployment behind a narrow privileged host-operation boundary.
 3. **RG-96C — Update Jobs & API**
