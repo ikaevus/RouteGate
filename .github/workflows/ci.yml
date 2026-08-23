@@ -138,6 +138,9 @@ jobs:
           bash scripts/test-grafana-installer.sh
           bash scripts/test-recovery-tool.sh
 
+      - name: Run release manifest tests
+        run: python3 -m unittest scripts/test_release_manifest.py
+
       - name: Build and verify amd64 release bundle
         env:
           VERSION: ci-test
@@ -146,6 +149,9 @@ jobs:
           OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
         run: |
           scripts/build-release-bundle.sh
+          python3 scripts/release_manifest.py verify \
+            --manifest "$OUTPUT_DIR/release-manifest.json" \
+            --artifacts-dir "$OUTPUT_DIR"
           cd "$OUTPUT_DIR"
           sha256sum -c SHA256SUMS
           tar -tzf routegate-ci-test-linux-amd64.tar.gz > bundle-files.txt
@@ -155,6 +161,7 @@ jobs:
           grep -Fq './manager/migrations/' bundle-files.txt
           grep -Fxq './tools/routegate-recovery' bundle-files.txt
           grep -Fxq './metadata/manifest.env' bundle-files.txt
+          test -s release-manifest.json
 
       - name: Upload amd64 clean-host E2E bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -163,6 +170,7 @@ jobs:
           path: |
             ${{ runner.temp }}/routegate-dist/routegate-ci-test-linux-amd64.tar.gz
             ${{ runner.temp }}/routegate-dist/SHA256SUMS
+            ${{ runner.temp }}/routegate-dist/release-manifest.json
           if-no-files-found: error
           retention-days: 7
 
