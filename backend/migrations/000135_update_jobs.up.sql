@@ -19,6 +19,3 @@ CREATE TABLE update_jobs (
 
 CREATE INDEX idx_update_jobs_created_at ON update_jobs(created_at DESC);
 CREATE INDEX idx_update_jobs_status_created_at ON update_jobs(status, created_at DESC);
-CREATE UNIQUE INDEX idx_update_jobs_active_preflight
-    ON update_jobs(operation)
-    WHERE operation = 'preflight' AND status IN ('pending', 'running');
