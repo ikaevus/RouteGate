@@ -173,6 +173,17 @@ test_unsafe_archive_rejected() {
   fi
 }
 
+test_clean_vps_preflights_verifier_path() {
+  local root="$TMP_DIR/clean-vps-preflight-root"
+  local conflicts
+  mkdir -p "$root/usr/local/lib/routegate/verifier"
+
+  conflicts=$(bash -c 'source "$1"; collect_routegate_conflicts "$2"' \
+    _ "$ROOT_DIR/install.sh" "$root")
+  grep -Fxq '/usr/local/lib/routegate/verifier' <<<"$conflicts" \
+    || fail "Clean VPS preflight did not report the pinned verifier path"
+}
+
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "run this test as root"
 
 test_pinned_release_contract
@@ -181,5 +192,6 @@ test_tampered_binary_fails_closed
 test_tampered_metadata_fails_closed
 test_writable_or_unexpected_state_fails_closed
 test_unsafe_archive_rejected
+test_clean_vps_preflights_verifier_path
 
 printf 'RouteGate pinned attestation verifier runtime tests passed.\n'
