@@ -65,7 +65,7 @@ runtime_diagnostics() {
 }
 
 classify_sing_box_failure() {
-  local journal lower failure_class
+  local journal lower failure_class conflict_line conflict_port socket_line owner_process
   journal=$(journalctl -u sing-box.service -n 120 --no-pager -o cat 2>/dev/null || true)
   lower=$(printf '%s' "$journal" | tr '[:upper:]' '[:lower:]')
   failure_class=unknown
@@ -89,6 +89,21 @@ classify_sing_box_failure() {
   fi
 
   log "runtime=sing-box failure-class=${failure_class}"
+
+  if [[ "$failure_class" == address-in-use ]]; then
+    conflict_line=$(printf '%s\n' "$journal" | grep -Ei 'address already in use|bind: address already in use' | tail -n 1 || true)
+    conflict_port=$(printf '%s\n' "$conflict_line" | grep -Eo ':[0-9]{1,5}' | tail -n 1 | tr -d ':' || true)
+    if [[ "$conflict_port" =~ ^[0-9]+$ ]] && (( conflict_port >= 1 && conflict_port <= 65535 )); then
+      socket_line=$(ss -H -ltnp "sport = :${conflict_port}" 2>/dev/null | head -n 1 || true)
+      if [[ -z "$socket_line" ]]; then
+        socket_line=$(ss -H -lunp "sport = :${conflict_port}" 2>/dev/null | head -n 1 || true)
+      fi
+      owner_process=$(printf '%s\n' "$socket_line" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -n 1)
+      log "runtime=sing-box conflict-port=${conflict_port} owner-process=${owner_process:-unknown}"
+    else
+      log "runtime=sing-box conflict-port=unknown owner-process=unknown"
+    fi
+  fi
 }
 
 sing_box_diagnostics() {
@@ -121,8 +136,8 @@ sing_box_diagnostics() {
   log "runtime=sing-box unit-execstart=${unit_execstart:-unknown}"
   classify_sing_box_failure
 
-  # Raw journal/config output never leaves the host. Only a fixed failure class,
-  # systemd metadata, config file basenames and validation outcomes are exposed.
+  # Raw journal/config/socket output never leaves the host. Only fixed failure
+  # classes plus the conflicting port and process name are exposed.
 }
 
 http_diagnostics() {
