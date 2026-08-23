@@ -285,11 +285,41 @@ test_transaction_rolls_back_platform_and_absent_toolchain_on_validation_failure(
   [[ ! -e "$root/usr/local/sbin/routegate-update" ]] || fail "failed transaction left promoted updater entrypoint"
 }
 
+test_transaction_rejects_writable_trusted_verifier_before_mutation() {
+  local root="$TMP_DIR/transaction-insecure-root"
+  local first_bundle="$TMP_DIR/transaction-insecure-first.tar.gz"
+  local second_bundle="$TMP_DIR/transaction-insecure-second.tar.gz"
+  local backups="$TMP_DIR/transaction-insecure-backups"
+  local stubs="$TMP_DIR/transaction-insecure-stubs"
+  local verifier
+
+  populate_vpn_host "$root"
+  make_systemctl_stub "$stubs"
+  make_transaction_bundle "$first_bundle" trusted valid
+  make_transaction_bundle "$second_bundle" rejected valid
+
+  run_vpn_transaction "$root" "$first_bundle" "$backups" "$stubs" >/dev/null
+  assert_file_contains "$root/usr/local/bin/routegate-agent" 'agent-trusted'
+
+  verifier="$root/usr/local/lib/routegate/update/routegate-update-verified.sh"
+  sudo chmod g+w "$verifier"
+
+  if run_vpn_transaction "$root" "$second_bundle" "$backups" "$stubs" >/dev/null 2>&1; then
+    fail "transaction accepted a group-writable trusted verifier"
+  fi
+
+  assert_file_contains "$root/usr/local/bin/routegate-agent" 'agent-trusted'
+  if grep -Fq -- 'agent-rejected' "$root/usr/local/bin/routegate-agent"; then
+    fail "insecure trusted updater preflight mutated the Agent"
+  fi
+}
+
 test_absent_promotion_and_restore
 test_complete_round_trip
 test_partial_and_unexpected_state_fail_closed
 test_missing_candidate_component_fails
 test_transaction_promotes_toolchain_after_vpn_health
 test_transaction_rolls_back_platform_and_absent_toolchain_on_validation_failure
+test_transaction_rejects_writable_trusted_verifier_before_mutation
 
 printf 'RouteGate trusted updater promotion tests passed.\n'
