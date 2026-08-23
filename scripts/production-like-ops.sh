@@ -179,7 +179,7 @@ protocol_activation_diagnostics() {
     return 0
   fi
 
-  local counts latest protocol_rows line account_index desired active primary job_status job_age job_started_age job_error_class
+  local counts latest protocol_rows account_index desired active primary job_status job_age job_started_age job_error_class
   counts=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
     SELECT
       count(*) FILTER (WHERE status = 'pending'),
