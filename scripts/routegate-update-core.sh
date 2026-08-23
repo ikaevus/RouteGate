@@ -151,7 +151,7 @@ rg_update_expected_schema_from_dir() {
       | LC_ALL=C sort \
       | tail -n 1 \
       | sed 's/\.up\.sql$//'
-  )
+  ) || return 1
   [[ -n "$expected" ]] || {
     rg_update_die "release bundle contains no database migrations"
     return 1
@@ -191,15 +191,15 @@ rg_update_verify_and_extract_bundle() {
     return 1
   }
 
-  actual_sha=$(sha256sum "$bundle" | awk '{print $1}')
+  actual_sha=$(sha256sum "$bundle" | awk '{print $1}') || return 1
   [[ "$actual_sha" == "$expected_sha" ]] || {
     rg_update_die "bundle SHA-256 mismatch"
     return 1
   }
 
-  rg_update_validate_archive "$bundle"
-  install -d -m 0700 "$work_dir"
-  tar -xzf "$bundle" -C "$work_dir" --no-same-owner --no-same-permissions
+  rg_update_validate_archive "$bundle" || return 1
+  install -d -m 0700 "$work_dir" || return 1
+  tar -xzf "$bundle" -C "$work_dir" --no-same-owner --no-same-permissions || return 1
 
   for required in \
     bin/routegate-manager \
@@ -219,8 +219,8 @@ rg_update_verify_and_extract_bundle() {
     "$work_dir/metadata/manifest.env" \
     "$expected_commit" \
     "$expected_os" \
-    "$expected_arch"
-  rg_update_expected_schema_from_dir "$work_dir/manager/migrations" >/dev/null
+    "$expected_arch" || return 1
+  rg_update_expected_schema_from_dir "$work_dir/manager/migrations" >/dev/null || return 1
   rg_update_log "verified bundle version=${RG_UPDATE_BUNDLE_VERSION} commit=${RG_UPDATE_BUNDLE_COMMIT} schema=${RG_UPDATE_EXPECTED_SCHEMA}"
 }
 
@@ -234,7 +234,7 @@ rg_update_require_hybrid_layout() {
     /etc/systemd/system/routegate-manager.service \
     /etc/systemd/system/routegate-agent.service \
     /etc/routegate/manager.env; do
-    path=$(rg_update_path "$path")
+    path=$(rg_update_path "$path") || return 1
     [[ -e "$path" && ! -L "$path" ]] || {
       rg_update_die "required RouteGate platform path is missing or unsafe: $path"
       return 1
@@ -265,39 +265,39 @@ rg_update_create_backup() {
     return 1
   }
 
-  rg_update_require_hybrid_layout
+  rg_update_require_hybrid_layout || return 1
 
   backup_root=$(dirname "$backup_dir")
-  install -d -m 0700 "$backup_root"
+  install -d -m 0700 "$backup_root" || return 1
   [[ ! -e "$backup_dir" ]] || {
     rg_update_die "backup directory already exists: $backup_dir"
     return 1
   }
-  install -d -m 0700 "$backup_dir"
+  install -d -m 0700 "$backup_dir" || return 1
 
-  manager_bin=$(rg_update_path /usr/local/bin/routegate-manager)
-  agent_bin=$(rg_update_path /usr/local/bin/routegate-agent)
-  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations)
-  frontend_dir=$(rg_update_path /var/www/routegate)
-  manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service)
-  agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service)
-  manager_env=$(rg_update_path /etc/routegate/manager.env)
+  manager_bin=$(rg_update_path /usr/local/bin/routegate-manager) || return 1
+  agent_bin=$(rg_update_path /usr/local/bin/routegate-agent) || return 1
+  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations) || return 1
+  frontend_dir=$(rg_update_path /var/www/routegate) || return 1
+  manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service) || return 1
+  agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service) || return 1
+  manager_env=$(rg_update_path /etc/routegate/manager.env) || return 1
 
-  cp -a "$manager_bin" "$backup_dir/routegate-manager"
-  cp -a "$agent_bin" "$backup_dir/routegate-agent"
-  cp -a "$manager_unit" "$backup_dir/routegate-manager.service"
-  cp -a "$agent_unit" "$backup_dir/routegate-agent.service"
-  cp -a "$manager_env" "$backup_dir/manager.env"
-  tar -czf "$backup_dir/manager-migrations.tar.gz" -C "$(dirname "$migrations_dir")" "$(basename "$migrations_dir")"
-  tar -czf "$backup_dir/frontend.tar.gz" -C "$(dirname "$frontend_dir")" "$(basename "$frontend_dir")"
-  pg_dump --format=custom --no-owner --file="$backup_dir/routegate.pgdump" "$db_url"
+  cp -a "$manager_bin" "$backup_dir/routegate-manager" || return 1
+  cp -a "$agent_bin" "$backup_dir/routegate-agent" || return 1
+  cp -a "$manager_unit" "$backup_dir/routegate-manager.service" || return 1
+  cp -a "$agent_unit" "$backup_dir/routegate-agent.service" || return 1
+  cp -a "$manager_env" "$backup_dir/manager.env" || return 1
+  tar -czf "$backup_dir/manager-migrations.tar.gz" -C "$(dirname "$migrations_dir")" "$(basename "$migrations_dir")" || return 1
+  tar -czf "$backup_dir/frontend.tar.gz" -C "$(dirname "$frontend_dir")" "$(basename "$frontend_dir")" || return 1
+  pg_dump --format=custom --no-owner --file="$backup_dir/routegate.pgdump" "$db_url" || return 1
 
   cat >"$backup_dir/backup.meta" <<EOF_BACKUP_META
 FORMAT_VERSION=1
 CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF_BACKUP_META
 
-  chmod -R go-rwx "$backup_dir"
+  chmod -R go-rwx "$backup_dir" || return 1
   rg_update_log "backup complete: $backup_dir"
 }
 
@@ -305,33 +305,33 @@ rg_update_apply_platform_files() {
   local work_dir=$1
   local manager_bin agent_bin migrations_dir frontend_dir manager_unit agent_unit
 
-  manager_bin=$(rg_update_path /usr/local/bin/routegate-manager)
-  agent_bin=$(rg_update_path /usr/local/bin/routegate-agent)
-  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations)
-  frontend_dir=$(rg_update_path /var/www/routegate)
-  manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service)
-  agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service)
+  manager_bin=$(rg_update_path /usr/local/bin/routegate-manager) || return 1
+  agent_bin=$(rg_update_path /usr/local/bin/routegate-agent) || return 1
+  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations) || return 1
+  frontend_dir=$(rg_update_path /var/www/routegate) || return 1
+  manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service) || return 1
+  agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service) || return 1
 
-  systemctl stop "$RG_UPDATE_AGENT_SERVICE"
-  systemctl stop "$RG_UPDATE_MANAGER_SERVICE"
+  systemctl stop "$RG_UPDATE_AGENT_SERVICE" || return 1
+  systemctl stop "$RG_UPDATE_MANAGER_SERVICE" || return 1
 
-  install -m 0755 "$work_dir/bin/routegate-manager" "$manager_bin"
-  install -m 0755 "$work_dir/bin/routegate-agent" "$agent_bin"
+  install -m 0755 "$work_dir/bin/routegate-manager" "$manager_bin" || return 1
+  install -m 0755 "$work_dir/bin/routegate-agent" "$agent_bin" || return 1
 
-  rm -rf "$migrations_dir"
-  cp -a "$work_dir/manager/migrations" "$migrations_dir"
-  chown -R "$RG_UPDATE_MANAGER_OWNER" "$(dirname "$migrations_dir")"
+  rm -rf "$migrations_dir" || return 1
+  cp -a "$work_dir/manager/migrations" "$migrations_dir" || return 1
+  chown -R "$RG_UPDATE_MANAGER_OWNER" "$(dirname "$migrations_dir")" || return 1
 
-  install -d -m 0755 "$frontend_dir"
-  find "$frontend_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-  cp -a "$work_dir/frontend/." "$frontend_dir/"
-  chown -R root:root "$frontend_dir"
-  find "$frontend_dir" -type d -exec chmod 0755 {} +
-  find "$frontend_dir" -type f -exec chmod 0644 {} +
+  install -d -m 0755 "$frontend_dir" || return 1
+  find "$frontend_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
+  cp -a "$work_dir/frontend/." "$frontend_dir/" || return 1
+  chown -R root:root "$frontend_dir" || return 1
+  find "$frontend_dir" -type d -exec chmod 0755 {} + || return 1
+  find "$frontend_dir" -type f -exec chmod 0644 {} + || return 1
 
-  install -m 0644 "$work_dir/systemd/routegate-manager.service" "$manager_unit"
-  install -m 0644 "$work_dir/systemd/routegate-agent.service" "$agent_unit"
-  systemctl daemon-reload
+  install -m 0644 "$work_dir/systemd/routegate-manager.service" "$manager_unit" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-agent.service" "$agent_unit" || return 1
+  systemctl daemon-reload || return 1
 
   rg_update_log "platform files applied; VPN runtimes were left untouched"
 }
@@ -340,13 +340,13 @@ rg_update_wait_manager() {
   local attempts=${1:-45}
   local i
 
-  systemctl start "$RG_UPDATE_MANAGER_SERVICE"
+  systemctl start "$RG_UPDATE_MANAGER_SERVICE" || return 1
   for ((i = 0; i < attempts; i++)); do
     if curl -fsS "$RG_UPDATE_HEALTH_URL" >/dev/null 2>&1; then
       rg_update_log "manager health check passed"
       return 0
     fi
-    sleep 1
+    sleep 1 || return 1
   done
 
   rg_update_die "manager did not become healthy within ${attempts}s"
@@ -357,7 +357,7 @@ rg_update_validate_database_schema() {
   local expected_schema=$2
   local applied_schema
 
-  applied_schema=$(psql "$db_url" -qAtc "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
+  applied_schema=$(psql "$db_url" -qAtc "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1") || return 1
   [[ "$applied_schema" == "$expected_schema" ]] || {
     rg_update_die "database schema mismatch after update: applied=${applied_schema:-missing} expected=$expected_schema"
     return 1
@@ -369,13 +369,13 @@ rg_update_wait_agent() {
   local attempts=${1:-30}
   local i
 
-  systemctl start "$RG_UPDATE_AGENT_SERVICE"
+  systemctl start "$RG_UPDATE_AGENT_SERVICE" || return 1
   for ((i = 0; i < attempts; i++)); do
     if systemctl is-active --quiet "$RG_UPDATE_AGENT_SERVICE"; then
       rg_update_log "agent service is active"
       return 0
     fi
-    sleep 1
+    sleep 1 || return 1
   done
 
   rg_update_die "agent did not become active within ${attempts}s"
@@ -387,7 +387,7 @@ rg_update_restore_backup() {
   local restore_database=${3:-0}
   local manager_bin agent_bin migrations_dir frontend_dir manager_unit agent_unit manager_env
   local migrations_parent frontend_parent
-  local restore_rc=0
+  local restore_rc=0 rollback_rc=0
 
   [[ -d "$backup_dir" && ! -L "$backup_dir" ]] || {
     rg_update_die "backup directory is missing or unsafe: $backup_dir"
@@ -408,13 +408,13 @@ rg_update_restore_backup() {
     }
   done
 
-  manager_bin=$(rg_update_path /usr/local/bin/routegate-manager)
-  agent_bin=$(rg_update_path /usr/local/bin/routegate-agent)
-  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations)
-  frontend_dir=$(rg_update_path /var/www/routegate)
-  manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service)
-  agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service)
-  manager_env=$(rg_update_path /etc/routegate/manager.env)
+  manager_bin=$(rg_update_path /usr/local/bin/routegate-manager) || return 1
+  agent_bin=$(rg_update_path /usr/local/bin/routegate-agent) || return 1
+  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations) || return 1
+  frontend_dir=$(rg_update_path /var/www/routegate) || return 1
+  manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service) || return 1
+  agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service) || return 1
+  manager_env=$(rg_update_path /etc/routegate/manager.env) || return 1
   migrations_parent=$(dirname "$migrations_dir")
   frontend_parent=$(dirname "$frontend_dir")
 
@@ -424,6 +424,7 @@ rg_update_restore_backup() {
   if [[ "$restore_database" == "1" ]]; then
     if [[ -z "$db_url" || ! -s "$backup_dir/routegate.pgdump" ]]; then
       RG_UPDATE_DB_RESTORE_RC=1
+      rollback_rc=1
       printf '%s WARNING: database restore requested but database backup is unavailable\n' "$RG_UPDATE_LOG_PREFIX" >&2
     else
       pg_restore \
@@ -436,30 +437,32 @@ rg_update_restore_backup() {
         "$backup_dir/routegate.pgdump" >/dev/null || restore_rc=$?
       RG_UPDATE_DB_RESTORE_RC=$restore_rc
       if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
+        rollback_rc=1
         printf '%s WARNING: database restore failed (exit %d); continuing file/service rollback\n' \
           "$RG_UPDATE_LOG_PREFIX" "$RG_UPDATE_DB_RESTORE_RC" >&2
       fi
     fi
   fi
 
-  install -m 0755 "$backup_dir/routegate-manager" "$manager_bin"
-  install -m 0755 "$backup_dir/routegate-agent" "$agent_bin"
+  install -m 0755 "$backup_dir/routegate-manager" "$manager_bin" || rollback_rc=1
+  install -m 0755 "$backup_dir/routegate-agent" "$agent_bin" || rollback_rc=1
 
-  rm -rf "$migrations_dir"
-  install -d -m 0755 "$migrations_parent"
-  tar -xzf "$backup_dir/manager-migrations.tar.gz" -C "$migrations_parent"
-  chown -R "$RG_UPDATE_MANAGER_OWNER" "$migrations_parent"
+  rm -rf "$migrations_dir" || rollback_rc=1
+  install -d -m 0755 "$migrations_parent" || rollback_rc=1
+  tar -xzf "$backup_dir/manager-migrations.tar.gz" -C "$migrations_parent" || rollback_rc=1
+  chown -R "$RG_UPDATE_MANAGER_OWNER" "$migrations_parent" || rollback_rc=1
 
-  rm -rf "$frontend_dir"
-  install -d -m 0755 "$frontend_parent"
-  tar -xzf "$backup_dir/frontend.tar.gz" -C "$frontend_parent"
+  rm -rf "$frontend_dir" || rollback_rc=1
+  install -d -m 0755 "$frontend_parent" || rollback_rc=1
+  tar -xzf "$backup_dir/frontend.tar.gz" -C "$frontend_parent" || rollback_rc=1
 
-  install -m 0644 "$backup_dir/routegate-manager.service" "$manager_unit"
-  install -m 0644 "$backup_dir/routegate-agent.service" "$agent_unit"
-  install -m 0600 "$backup_dir/manager.env" "$manager_env"
+  install -m 0644 "$backup_dir/routegate-manager.service" "$manager_unit" || rollback_rc=1
+  install -m 0644 "$backup_dir/routegate-agent.service" "$agent_unit" || rollback_rc=1
+  install -m 0600 "$backup_dir/manager.env" "$manager_env" || rollback_rc=1
 
-  systemctl daemon-reload
-  systemctl start "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || true
-  systemctl start "$RG_UPDATE_AGENT_SERVICE" >/dev/null 2>&1 || true
+  systemctl daemon-reload || rollback_rc=1
+  systemctl start "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || rollback_rc=1
+  systemctl start "$RG_UPDATE_AGENT_SERVICE" >/dev/null 2>&1 || rollback_rc=1
   rg_update_log "rollback attempt completed; VPN runtimes were left untouched; backup retained at $backup_dir"
+  return "$rollback_rc"
 }
