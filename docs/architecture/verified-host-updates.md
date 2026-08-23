@@ -88,17 +88,19 @@ A canonical RouteGate release manifest can describe multiple architectures. A ho
 
 This keeps the global release contract strict without requiring cross-architecture bundle downloads.
 
-## Trust bootstrap rule
+## Trust bootstrap and updater-tool promotion
 
 The updater code inside a candidate bundle is not trusted merely because it is inside that bundle.
 
-The currently installed, already trusted RouteGate verifier must validate the candidate release. Only after the candidate bundle has passed the current verifier and has been applied does the verifier shipped inside that new release become part of the trusted installation and become eligible to verify a later release.
+The verifier used to establish trust in version N+1 must already belong to the trusted version N installation or another equally trusted local administrative context. An unverified candidate must never be extracted and allowed to execute its own `routegate-update-verified.sh` as the mechanism that establishes the candidate's authenticity.
 
-In other words:
+Every release bundle carries the manifest verifier and host-update toolchain so that a future trusted promotion step can advance the local verifier together with the platform. **B2b itself does not yet install or promote those tools on the host.** The current B2a platform apply path updates Manager/Agent/UI/migrations, not the updater toolchain.
 
-`trusted version N verifier -> verifies version N+1 -> version N+1 becomes trusted -> its verifier may verify N+2`.
+A later privileged integration step must therefore promote the verified updater files only after candidate provenance has succeeded, and that promotion must participate in backup/rollback. Until such a step exists, the previously trusted local verifier remains authoritative.
 
-A future installer/update packaging step must preserve this chain and must never extract and execute `routegate-update-verified.sh` from an unverified candidate as the mechanism used to establish that candidate's trust.
+The intended eventual chain is:
+
+`trusted version N verifier -> verifies N+1 -> trusted transaction promotes N+1 platform + updater toolchain -> N+1 verifier may verify N+2`.
 
 ## GitHub CLI dependency
 
@@ -106,7 +108,7 @@ B2b deliberately reuses the RG-96A GitHub Artifact Attestation contract instead 
 
 Therefore `gh` is an explicit verifier dependency for this B2b primitive. It is not an update-discovery mechanism: `routegate-update-verified.sh` itself does not query releases or download artifacts.
 
-Future production packaging may replace the CLI dependency with a dedicated verifier implementation or package the required verifier in another trusted way, but it must preserve the same repository, signer-workflow, predicate, subject-digest, and manifest-integrity policy.
+CI checks that the available GitHub CLI supports the pinned `--predicate-type` policy. Future production packaging may replace the CLI dependency with a dedicated verifier implementation or package the required verifier in another trusted way, but it must preserve the same repository, signer-workflow, predicate, subject-digest, and manifest-integrity policy.
 
 ## Manager boundary
 
@@ -130,6 +132,7 @@ Until that orchestration exists, the Manager continues to report manual update s
 - RG-96B1 — shared host update core proven through production-like deployment: complete.
 - RG-96B2a — role-aware root-only host transaction: complete.
 - RG-96B2b — fixed-policy verified release gate: implemented by this change and gated on CI/review before merge.
+- trusted updater-tool promotion/installation: still required before Manager orchestration can safely depend on the local B2b gate.
 - RG-96C — durable update jobs, discovery, preflight, progress, result, audit and rollback API: planned.
 - RG-96D — explicit one-click Admin UI workflow: planned.
 - RG-96E — multi-node rolling updates: planned.
