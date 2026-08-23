@@ -2,7 +2,9 @@ package updates
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,16 +18,34 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
+// CreatePreflight allocates the job ID before issuing the INSERT. If the SQL
+// result is ambiguous, the returned Job still carries that ID so the caller
+// can immediately reconcile a row that may already have committed.
 func (r *Repository) CreatePreflight(ctx context.Context, createdByUserID string) (Job, error) {
-	return scanJob(r.pool.QueryRow(ctx, `
+	id, err := newUpdateJobID()
+	if err != nil {
+		return Job{}, err
+	}
+	pending := Job{
+		ID:              id,
+		Operation:       OperationPreflight,
+		Status:          StatusPending,
+		Stage:           StagePreflight,
+		RequestPayload:  json.RawMessage(`{}`),
+		ResultPayload:   json.RawMessage(`{}`),
+		CreatedByUserID: createdByUserID,
+	}
+
+	job, err := scanJob(r.pool.QueryRow(ctx, `
 		INSERT INTO update_jobs (
+			id,
 			operation,
 			status,
 			stage,
 			request_payload,
 			created_by_user_id
 		)
-		VALUES ($1, $2, $3, '{}'::jsonb, NULLIF($4, '')::uuid)
+		VALUES ($1::uuid, $2, $3, $4, '{}'::jsonb, NULLIF($5, '')::uuid)
 		RETURNING
 			id::text,
 			operation,
@@ -39,7 +59,21 @@ func (r *Repository) CreatePreflight(ctx context.Context, createdByUserID string
 			updated_at,
 			started_at,
 			completed_at
-	`, OperationPreflight, StatusPending, StagePreflight, createdByUserID))
+	`, id, OperationPreflight, StatusPending, StagePreflight, createdByUserID))
+	if err != nil {
+		return pending, err
+	}
+	return job, nil
+}
+
+func newUpdateJobID() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", err
+	}
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
 }
 
 func (r *Repository) MarkRunning(ctx context.Context, id string) (Job, error) {
