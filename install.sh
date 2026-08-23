@@ -483,6 +483,7 @@ collect_routegate_conflicts() {
 	/usr/local/bin/hysteria \
     /usr/local/bin/mtg \
     /usr/local/lib/routegate/update \
+    /usr/local/lib/routegate/verifier \
     /usr/local/sbin/routegate-recovery \
     /usr/local/sbin/routegate-update \
     /etc/routegate/manager.env \

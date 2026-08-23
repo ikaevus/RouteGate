@@ -26,8 +26,27 @@ make_bundle_fixture() {
   cp "$ROOT_DIR/scripts/routegate-update-core.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-role.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-transaction.sh" "$bundle/tools/"
-  cp "$ROOT_DIR/scripts/routegate-update-verified.sh" "$bundle/tools/"
-  chmod 0755 "$bundle/tools/routegate-update-bootstrap.sh"
+
+  cat >"$bundle/tools/routegate-update-verified.sh" <<'EOF_VERIFIED_FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  --help|-h)
+    printf 'verified-fixture\n'
+    ;;
+  install-verifier)
+    root=${RG_UPDATE_ROOT:?test root is required}
+    install -d -m 0700 "$root/var/lib/routegate-test"
+    printf 'ready\n' >"$root/var/lib/routegate-test/verifier-runtime"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF_VERIFIED_FIXTURE
+  chmod 0755 \
+    "$bundle/tools/routegate-update-bootstrap.sh" \
+    "$bundle/tools/routegate-update-verified.sh"
 }
 
 run_bootstrap() {
@@ -55,6 +74,8 @@ test_fresh_bootstrap_and_preserve() {
   [[ $(stat -c '%a' "$tool_dir/routegate-update-core.sh") == 644 ]] || fail "core mode is not 0644"
   [[ $(stat -c '%a' "$tool_dir/routegate-update-verified.sh") == 755 ]] || fail "verified gate mode is not 0755"
   [[ $(stat -c '%u' "$tool_dir/routegate-update-verified.sh") == 0 ]] || fail "trusted verifier is not root-owned"
+  sudo test -f "$root/var/lib/routegate-test/verifier-runtime" \
+    || fail "fresh bootstrap did not invoke verifier runtime installation"
 
   local before
   before=$(sha256sum "$tool_dir/routegate-update-verified.sh" | awk '{print $1}')

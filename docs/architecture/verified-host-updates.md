@@ -60,7 +60,7 @@ The caller cannot supply the trusted repository, signer workflow, predicate type
 
 The verified gate performs the following sequence:
 
-1. require root and fixed verifier dependencies;
+1. require root and validate the fixed RouteGate-owned attestation verifier runtime;
 2. require each supplied input to be a readable regular non-symlink file;
 3. copy all supplied release material into a new root-only temporary directory;
 4. stop using the caller-provided source paths after that snapshot;
@@ -139,7 +139,7 @@ Fresh Clean VPS and VPN Node installations establish the same fixed updater layo
 
 The release-bundle contract requires the bootstrap helper together with the complete runtime updater toolchain. A bundle missing any of these components is rejected by canonical manifest verification and by the installers before bootstrap.
 
-The bootstrap helper is deliberately narrower than the normal update transaction. It does not discover releases, download artifacts, verify GitHub provenance, select a deployment role, or mutate Manager/Agent platform state. Its only responsibility is to establish or validate the local privileged updater layout after the installer has accepted the release bundle according to the installer's existing release policy.
+The bootstrap helper is deliberately narrower than the normal update transaction. It does not discover RouteGate releases, verify RouteGate GitHub provenance, select a deployment role, or mutate Manager/Agent platform state. Its first responsibility is to establish or validate the local privileged updater layout after the installer has accepted the release bundle according to the installer's existing release policy. B2c3 then layers the fixed attestation-verifier runtime onto that trusted updater bootstrap.
 
 Before any updater write, bootstrap checks the fixed parent paths and refuses symlinked or insecure parents. It then handles only two acceptable local updater states:
 
@@ -150,8 +150,8 @@ Partial or unsafe updater state fails closed. Ordinary first-bootstrap runtime o
 
 Installer ordering is intentionally role-aware:
 
-- Clean VPS / Hybrid installation completes platform configuration and final health verification first, then bootstraps the updater, and only after successful bootstrap writes installer `STATUS=complete`;
-- VPN Node installation installs and starts the Agent, waits for successful Agent registration, and only then bootstraps the updater.
+- Clean VPS / Hybrid installation completes platform configuration and final health verification first, then bootstraps the updater and verifier runtime, and only after successful bootstrap writes installer `STATUS=complete`;
+- VPN Node installation installs and starts the Agent, waits for successful Agent registration, and only then bootstraps the updater and verifier runtime.
 
 Both installer wrappers explicitly remove `RG_UPDATE_ROOT` from the helper environment. `RG_UPDATE_ROOT` exists only to virtualize filesystem paths in tests and must never redirect the production trusted updater installation.
 
@@ -159,32 +159,76 @@ Clean VPS conflict detection also treats the fixed updater paths as RouteGate-ow
 
 ### Fresh-install trust limitation
 
-B2c2 does **not** upgrade the authenticity semantics of the existing fresh installers. At this stage they still accept their release bundle through the existing `SHA256SUMS` installer flow. The bootstrap helper therefore does not claim that a fresh installation has passed the B2b GitHub Artifact Attestation provenance gate.
+B2c2 and B2c3 do **not** upgrade the authenticity semantics of the existing fresh RouteGate installers. At this stage they still accept their RouteGate release bundle through the existing `SHA256SUMS` installer flow. The bootstrap helper therefore does not claim that the initial RouteGate installation itself has passed the B2b GitHub Artifact Attestation provenance gate.
 
-This distinction is intentional: bootstrap establishes the local updater trust *layout* from the release already trusted by the installer; B2b establishes provenance for later updates using an already trusted local verifier.
+This distinction is intentional: B2c2 establishes the local updater trust layout from the release already accepted by the installer; B2c3 establishes a fixed local Artifact Attestation verifier runtime for future B2b operations; B2b establishes provenance for later RouteGate updates using that already trusted local verifier.
 
-A compatible `gh attestation verify` implementation with the pinned `--predicate-type` capability is also not installed automatically by B2c2. If such a verifier runtime is present, bootstrap reports it as available. If it is absent or incompatible, the trusted updater files still exist, but update execution is not considered ready until a compatible verifier runtime is supplied through a separately reviewed packaging path.
+The project must therefore not describe B2c2 or B2c3 alone as changing the initial-install provenance model, enabling release discovery, or enabling automatic, one-click, or rolling updates.
 
-The project must therefore not describe B2c2 alone as enabling automatic updates, one-click updates, release discovery, or an operational self-update path on every newly installed host.
+## B2c3: pinned attestation verifier runtime
 
-## GitHub CLI dependency
+B2b no longer resolves `gh` from the host `PATH`. The production Artifact Attestation verifier is a separate RouteGate-owned trust object at the fixed path:
 
-B2b deliberately reuses the RG-96A GitHub Artifact Attestation contract instead of introducing a second signing system. At this stage the privileged verifier uses `gh attestation verify` with the preserved local attestation bundles.
+- `/usr/local/lib/routegate/verifier/gh` — the verifier executable;
+- `/usr/local/lib/routegate/verifier/runtime.env` — canonical root-owned runtime metadata.
 
-Therefore `gh` is an explicit verifier dependency for this B2b primitive. It is not an update-discovery mechanism: `routegate-update-verified.sh` itself does not query releases or download artifacts.
+The trusted updater pins one GitHub CLI version and one official upstream release archive digest per supported architecture. The verifier URL, version, archive SHA-256, installation path, trusted RouteGate repository, signer workflow, and attestation predicate are not caller-configurable.
 
-CI checks that the available GitHub CLI supports the pinned `--predicate-type` policy. Future production packaging may replace the CLI dependency with a dedicated verifier implementation or package the required verifier in another trusted way, but it must preserve the same repository, signer-workflow, predicate, subject-digest, and manifest-integrity policy.
+`sudo routegate-update install-verifier` performs the verifier bootstrap for an existing host. Fresh Clean VPS and VPN Node installations invoke the same operation automatically after the B2c2 updater bootstrap has completed successfully.
+
+Verifier installation performs the following sequence:
+
+1. require root and validate the fixed RouteGate verifier parent path;
+2. resolve only the current supported architecture (`amd64` or `arm64`);
+3. construct the immutable pinned GitHub CLI release asset URL from trusted constants;
+4. download that exact asset over HTTPS only;
+5. compare the downloaded tar archive with the hard-coded architecture-specific SHA-256;
+6. reject archive traversal, links, and special filesystem entries before extraction;
+7. require the one canonical `gh_<version>_linux_<arch>/bin/gh` binary path;
+8. require the exact pinned GitHub CLI version and the `attestation verify --predicate-type` capability;
+9. install the binary into the fixed RouteGate-owned verifier directory;
+10. record canonical metadata with format version, verifier version, architecture, upstream archive SHA-256, installed binary SHA-256, and fixed source URL;
+11. validate the complete installed runtime before reporting success.
+
+The hard-coded upstream archive SHA-256 is the verifier supply-chain anchor. The installed binary SHA-256 is derived only after the trusted archive digest has matched and is then recorded in root-owned metadata for local-integrity checks. These are intentionally different digests for different objects and must not be conflated.
+
+Before every B2b `apply`, privileged code validates the local verifier state again. It rejects:
+
+- a missing, partial, or symlinked verifier runtime;
+- non-root-owned verifier paths;
+- group- or world-writable verifier paths;
+- unexpected files in the verifier directory;
+- metadata with an unknown or duplicate key;
+- a version, architecture, upstream archive digest, or source URL that does not equal the pinned policy;
+- an installed binary whose current SHA-256 differs from the recorded root-owned binary digest;
+- a verifier that does not report the exact pinned GitHub CLI version or required predicate capability.
+
+If the fixed verifier is unavailable or invalid, B2b fails closed before provenance verification or host mutation. A `gh` executable available elsewhere in `PATH` is never a fallback trust path.
+
+### Existing-host transition
+
+B2c3 intentionally does not add a sixth file to the B2c1 updater-toolchain format. An existing B2c1/B2c2 host can therefore receive the B2c3 `routegate-update-verified.sh` through the existing five-file trusted-updater promotion contract. The operator then runs `sudo routegate-update install-verifier` once before the next B2b update.
+
+Verifier rotation is a separate controlled lifecycle concern. B2c3 deliberately uses no `latest` URL, mutable package repository, caller-selected verifier version, or silent PATH fallback.
+
+## GitHub CLI verifier dependency
+
+B2b deliberately reuses the RG-96A GitHub Artifact Attestation contract instead of introducing a second signing system. The dependency is now operationally packaged as the pinned RouteGate-owned verifier runtime rather than treated as an arbitrary system `gh` dependency.
+
+The fixed verifier download is not RouteGate release discovery: `install-verifier` downloads only the exact GitHub CLI asset whose version, URL pattern, and archive digest are already fixed in the trusted updater. Normal B2b `apply` performs no verifier download and no RouteGate release discovery.
+
+CI continues to verify the required `--predicate-type` capability and additionally exercises local verifier integrity, unsafe archive rejection, fresh-install bootstrap, and the no-`PATH`-fallback boundary. A future dedicated verifier implementation may replace GitHub CLI only if it preserves the same repository, signer-workflow, predicate, subject-digest, manifest-integrity, and fixed-local-trust properties.
 
 ## Manager boundary
 
-B2a, B2b, B2c1, and B2c2 remain outside Manager and Web UI control.
+B2a, B2b, B2c1, B2c2, and B2c3 remain outside Manager and Web UI control.
 
 A future RG-96C orchestration layer may discover releases and stage candidate files, but the privileged boundary must remain narrow:
 
 - Manager may request an update operation;
 - Manager may not override trust roots;
 - Manager may not choose the commit/SHA passed to the root transaction;
-- Manager may not redirect the trusted updater executable tree;
+- Manager may not redirect the trusted updater or verifier executable trees;
 - Manager may not request arbitrary shell commands;
 - privileged code must continue to detect the host role itself;
 - update state, progress, audit, and administrator approval belong above this boundary.
@@ -199,7 +243,8 @@ Until that orchestration exists, the Manager continues to report manual update s
 - RG-96B2a — role-aware root-only host transaction: complete.
 - RG-96B2b — fixed-policy verified release gate: complete.
 - RG-96B2c1 — trusted updater promotion/rollback inside the host transaction: complete.
-- RG-96B2c2 — bootstrap the trusted updater on fresh Clean VPS and VPN Node installations: implemented by this change and gated on CI/review before merge.
+- RG-96B2c2 — bootstrap the trusted updater on fresh Clean VPS and VPN Node installations: complete.
+- RG-96B2c3 — pinned RouteGate-owned Artifact Attestation verifier runtime with no `PATH` fallback: complete.
 - RG-96C — durable update jobs, discovery, preflight, progress, result, audit and rollback API: planned.
 - RG-96D — explicit one-click Admin UI workflow: planned.
 - RG-96E — multi-node rolling updates: planned.
