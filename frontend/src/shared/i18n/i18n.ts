@@ -59,6 +59,15 @@ const DEFAULT_LOCALE: Locale = 'en';
 const LOCALE_STORAGE_KEY = 'routegate.locale';
 const localeListeners = new Set<LocaleListener>();
 
+const statusAliases: Record<Locale, Record<string, string>> = {
+  en: {
+    in_progress: 'In progress',
+  },
+  ru: {
+    in_progress: 'В процессе',
+  },
+};
+
 function normalizeLocale(locale: string | null): Locale {
   return locale === 'ru' ? 'ru' : DEFAULT_LOCALE;
 }
@@ -135,6 +144,12 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 
 export function translateStatus(status?: string | null): string {
   const normalizedStatus = status && status.trim() !== '' ? status.toLowerCase() : 'unknown';
+  const locale = getCurrentLocale();
+  const alias = statusAliases[locale][normalizedStatus];
+  if (alias) {
+    return alias;
+  }
+
   const key = `status.${normalizedStatus}` as TranslationKey;
   const translated = t(key);
 

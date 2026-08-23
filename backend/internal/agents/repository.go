@@ -178,6 +178,49 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 		return Agent{}, err
 	}
 
+	// The Agent runner sends its heartbeat before it claims the next task and
+	// processes tasks sequentially. If a task assigned to this Agent is still
+	// in_progress for several minutes when a later heartbeat arrives, the
+	// previous execution was interrupted or its completion report never reached
+	// Manager. Close that orphan instead of leaving the dashboard and job history
+	// permanently stuck in an in-progress state. The grace period also protects
+	// against an accidentally duplicated Agent process using the same token.
+	if _, err := tx.Exec(ctx, `
+		UPDATE config_apply_jobs
+		SET
+			status = 'failed',
+			error_message = COALESCE(
+				NULLIF(error_message, ''),
+				'Agent task completion was not confirmed before a later heartbeat.'
+			),
+			completed_at = COALESCE(completed_at, now()),
+			updated_at = now()
+		WHERE agent_id = $1::uuid
+		  AND status = 'in_progress'
+		  AND started_at IS NOT NULL
+		  AND started_at < now() - interval '5 minutes'
+	`, agent.ID); err != nil {
+		return Agent{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE agent_operation_jobs
+		SET
+			status = 'failed',
+			error_message = COALESCE(
+				NULLIF(error_message, ''),
+				'Agent operation completion was not confirmed before a later heartbeat.'
+			),
+			completed_at = COALESCE(completed_at, now()),
+			updated_at = now()
+		WHERE agent_id = $1::uuid
+		  AND status = 'in_progress'
+		  AND started_at IS NOT NULL
+		  AND started_at < now() - interval '5 minutes'
+	`, agent.ID); err != nil {
+		return Agent{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return Agent{}, err
 	}
