@@ -11,7 +11,9 @@ source "$SCRIPT_DIR/routegate-update-core.sh"
 source "$SCRIPT_DIR/routegate-update-role.sh"
 
 OPERATION=${1:-}
-[[ -n "$OPERATION" ]] && shift || true
+if [[ -n "$OPERATION" ]]; then
+  shift
+fi
 
 BUNDLE=""
 EXPECTED_SHA=""
@@ -138,22 +140,33 @@ acquire_lock() {
   flock -n 9 || die "another RouteGate host update transaction is already running"
 }
 
+require_role_commands() {
+  local role=$1
+  rg_update_require_commands awk cp date find flock install rm sed sha256sum tar systemctl uname || return 1
+  if rg_update_role_has_management "$role"; then
+    rg_update_require_commands curl pg_dump pg_restore psql || return 1
+  fi
+}
+
 main() {
   if [[ "$OPERATION" == "--help" || "$OPERATION" == "-h" || -z "$OPERATION" ]]; then
     usage
-    [[ -n "$OPERATION" ]] && exit 0 || exit 2
+    if [[ -n "$OPERATION" ]]; then
+      exit 0
+    fi
+    exit 2
   fi
   [[ "$OPERATION" == "apply" ]] || die "unsupported operation: $OPERATION"
 
   parse_args "$@"
   rg_update_require_root || exit 1
-  rg_update_require_commands curl date find flock pg_dump pg_restore psql sha256sum tar systemctl uname || exit 1
+  rg_update_require_commands flock install uname || exit 1
   acquire_lock
   trap cleanup EXIT
 
   TARGET_ARCH=$(platform_architecture "$(uname -m)") || die "unsupported host architecture: $(uname -m)"
   ROLE=$(rg_update_resolve_role "$REQUESTED_ROLE") || exit 1
-  RG_UPDATE_ROLE=$ROLE
+  require_role_commands "$ROLE" || exit 1
   log "resolved role=$ROLE arch=$TARGET_ARCH"
 
   STAGE=preflight
