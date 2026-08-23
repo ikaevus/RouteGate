@@ -60,6 +60,23 @@ trusted_path_is_secure() {
   }
 }
 
+validate_parent_security() {
+  local tool_parent entrypoint entrypoint_parent path
+  tool_parent=$(rg_update_path /usr/local/lib/routegate) || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+  entrypoint_parent=$(dirname "$entrypoint") || return 1
+
+  for path in "$tool_parent" "$entrypoint_parent"; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      [[ -d "$path" && ! -L "$path" ]] || {
+        rg_update_die "trusted updater parent path is unsafe: $path"
+        return 1
+      }
+      trusted_path_is_secure "$path" "trusted updater parent" || return 1
+    fi
+  done
+}
+
 validate_installed_security() {
   local state tool_dir entrypoint tool_parent entrypoint_parent path file
   local expected_entrypoint actual_entrypoint
@@ -70,6 +87,7 @@ validate_installed_security() {
     return 1
   }
 
+  validate_parent_security || return 1
   tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
   entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
   tool_parent=$(rg_update_path /usr/local/lib/routegate) || return 1
@@ -80,7 +98,6 @@ validate_installed_security() {
       rg_update_die "trusted updater parent path is unsafe: $path"
       return 1
     }
-    trusted_path_is_secure "$path" "trusted updater parent" || return 1
   done
 
   trusted_path_is_secure "$tool_dir" "trusted updater directory" || return 1
@@ -114,6 +131,7 @@ main() {
   rg_update_require_root || exit 1
   require_commands || exit 1
   rg_update_candidate_toolchain_complete "$BUNDLE_ROOT" || exit 1
+  validate_parent_security || exit 1
 
   local state
   state=$(rg_update_toolchain_state) || exit 1
