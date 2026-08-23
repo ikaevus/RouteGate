@@ -341,30 +341,7 @@
 }
 
 .getting-started-step-action {
-  border: 0;
-  border-radius: 7px;
-  background: rgba(37, 99, 235, 0.92);
-  color: #fff;
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 9px;
-  font-weight: 800;
-  justify-content: center;
-  margin-top: 9px;
-  min-height: 26px;
-  padding: 6px 9px;
-  position: relative;
-  z-index: 2;
-}
-
-.getting-started-step-action:hover:not(:disabled) {
-  background: #3b82f6;
-}
-
-.getting-started-step-action:disabled {
-  cursor: progress;
-  opacity: 0.72;
+  display: none;
 }
 
 .getting-started-step-message {
