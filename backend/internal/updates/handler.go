@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/db"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type jobRepository interface {
 	CreatePreflight(context.Context, string) (Job, error)
@@ -106,7 +109,13 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	job, err := h.repo.Get(r.Context(), strings.TrimSpace(r.PathValue("job_id")))
+	jobID := strings.TrimSpace(r.PathValue("job_id"))
+	if !uuidPattern.MatchString(jobID) {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_update_job_id", "Update job ID must be a UUID."))
+		return
+	}
+
+	job, err := h.repo.Get(r.Context(), jobID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("update_job_not_found", "Update job was not found."))
 		return
