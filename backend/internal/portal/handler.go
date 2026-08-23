@@ -198,10 +198,9 @@ func (h *Handler) GetQRCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	locale := requestLocale(r)
-	source, ok := h.profiles.(vpnaccounts.ClientConnectionSource)
-	if !ok {
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("portal_connection_unavailable", "VPN connection material is unavailable."))
-		return
+	var source vpnaccounts.ClientConnectionSource
+	if connectionSource, ok := h.profiles.(vpnaccounts.ClientConnectionSource); ok {
+		source = connectionSource
 	}
 	response, err := buildPortalDirectQRCode(r.Context(), source, profile, locale)
 	if err != nil {
