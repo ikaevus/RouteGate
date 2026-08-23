@@ -110,12 +110,16 @@ jobs:
             install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/deploy-production-like-bundle.sh \
             scripts/production-like-ops.sh \
             scripts/routegate-recovery \
+            scripts/routegate-update-core.sh \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
-            scripts/test-recovery-tool.sh
+            scripts/test-recovery-tool.sh \
+            scripts/test-update-core.sh \
+            scripts/validate-production-like-deploy.sh
 
       - name: Run ShellCheck
         run: |
@@ -124,19 +128,24 @@ jobs:
             install-agent.sh \
             install-grafana.sh \
             scripts/build-release-bundle.sh \
+            scripts/deploy-production-like-bundle.sh \
             scripts/production-like-ops.sh \
             scripts/routegate-recovery \
+            scripts/routegate-update-core.sh \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
-            scripts/test-recovery-tool.sh
+            scripts/test-recovery-tool.sh \
+            scripts/test-update-core.sh \
+            scripts/validate-production-like-deploy.sh
 
-      - name: Run installer unit tests
+      - name: Run installer and host-operation unit tests
         run: |
           bash scripts/test-agent-installer.sh
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
           bash scripts/test-recovery-tool.sh
+          bash scripts/test-update-core.sh
 
       - name: Run release manifest tests
         run: python3 -m unittest scripts/test_release_manifest.py
@@ -160,6 +169,7 @@ jobs:
           grep -Fxq './frontend/index.html' bundle-files.txt
           grep -Fq './manager/migrations/' bundle-files.txt
           grep -Fxq './tools/routegate-recovery' bundle-files.txt
+          grep -Fxq './tools/routegate-update-core.sh' bundle-files.txt
           grep -Fxq './metadata/manifest.env' bundle-files.txt
           test -s release-manifest.json
 
