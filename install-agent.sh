@@ -168,7 +168,7 @@ install_dependencies() {
   log "Installing Agent bootstrap dependencies."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update >/dev/null
-	apt-get install -y ca-certificates curl iproute2 iptables jq tar wireguard-tools >/dev/null
+  apt-get install -y ca-certificates curl iproute2 iptables jq python3 tar wireguard-tools >/dev/null
 }
 
 install_hysteria2_runtime() {
@@ -235,8 +235,8 @@ install_mtproto_runtime() {
   fi
   mkdir -p "$extract_dir"
   tar -xzf "$archive_path" -C "$extract_dir"
-	binary_path="$extract_dir/mtg-${ROUTEGATE_MTG_VERSION}-linux-${ROUTEGATE_ARCH}/mtg"
-	[[ -f "$binary_path" ]] || die "mtg archive does not contain the expected versioned binary path."
+  binary_path="$extract_dir/mtg-${ROUTEGATE_MTG_VERSION}-linux-${ROUTEGATE_ARCH}/mtg"
+  [[ -f "$binary_path" ]] || die "mtg archive does not contain the expected versioned binary path."
   [[ $(find "$extract_dir" -type f -name mtg | wc -l) -eq 1 ]] || die "mtg archive contains an ambiguous binary layout."
 
   install -m 0755 "$binary_path" /usr/local/bin/mtg
@@ -286,9 +286,22 @@ extract_bundle() {
     die "Release bundle contains a symbolic or hard link."
   fi
   tar -xzf "$bundle_path" -C "$extract_dir"
+
   [[ -s "$extract_dir/bin/routegate-agent" ]] || die "Release bundle is missing RouteGate Agent."
   [[ -f "$extract_dir/systemd/routegate-agent.service" ]] || die "Release bundle is missing the Agent systemd unit."
   [[ -f "$extract_dir/metadata/manifest.env" ]] || die "Release bundle is missing its manifest."
+
+  local updater_file
+  for updater_file in \
+    release_manifest.py \
+    routegate-update-bootstrap.sh \
+    routegate-update-core.sh \
+    routegate-update-role.sh \
+    routegate-update-transaction.sh \
+    routegate-update-verified.sh; do
+    [[ -f "$extract_dir/tools/$updater_file" && ! -L "$extract_dir/tools/$updater_file" ]] \
+      || die "Release bundle is missing updater component tools/${updater_file}."
+  done
 
   local manifest_version manifest_os manifest_arch
   manifest_version=$(sed -n 's/^VERSION=//p' "$extract_dir/metadata/manifest.env" | head -n1)
@@ -370,10 +383,10 @@ EOF_CONFIG
 
 install_agent() {
   local source_dir="$ROUTEGATE_WORK_DIR/extracted"
-	install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups /var/lib/routegate-agent/mtproto-configs /var/lib/routegate-agent/mtproto-backups
-	install -d -m 0700 /etc/wireguard
-	printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
-	sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >/dev/null
+  install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups /var/lib/routegate-agent/mtproto-configs /var/lib/routegate-agent/mtproto-backups
+  install -d -m 0700 /etc/wireguard
+  printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
+  sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >/dev/null
   install -m 0755 "$source_dir/bin/routegate-agent" "$ROUTEGATE_AGENT_BINARY"
   install -m 0644 "$source_dir/systemd/routegate-agent.service" "$ROUTEGATE_AGENT_SERVICE"
   install_hysteria2_runtime "$source_dir"
@@ -408,6 +421,16 @@ wait_for_registration() {
   die "Agent did not complete registration. Create a fresh token in Manager before retrying if the current token was consumed."
 }
 
+bootstrap_trusted_updater() {
+  local source_dir="$ROUTEGATE_WORK_DIR/extracted"
+  local helper="$source_dir/tools/routegate-update-bootstrap.sh"
+  [[ -f "$helper" && ! -L "$helper" ]] || die "Release bundle is missing the trusted updater bootstrap helper."
+
+  log "Bootstrapping the local trusted updater boundary."
+  env -u RG_UPDATE_ROOT bash "$helper" \
+    || die "Trusted updater bootstrap failed. The Agent remains installed, but this node is not update-ready."
+}
+
 main() {
   trap cleanup EXIT
   parse_args "$@"
@@ -417,6 +440,7 @@ main() {
   prepare_bundle
   install_agent
   wait_for_registration
+  bootstrap_trusted_updater
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
