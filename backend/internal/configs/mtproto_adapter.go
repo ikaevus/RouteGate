@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	defaultMTProtoPort           = 8443
-	mtprotoFrontingDomain        = "www.cloudflare.com"
-	mtprotoDefaultConcurrency    = 8192
+	defaultMTProtoPort        = 9443
+	mtprotoFrontingDomain     = "www.cloudflare.com"
+	mtprotoDefaultConcurrency = 8192
 )
 
 type mtprotoAdapter struct{}
