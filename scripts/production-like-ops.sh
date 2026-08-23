@@ -234,17 +234,16 @@ restart_runtime() {
 }
 
 reconcile_mtproto_port_conflict() {
-  local env_file=/etc/routegate/manager.env
   local config_file=/etc/routegate-mtproto/config.toml
   local backup_file current_line current_port row vless_port shadowsocks_port target_port server_count tmp_file
 
-  [[ -r "$env_file" ]] || die "manager environment is unavailable"
+  [[ -r /etc/routegate/manager.env ]] || die "manager environment is unavailable"
   [[ -r "$config_file" ]] || die "managed MTProto config is unavailable"
   command -v psql >/dev/null 2>&1 || die "psql is unavailable"
 
   set -a
   # shellcheck disable=SC1091
-  source "$env_file"
+  source /etc/routegate/manager.env
   set +a
   [[ -n ${ROUTEGATE_DATABASE_URL:-} ]] || die "database URL is unavailable"
 
