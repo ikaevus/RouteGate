@@ -27,8 +27,11 @@ func newCancellationAwareRepository(cancel context.CancelFunc) *cancellationAwar
 	}
 }
 
-func (r *cancellationAwareRepository) CreatePreflight(context.Context, string) (Job, error) {
+func (r *cancellationAwareRepository) CreatePreflight(ctx context.Context, _ string) (Job, error) {
 	r.cancel()
+	if err := ctx.Err(); err != nil {
+		return Job{}, err
+	}
 	return r.job, nil
 }
 
@@ -79,7 +82,7 @@ func (cancellationAwareSchemaReader) AppliedSchemaVersion(ctx context.Context) (
 	return "000135_update_jobs", nil
 }
 
-func TestCreatePreflightSurvivesRequestCancellationAfterInsert(t *testing.T) {
+func TestCreatePreflightSurvivesRequestCancellationDuringInsert(t *testing.T) {
 	request := authenticatedRequest(http.MethodPost, "/api/v1/system/update-jobs/preflight")
 	requestCtx, cancel := context.WithCancel(request.Context())
 	request = request.WithContext(requestCtx)
