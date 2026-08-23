@@ -1,0 +1,215 @@
+name: RG-114 config apply lease patcher
+
+on:
+  push:
+    branches:
+      - rg-114-config-apply-retry-lease
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: rg-114-config-apply-retry-lease
+      - name: Apply focused lifecycle patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          repo = Path('backend/internal/agents/repository.go')
+          text = repo.read_text()
+          old = '''\t// The Agent runner sends its heartbeat before it claims the next task and
+\t// processes tasks sequentially. If a task assigned to this Agent is still
+\t// in_progress for several minutes when a later heartbeat arrives, the
+\t// previous execution was interrupted or its completion report never reached
+\t// Manager. Close that orphan instead of leaving the dashboard and job history
+\t// permanently stuck in an in-progress state. The grace period also protects
+\t// against an accidentally duplicated Agent process using the same token.
+\tif _, err := tx.Exec(ctx, `
+\t\tUPDATE config_apply_jobs
+\t\tSET
+\t\t\tstatus = 'failed',
+\t\t\terror_message = COALESCE(
+\t\t\t\tNULLIF(error_message, ''),
+\t\t\t\t'Agent task completion was not confirmed before a later heartbeat.'
+\t\t\t),
+\t\t\tcompleted_at = COALESCE(completed_at, now()),
+\t\t\tupdated_at = now()
+\t\tWHERE agent_id = $1::uuid
+\t\t  AND status = 'in_progress'
+\t\t  AND started_at IS NOT NULL
+\t\t  AND started_at < now() - interval '5 minutes'
+\t`, agent.ID); err != nil {
+\t\treturn Agent{}, err
+\t}
+'''
+          new = '''\t// Config applies use started_at as an execution lease. The Agent processes
+\t// tasks sequentially and heartbeats before claiming work, so an apply that is
+\t// still in_progress after the lease expires was interrupted or lost its
+\t// completion receipt. Requeue the exact same rendered config instead of
+\t// turning a transient Manager/Agent restart into a permanent failed desired
+\t// state. Replays are safe because config application is staged, validated,
+\t// atomically promoted and health-checked. The overall recovery window is
+\t// bounded so a genuinely broken job still reaches a terminal state.
+\tif _, err := tx.Exec(ctx, `
+\t\tUPDATE config_apply_jobs
+\t\tSET
+\t\t\tstatus = 'pending',
+\t\t\tagent_id = NULL,
+\t\t\tstarted_at = NULL,
+\t\t\tcompleted_at = NULL,
+\t\t\terror_message = NULL,
+\t\t\tupdated_at = now()
+\t\tWHERE agent_id = $1::uuid
+\t\t  AND status = 'in_progress'
+\t\t  AND started_at IS NOT NULL
+\t\t  AND started_at < now() - interval '90 seconds'
+\t\t  AND created_at > now() - interval '15 minutes'
+\t`, agent.ID); err != nil {
+\t\treturn Agent{}, err
+\t}
+
+\tif _, err := tx.Exec(ctx, `
+\t\tUPDATE config_apply_jobs
+\t\tSET
+\t\t\tstatus = 'failed',
+\t\t\terror_message = COALESCE(
+\t\t\t\tNULLIF(error_message, ''),
+\t\t\t\t'Agent task completion was not confirmed within the config apply recovery window.'
+\t\t\t),
+\t\t\tcompleted_at = COALESCE(completed_at, now()),
+\t\t\tupdated_at = now()
+\t\tWHERE agent_id = $1::uuid
+\t\t  AND status = 'in_progress'
+\t\t  AND started_at IS NOT NULL
+\t\t  AND started_at < now() - interval '90 seconds'
+\t\t  AND created_at <= now() - interval '15 minutes'
+\t`, agent.ID); err != nil {
+\t\treturn Agent{}, err
+\t}
+'''
+          if old not in text:
+              raise SystemExit('expected heartbeat reconciliation block not found')
+          text = text.replace(old, new, 1)
+          old_claim = "\t\t\tstarted_at = COALESCE(j.started_at, now()),"
+          if old_claim not in text:
+              raise SystemExit('expected claim started_at expression not found')
+          text = text.replace(old_claim, "\t\t\tstarted_at = now(),", 1)
+          repo.write_text(text)
+
+          panel = Path('frontend/src/pages/vpn-accounts/VpnAccountProtocolPreferencePanel.tsx')
+          text = panel.read_text()
+          anchor = '''  const toggleProtocol = (protocol: ClientProtocol) => {
+'''
+          insertion = '''  useEffect(() => {
+    if (!saveMutation.isPending) return;
+    const interval = window.setInterval(() => {
+      void connectionQuery.refetch();
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [saveMutation.isPending, connectionQuery.refetch]);
+
+'''
+          if anchor not in text:
+              raise SystemExit('expected protocol panel insertion point not found')
+          text = text.replace(anchor, insertion + anchor, 1)
+          panel.write_text(text)
+
+          ops = Path('scripts/production-like-ops.sh')
+          text = ops.read_text()
+          anchor = '''renew_certificate() {
+'''
+          fn = '''requeue_unconfirmed_config_apply() {
+  load_manager_database || die "manager database is unavailable"
+
+  local server_count active_jobs recovered
+  server_count=$(psql "$ROUTEGATE_DATABASE_URL" -qAtc 'SELECT count(*) FROM servers' 2>/dev/null || true)
+  [[ "$server_count" == 1 ]] || die "config apply recovery requires exactly one managed server"
+
+  active_jobs=$(psql "$ROUTEGATE_DATABASE_URL" -qAtc "SELECT count(*) FROM config_apply_jobs WHERE status IN ('pending','in_progress')" 2>/dev/null || true)
+  [[ "$active_jobs" == 0 ]] || die "another config apply is already pending or in progress"
+
+  recovered=$(psql "$ROUTEGATE_DATABASE_URL" -qAtc "
+    WITH server_row AS (
+      SELECT id FROM servers LIMIT 1
+    ), latest_version AS (
+      SELECT cv.id
+      FROM config_versions cv, server_row s
+      WHERE cv.server_id = s.id
+      ORDER BY cv.created_at DESC, cv.id DESC
+      LIMIT 1
+    ), candidate AS (
+      SELECT j.id
+      FROM config_apply_jobs j, server_row s, latest_version v
+      WHERE j.server_id = s.id
+        AND j.config_version_id = v.id
+        AND j.action = 'apply'
+        AND j.status = 'failed'
+        AND j.error_message = 'Agent task completion was not confirmed before a later heartbeat.'
+      ORDER BY j.created_at DESC
+      LIMIT 1
+    )
+    UPDATE config_apply_jobs j
+    SET status = 'pending',
+        agent_id = NULL,
+        started_at = NULL,
+        completed_at = NULL,
+        result_payload = '{}'::jsonb,
+        error_message = NULL,
+        updated_at = now()
+    FROM candidate c
+    WHERE j.id = c.id
+    RETURNING 1
+  " 2>/dev/null || true)
+  [[ "$recovered" == 1 ]] || die "no safely recoverable unconfirmed latest config apply exists"
+  log "config-apply-recovery=requeued reason=completion-unconfirmed"
+}
+
+'''
+          if anchor not in text:
+              raise SystemExit('expected ops function insertion point not found')
+          text = text.replace(anchor, fn + anchor, 1)
+          case_anchor = '''    reconcile-mtproto-port-conflict)
+      reconcile_mtproto_port_conflict
+      ;;
+'''
+          case_new = case_anchor + '''    requeue-unconfirmed-config-apply)
+      requeue_unconfirmed_config_apply
+      ;;
+'''
+          if case_anchor not in text:
+              raise SystemExit('expected ops case insertion point not found')
+          text = text.replace(case_anchor, case_new, 1)
+          ops.write_text(text)
+
+          workflow = Path('.github/workflows/production-like-ops.yml')
+          text = workflow.read_text()
+          text = text.replace('''          - reconcile-mtproto-port-conflict
+          - renew-certificate
+''', '''          - reconcile-mtproto-port-conflict
+          - requeue-unconfirmed-config-apply
+          - renew-certificate
+''', 1)
+          text = text.replace("""              'operation=reconcile-mtproto-port-conflict') operation=reconcile-mtproto-port-conflict ;;
+              'operation=renew-certificate') operation=renew-certificate ;;
+""", """              'operation=reconcile-mtproto-port-conflict') operation=reconcile-mtproto-port-conflict ;;
+              'operation=requeue-unconfirmed-config-apply') operation=requeue-unconfirmed-config-apply ;;
+              'operation=renew-certificate') operation=renew-certificate ;;
+""", 1)
+          text = text.replace('''diagnose|diagnose-sing-box|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate''', '''diagnose|diagnose-sing-box|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|requeue-unconfirmed-config-apply|renew-certificate''', 1)
+          workflow.write_text(text)
+          PY
+
+          rm .github/workflows/rg114-config-apply-lease-patcher.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend/internal/agents/repository.go frontend/src/pages/vpn-accounts/VpnAccountProtocolPreferencePanel.tsx scripts/production-like-ops.sh .github/workflows/production-like-ops.yml .github/workflows/rg114-config-apply-lease-patcher.yml
+          git commit -m 'RG-114: recover interrupted config apply leases'
+          git push origin HEAD:rg-114-config-apply-retry-lease
