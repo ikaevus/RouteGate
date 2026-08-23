@@ -20,9 +20,10 @@
 }
 
 .vpn-protocol-choice {
-  position: relative;
   display: grid;
-  place-items: center;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
   min-height: 44px;
   padding: 10px 12px;
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
@@ -30,25 +31,31 @@
   cursor: pointer;
 }
 
+.vpn-protocol-choice::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+}
+
 .vpn-protocol-choice:has(input:checked) {
   border-color: var(--accent-color, #60a5fa);
   background: rgba(96, 165, 250, 0.08);
 }
 
-.vpn-protocol-choice input {
-  position: absolute;
-  left: 12px;
-  top: 50%;
+.field .vpn-protocol-choice > input[type='checkbox'] {
+  position: static;
   width: 18px;
+  min-width: 18px;
   height: 18px;
   margin: 0;
-  transform: translateY(-50%);
+  padding: 0;
+  justify-self: center;
+  transform: none;
 }
 
 .vpn-protocol-choice > span {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0 28px;
+  min-width: 0;
+  padding: 0;
   text-align: center;
   line-height: 1.25;
 }
