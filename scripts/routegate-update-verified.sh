@@ -7,6 +7,7 @@ umask 077
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TRUST_REPOSITORY="ikaevus/RouteGate"
 TRUST_SIGNER_WORKFLOW="ikaevus/RouteGate/.github/workflows/release.yml"
+TRUST_PREDICATE_TYPE="https://slsa.dev/provenance/v1"
 TARGET_OS="linux"
 
 OPERATION=${1:-}
@@ -47,6 +48,7 @@ Usage:
 Trust policy is fixed in this executable:
   repository: ikaevus/RouteGate
   signer workflow: ikaevus/RouteGate/.github/workflows/release.yml
+  predicate type: https://slsa.dev/provenance/v1
 
 The command performs no release discovery or artifact download. It snapshots the
 provided release files into a root-only temporary area, verifies those exact
@@ -141,6 +143,7 @@ verify_attestation() {
   gh attestation verify "$subject" \
     --repo "$TRUST_REPOSITORY" \
     --signer-workflow "$TRUST_SIGNER_WORKFLOW" \
+    --predicate-type "$TRUST_PREDICATE_TYPE" \
     --bundle "$attestation" >/dev/null
 }
 
