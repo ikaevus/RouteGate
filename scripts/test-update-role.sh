@@ -156,7 +156,7 @@ test_manager_env_is_data() {
   local marker="$TMP_DIR/env-executed"
   local value
   populate_management "$root"
-  printf 'ROUTEGATE_DATABASE_URL="\$(touch %s)"\n' "$marker" >"$root/etc/routegate/manager.env"
+  printf 'ROUTEGATE_DATABASE_URL="%s"\n' "\$(touch $marker)" >"$root/etc/routegate/manager.env"
   RG_UPDATE_ROOT=$root
 
   value=$(rg_update_read_manager_database_url)
@@ -170,11 +170,11 @@ test_management_round_trip() {
   local root="$TMP_DIR/management-root"
   local work="$TMP_DIR/management-work"
   local backup="$TMP_DIR/management-backups/one"
+  local db_url
   populate_management "$root"
   make_work_dir "$work"
   RG_UPDATE_ROOT=$root
 
-  local db_url
   db_url=$(rg_update_read_manager_database_url)
   rg_update_create_role_backup management "$backup" "$db_url"
   rg_update_apply_role_files management "$work"
