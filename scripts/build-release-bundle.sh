@@ -8,7 +8,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUTPUT_DIR="${OUTPUT_DIR:-${ROOT_DIR}/dist}"
 VERSION="${VERSION:-}"
 COMMIT="${COMMIT:-}"
-BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+BUILD_DATE="${BUILD_DATE:-}"
 ARCHITECTURES="${ARCHITECTURES:-amd64 arm64}"
 
 log() {
@@ -130,9 +130,11 @@ EOF_MANIFEST
 }
 
 main() {
+  require_command date
   require_command git
   require_command go
   require_command npm
+  require_command python3
   require_command tar
   require_command sha256sum
   validate_version
@@ -143,6 +145,10 @@ main() {
     export SOURCE_DATE_EPOCH
   fi
   [[ "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]] || die "SOURCE_DATE_EPOCH must be numeric."
+
+  if [[ -z "$BUILD_DATE" ]]; then
+    BUILD_DATE=$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ)
+  fi
 
   rm -rf "$OUTPUT_DIR"
   mkdir -p "$OUTPUT_DIR"
@@ -162,8 +168,19 @@ main() {
     sha256sum routegate-*.tar.gz >SHA256SUMS
   )
 
+  python3 "$ROOT_DIR/scripts/release_manifest.py" build \
+    --output-dir "$OUTPUT_DIR" \
+    --version "$VERSION" \
+    --commit "$COMMIT" \
+    --build-date "$BUILD_DATE" \
+    --migrations-dir "$ROOT_DIR/backend/migrations"
+
+  python3 "$ROOT_DIR/scripts/release_manifest.py" verify \
+    --manifest "$OUTPUT_DIR/release-manifest.json" \
+    --artifacts-dir "$OUTPUT_DIR"
+
   rm -rf "$OUTPUT_DIR"/stage-*
-  log "Release bundles and SHA256SUMS are ready in ${OUTPUT_DIR}."
+  log "Release bundles, SHA256SUMS, and release-manifest.json are ready in ${OUTPUT_DIR}."
 }
 
 main "$@"

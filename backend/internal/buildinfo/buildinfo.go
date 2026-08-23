@@ -1,13 +1,13 @@
 package buildinfo
 
 const (
-	AgentProtocolVersion                 = 1
+	AgentProtocolVersion                  = 1
 	MinimumSupportedAgentProtocolVersion = 1
-	RecommendedAgentVersion              = "dev"
-	ExpectedDatabaseSchemaVersion        = 131
-	WebUIVersion                         = "dev"
-	UpdateStatus                         = "manual"
-	UpdateChannel                        = "development"
+	RecommendedAgentVersion               = "dev"
+	ExpectedDatabaseSchemaVersion         = 134
+	WebUIVersion                          = "dev"
+	UpdateStatus                          = "manual"
+	UpdateChannel                         = "development"
 )
 
 var (
