@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 
-# Role-aware RouteGate host update primitives.
-#
-# This library layers Management/VPN/Hybrid ownership rules over
-# routegate-update-core.sh. It performs no network access and exposes no
-# administrator-facing API.
+# Role-aware RouteGate host-update primitives.
+# This library layers Management/VPN/Hybrid ownership rules over the shared
+# routegate-update-core.sh implementation.
 
 set -Eeuo pipefail
 
 if ! declare -F rg_update_path >/dev/null 2>&1; then
   printf '[routegate-update] ERROR: routegate-update-core.sh must be sourced first\n' >&2
-  return 1 2>/dev/null || exit 1
+  if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    exit 1
+  fi
+  return 1
 fi
 
 RG_UPDATE_ROLE_MARKER=${RG_UPDATE_ROLE_MARKER:-/etc/routegate/node-role}
-RG_UPDATE_ROLE=""
 
 rg_update_validate_role() {
-  case "$1" in
+  case "${1:-}" in
     management|vpn|hybrid) return 0 ;;
     *)
       rg_update_die "unsupported RouteGate node role: ${1:-missing}"
@@ -34,9 +34,59 @@ rg_update_role_has_vpn() {
   [[ "$1" == "vpn" || "$1" == "hybrid" ]]
 }
 
+rg_update_all_paths_exist() {
+  local absolute path
+  for absolute in "$@"; do
+    path=$(rg_update_path "$absolute")
+    [[ -e "$path" && ! -L "$path" ]] || return 1
+  done
+}
+
+rg_update_any_path_exists() {
+  local absolute path
+  for absolute in "$@"; do
+    path=$(rg_update_path "$absolute")
+    if [[ -e "$path" || -L "$path" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+rg_update_management_layout_complete() {
+  rg_update_all_paths_exist \
+    /usr/local/bin/routegate-manager \
+    /opt/routegate-manager/migrations \
+    /var/www/routegate/index.html \
+    /etc/systemd/system/routegate-manager.service \
+    /etc/routegate/manager.env
+}
+
+rg_update_vpn_layout_complete() {
+  rg_update_all_paths_exist \
+    /usr/local/bin/routegate-agent \
+    /etc/systemd/system/routegate-agent.service \
+    /etc/routegate/agent.yaml
+}
+
+rg_update_has_any_management_layout() {
+  rg_update_any_path_exists \
+    /usr/local/bin/routegate-manager \
+    /opt/routegate-manager/migrations \
+    /var/www/routegate/index.html \
+    /etc/systemd/system/routegate-manager.service \
+    /etc/routegate/manager.env
+}
+
+rg_update_has_any_vpn_layout() {
+  rg_update_any_path_exists \
+    /usr/local/bin/routegate-agent \
+    /etc/systemd/system/routegate-agent.service \
+    /etc/routegate/agent.yaml
+}
+
 rg_update_marker_role() {
-  local marker
-  local role
+  local marker role line_count
   marker=$(rg_update_path "$RG_UPDATE_ROLE_MARKER")
 
   [[ -e "$marker" || -L "$marker" ]] || return 1
@@ -46,7 +96,8 @@ rg_update_marker_role() {
   }
 
   role=$(sed -n '1p' "$marker")
-  [[ $(wc -l <"$marker") -le 1 ]] || {
+  line_count=$(awk 'END {print NR}' "$marker")
+  [[ "$line_count" == "1" ]] || {
     rg_update_die "node role marker must contain exactly one role"
     return 2
   }
@@ -54,70 +105,13 @@ rg_update_marker_role() {
   printf '%s\n' "$role"
 }
 
-rg_update_management_layout_complete() {
-  local path
-  for path in \
-    /usr/local/bin/routegate-manager \
-    /opt/routegate-manager/migrations \
-    /var/www/routegate/index.html \
-    /etc/systemd/system/routegate-manager.service \
-    /etc/routegate/manager.env; do
-    path=$(rg_update_path "$path")
-    [[ -e "$path" && ! -L "$path" ]] || return 1
-  done
-}
-
-rg_update_vpn_layout_complete() {
-  local path
-  for path in \
-    /usr/local/bin/routegate-agent \
-    /etc/systemd/system/routegate-agent.service \
-    /etc/routegate/agent.yaml; do
-    path=$(rg_update_path "$path")
-    [[ -e "$path" && ! -L "$path" ]] || return 1
-  done
-}
-
-rg_update_has_any_management_layout() {
-  local path
-  for path in \
-    /usr/local/bin/routegate-manager \
-    /opt/routegate-manager/migrations \
-    /var/www/routegate/index.html \
-    /etc/systemd/system/routegate-manager.service \
-    /etc/routegate/manager.env; do
-    path=$(rg_update_path "$path")
-    if [[ -e "$path" || -L "$path" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-rg_update_has_any_vpn_layout() {
-  local path
-  for path in \
-    /usr/local/bin/routegate-agent \
-    /etc/systemd/system/routegate-agent.service \
-    /etc/routegate/agent.yaml; do
-    path=$(rg_update_path "$path")
-    if [[ -e "$path" || -L "$path" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
 rg_update_infer_legacy_role() {
-  local management_complete=0
-  local vpn_complete=0
-  local management_any=0
-  local vpn_any=0
+  local management_complete=0 vpn_complete=0 management_any=0 vpn_any=0
 
-  rg_update_management_layout_complete && management_complete=1
-  rg_update_vpn_layout_complete && vpn_complete=1
-  rg_update_has_any_management_layout && management_any=1
-  rg_update_has_any_vpn_layout && vpn_any=1
+  if rg_update_management_layout_complete; then management_complete=1; fi
+  if rg_update_vpn_layout_complete; then vpn_complete=1; fi
+  if rg_update_has_any_management_layout; then management_any=1; fi
+  if rg_update_has_any_vpn_layout; then vpn_any=1; fi
 
   if [[ "$management_any" == "1" && "$management_complete" != "1" ]]; then
     rg_update_die "cannot infer node role from a partial Management layout"
@@ -161,14 +155,11 @@ rg_update_resolve_role() {
     rg_update_die "requested node role '$requested' does not match detected role '$detected'"
     return 1
   fi
-
-  RG_UPDATE_ROLE=$detected
   printf '%s\n' "$detected"
 }
 
 rg_update_role_preflight() {
-  local role=$1
-  local service state
+  local role=$1 service state
   rg_update_validate_role "$role"
 
   if rg_update_role_has_management "$role"; then
@@ -176,9 +167,9 @@ rg_update_role_preflight() {
       rg_update_die "Management node layout is incomplete"
       return 1
     }
-    service="$RG_UPDATE_MANAGER_SERVICE"
+    service=$RG_UPDATE_MANAGER_SERVICE
     state=$(systemctl is-active "$service" 2>/dev/null || true)
-    rg_update_log "preflight role=${role} service=${service} state=${state:-unknown}"
+    rg_update_log "preflight role=$role service=$service state=${state:-unknown}"
     [[ "$state" == "active" ]] || {
       rg_update_die "Management service is not active: $service"
       return 1
@@ -190,9 +181,9 @@ rg_update_role_preflight() {
       rg_update_die "VPN node layout is incomplete"
       return 1
     }
-    service="$RG_UPDATE_AGENT_SERVICE"
+    service=$RG_UPDATE_AGENT_SERVICE
     state=$(systemctl is-active "$service" 2>/dev/null || true)
-    rg_update_log "preflight role=${role} service=${service} state=${state:-unknown}"
+    rg_update_log "preflight role=$role service=$service state=${state:-unknown}"
     [[ "$state" == "active" ]] || {
       rg_update_die "VPN Agent service is not active: $service"
       return 1
@@ -201,10 +192,8 @@ rg_update_role_preflight() {
 }
 
 rg_update_read_manager_database_url() {
-  local env_file
-  local line value=""
+  local env_file line value=""
   env_file=$(rg_update_path /etc/routegate/manager.env)
-
   [[ -f "$env_file" && ! -L "$env_file" ]] || {
     rg_update_die "Manager environment is unavailable"
     return 1
@@ -233,8 +222,7 @@ rg_update_read_manager_database_url() {
 }
 
 rg_update_write_role_backup_meta() {
-  local backup_dir=$1
-  local role=$2
+  local backup_dir=$1 role=$2
   cat >"$backup_dir/role.meta" <<EOF_ROLE_META
 FORMAT_VERSION=1
 ROLE=$role
@@ -243,10 +231,18 @@ EOF_ROLE_META
   chmod 0600 "$backup_dir/role.meta"
 }
 
-rg_update_create_management_backup() {
+rg_update_prepare_backup_dir() {
   local backup_dir=$1
-  local db_url=$2
-  local backup_root
+  install -d -m 0700 "$(dirname "$backup_dir")"
+  [[ ! -e "$backup_dir" ]] || {
+    rg_update_die "backup directory already exists: $backup_dir"
+    return 1
+  }
+  install -d -m 0700 "$backup_dir"
+}
+
+rg_update_create_management_backup() {
+  local backup_dir=$1 db_url=$2
   local manager_bin migrations_dir frontend_dir manager_unit manager_env
 
   rg_update_management_layout_complete || {
@@ -257,14 +253,7 @@ rg_update_create_management_backup() {
     rg_update_die "database URL is required for Management backup"
     return 1
   }
-
-  backup_root=$(dirname "$backup_dir")
-  install -d -m 0700 "$backup_root"
-  [[ ! -e "$backup_dir" ]] || {
-    rg_update_die "backup directory already exists: $backup_dir"
-    return 1
-  }
-  install -d -m 0700 "$backup_dir"
+  rg_update_prepare_backup_dir "$backup_dir"
 
   manager_bin=$(rg_update_path /usr/local/bin/routegate-manager)
   migrations_dir=$(rg_update_path /opt/routegate-manager/migrations)
@@ -284,22 +273,13 @@ rg_update_create_management_backup() {
 }
 
 rg_update_create_vpn_backup() {
-  local backup_dir=$1
-  local backup_root
-  local agent_bin agent_unit
+  local backup_dir=$1 agent_bin agent_unit
 
   rg_update_vpn_layout_complete || {
     rg_update_die "VPN node layout is incomplete"
     return 1
   }
-
-  backup_root=$(dirname "$backup_dir")
-  install -d -m 0700 "$backup_root"
-  [[ ! -e "$backup_dir" ]] || {
-    rg_update_die "backup directory already exists: $backup_dir"
-    return 1
-  }
-  install -d -m 0700 "$backup_dir"
+  rg_update_prepare_backup_dir "$backup_dir"
 
   agent_bin=$(rg_update_path /usr/local/bin/routegate-agent)
   agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service)
@@ -311,18 +291,11 @@ rg_update_create_vpn_backup() {
 }
 
 rg_update_create_role_backup() {
-  local role=$1
-  local backup_dir=$2
-  local db_url=${3:-}
+  local role=$1 backup_dir=$2 db_url=${3:-}
   rg_update_validate_role "$role"
-
   case "$role" in
-    management)
-      rg_update_create_management_backup "$backup_dir" "$db_url"
-      ;;
-    vpn)
-      rg_update_create_vpn_backup "$backup_dir"
-      ;;
+    management) rg_update_create_management_backup "$backup_dir" "$db_url" ;;
+    vpn) rg_update_create_vpn_backup "$backup_dir" ;;
     hybrid)
       rg_update_create_backup "$backup_dir" "$db_url"
       rg_update_write_role_backup_meta "$backup_dir" hybrid
@@ -331,9 +304,7 @@ rg_update_create_role_backup() {
 }
 
 rg_update_apply_management_files() {
-  local work_dir=$1
-  local manager_bin migrations_dir frontend_dir manager_unit
-
+  local work_dir=$1 manager_bin migrations_dir frontend_dir manager_unit
   manager_bin=$(rg_update_path /usr/local/bin/routegate-manager)
   migrations_dir=$(rg_update_path /opt/routegate-manager/migrations)
   frontend_dir=$(rg_update_path /var/www/routegate)
@@ -356,9 +327,7 @@ rg_update_apply_management_files() {
 }
 
 rg_update_apply_vpn_files() {
-  local work_dir=$1
-  local agent_bin agent_unit
-
+  local work_dir=$1 agent_bin agent_unit
   agent_bin=$(rg_update_path /usr/local/bin/routegate-agent)
   agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service)
 
@@ -370,10 +339,8 @@ rg_update_apply_vpn_files() {
 }
 
 rg_update_apply_role_files() {
-  local role=$1
-  local work_dir=$2
+  local role=$1 work_dir=$2
   rg_update_validate_role "$role"
-
   case "$role" in
     management) rg_update_apply_management_files "$work_dir" ;;
     vpn) rg_update_apply_vpn_files "$work_dir" ;;
@@ -382,9 +349,7 @@ rg_update_apply_role_files() {
 }
 
 rg_update_start_and_validate_role() {
-  local role=$1
-  local db_url=${2:-}
-  local expected_schema=${3:-}
+  local role=$1 db_url=${2:-} expected_schema=${3:-}
   rg_update_validate_role "$role"
 
   if rg_update_role_has_management "$role"; then
@@ -395,18 +360,14 @@ rg_update_start_and_validate_role() {
     rg_update_wait_manager 45
     rg_update_validate_database_schema "$db_url" "$expected_schema"
   fi
-
   if rg_update_role_has_vpn "$role"; then
     rg_update_wait_agent 30
   fi
 }
 
 rg_update_require_role_backup() {
-  local backup_dir=$1
-  local role=$2
-  local meta="$backup_dir/role.meta"
-  local stored_role
-
+  local backup_dir=$1 role=$2 meta stored_role
+  meta="$backup_dir/role.meta"
   [[ -f "$meta" && ! -L "$meta" ]] || {
     rg_update_die "role backup metadata is missing"
     return 1
@@ -419,9 +380,7 @@ rg_update_require_role_backup() {
 }
 
 rg_update_restore_management_backup() {
-  local backup_dir=$1
-  local db_url=$2
-  local restore_database=${3:-0}
+  local backup_dir=$1 db_url=$2 restore_database=${3:-0}
   local manager_bin migrations_dir frontend_dir manager_unit manager_env
   local migrations_parent frontend_parent restore_rc=0
 
@@ -451,6 +410,10 @@ rg_update_restore_management_backup() {
         --dbname="$db_url" "$backup_dir/routegate.pgdump" >/dev/null || restore_rc=$?
       RG_UPDATE_DB_RESTORE_RC=$restore_rc
     fi
+    if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
+      printf '%s WARNING: Management database restore failed (exit %d); continuing file rollback\n' \
+        "$RG_UPDATE_LOG_PREFIX" "$RG_UPDATE_DB_RESTORE_RC" >&2
+    fi
   fi
 
   install -m 0755 "$backup_dir/routegate-manager" "$manager_bin"
@@ -469,16 +432,16 @@ rg_update_restore_management_backup() {
 }
 
 rg_update_restore_vpn_backup() {
-  local backup_dir=$1
-  local agent_bin agent_unit
-
+  local backup_dir=$1 agent_bin agent_unit
   rg_update_require_role_backup "$backup_dir" vpn
-  for required in routegate-agent routegate-agent.service; do
-    [[ -e "$backup_dir/$required" && ! -L "$backup_dir/$required" ]] || {
-      rg_update_die "VPN backup is incomplete: $required"
-      return 1
-    }
-  done
+  [[ -f "$backup_dir/routegate-agent" && ! -L "$backup_dir/routegate-agent" ]] || {
+    rg_update_die "VPN backup is missing routegate-agent"
+    return 1
+  }
+  [[ -f "$backup_dir/routegate-agent.service" && ! -L "$backup_dir/routegate-agent.service" ]] || {
+    rg_update_die "VPN backup is missing routegate-agent.service"
+    return 1
+  }
 
   agent_bin=$(rg_update_path /usr/local/bin/routegate-agent)
   agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service)
@@ -491,19 +454,11 @@ rg_update_restore_vpn_backup() {
 }
 
 rg_update_restore_role_backup() {
-  local role=$1
-  local backup_dir=$2
-  local db_url=${3:-}
-  local restore_database=${4:-0}
+  local role=$1 backup_dir=$2 db_url=${3:-} restore_database=${4:-0}
   rg_update_validate_role "$role"
-
   case "$role" in
-    management)
-      rg_update_restore_management_backup "$backup_dir" "$db_url" "$restore_database"
-      ;;
-    vpn)
-      rg_update_restore_vpn_backup "$backup_dir"
-      ;;
+    management) rg_update_restore_management_backup "$backup_dir" "$db_url" "$restore_database" ;;
+    vpn) rg_update_restore_vpn_backup "$backup_dir" ;;
     hybrid)
       rg_update_require_role_backup "$backup_dir" hybrid
       rg_update_restore_backup "$backup_dir" "$db_url" "$restore_database"
