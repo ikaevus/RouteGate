@@ -118,6 +118,7 @@ jobs:
             scripts/deploy-production-like-bundle.sh \
             scripts/production-like-ops.sh \
             scripts/routegate-recovery \
+            scripts/routegate-update-bootstrap.sh \
             scripts/routegate-update-core.sh \
             scripts/routegate-update-role.sh \
             scripts/routegate-update-transaction.sh \
@@ -126,6 +127,7 @@ jobs:
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
+            scripts/test-update-bootstrap.sh \
             scripts/test-update-core.sh \
             scripts/test-update-role.sh \
             scripts/test-update-toolchain.sh \
@@ -142,6 +144,7 @@ jobs:
             scripts/deploy-production-like-bundle.sh \
             scripts/production-like-ops.sh \
             scripts/routegate-recovery \
+            scripts/routegate-update-bootstrap.sh \
             scripts/routegate-update-core.sh \
             scripts/routegate-update-role.sh \
             scripts/routegate-update-transaction.sh \
@@ -150,6 +153,7 @@ jobs:
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
+            scripts/test-update-bootstrap.sh \
             scripts/test-update-core.sh \
             scripts/test-update-role.sh \
             scripts/test-update-toolchain.sh \
@@ -162,6 +166,7 @@ jobs:
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
           bash scripts/test-recovery-tool.sh
+          bash scripts/test-update-bootstrap.sh
           bash scripts/test-update-core.sh
           bash scripts/test-update-role.sh
           bash scripts/test-update-toolchain.sh
@@ -192,6 +197,7 @@ jobs:
           grep -Fq './manager/migrations/' bundle-files.txt
           grep -Fxq './tools/routegate-recovery' bundle-files.txt
           grep -Fxq './tools/release_manifest.py' bundle-files.txt
+          grep -Fxq './tools/routegate-update-bootstrap.sh' bundle-files.txt
           grep -Fxq './tools/routegate-update-core.sh' bundle-files.txt
           grep -Fxq './tools/routegate-update-role.sh' bundle-files.txt
           grep -Fxq './tools/routegate-update-transaction.sh' bundle-files.txt
