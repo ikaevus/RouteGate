@@ -17,9 +17,6 @@ RG_UPDATE_MANAGER_OWNER=${RG_UPDATE_MANAGER_OWNER:-routegate:routegate}
 
 RG_UPDATE_BUNDLE_VERSION=""
 RG_UPDATE_BUNDLE_COMMIT=""
-RG_UPDATE_BUNDLE_BUILD_DATE=""
-RG_UPDATE_BUNDLE_OS=""
-RG_UPDATE_BUNDLE_ARCH=""
 RG_UPDATE_EXPECTED_SCHEMA=""
 RG_UPDATE_DB_RESTORE_RC=0
 
@@ -143,9 +140,6 @@ rg_update_read_bundle_metadata() {
 
   RG_UPDATE_BUNDLE_VERSION=$version
   RG_UPDATE_BUNDLE_COMMIT=$commit
-  RG_UPDATE_BUNDLE_BUILD_DATE=$build_date
-  RG_UPDATE_BUNDLE_OS=$os_name
-  RG_UPDATE_BUNDLE_ARCH=$arch
 }
 
 rg_update_expected_schema_from_dir() {
@@ -393,6 +387,7 @@ rg_update_restore_backup() {
   local restore_database=${3:-0}
   local manager_bin agent_bin migrations_dir frontend_dir manager_unit agent_unit manager_env
   local migrations_parent frontend_parent
+  local restore_rc=0
 
   [[ -d "$backup_dir" && ! -L "$backup_dir" ]] || {
     rg_update_die "backup directory is missing or unsafe: $backup_dir"
@@ -431,7 +426,6 @@ rg_update_restore_backup() {
       RG_UPDATE_DB_RESTORE_RC=1
       printf '%s WARNING: database restore requested but database backup is unavailable\n' "$RG_UPDATE_LOG_PREFIX" >&2
     else
-      set +e
       pg_restore \
         --clean \
         --if-exists \
@@ -439,9 +433,8 @@ rg_update_restore_backup() {
         --no-privileges \
         --exit-on-error \
         --dbname="$db_url" \
-        "$backup_dir/routegate.pgdump" >/dev/null
-      RG_UPDATE_DB_RESTORE_RC=$?
-      set -e
+        "$backup_dir/routegate.pgdump" >/dev/null || restore_rc=$?
+      RG_UPDATE_DB_RESTORE_RC=$restore_rc
       if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
         printf '%s WARNING: database restore failed (exit %d); continuing file/service rollback\n' \
           "$RG_UPDATE_LOG_PREFIX" "$RG_UPDATE_DB_RESTORE_RC" >&2
