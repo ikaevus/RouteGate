@@ -33,18 +33,23 @@ assert_file_content() {
 make_stage() {
   local stage=$1
   local commit=$2
+  local tool
   mkdir -p \
     "$stage/bin" \
     "$stage/frontend" \
     "$stage/manager/migrations" \
     "$stage/systemd" \
-    "$stage/metadata"
+    "$stage/metadata" \
+    "$stage/tools"
   printf 'manager-new\n' >"$stage/bin/routegate-manager"
   printf 'agent-new\n' >"$stage/bin/routegate-agent"
   printf 'frontend-new\n' >"$stage/frontend/index.html"
   printf 'SELECT 1;\n' >"$stage/manager/migrations/000134_distinct_tcp_listener_ports.up.sql"
   printf '[Unit]\nDescription=Manager\n' >"$stage/systemd/routegate-manager.service"
   printf '[Unit]\nDescription=Agent\n' >"$stage/systemd/routegate-agent.service"
+  while IFS= read -r tool; do
+    printf 'fixture-%s\n' "$tool" >"$stage/tools/$tool"
+  done < <(rg_update_toolchain_files)
   cat >"$stage/metadata/manifest.env" <<EOF_MANIFEST
 FORMAT_VERSION=1
 VERSION=v0.2.0
