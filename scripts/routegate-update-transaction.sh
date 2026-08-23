@@ -113,16 +113,26 @@ cleanup() {
 
 rollback() {
   local rc=$?
-  local rollback_rc=0
+  local platform_rollback_rc=0
+  local toolchain_rollback_rc=0
   trap - ERR
   set +e
 
   if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" && -n "$ROLE" ]]; then
     log "failure stage=$STAGE; starting role-aware rollback"
-    rg_update_restore_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" || rollback_rc=$?
-    if ((rollback_rc != 0)); then
-      printf '[routegate-update-transaction] WARNING: rollback reported exit %d; backup=%s\n' \
-        "$rollback_rc" "$BACKUP_DIR" >&2
+
+    rg_update_restore_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" \
+      || platform_rollback_rc=$?
+    rg_update_restore_toolchain_backup "$BACKUP_DIR" \
+      || toolchain_rollback_rc=$?
+
+    if ((platform_rollback_rc != 0)); then
+      printf '[routegate-update-transaction] WARNING: platform rollback reported exit %d; backup=%s\n' \
+        "$platform_rollback_rc" "$BACKUP_DIR" >&2
+    fi
+    if ((toolchain_rollback_rc != 0)); then
+      printf '[routegate-update-transaction] WARNING: trusted updater rollback reported exit %d; backup=%s\n' \
+        "$toolchain_rollback_rc" "$BACKUP_DIR" >&2
     fi
     if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
       printf '[routegate-update-transaction] WARNING: database restore reported exit %d; backup=%s\n' \
@@ -142,9 +152,31 @@ acquire_lock() {
 
 require_role_commands() {
   local role=$1
-  rg_update_require_commands awk cp date find flock install rm sed sha256sum tar systemctl uname || return 1
+  rg_update_require_commands \
+    awk \
+    bash \
+    basename \
+    chmod \
+    cp \
+    date \
+    dirname \
+    find \
+    flock \
+    grep \
+    head \
+    install \
+    mktemp \
+    python3 \
+    rm \
+    sed \
+    sha256sum \
+    sleep \
+    tar \
+    systemctl \
+    uname \
+    wc || return 1
   if rg_update_role_has_management "$role"; then
-    rg_update_require_commands curl pg_dump pg_restore psql || return 1
+    rg_update_require_commands chown curl pg_dump pg_restore psql || return 1
   fi
 }
 
@@ -189,6 +221,7 @@ main() {
   STAGE=backup
   BACKUP_DIR="${BACKUP_ROOT%/}/update-${ROLE}-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
   rg_update_create_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL"
+  rg_update_create_toolchain_backup "$BACKUP_DIR"
   trap rollback ERR
 
   STAGE=apply
@@ -200,6 +233,12 @@ main() {
     DB_MAY_BE_MUTATED=1
   fi
   rg_update_start_and_validate_role "$ROLE" "$DB_URL" "$RG_UPDATE_EXPECTED_SCHEMA"
+
+  STAGE=toolchain_promotion
+  rg_update_apply_toolchain "$WORK_DIR"
+
+  STAGE=toolchain_validation
+  rg_update_validate_toolchain
 
   STAGE=complete
   trap - ERR
