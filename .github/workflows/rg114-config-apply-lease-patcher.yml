@@ -1,4 +1,5 @@
 name: RG-114 config apply lease patcher
+# Retrigger after the workflow already exists on the branch.
 
 on:
   push:
