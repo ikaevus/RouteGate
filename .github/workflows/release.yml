@@ -77,6 +77,11 @@ jobs:
             grep -Fxq './bin/routegate-agent' "$listing"
             grep -Fxq './frontend/index.html' "$listing"
             grep -Fq './manager/migrations/' "$listing"
+            grep -Fxq './tools/release_manifest.py' "$listing"
+            grep -Fxq './tools/routegate-update-core.sh' "$listing"
+            grep -Fxq './tools/routegate-update-role.sh' "$listing"
+            grep -Fxq './tools/routegate-update-transaction.sh' "$listing"
+            grep -Fxq './tools/routegate-update-verified.sh' "$listing"
             grep -Fxq './metadata/manifest.env' "$listing"
           done
           test -s release-manifest.json
