@@ -69,24 +69,33 @@ sing_box_diagnostics() {
   command -v sing-box >/dev/null 2>&1 || die "sing-box binary is unavailable"
   [[ -r /etc/sing-box/config.json ]] || die "sing-box config is unavailable"
 
-  local version config_state unit_execstart
+  local version config_state directory_state unit_execstart config_count config_names
   version=$(sing-box version 2>/dev/null | head -n 1 || true)
   if sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1; then
     config_state=valid
   else
     config_state=invalid
   fi
+  if sing-box check -C /etc/sing-box >/dev/null 2>&1; then
+    directory_state=valid
+  else
+    directory_state=invalid
+  fi
+
+  config_count=$(find /etc/sing-box -maxdepth 1 -type f \( -name '*.json' -o -name '*.jsonc' \) -printf '%f\n' 2>/dev/null | wc -l | tr -d ' ')
+  config_names=$(find /etc/sing-box -maxdepth 1 -type f \( -name '*.json' -o -name '*.jsonc' \) -printf '%f\n' 2>/dev/null | LC_ALL=C sort | head -n 20 | paste -sd ',' -)
   unit_execstart=$(systemctl show --property=ExecStart --value sing-box.service 2>/dev/null || true)
   unit_execstart=${unit_execstart//$'\n'/ }
   unit_execstart=${unit_execstart:0:240}
 
   log "runtime=sing-box version=${version:-unknown}"
   log "runtime=sing-box config=${config_state}"
+  log "runtime=sing-box directory-config=${directory_state} files=${config_count:-0} names=${config_names:-none}"
   log "runtime=sing-box unit-execstart=${unit_execstart:-unknown}"
 
-  # Deliberately expose only systemd metadata and command/config compatibility.
-  # Raw journal/config output remains outside the bridge because it may contain
-  # connection material or other deployment-sensitive values.
+  # Deliberately expose only systemd metadata, config file basenames and
+  # command/config compatibility. Raw journal/config output remains outside the
+  # bridge because it may contain connection material or deployment secrets.
 }
 
 http_diagnostics() {
