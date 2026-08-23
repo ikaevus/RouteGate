@@ -111,6 +111,67 @@ cleanup() {
   fi
 }
 
+trusted_path_is_secure() {
+  local path=$1
+  local label=$2
+  local owner permissions
+
+  owner=$(stat -c '%u' -- "$path") || return 1
+  permissions=$(stat -c '%A' -- "$path") || return 1
+
+  [[ "$owner" == "$EUID" ]] || {
+    rg_update_die "$label is not owned by the privileged updater user: $path"
+    return 1
+  }
+  [[ "${permissions:5:1}" != "w" && "${permissions:8:1}" != "w" ]] || {
+    rg_update_die "$label is group/world writable: $path"
+    return 1
+  }
+}
+
+validate_trusted_toolchain_security() {
+  local state tool_dir entrypoint tool_parent entrypoint_parent path file
+  local expected_entrypoint actual_entrypoint
+
+  state=$(rg_update_toolchain_state) || return 1
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
+  tool_parent=$(rg_update_path /usr/local/lib/routegate) || return 1
+  entrypoint_parent=$(dirname "$entrypoint") || return 1
+
+  for path in "$tool_parent" "$entrypoint_parent"; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      [[ -d "$path" && ! -L "$path" ]] || {
+        rg_update_die "trusted updater parent path is unsafe: $path"
+        return 1
+      }
+      trusted_path_is_secure "$path" "trusted updater parent" || return 1
+    fi
+  done
+
+  if [[ "$state" == "absent" ]]; then
+    return 0
+  fi
+
+  trusted_path_is_secure "$tool_dir" "trusted updater directory" || return 1
+  trusted_path_is_secure "$entrypoint" "trusted updater entrypoint" || return 1
+  while IFS= read -r file; do
+    trusted_path_is_secure "$tool_dir/$file" "trusted updater component" || return 1
+  done < <(rg_update_toolchain_files)
+
+  [[ -x "$tool_dir/routegate-update-transaction.sh" && -x "$tool_dir/routegate-update-verified.sh" ]] || {
+    rg_update_die "trusted updater executable components are not executable"
+    return 1
+  }
+
+  expected_entrypoint=$'#!/usr/bin/env bash\nset -Eeuo pipefail\nexec /usr/local/lib/routegate/update/routegate-update-verified.sh "$@"'
+  actual_entrypoint=$(cat -- "$entrypoint") || return 1
+  [[ "$actual_entrypoint" == "$expected_entrypoint" ]] || {
+    rg_update_die "trusted updater entrypoint content is not canonical"
+    return 1
+  }
+}
+
 rollback() {
   local rc=$?
   local platform_rollback_rc=0
@@ -125,6 +186,9 @@ rollback() {
       || platform_rollback_rc=$?
     rg_update_restore_toolchain_backup "$BACKUP_DIR" \
       || toolchain_rollback_rc=$?
+    if ((toolchain_rollback_rc == 0)); then
+      validate_trusted_toolchain_security || toolchain_rollback_rc=$?
+    fi
 
     if ((platform_rollback_rc != 0)); then
       printf '[routegate-update-transaction] WARNING: platform rollback reported exit %d; backup=%s\n' \
@@ -156,6 +220,7 @@ require_role_commands() {
     awk \
     bash \
     basename \
+    cat \
     chmod \
     cp \
     date \
@@ -171,6 +236,7 @@ require_role_commands() {
     sed \
     sha256sum \
     sleep \
+    stat \
     tar \
     systemctl \
     uname \
@@ -200,6 +266,9 @@ main() {
   ROLE=$(rg_update_resolve_role "$REQUESTED_ROLE") || exit 1
   require_role_commands "$ROLE" || exit 1
   log "resolved role=$ROLE arch=$TARGET_ARCH"
+
+  STAGE=toolchain_preflight
+  validate_trusted_toolchain_security
 
   STAGE=preflight
   rg_update_role_preflight "$ROLE"
@@ -238,6 +307,7 @@ main() {
   rg_update_apply_toolchain "$WORK_DIR"
 
   STAGE=toolchain_validation
+  validate_trusted_toolchain_security
   rg_update_validate_toolchain
 
   STAGE=complete
