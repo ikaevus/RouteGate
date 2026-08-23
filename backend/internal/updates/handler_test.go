@@ -19,16 +19,16 @@ const testJobID = "11111111-1111-4111-8111-111111111111"
 const testUserID = "22222222-2222-4222-8222-222222222222"
 
 type fakeJobRepository struct {
-	job          Job
-	list         []Job
-	listLimit    int
-	getCalled    bool
-	failCode     string
-	createErr    error
-	markErr      error
-	completeErr  error
-	getErr       error
-	listErr      error
+	job         Job
+	list        []Job
+	listLimit   int
+	getCalled   bool
+	failCode    string
+	createErr   error
+	markErr     error
+	completeErr error
+	getErr      error
+	listErr     error
 }
 
 func newFakeJobRepository() *fakeJobRepository {
@@ -45,7 +45,7 @@ func newFakeJobRepository() *fakeJobRepository {
 
 func (r *fakeJobRepository) CreatePreflight(context.Context, string) (Job, error) {
 	if r.createErr != nil {
-		return Job{}, r.createErr
+		return r.job, r.createErr
 	}
 	r.job.Status = StatusPending
 	return r.job, nil
@@ -191,6 +191,29 @@ func TestCreatePreflightReaderFailurePersistsFailedJob(t *testing.T) {
 	}
 	if len(recorder.events) != 2 || recorder.events[1].Action != "update.preflight.failed" {
 		t.Fatalf("unexpected audit events: %#v", recorder.events)
+	}
+}
+
+func TestCreatePreflightAmbiguousInsertReconcilesPersistedJob(t *testing.T) {
+	repo := newFakeJobRepository()
+	repo.createErr = context.DeadlineExceeded
+	recorder := &fakeAuditRecorder{}
+	handler := NewHandlerWithDependencies(nil, repo, fakeSchemaReader{}, recorder, releaseInfo)
+
+	response := httptest.NewRecorder()
+	handler.CreatePreflight(response, authenticatedRequest(http.MethodPost, "/api/v1/system/update-jobs/preflight"))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if repo.job.Status != StatusFailed || repo.failCode != preflightInsertAmbiguousCode {
+		t.Fatalf("reconciled job = %+v, code = %q", repo.job, repo.failCode)
+	}
+	if len(recorder.events) != 1 || recorder.events[0].Action != "update.preflight.failed" {
+		t.Fatalf("unexpected audit events: %#v", recorder.events)
+	}
+	if recorder.events[0].Metadata["error_code"] != preflightInsertAmbiguousCode {
+		t.Fatalf("unexpected audit metadata: %#v", recorder.events[0].Metadata)
 	}
 }
 
