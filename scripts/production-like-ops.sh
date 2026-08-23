@@ -233,6 +233,88 @@ restart_runtime() {
   runtime_diagnostics
 }
 
+reconcile_mtproto_port_conflict() {
+  local env_file=/etc/routegate/manager.env
+  local config_file=/etc/routegate-mtproto/config.toml
+  local backup_file current_line current_port row vless_port shadowsocks_port target_port server_count tmp_file
+
+  [[ -r "$env_file" ]] || die "manager environment is unavailable"
+  [[ -r "$config_file" ]] || die "managed MTProto config is unavailable"
+  command -v psql >/dev/null 2>&1 || die "psql is unavailable"
+
+  set -a
+  # shellcheck disable=SC1091
+  source "$env_file"
+  set +a
+  [[ -n ${ROUTEGATE_DATABASE_URL:-} ]] || die "database URL is unavailable"
+
+  server_count=$(psql "$ROUTEGATE_DATABASE_URL" -qAtc 'SELECT count(*) FROM servers' 2>/dev/null || true)
+  [[ "$server_count" == 1 ]] || die "production-like port reconciliation requires exactly one managed server"
+
+  row=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c 'SELECT vless_port, shadowsocks_port, mtproto_port FROM servers LIMIT 1' 2>/dev/null || true)
+  IFS='|' read -r vless_port shadowsocks_port target_port <<<"$row"
+  [[ "$vless_port" =~ ^[0-9]+$ && "$shadowsocks_port" =~ ^[0-9]+$ && "$target_port" =~ ^[0-9]+$ ]] || die "database listener ports are unavailable"
+  [[ "$target_port" != "$vless_port" && "$target_port" != "$shadowsocks_port" ]] || die "database still contains a TCP listener collision"
+
+  current_line=$(grep -E '^bind-to = "0\.0\.0\.0:[0-9]{1,5}"$' "$config_file" || true)
+  [[ $(printf '%s\n' "$current_line" | sed '/^$/d' | wc -l | tr -d ' ') == 1 ]] || die "managed MTProto bind-to line is ambiguous"
+  current_port=$(printf '%s\n' "$current_line" | grep -Eo '[0-9]{1,5}' | tail -n 1)
+  [[ "$current_port" =~ ^[0-9]+$ ]] || die "managed MTProto port is invalid"
+
+  if [[ "$current_port" != "$target_port" ]]; then
+    backup_file="${config_file}.routegate-port-reconcile.$(date -u +%Y%m%dT%H%M%SZ).bak"
+    cp -a "$config_file" "$backup_file"
+    tmp_file=$(mktemp /etc/routegate-mtproto/config.toml.XXXXXX)
+    if ! awk -v port="$target_port" '
+      BEGIN { replaced = 0 }
+      /^bind-to = "0\.0\.0\.0:[0-9]+"$/ {
+        print "bind-to = \"0.0.0.0:" port "\""
+        replaced = 1
+        next
+      }
+      { print }
+      END { if (replaced != 1) exit 42 }
+    ' "$config_file" >"$tmp_file"; then
+      rm -f "$tmp_file"
+      die "failed to render reconciled MTProto config"
+    fi
+    chmod --reference="$config_file" "$tmp_file"
+    chown --reference="$config_file" "$tmp_file"
+    mv "$tmp_file" "$config_file"
+
+    if ! systemctl restart routegate-mtproto.service; then
+      cp -a "$backup_file" "$config_file"
+      systemctl restart routegate-mtproto.service || true
+      die "MTProto failed after port reconciliation; previous config restored"
+    fi
+    for _ in $(seq 1 20); do
+      systemctl is-active --quiet routegate-mtproto.service && break
+      sleep 1
+    done
+    if ! systemctl is-active --quiet routegate-mtproto.service; then
+      cp -a "$backup_file" "$config_file"
+      systemctl restart routegate-mtproto.service || true
+      die "MTProto did not become active after port reconciliation; previous config restored"
+    fi
+    log "mtproto-port-reconcile=passed old-port=${current_port} new-port=${target_port}"
+  else
+    log "mtproto-port-reconcile=already-current port=${target_port}"
+  fi
+
+  command -v sing-box >/dev/null 2>&1 || die "sing-box binary is unavailable"
+  [[ -r /etc/sing-box/config.json ]] || die "sing-box config is unavailable"
+  sing-box check -c /etc/sing-box/config.json >/dev/null || die "sing-box config validation failed"
+  systemctl restart sing-box.service
+  for _ in $(seq 1 20); do
+    systemctl is-active --quiet sing-box.service && break
+    sleep 1
+  done
+  systemctl is-active --quiet sing-box.service || die "sing-box did not become active after MTProto port reconciliation"
+  log "sing-box-recovery=passed"
+  runtime_diagnostics
+  validate_platform
+}
+
 renew_certificate() {
   if [[ -x /usr/local/sbin/routegate-recovery ]]; then
     /usr/local/sbin/routegate-recovery renew-certificate
@@ -270,6 +352,9 @@ main() {
       ;;
     restart-mtproto)
       restart_runtime mtproto routegate-mtproto.service
+      ;;
+    reconcile-mtproto-port-conflict)
+      reconcile_mtproto_port_conflict
       ;;
     renew-certificate)
       renew_certificate
