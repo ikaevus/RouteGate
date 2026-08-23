@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
@@ -66,11 +65,6 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := h.repo.CreatePreflight(r.Context(), user.ID)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("update_preflight_in_progress", "Another update preflight is already pending or running."))
-		return
-	}
 	if err != nil {
 		h.logError("create update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create update preflight job."))
