@@ -61,15 +61,20 @@ jobs:
           bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
           test -s "$bundle"
           tar -tzf "$bundle" | grep -qx './metadata/manifest.env'
+          tar -tzf "$bundle" | grep -qx './tools/routegate-update-core.sh'
 
       - name: Validate deploy scripts locally
         shell: bash
         run: |
           set -euo pipefail
+          bash -n scripts/routegate-update-core.sh
           bash -n scripts/deploy-production-like-bundle.sh
           bash -n scripts/validate-production-like-deploy.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck scripts/deploy-production-like-bundle.sh scripts/validate-production-like-deploy.sh
+            shellcheck \
+              scripts/routegate-update-core.sh \
+              scripts/deploy-production-like-bundle.sh \
+              scripts/validate-production-like-deploy.sh
           fi
 
       - name: Configure SSH
@@ -99,9 +104,11 @@ jobs:
           remote_bundle="/tmp/routegate-deploy-${TARGET_SHA}.tar.gz"
           remote_deploy="/tmp/routegate-deploy-${TARGET_SHA}.sh"
           remote_validate="/tmp/routegate-deploy-validate-${TARGET_SHA}.sh"
+          remote_core="/tmp/routegate-update-core-${TARGET_SHA}.sh"
           "${SCP[@]}" "$bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle"
           "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
           "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
+          "${SCP[@]}" scripts/routegate-update-core.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_core"
 
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" 'sudo bash -s' <<'REMOTE_PREFLIGHT'
           set -euo pipefail
@@ -124,8 +131,10 @@ jobs:
           REMOTE_PREFLIGHT
 
           set +e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate'"
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate' '$remote_core'"
           rc=$?
           set -e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_deploy' '$remote_validate' '$remote_bundle'" || true
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "rm -f '$remote_deploy' '$remote_validate' '$remote_core' '$remote_bundle'" || true
           exit "$rc"
