@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: routegate-production-like
+  group: routegate-production-like-deploy
   cancel-in-progress: false
 
 jobs:
@@ -103,9 +103,6 @@ jobs:
           "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
           "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
 
-          # Platform deployment depends on the RouteGate control plane only.
-          # VPN runtimes are independent data-plane components and are diagnosed
-          # by the deploy script without blocking an otherwise healthy update.
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" 'sudo bash -s' <<'REMOTE_PREFLIGHT'
           set -euo pipefail
           for service in routegate-manager routegate-agent; do
@@ -123,10 +120,11 @@ jobs:
               exit 1
             fi
           done
+          command -v flock >/dev/null 2>&1 || { printf '[production-like] missing required flock command\n' >&2; exit 1; }
           REMOTE_PREFLIGHT
 
           set +e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate'"
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate'"
           rc=$?
           set -e
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_deploy' '$remote_validate' '$remote_bundle'" || true
