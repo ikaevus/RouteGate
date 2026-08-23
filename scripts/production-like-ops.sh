@@ -22,7 +22,7 @@ require_root() {
 service_state() {
   local label=$1
   local service=$2
-  local load_state active_state sub_state result restarts
+  local load_state active_state sub_state result restarts exec_status exec_code
 
   load_state=$(systemctl show --property=LoadState --value "$service" 2>/dev/null || true)
   if [[ "$load_state" != "loaded" ]]; then
@@ -34,7 +34,9 @@ service_state() {
   sub_state=$(systemctl show --property=SubState --value "$service" 2>/dev/null || true)
   result=$(systemctl show --property=Result --value "$service" 2>/dev/null || true)
   restarts=$(systemctl show --property=NRestarts --value "$service" 2>/dev/null || true)
-  log "service=${label} installed=true active=${active_state:-unknown} sub=${sub_state:-unknown} result=${result:-unknown} restarts=${restarts:-unknown}"
+  exec_status=$(systemctl show --property=ExecMainStatus --value "$service" 2>/dev/null || true)
+  exec_code=$(systemctl show --property=ExecMainCode --value "$service" 2>/dev/null || true)
+  log "service=${label} installed=true active=${active_state:-unknown} sub=${sub_state:-unknown} result=${result:-unknown} restarts=${restarts:-unknown} exec-code=${exec_code:-unknown} exec-status=${exec_status:-unknown}"
 }
 
 control_plane_diagnostics() {
@@ -60,6 +62,31 @@ runtime_diagnostics() {
   else
     log "runtime=sing-box config=unavailable"
   fi
+}
+
+sing_box_diagnostics() {
+  service_state sing-box sing-box.service
+  command -v sing-box >/dev/null 2>&1 || die "sing-box binary is unavailable"
+  [[ -r /etc/sing-box/config.json ]] || die "sing-box config is unavailable"
+
+  local version config_state unit_execstart
+  version=$(sing-box version 2>/dev/null | head -n 1 || true)
+  if sing-box check -c /etc/sing-box/config.json >/dev/null 2>&1; then
+    config_state=valid
+  else
+    config_state=invalid
+  fi
+  unit_execstart=$(systemctl show --property=ExecStart --value sing-box.service 2>/dev/null || true)
+  unit_execstart=${unit_execstart//$'\n'/ }
+  unit_execstart=${unit_execstart:0:240}
+
+  log "runtime=sing-box version=${version:-unknown}"
+  log "runtime=sing-box config=${config_state}"
+  log "runtime=sing-box unit-execstart=${unit_execstart:-unknown}"
+
+  # Deliberately expose only systemd metadata and command/config compatibility.
+  # Raw journal/config output remains outside the bridge because it may contain
+  # connection material or other deployment-sensitive values.
 }
 
 http_diagnostics() {
@@ -117,6 +144,7 @@ validate_platform() {
 
   log "validation=passed control-plane=healthy"
   runtime_diagnostics
+  schema_diagnostics
 }
 
 restart_control_plane() {
@@ -170,6 +198,9 @@ main() {
   case "$OPERATION" in
     diagnose)
       diagnose
+      ;;
+    diagnose-sing-box)
+      sing_box_diagnostics
       ;;
     validate)
       validate_platform
