@@ -47,5 +47,18 @@ assert_true "writes Agent config with mode 0600" test "$(stat -c '%a' "$config_p
 assert_equal "writes the Manager URL" "https://manager.routegate.org" "$(config_value "$config_path" manager_url)"
 assert_equal "writes the one-time registration token" "$valid_token" "$(config_value "$config_path" registration_token)"
 
+assert_true "VPN installer explicitly installs Python for updater verification" \
+  grep -Fq 'jq python3 tar wireguard-tools' "$ROOT_DIR/install-agent.sh"
+assert_true "VPN installer requires updater bootstrap helper in the release bundle" \
+  grep -Fq 'routegate-update-bootstrap.sh' "$ROOT_DIR/install-agent.sh"
+assert_true "VPN installer clears RG_UPDATE_ROOT before privileged bootstrap" \
+  grep -Fq 'env -u RG_UPDATE_ROOT bash "$helper"' "$ROOT_DIR/install-agent.sh"
+
+main_body=$(sed -n '/^main() {/,/^}/p' "$ROOT_DIR/install-agent.sh")
+registration_line=$(grep -n 'wait_for_registration' <<<"$main_body" | tail -n1 | cut -d: -f1)
+bootstrap_line=$(grep -n 'bootstrap_trusted_updater' <<<"$main_body" | tail -n1 | cut -d: -f1)
+assert_true "VPN updater bootstrap runs after Agent registration" \
+  test "$registration_line" -lt "$bootstrap_line"
+
 printf '1..%d\n' "$TESTS_RUN"
 ((TESTS_FAILED == 0))
