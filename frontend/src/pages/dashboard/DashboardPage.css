@@ -217,6 +217,10 @@
   display: none;
 }
 
+.servers-summary-widget {
+  align-self: start;
+}
+
 .deployments-widget {
   grid-column: span 4;
 }
