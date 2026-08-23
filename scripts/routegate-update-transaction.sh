@@ -149,6 +149,7 @@ main() {
   rg_update_require_root || exit 1
   rg_update_require_commands curl date find flock pg_dump pg_restore psql sha256sum tar systemctl uname || exit 1
   acquire_lock
+  trap cleanup EXIT
 
   TARGET_ARCH=$(platform_architecture "$(uname -m)") || die "unsupported host architecture: $(uname -m)"
   ROLE=$(rg_update_resolve_role "$REQUESTED_ROLE") || exit 1
@@ -175,9 +176,7 @@ main() {
   STAGE=backup
   BACKUP_DIR="${BACKUP_ROOT%/}/update-${ROLE}-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
   rg_update_create_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL"
-
   trap rollback ERR
-  trap cleanup EXIT
 
   STAGE=apply
   MUTATED=1
