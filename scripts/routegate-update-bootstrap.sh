@@ -127,6 +127,22 @@ remove_bootstrap_state() {
   rm -f -- "$entrypoint"
 }
 
+install_attestation_verifier_runtime() {
+  local tool_dir verifier
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  verifier="$tool_dir/routegate-update-verified.sh"
+  [[ -f "$verifier" && ! -L "$verifier" && -x "$verifier" ]] || {
+    rg_update_die "trusted updater verifier entrypoint is unavailable after bootstrap"
+    return 1
+  }
+
+  bash "$verifier" install-verifier || {
+    rg_update_die "pinned attestation verifier runtime installation failed"
+    return 1
+  }
+  log "pinned attestation verifier runtime is ready"
+}
+
 main() {
   rg_update_require_root || exit 1
   require_commands || exit 1
@@ -157,12 +173,7 @@ main() {
       ;;
   esac
 
-  if command -v gh >/dev/null 2>&1 \
-    && gh attestation verify --help 2>/dev/null | grep -Fq -- '--predicate-type'; then
-    log "attestation verifier runtime is available"
-  else
-    log "attestation verifier runtime is not bundled yet; update execution remains unavailable until a compatible verifier is installed"
-  fi
+  install_attestation_verifier_runtime || exit 1
 }
 
 main "$@"
