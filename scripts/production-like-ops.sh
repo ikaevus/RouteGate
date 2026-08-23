@@ -148,19 +148,19 @@ http_diagnostics() {
   log "http=public-root status=${public_status:-000}"
 }
 
-schema_diagnostics() {
-  if [[ ! -r /etc/routegate/manager.env ]]; then
-    log "schema=unavailable reason=manager-env-missing"
-    return 0
-  fi
-
+load_manager_database() {
+  [[ -r /etc/routegate/manager.env ]] || return 1
+  command -v psql >/dev/null 2>&1 || return 1
   set -a
   # shellcheck disable=SC1091
   source /etc/routegate/manager.env
   set +a
+  [[ -n ${ROUTEGATE_DATABASE_URL:-} ]]
+}
 
-  if [[ -z ${ROUTEGATE_DATABASE_URL:-} ]] || ! command -v psql >/dev/null 2>&1; then
-    log "schema=unavailable reason=database-client-or-url-missing"
+schema_diagnostics() {
+  if ! load_manager_database; then
+    log "schema=unavailable reason=database-client-url-or-env-missing"
     return 0
   fi
 
@@ -173,11 +173,86 @@ schema_diagnostics() {
   fi
 }
 
+protocol_activation_diagnostics() {
+  if ! load_manager_database; then
+    log "protocol-activation=unavailable reason=database-client-url-or-env-missing"
+    return 0
+  fi
+
+  local counts latest protocol_rows account_index desired active primary job_status job_age job_started_age job_error_class
+  counts=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
+    SELECT
+      count(*) FILTER (WHERE status = 'pending'),
+      count(*) FILTER (WHERE status = 'in_progress'),
+      count(*) FILTER (WHERE status = 'failed' AND created_at > now() - interval '30 minutes'),
+      count(*) FILTER (WHERE status = 'succeeded' AND created_at > now() - interval '30 minutes')
+    FROM config_apply_jobs
+  " 2>/dev/null || true)
+  if [[ "$counts" =~ ^[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+$ ]]; then
+    IFS='|' read -r pending_count in_progress_count failed_recent succeeded_recent <<<"$counts"
+    log "protocol-activation jobs-pending=${pending_count} jobs-in-progress=${in_progress_count} failed-30m=${failed_recent} succeeded-30m=${succeeded_recent}"
+  else
+    log "protocol-activation jobs=unavailable"
+  fi
+
+  latest=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
+    SELECT
+      status,
+      GREATEST(0, floor(extract(epoch FROM (now() - created_at))))::bigint,
+      CASE WHEN started_at IS NULL THEN -1 ELSE GREATEST(0, floor(extract(epoch FROM (now() - started_at))))::bigint END,
+      CASE
+        WHEN COALESCE(error_message, '') = '' THEN 'none'
+        WHEN error_message ILIKE '%completion was not confirmed%' THEN 'completion-unconfirmed'
+        WHEN error_message ILIKE '%listener%' THEN 'listener-health'
+        WHEN error_message ILIKE '%restart%' THEN 'restart'
+        WHEN error_message ILIKE '%timeout%' THEN 'timeout'
+        ELSE 'other'
+      END
+    FROM config_apply_jobs
+    ORDER BY created_at DESC
+    LIMIT 1
+  " 2>/dev/null || true)
+  if [[ -n "$latest" ]]; then
+    IFS='|' read -r job_status job_age job_started_age job_error_class <<<"$latest"
+    log "protocol-activation latest-job-status=${job_status:-unknown} age-seconds=${job_age:-unknown} started-age-seconds=${job_started_age:--1} error-class=${job_error_class:-unknown}"
+  else
+    log "protocol-activation latest-job-status=none"
+  fi
+
+  protocol_rows=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
+    WITH account_state AS (
+      SELECT
+        a.id,
+        COALESCE(NULLIF(cp.protocol, ''), 'auto') AS primary_protocol,
+        COALESCE(string_agg(pap.protocol, ',' ORDER BY CASE pap.protocol WHEN 'vless' THEN 1 WHEN 'wireguard' THEN 2 WHEN 'hysteria2' THEN 3 WHEN 'shadowsocks' THEN 4 WHEN 'mtproto' THEN 5 ELSE 99 END) FILTER (WHERE pap.desired_enabled), '') AS desired_protocols,
+        COALESCE(string_agg(pap.protocol, ',' ORDER BY CASE pap.protocol WHEN 'vless' THEN 1 WHEN 'wireguard' THEN 2 WHEN 'hysteria2' THEN 3 WHEN 'shadowsocks' THEN 4 WHEN 'mtproto' THEN 5 ELSE 99 END) FILTER (WHERE pap.active_enabled), '') AS active_protocols
+      FROM vpn_accounts a
+      LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
+      LEFT JOIN vpn_account_protocols pap ON pap.vpn_account_id = a.id
+      GROUP BY a.id, cp.protocol, a.created_at
+      ORDER BY a.created_at ASC, a.id ASC
+    )
+    SELECT row_number() OVER (), primary_protocol, desired_protocols, active_protocols
+    FROM account_state
+    LIMIT 20
+  " 2>/dev/null || true)
+
+  if [[ -z "$protocol_rows" ]]; then
+    log "protocol-activation accounts=none"
+    return 0
+  fi
+  while IFS='|' read -r account_index primary desired active; do
+    [[ "$account_index" =~ ^[0-9]+$ ]] || continue
+    log "protocol-activation account=${account_index} primary=${primary:-auto} desired=${desired:-none} active=${active:-none}"
+  done <<<"$protocol_rows"
+}
+
 diagnose() {
   control_plane_diagnostics
   runtime_diagnostics
   http_diagnostics
   schema_diagnostics
+  protocol_activation_diagnostics
 }
 
 validate_platform() {
