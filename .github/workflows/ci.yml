@@ -103,6 +103,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
+      - name: Verify attestation CLI capability
+        run: |
+          command -v gh >/dev/null
+          gh attestation verify --help | grep -Fq -- '--predicate-type'
+
       - name: Validate shell syntax
         run: |
           bash -n \
