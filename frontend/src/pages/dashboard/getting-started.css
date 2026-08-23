@@ -359,15 +359,23 @@
 }
 
 .getting-started-next-action {
+  align-items: center;
   border: 1px solid rgba(59, 130, 246, 0.42);
   border-radius: 13px;
   background:
     linear-gradient(180deg, rgba(37, 99, 235, 0.13), rgba(15, 23, 42, 0.24));
-  display: flex;
-  flex-direction: column;
+  column-gap: 24px;
+  display: grid;
+  grid-template-areas:
+    "eyebrow action"
+    "title action"
+    "description action"
+    "meta action";
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 0;
   min-width: 0;
-  padding: 13px 14px;
+  padding: 11px 14px 12px;
+  row-gap: 2px;
 }
 
 .getting-started-next-action-ready {
@@ -379,6 +387,7 @@
   color: #93c5fd;
   font-size: 9px;
   font-weight: 850;
+  grid-area: eyebrow;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -390,22 +399,25 @@
 .getting-started-next-action h3 {
   color: var(--rg-text-primary);
   font-size: 14px;
+  grid-area: title;
   line-height: 1.25;
-  margin: 6px 0 0;
+  margin: 3px 0 0;
 }
 
 .getting-started-next-action p {
   color: var(--rg-text-secondary);
   font-size: 11px;
-  line-height: 1.48;
-  margin: 7px 0 0;
-  max-width: 900px;
+  grid-area: description;
+  line-height: 1.45;
+  margin: 3px 0 0;
+  max-width: 980px;
 }
 
 .getting-started-next-action small {
   color: #94a3b8;
   font-size: 9px;
-  margin-top: 9px;
+  grid-area: meta;
+  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -443,8 +455,9 @@
 }
 
 .getting-started-next-action > .getting-started-action {
-  align-self: flex-start;
-  margin-top: 12px;
+  align-self: center;
+  grid-area: action;
+  margin: 0;
   min-width: 180px;
 }
 
@@ -503,8 +516,21 @@
     min-height: 0;
   }
 
+  .getting-started-next-action {
+    align-items: stretch;
+    grid-template-areas:
+      "eyebrow"
+      "title"
+      "description"
+      "meta"
+      "action";
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 3px;
+  }
+
   .getting-started-next-action > .getting-started-action {
     align-self: stretch;
+    margin-top: 9px;
     min-width: 0;
     width: 100%;
   }
