@@ -78,6 +78,7 @@ jobs:
             grep -Fxq './frontend/index.html' "$listing"
             grep -Fq './manager/migrations/' "$listing"
             grep -Fxq './tools/release_manifest.py' "$listing"
+            grep -Fxq './tools/routegate-update-bootstrap.sh' "$listing"
             grep -Fxq './tools/routegate-update-core.sh' "$listing"
             grep -Fxq './tools/routegate-update-role.sh' "$listing"
             grep -Fxq './tools/routegate-update-transaction.sh' "$listing"
