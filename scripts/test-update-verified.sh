@@ -147,6 +147,7 @@ test_verified_handoff() {
 
   assert_contains "$GH_LOG" $'--repo\tikaevus/RouteGate'
   assert_contains "$GH_LOG" $'--signer-workflow\tikaevus/RouteGate/.github/workflows/release.yml'
+  assert_contains "$GH_LOG" $'--predicate-type\thttps://slsa.dev/provenance/v1'
   assert_contains "$GH_LOG" "release-manifest.attestation.json"
   assert_contains "$GH_LOG" "release-bundles.attestation.json"
 
