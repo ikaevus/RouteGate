@@ -124,6 +124,7 @@ jobs:
             scripts/routegate-update-transaction.sh \
             scripts/routegate-update-verified.sh \
             scripts/test-agent-installer.sh \
+            scripts/test-attestation-verifier-runtime.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
@@ -149,6 +150,7 @@ jobs:
             scripts/routegate-update-role.sh \
             scripts/routegate-update-transaction.sh \
             scripts/routegate-update-verified.sh \
+            scripts/test-attestation-verifier-runtime.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-bootstrap.sh \
@@ -168,6 +170,7 @@ jobs:
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
           bash scripts/test-recovery-tool.sh
+          sudo bash scripts/test-attestation-verifier-runtime.sh
           bash scripts/test-update-bootstrap.sh
           bash scripts/test-update-core.sh
           bash scripts/test-update-role.sh
