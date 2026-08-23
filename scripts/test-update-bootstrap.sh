@@ -74,7 +74,8 @@ test_fresh_bootstrap_and_preserve() {
   [[ $(stat -c '%a' "$tool_dir/routegate-update-core.sh") == 644 ]] || fail "core mode is not 0644"
   [[ $(stat -c '%a' "$tool_dir/routegate-update-verified.sh") == 755 ]] || fail "verified gate mode is not 0755"
   [[ $(stat -c '%u' "$tool_dir/routegate-update-verified.sh") == 0 ]] || fail "trusted verifier is not root-owned"
-  [[ -f "$root/var/lib/routegate-test/verifier-runtime" ]] || fail "fresh bootstrap did not invoke verifier runtime installation"
+  sudo test -f "$root/var/lib/routegate-test/verifier-runtime" \
+    || fail "fresh bootstrap did not invoke verifier runtime installation"
 
   local before
   before=$(sha256sum "$tool_dir/routegate-update-verified.sh" | awk '{print $1}')
