@@ -32,7 +32,7 @@ The Manager stores the most recently reported Agent software version and protoco
 
 ## Release bundle pipeline
 
-`RouteGate Release` builds native Linux bundles for supported architectures from an exact Git commit. Each bundle contains the Manager, Agent, Web UI, database migrations, managed systemd units, recovery tooling, and build metadata.
+`RouteGate Release` builds native Linux bundles for supported architectures from an exact Git commit. Each bundle contains the Manager, Agent, Web UI, database migrations, managed systemd units, recovery tooling, the shared host-update core, and build metadata.
 
 Release builds use the source commit timestamp as the default `BUILD_DATE` and tar timestamp. Combined with sorted archive entries, numeric ownership, and Go `-trimpath`, this removes wall-clock time from normal release output and makes repeated builds of the same source materially more reproducible.
 
@@ -82,7 +82,7 @@ Example shape:
 }
 ```
 
-`scripts/release_manifest.py` builds and verifies this contract. Verification rejects malformed metadata, unsupported platforms, duplicate artifact identities, checksum or size mismatches, disagreement with `SHA256SUMS`, bundle metadata disagreement, missing target migration files, path traversal, and special archive entries such as symlinks or device nodes.
+`scripts/release_manifest.py` builds and verifies this contract. Verification rejects malformed metadata, unsupported platforms, duplicate artifact identities, checksum or size mismatches, disagreement with `SHA256SUMS`, bundle metadata disagreement, missing target migration files, path traversal, special archive entries such as symlinks or device nodes, and release bundles that do not contain the shared host-update core required by the update architecture.
 
 CI exercises both positive and negative manifest cases and verifies the real amd64 release bundle. Tagged release workflows verify the complete manifest before publishing it as a GitHub Release asset.
 
@@ -136,13 +136,36 @@ This still does not prove that a release is bug-free, secure, or appropriate for
 
 A compromised release workflow or authorized repository change can still produce a correctly attested malicious artifact. Protecting the release workflow and branch/review policy therefore remains part of the release trust boundary.
 
+## Shared host update core
+
+RG-96B starts by separating reusable host-mutation mechanics from the production-like deployment wrapper. `scripts/routegate-update-core.sh` is deliberately a library rather than a network-facing or administrator-facing updater.
+
+The common core owns bounded platform operations against known RouteGate paths:
+
+- validate the expected local bundle SHA-256 before extraction;
+- reject archive path traversal, links, and special filesystem entries before extraction;
+- parse `metadata/manifest.env` as data without evaluating it as shell code;
+- enforce exact target commit, OS, and architecture metadata;
+- identify the exact target database migration shipped in the bundle;
+- create a root-only backup of Manager, Agent, UI, migrations, systemd units, Manager environment, and PostgreSQL;
+- replace RouteGate platform files while leaving VPN runtimes untouched;
+- start and health-check Manager and Agent;
+- validate the applied database migration;
+- restore the retained backup, including PostgreSQL when a migration-capable stage may have changed the database.
+
+The common core does **not** download releases, call GitHub, make release-channel decisions, verify Sigstore provenance itself, expose arbitrary shell execution, or decide when an update is allowed. Release discovery and provenance verification remain separate trust gates before any future privileged update transaction.
+
+The production-like deployment wrapper is the first real consumer of the common core. That is intentional: RouteGate CI/CD deployment and future one-click self-update must converge on one host mutation implementation instead of maintaining two subtly different backup/rollback paths.
+
+B1 still models the current production-like Hybrid-node platform layout. The later privileged product transaction must become explicitly role-aware so Management, VPN, and Hybrid nodes update only the components they own.
+
 ## Current deployment model
 
-The production-like deployment path already exercises most of the eventual host-update lifecycle:
+The production-like deployment path now exercises the eventual host-update lifecycle through the shared update core:
 
 1. build an exact-commit release bundle after successful CI;
-2. transfer the bundle to the host;
-3. verify SHA-256 and bundle metadata;
+2. transfer the bundle and matching update core to the host;
+3. verify SHA-256, archive safety, and bundle metadata;
 4. check the RouteGate control-plane preflight;
 5. back up Manager, Agent, Web UI, migrations, systemd units, Manager environment, and PostgreSQL;
 6. replace platform files;
@@ -150,7 +173,7 @@ The production-like deployment path already exercises most of the eventual host-
 8. validate the database against the migration shipped in the bundle;
 9. start Agent;
 10. run production-like validation and final health checks;
-11. restore the database and platform files if a mutating stage fails.
+11. restore the database and platform files through the same common core if a mutating stage fails.
 
 VPN runtimes are deliberately outside the platform-update rollback transaction. Updating or rolling back Manager/Agent/UI must preserve an already-running VPN data plane whenever possible.
 
@@ -164,7 +187,7 @@ The Manager continues to report:
 - update channel: `development`;
 - `automaticUpdatesSupported: false`.
 
-No one-click or unattended product updater is enabled by RG-96A.
+No one-click or unattended product updater is enabled by RG-96A or RG-96B1.
 
 Official builds remain builds of the auditable AGPLv3-or-later project. Update behavior must avoid hidden license checks, silent forced updates, opaque telemetry, undocumented outbound update calls, and arbitrary remote shell execution.
 
@@ -176,7 +199,8 @@ The intended sequence is:
    - A1 complete: manifest contract, deterministic release metadata, artifact verification and publication;
    - A2 complete: cryptographic build provenance, offline attestation bundles, and pinned repository/signer-workflow verification policy.
 2. **RG-96B — Host Update Engine**
-   - extract the reusable backup/apply/migrate/health/rollback lifecycle from production-like deployment behind a narrow privileged host-operation boundary.
+   - B1: extract and prove the reusable backup/apply/migrate/health/rollback core through production-like deployment;
+   - B2: expose a narrow, role-aware privileged host-operation transaction suitable for Manager orchestration.
 3. **RG-96C — Update Jobs & API**
    - durable discovery, preflight, progress, result and rollback state in Manager.
 4. **RG-96D — One-Click Admin UI**

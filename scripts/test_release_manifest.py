@@ -26,9 +26,16 @@ class ReleaseManifestTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def make_bundle(self, arch="amd64", *, metadata_version=VERSION, unsafe=False):
+    def make_bundle(
+        self,
+        arch="amd64",
+        *,
+        metadata_version=VERSION,
+        unsafe=False,
+        include_update_core=True,
+    ):
         stage = self.root / f"stage-{arch}"
-        for directory in ("bin", "frontend", "metadata", "manager/migrations"):
+        for directory in ("bin", "frontend", "metadata", "manager/migrations", "tools"):
             (stage / directory).mkdir(parents=True, exist_ok=True)
         (stage / "bin/routegate-manager").write_text("manager", encoding="utf-8")
         (stage / "bin/routegate-agent").write_text("agent", encoding="utf-8")
@@ -36,6 +43,10 @@ class ReleaseManifestTests(unittest.TestCase):
         (stage / f"manager/migrations/{MIGRATION}.up.sql").write_text(
             "SELECT 1;\n", encoding="utf-8"
         )
+        if include_update_core:
+            (stage / "tools/routegate-update-core.sh").write_text(
+                "#!/usr/bin/env bash\n", encoding="utf-8"
+            )
         (stage / "metadata/manifest.env").write_text(
             "\n".join(
                 [
@@ -110,6 +121,16 @@ class ReleaseManifestTests(unittest.TestCase):
         path = self.build()
 
         with self.assertRaisesRegex(release_manifest.ManifestError, "unsafe bundle path"):
+            release_manifest.verify_manifest(path, self.dist)
+
+    def test_rejects_bundle_without_update_core(self):
+        self.make_bundle(include_update_core=False)
+        self.write_checksums()
+        path = self.build()
+
+        with self.assertRaisesRegex(
+            release_manifest.ManifestError, "tools/routegate-update-core.sh"
+        ):
             release_manifest.verify_manifest(path, self.dist)
 
 

@@ -95,6 +95,7 @@ build_architecture() {
   cp "$ROOT_DIR/deploy/systemd/routegate-mtproto.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/nginx/routegate.conf.example" "$stage_dir/nginx/"
   cp "$ROOT_DIR/scripts/routegate-recovery" "$stage_dir/tools/"
+  cp "$ROOT_DIR/scripts/routegate-update-core.sh" "$stage_dir/tools/"
 
   cat >"$stage_dir/metadata/manifest.env" <<EOF_MANIFEST
 FORMAT_VERSION=1

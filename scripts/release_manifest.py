@@ -186,11 +186,12 @@ def verify_bundle(
     arch: str,
     expected_migration: str,
 ) -> None:
-    required = {
+    required_files = {
         "bin/routegate-manager",
         "bin/routegate-agent",
         "frontend/index.html",
         "metadata/manifest.env",
+        "tools/routegate-update-core.sh",
         f"manager/migrations/{expected_migration}.up.sql",
     }
 
@@ -205,13 +206,15 @@ def verify_bundle(
                     raise ManifestError(f"duplicate bundle path: {normalized}")
                 members[normalized] = member
 
-            missing = required - members.keys()
+            missing = required_files - members.keys()
             if missing:
                 raise ManifestError(f"{path.name} is missing required entries: {sorted(missing)}")
 
+            for required in required_files:
+                if not members[required].isfile():
+                    raise ManifestError(f"{path.name} required entry is not a regular file: {required}")
+
             metadata_member = members["metadata/manifest.env"]
-            if not metadata_member.isfile():
-                raise ManifestError(f"{path.name} metadata/manifest.env is not a regular file")
             metadata_file = archive.extractfile(metadata_member)
             if metadata_file is None:
                 raise ManifestError(f"{path.name} metadata/manifest.env is not readable")
