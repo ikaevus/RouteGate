@@ -20,6 +20,7 @@ the workflow's typed `workflow_dispatch` choice.
 Supported requests:
 
 - `operation=diagnose`
+- `operation=diagnose-sing-box`
 - `operation=validate`
 - `operation=restart-control-plane`
 - `operation=restart-sing-box`
@@ -27,6 +28,11 @@ Supported requests:
 - `operation=restart-hysteria2`
 - `operation=restart-mtproto`
 - `operation=renew-certificate`
+
+`diagnose-sing-box` reports only safe runtime metadata: lifecycle state, process
+exit status, installed version, config validation result, and the systemd
+ExecStart command. It never exposes the sing-box configuration or raw journal
+output.
 
 The issue body is never evaluated as shell code. It is mapped through a fixed
 `case` statement to one fixed operation name. The remote script independently
