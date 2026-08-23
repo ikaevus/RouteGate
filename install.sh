@@ -482,7 +482,9 @@ collect_routegate_conflicts() {
     /usr/local/bin/routegate-agent \
 	/usr/local/bin/hysteria \
     /usr/local/bin/mtg \
+    /usr/local/lib/routegate/update \
     /usr/local/sbin/routegate-recovery \
+    /usr/local/sbin/routegate-update \
     /etc/routegate/manager.env \
     /etc/routegate/agent.yaml \
     /etc/systemd/system/routegate-manager.service \
@@ -518,6 +520,7 @@ platform_packages() {
     openssl \
     postgresql \
     postgresql-client \
+    python3 \
     python3-certbot-nginx \
     tar
 	printf '%s\n' wireguard-tools
@@ -1031,6 +1034,18 @@ extract_bundle() {
     tools/routegate-recovery \
     metadata/manifest.env; do
     [[ -e "$extract_dir/$required" ]] || die "Release bundle is missing ${required}."
+  done
+
+  local updater_file
+  for updater_file in \
+    release_manifest.py \
+    routegate-update-bootstrap.sh \
+    routegate-update-core.sh \
+    routegate-update-role.sh \
+    routegate-update-transaction.sh \
+    routegate-update-verified.sh; do
+    [[ -f "$extract_dir/tools/$updater_file" && ! -L "$extract_dir/tools/$updater_file" ]] \
+      || die "Release bundle is missing updater component tools/${updater_file}."
   done
 
   local manifest_format manifest_version manifest_os manifest_arch
@@ -1583,6 +1598,16 @@ verify_final_state() {
   fi
 }
 
+bootstrap_trusted_updater() {
+  local source_dir="$ROUTEGATE_WORK_DIR/extracted"
+  local helper="$source_dir/tools/routegate-update-bootstrap.sh"
+  [[ -f "$helper" && ! -L "$helper" ]] || die "Release bundle is missing the trusted updater bootstrap helper."
+
+  log "Bootstrapping the local trusted updater boundary."
+  env -u RG_UPDATE_ROOT bash "$helper" \
+    || die "Trusted updater bootstrap failed. The platform remains installed, but this node is not update-ready."
+}
+
 print_success() {
   printf '\nRouteGate installation completed successfully.\n\n'
   printf 'NEXT ACTION — Complete administrator setup\n\n'
@@ -1672,6 +1697,7 @@ main() {
   remove_bootstrap_environment
   write_initial_credentials "$ROUTEGATE_ADMIN_PASSWORD"
   verify_final_state
+  bootstrap_trusted_updater
   write_install_state
   print_success
 }

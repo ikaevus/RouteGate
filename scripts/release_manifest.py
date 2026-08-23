@@ -192,6 +192,7 @@ def verify_bundle(
         "frontend/index.html",
         "metadata/manifest.env",
         "tools/release_manifest.py",
+        "tools/routegate-update-bootstrap.sh",
         "tools/routegate-update-core.sh",
         "tools/routegate-update-role.sh",
         "tools/routegate-update-transaction.sh",

@@ -13,6 +13,7 @@ BUILD_DATE = "2026-08-23T12:00:00Z"
 MIGRATION = "000134_distinct_tcp_listener_ports"
 REQUIRED_TOOLS = {
     "release_manifest.py",
+    "routegate-update-bootstrap.sh",
     "routegate-update-core.sh",
     "routegate-update-role.sh",
     "routegate-update-transaction.sh",
@@ -189,6 +190,16 @@ class ReleaseManifestTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             release_manifest.ManifestError, "tools/routegate-update-verified.sh"
+        ):
+            release_manifest.verify_manifest(path, self.dist)
+
+    def test_rejects_bundle_without_updater_bootstrap(self):
+        self.make_bundle(omit_tool="routegate-update-bootstrap.sh")
+        self.write_checksums()
+        path = self.build()
+
+        with self.assertRaisesRegex(
+            release_manifest.ManifestError, "tools/routegate-update-bootstrap.sh"
         ):
             release_manifest.verify_manifest(path, self.dist)
 

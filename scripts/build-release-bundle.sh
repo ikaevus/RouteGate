@@ -96,6 +96,7 @@ build_architecture() {
   cp "$ROOT_DIR/deploy/nginx/routegate.conf.example" "$stage_dir/nginx/"
   cp "$ROOT_DIR/scripts/routegate-recovery" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/release_manifest.py" "$stage_dir/tools/"
+  cp "$ROOT_DIR/scripts/routegate-update-bootstrap.sh" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-core.sh" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-role.sh" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-transaction.sh" "$stage_dir/tools/"
@@ -122,6 +123,7 @@ EOF_MANIFEST
   find "$stage_dir" -type f ! -path '*/bin/*' -exec chmod 0644 {} +
   chmod 0755 \
     "$stage_dir/tools/routegate-recovery" \
+    "$stage_dir/tools/routegate-update-bootstrap.sh" \
     "$stage_dir/tools/routegate-update-transaction.sh" \
     "$stage_dir/tools/routegate-update-verified.sh"
 

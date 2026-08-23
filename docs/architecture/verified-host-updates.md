@@ -131,9 +131,41 @@ The trust chain is therefore:
 
 `trusted version N verifier -> verifies N+1 -> transaction updates platform -> health/schema gates -> promotes and self-checks N+1 updater -> N+1 verifier may verify N+2`.
 
-B2c1 deliberately does not bootstrap this updater onto a fresh installation. Clean VPS and VPN Node installer bootstrap remains B2c2 work, so new hosts are not yet considered self-update-ready merely because release bundles contain the updater files.
-
 The promotion path is recoverable for runtime failures through the transaction backup/rollback contract. It should not be described as power-loss-atomic; crash-recovery semantics for interruption at an arbitrary filesystem instruction remain a separate hardening concern if later required.
+
+## B2c2: fresh-install trusted updater bootstrap
+
+Fresh Clean VPS and VPN Node installations establish the same fixed updater layout used by B2c1 through `scripts/routegate-update-bootstrap.sh`, which is shipped inside every canonical RouteGate release bundle.
+
+The release-bundle contract requires the bootstrap helper together with the complete runtime updater toolchain. A bundle missing any of these components is rejected by canonical manifest verification and by the installers before bootstrap.
+
+The bootstrap helper is deliberately narrower than the normal update transaction. It does not discover releases, download artifacts, verify GitHub provenance, select a deployment role, or mutate Manager/Agent platform state. Its only responsibility is to establish or validate the local privileged updater layout after the installer has accepted the release bundle according to the installer's existing release policy.
+
+Before any updater write, bootstrap checks the fixed parent paths and refuses symlinked or insecure parents. It then handles only two acceptable local updater states:
+
+- `absent`: install the updater toolchain from the already accepted release bundle, validate ownership/modes, validate the canonical entrypoint, and run updater self-checks;
+- `complete`: preserve the installed trusted updater and validate it instead of silently replacing it.
+
+Partial or unsafe updater state fails closed. Ordinary first-bootstrap runtime or self-check failure removes the partially created updater files. As with B2c1 promotion, this does not claim arbitrary-instruction crash or power-loss atomicity.
+
+Installer ordering is intentionally role-aware:
+
+- Clean VPS / Hybrid installation completes platform configuration and final health verification first, then bootstraps the updater, and only after successful bootstrap writes installer `STATUS=complete`;
+- VPN Node installation installs and starts the Agent, waits for successful Agent registration, and only then bootstraps the updater.
+
+Both installer wrappers explicitly remove `RG_UPDATE_ROOT` from the helper environment. `RG_UPDATE_ROOT` exists only to virtualize filesystem paths in tests and must never redirect the production trusted updater installation.
+
+Clean VPS conflict detection also treats the fixed updater paths as RouteGate-owned privileged state. A fresh clean-host install will not overwrite an unrelated or unexplained updater layout.
+
+### Fresh-install trust limitation
+
+B2c2 does **not** upgrade the authenticity semantics of the existing fresh installers. At this stage they still accept their release bundle through the existing `SHA256SUMS` installer flow. The bootstrap helper therefore does not claim that a fresh installation has passed the B2b GitHub Artifact Attestation provenance gate.
+
+This distinction is intentional: bootstrap establishes the local updater trust *layout* from the release already trusted by the installer; B2b establishes provenance for later updates using an already trusted local verifier.
+
+A compatible `gh attestation verify` implementation with the pinned `--predicate-type` capability is also not installed automatically by B2c2. If such a verifier runtime is present, bootstrap reports it as available. If it is absent or incompatible, the trusted updater files still exist, but update execution is not considered ready until a compatible verifier runtime is supplied through a separately reviewed packaging path.
+
+The project must therefore not describe B2c2 alone as enabling automatic updates, one-click updates, release discovery, or an operational self-update path on every newly installed host.
 
 ## GitHub CLI dependency
 
@@ -145,7 +177,7 @@ CI checks that the available GitHub CLI supports the pinned `--predicate-type` p
 
 ## Manager boundary
 
-B2a, B2b, and B2c1 remain outside Manager and Web UI control.
+B2a, B2b, B2c1, and B2c2 remain outside Manager and Web UI control.
 
 A future RG-96C orchestration layer may discover releases and stage candidate files, but the privileged boundary must remain narrow:
 
@@ -166,8 +198,8 @@ Until that orchestration exists, the Manager continues to report manual update s
 - RG-96B1 — shared host update core proven through production-like deployment: complete.
 - RG-96B2a — role-aware root-only host transaction: complete.
 - RG-96B2b — fixed-policy verified release gate: complete.
-- RG-96B2c1 — trusted updater promotion/rollback inside the host transaction: implemented by this change and gated on CI/review before merge.
-- RG-96B2c2 — bootstrap the trusted updater on fresh Clean VPS and VPN Node installations: still required before Manager orchestration can rely on the local update boundary on newly installed hosts.
+- RG-96B2c1 — trusted updater promotion/rollback inside the host transaction: complete.
+- RG-96B2c2 — bootstrap the trusted updater on fresh Clean VPS and VPN Node installations: implemented by this change and gated on CI/review before merge.
 - RG-96C — durable update jobs, discovery, preflight, progress, result, audit and rollback API: planned.
 - RG-96D — explicit one-click Admin UI workflow: planned.
 - RG-96E — multi-node rolling updates: planned.

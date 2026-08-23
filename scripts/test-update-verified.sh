@@ -52,6 +52,7 @@ prepare_bundle() {
   local tool
   for tool in \
     release_manifest.py \
+    routegate-update-bootstrap.sh \
     routegate-update-core.sh \
     routegate-update-role.sh \
     routegate-update-transaction.sh \
