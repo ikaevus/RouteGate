@@ -351,13 +351,34 @@ test_certificate_and_recovery_contract() {
     grep -Fq 'sudo routegate-recovery status' < <(print_success)
 }
 
+test_updater_bootstrap_contract() {
+  assert_true \
+    "Clean VPS installer explicitly installs Python for updater verification" \
+    grep -Fxq python3 < <(platform_packages)
+  assert_true \
+    "Clean VPS installer requires the updater bootstrap helper" \
+    grep -Fq 'routegate-update-bootstrap.sh' "$ROOT_DIR/install.sh"
+  assert_true \
+    "Clean VPS installer clears RG_UPDATE_ROOT before privileged bootstrap" \
+    grep -Fq 'env -u RG_UPDATE_ROOT bash "$helper"' "$ROOT_DIR/install.sh"
+
+  local main_body health_line bootstrap_line complete_line
+  main_body=$(sed -n '/^main() {/,/^}/p' "$ROOT_DIR/install.sh")
+  health_line=$(grep -n 'verify_final_state' <<<"$main_body" | tail -n1 | cut -d: -f1)
+  bootstrap_line=$(grep -n 'bootstrap_trusted_updater' <<<"$main_body" | tail -n1 | cut -d: -f1)
+  complete_line=$(grep -n 'write_install_state' <<<"$main_body" | tail -n1 | cut -d: -f1)
+  assert_true "Clean VPS updater bootstrap runs after final health" \
+    test "$health_line" -lt "$bootstrap_line"
+  assert_true "Clean VPS install is marked complete only after updater bootstrap" \
+    test "$bootstrap_line" -lt "$complete_line"
+}
+
 test_conflict_recommendations() {
   local postgres nginx ports prometheus
   postgres=$(conflict_recommendations postgresql)
   nginx=$(conflict_recommendations nginx)
   ports=$(conflict_recommendations ports)
   prometheus=$(conflict_recommendations prometheus)
-
   assert_true "PostgreSQL conflict recommends preserving existing data" grep -Fq "Keep the existing PostgreSQL deployment unchanged" <<<"$postgres"
   assert_true "nginx conflict recommends preserving existing sites" grep -Fq "Keep the existing nginx sites unchanged" <<<"$nginx"
   assert_true "port conflict recommends a clean VPS" grep -Fq "clean VPS" <<<"$ports"
@@ -366,15 +387,16 @@ test_conflict_recommendations() {
 
 test_conflict_collection() {
   local root="$TEST_TMP/root"
-  mkdir -p "$root/usr/local/bin" "$root/etc/routegate"
+  mkdir -p "$root/usr/local/bin" "$root/usr/local/lib/routegate/update" "$root/usr/local/sbin" "$root/etc/routegate"
   touch "$root/usr/local/bin/routegate-manager"
+  touch "$root/usr/local/sbin/routegate-update"
   touch "$root/etc/routegate/agent.yaml"
 
   local output
   output=$(collect_routegate_conflicts "$root" | sort | paste -sd '|')
   assert_equal \
-    "finds only RouteGate-owned path conflicts under a mock root" \
-    "/etc/routegate/agent.yaml|/usr/local/bin/routegate-manager" \
+    "finds RouteGate platform and updater path conflicts under a mock root" \
+    "/etc/routegate/agent.yaml|/usr/local/bin/routegate-manager|/usr/local/lib/routegate/update|/usr/local/sbin/routegate-update" \
     "$output"
 }
 
@@ -392,6 +414,7 @@ test_success_output
 test_agent_credentials_detection
 test_all_in_one_role_contract
 test_certificate_and_recovery_contract
+test_updater_bootstrap_contract
 test_conflict_recommendations
 test_conflict_collection
 printf '1..%d\n' "$TESTS_RUN"
