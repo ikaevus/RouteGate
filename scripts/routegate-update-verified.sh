@@ -48,10 +48,10 @@ Trust policy is fixed in this executable:
   repository: ikaevus/RouteGate
   signer workflow: ikaevus/RouteGate/.github/workflows/release.yml
 
-The command performs no release discovery or artifact download. It verifies the
-provided release provenance and manifest locally, derives the target commit and
-bundle digest from that verified contract, and only then invokes the privileged
-role-aware host transaction.
+The command performs no release discovery or artifact download. It snapshots the
+provided release files into a root-only temporary area, verifies those exact
+copies, derives the target commit and bundle digest from the verified contract,
+and only then invokes the privileged role-aware host transaction.
 USAGE
 }
 
@@ -152,7 +152,8 @@ import json
 import sys
 
 path, field = sys.argv[1:]
-value = json.load(open(path, encoding="utf-8"))
+with open(path, encoding="utf-8") as handle:
+    value = json.load(handle)
 for part in field.split("."):
     if not isinstance(value, dict) or part not in value:
         raise SystemExit(2)
@@ -191,27 +192,41 @@ main() {
   require_regular_file "$BUNDLE" "release bundle"
   require_regular_file "$BUNDLE_ATTESTATION" "bundle attestation bundle"
 
-  local arch
+  local arch bundle_name
   arch=$(platform_architecture "$(uname -m)") || die "unsupported host architecture: $(uname -m)"
-
-  log "verifying release manifest provenance"
-  verify_attestation "$MANIFEST" "$MANIFEST_ATTESTATION" \
-    || die "release manifest provenance verification failed"
+  bundle_name=$(basename "$BUNDLE")
+  [[ "$bundle_name" =~ ^routegate-[A-Za-z0-9][A-Za-z0-9._+-]*-linux-(amd64|arm64)\.tar\.gz$ ]] \
+    || die "release bundle name is not canonical"
 
   WORK_DIR=$(mktemp -d /tmp/routegate-verified-update.XXXXXX)
   trap cleanup EXIT
   local artifacts_dir="$WORK_DIR/artifacts"
+  local frozen_manifest="$WORK_DIR/release-manifest.json"
+  local frozen_manifest_attestation="$WORK_DIR/release-manifest.attestation.json"
+  local frozen_bundle_attestation="$WORK_DIR/release-bundles.attestation.json"
+  local frozen_bundle="$artifacts_dir/$bundle_name"
   local descriptor="$WORK_DIR/target.json"
-  local bundle_name
-  bundle_name=$(basename "$BUNDLE")
+
   mkdir -m 0700 "$artifacts_dir"
-  cp "$MANIFEST" "$artifacts_dir/release-manifest.json"
+  cp "$MANIFEST" "$frozen_manifest"
+  cp "$MANIFEST_ATTESTATION" "$frozen_manifest_attestation"
   cp "$CHECKSUMS" "$artifacts_dir/SHA256SUMS"
-  cp "$BUNDLE" "$artifacts_dir/$bundle_name"
+  cp "$BUNDLE" "$frozen_bundle"
+  cp "$BUNDLE_ATTESTATION" "$frozen_bundle_attestation"
+  chmod 0600 \
+    "$frozen_manifest" \
+    "$frozen_manifest_attestation" \
+    "$artifacts_dir/SHA256SUMS" \
+    "$frozen_bundle" \
+    "$frozen_bundle_attestation"
+
+  log "verifying release manifest provenance"
+  verify_attestation "$frozen_manifest" "$frozen_manifest_attestation" \
+    || die "release manifest provenance verification failed"
 
   log "verifying release manifest contract for ${TARGET_OS}/${arch}"
   python3 "$manifest_verifier" verify-target \
-    --manifest "$artifacts_dir/release-manifest.json" \
+    --manifest "$frozen_manifest" \
     --artifacts-dir "$artifacts_dir" \
     --os "$TARGET_OS" \
     --arch "$arch" >"$descriptor" \
@@ -225,12 +240,12 @@ main() {
   [[ "$bundle_name" == "$verified_name" ]] || die "provided bundle name does not match the verified target artifact"
 
   log "verifying target bundle provenance"
-  verify_attestation "$BUNDLE" "$BUNDLE_ATTESTATION" \
+  verify_attestation "$frozen_bundle" "$frozen_bundle_attestation" \
     || die "release bundle provenance verification failed"
 
   log "trusted release version=${verified_version} commit=${verified_commit} arch=${arch}; starting host transaction"
   "$transaction" apply \
-    --bundle "$BUNDLE" \
+    --bundle "$frozen_bundle" \
     --sha256 "$verified_sha" \
     --commit "$verified_commit" \
     --role "$REQUESTED_ROLE"
