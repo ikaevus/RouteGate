@@ -112,16 +112,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SIGNER_WORKFLOW: ${{ github.repository }}/.github/workflows/release.yml
+          PREDICATE_TYPE: https://slsa.dev/provenance/v1
         run: |
           gh attestation verify dist/release-manifest.json \
             --repo "$GITHUB_REPOSITORY" \
             --signer-workflow "$SIGNER_WORKFLOW" \
+            --predicate-type "$PREDICATE_TYPE" \
             --bundle dist/release-manifest.attestation.json
 
           for bundle in dist/routegate-*.tar.gz; do
             gh attestation verify "$bundle" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$SIGNER_WORKFLOW" \
+              --predicate-type "$PREDICATE_TYPE" \
               --bundle dist/release-bundles.attestation.json
           done
 
