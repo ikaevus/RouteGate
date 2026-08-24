@@ -12,7 +12,7 @@ RouteGate components remain independently observable even when they are shipped 
 | Web UI | Manager system-version response; release bundles ship the UI built from the same source commit. |
 | Agent | `agent/internal/buildinfo` with linker-overridable `Version`, `GitCommit`, and `BuildDate`. |
 | Agent protocol | Numeric protocol version reported by Agents during registration and heartbeat. |
-| Database schema | Applied migration identifiers in `schema_migrations`; the current canonical migration line reaches `000135_update_jobs`. |
+| Database schema | Applied migration identifiers in `schema_migrations`; the current canonical migration line reaches `000136_update_job_discovery`. |
 
 The authenticated system-version endpoint still exposes the numeric expected schema generation for operator compatibility. Release artifacts use the exact migration identifier because it is the stronger deployment contract and naturally includes repair-migration naming.
 
@@ -68,7 +68,7 @@ Example shape:
   "commit": "<40-character Git SHA>",
   "buildDate": "2026-08-23T12:00:00Z",
   "database": {
-    "expectedMigration": "000135_update_jobs"
+    "expectedMigration": "000136_update_job_discovery"
   },
   "artifacts": [
     {
@@ -195,6 +195,20 @@ C1 is intentionally read-only. It does not discover or download releases, accept
 
 Update preflight lifecycle events use the existing audit subsystem. The durable job history is the foundation for later discovery, execution progress, result, and rollback state rather than a second parallel update mechanism.
 
+## Manager release discovery jobs
+
+RG-96C2 extends the same durable update-job history with a manual, read-only `discovery` operation and platform target selection.
+
+An authenticated administrator with `system:manage` can explicitly request discovery. Only that request causes the Manager to contact the fixed official endpoint `https://api.github.com/repos/ikaevus/RouteGate/releases/latest`. C2 does not add a timer, startup check, background poller, configurable repository, release URL, trust root, channel, command, or filesystem path. Redirects are rejected, the request and response are bounded, and unsupported runtime platforms return without performing an outbound request.
+
+Discovery parses only bounded release metadata needed for target selection: the tag, release flags, publication time, and asset names/sizes. For supported `linux/amd64` and `linux/arm64` Managers it selects the expected manifest, attestations, checksums, and matching platform bundle by name. Missing required assets produce a successful but non-actionable `incomplete_release` result rather than an update-ready claim.
+
+Version comparison is deliberately conservative. Stable dotted versions can be classified as `update_available`, `up_to_date`, or `current_newer`; development, unknown, or otherwise uncomparable versions never imply update permission. A safe but unsupported release tag is reported as `uncomparable_release` rather than treated as a pipeline failure.
+
+GitHub release metadata is **discovery data, not release authorization**. Persisted discovery results explicitly remain `unverified` and state that RG-96B provenance/manifest verification is still required. C2 does not download or stage release files, persist arbitrary remote URLs or raw responses, invoke the privileged updater, execute shell commands, mutate the host, or apply a product update.
+
+Discovery jobs use the same bounded durable lifecycle and audit subsystem as C1. Interrupted `pending` or `running` discovery jobs are terminalized on Manager restart with a discovery-specific safe error code; existing preflight recovery semantics remain unchanged.
+
 ## Current product update status
 
 The Manager continues to report:
@@ -203,7 +217,7 @@ The Manager continues to report:
 - update channel: `development`;
 - `automaticUpdatesSupported: false`.
 
-No one-click or unattended product updater is enabled by RG-96A, RG-96B, or RG-96C1.
+No one-click or unattended product updater is enabled by RG-96A, RG-96B, RG-96C1, or RG-96C2. C2 adds only an explicit administrator-triggered metadata discovery request.
 
 Official builds remain builds of the auditable AGPLv3-or-later project. Update behavior must avoid hidden license checks, silent forced updates, opaque telemetry, undocumented outbound update calls, and arbitrary remote shell execution.
 
@@ -219,7 +233,8 @@ The intended sequence is:
    - B2 complete: narrow, role-aware privileged host-operation transaction suitable for Manager orchestration.
 3. **RG-96C — Update Jobs & API**
    - C1 complete: durable, auditable Manager-side preflight job foundation;
-   - next: release discovery, target selection, execution progress/result state, privileged dispatch, and rollback state.
+   - C2 complete: manual fixed-source release discovery and untrusted platform target selection;
+   - next: artifact staging, execution progress/result state, privileged dispatch, and rollback state.
 4. **RG-96D — One-Click Admin UI**
    - explicit administrator-approved update workflow with clear risk and progress reporting.
 5. **RG-96E — Multi-Node Rolling Updates**
