@@ -2,6 +2,7 @@ package updates
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,23 +13,38 @@ import (
 const (
 	ErrorCodePreflightInterrupted = "preflight_interrupted"
 	ErrorCodeDiscoveryInterrupted = "discovery_interrupted"
+	ErrorCodeStageInterrupted     = "stage_interrupted"
 )
 
 type interruptedJobRepository interface {
 	RecoverInterruptedJobs(context.Context) ([]Job, error)
 }
 
+type interruptedStageCleaner interface {
+	Cleanup(string) error
+}
+
 func RecoverInterruptedJobs(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool) error {
-	return recoverInterruptedJobs(ctx, logger, NewRepository(pool), audit.NewRecorder(logger, pool))
+	return recoverInterruptedJobsWithCleaner(ctx, logger, NewRepository(pool), audit.NewRecorder(logger, pool), newReleaseArtifactStager())
 }
 
 func recoverInterruptedJobs(ctx context.Context, logger *slog.Logger, repo interruptedJobRepository, recorder auditRecorder) error {
+	return recoverInterruptedJobsWithCleaner(ctx, logger, repo, recorder, nil)
+}
+
+func recoverInterruptedJobsWithCleaner(ctx context.Context, logger *slog.Logger, repo interruptedJobRepository, recorder auditRecorder, cleaner interruptedStageCleaner) error {
 	jobs, err := repo.RecoverInterruptedJobs(ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, job := range jobs {
+		if job.Operation == OperationStage && cleaner != nil {
+			if err := cleaner.Cleanup(job.ID); err != nil {
+				return fmt.Errorf("clean interrupted update stage %s: %w", job.ID, err)
+			}
+		}
+
 		action := interruptedAuditAction(job.Operation)
 		if action == "" {
 			continue
@@ -62,6 +78,8 @@ func interruptedAuditAction(operation string) string {
 		return "update.preflight.interrupted"
 	case OperationDiscovery:
 		return "update.discovery.interrupted"
+	case OperationStage:
+		return "update.stage.interrupted"
 	default:
 		return ""
 	}
@@ -74,11 +92,12 @@ func (r *Repository) RecoverInterruptedJobs(ctx context.Context) ([]Job, error) 
 		    error_code = CASE operation
 		        WHEN $2 THEN $3
 		        WHEN $4 THEN $5
+		        WHEN $6 THEN $7
 		    END,
 		    updated_at = now(),
 		    completed_at = now()
-		WHERE operation IN ($2, $4)
-		  AND status IN ($6, $7)
+		WHERE operation IN ($2, $4, $6)
+		  AND status IN ($8, $9)
 		RETURNING
 			id::text,
 			operation,
@@ -95,6 +114,7 @@ func (r *Repository) RecoverInterruptedJobs(ctx context.Context) ([]Job, error) 
 	`, StatusFailed,
 		OperationPreflight, ErrorCodePreflightInterrupted,
 		OperationDiscovery, ErrorCodeDiscoveryInterrupted,
+		OperationStage, ErrorCodeStageInterrupted,
 		StatusPending, StatusRunning,
 	)
 	if err != nil {
