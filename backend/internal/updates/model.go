@@ -100,15 +100,16 @@ type VerifiedArtifact struct {
 }
 
 type StageResult struct {
-	DiscoveryJobID   string           `json:"discoveryJobId"`
-	CandidateVersion string           `json:"candidateVersion"`
-	VerifiedVersion  string           `json:"verifiedVersion"`
-	VerifiedCommit   string           `json:"verifiedCommit"`
-	RuntimeOS        string           `json:"runtimeOs"`
-	RuntimeArch      string           `json:"runtimeArch"`
-	Artifact         VerifiedArtifact `json:"artifact"`
-	ProvenanceStatus string           `json:"provenanceStatus"`
-	Verification     string           `json:"verification"`
+	DiscoveryJobID    string           `json:"discoveryJobId"`
+	CandidateVersion  string           `json:"candidateVersion"`
+	VerifiedVersion   string           `json:"verifiedVersion"`
+	VerifiedCommit    string           `json:"verifiedCommit"`
+	ExpectedMigration string           `json:"expectedMigration"`
+	RuntimeOS         string           `json:"runtimeOs"`
+	RuntimeArch       string           `json:"runtimeArch"`
+	Artifact          VerifiedArtifact `json:"artifact"`
+	ProvenanceStatus  string           `json:"provenanceStatus"`
+	Verification      string           `json:"verification"`
 }
 
 type ListResponse struct {
