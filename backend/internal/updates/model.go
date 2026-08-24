@@ -7,7 +7,9 @@ import (
 
 const (
 	OperationPreflight = "preflight"
+	OperationDiscovery = "discovery"
 	StagePreflight     = "preflight"
+	StageDiscovery     = "discovery"
 
 	StatusPending   = "pending"
 	StatusRunning   = "running"
@@ -16,6 +18,19 @@ const (
 
 	DecisionProceed = "proceed"
 	DecisionBlocked = "blocked"
+
+	AvailabilityUpdateAvailable     = "update_available"
+	AvailabilityUpToDate            = "up_to_date"
+	AvailabilityCurrentNewer        = "current_newer"
+	AvailabilityUnknownCurrent      = "unknown_current_version"
+	AvailabilityUncomparableRelease = "uncomparable_release"
+	AvailabilityNoRelease           = "no_release"
+	AvailabilityUnsupportedPlatform = "unsupported_platform"
+	AvailabilityIncompleteRelease   = "incomplete_release"
+
+	DiscoverySourceOfficialGitHub = "github:ikaevus/RouteGate/releases/latest"
+	ProvenanceUnverified          = "unverified"
+	ProvenanceVerificationRG96B   = "rg96b_provenance_and_manifest_verification_required"
 
 	HostTrustPreflightDeferred = "deferred_to_privileged_b2"
 )
@@ -47,6 +62,25 @@ type PreflightResult struct {
 	UpdateChannel             string   `json:"updateChannel"`
 	AutomaticUpdatesSupported bool     `json:"automaticUpdatesSupported"`
 	HostTrustPreflight        string   `json:"hostTrustPreflight"`
+}
+
+type DiscoveryAsset struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+type DiscoveryResult struct {
+	Source               string           `json:"source"`
+	CurrentVersion       string           `json:"currentVersion"`
+	CandidateVersion     string           `json:"candidateVersion,omitempty"`
+	PublishedAt          string           `json:"publishedAt,omitempty"`
+	RuntimeOS            string           `json:"runtimeOs"`
+	RuntimeArch          string           `json:"runtimeArch"`
+	Assets               []DiscoveryAsset `json:"assets"`
+	MissingAssets        []string         `json:"missingAssets"`
+	Availability         string           `json:"availability"`
+	ProvenanceStatus     string           `json:"provenanceStatus"`
+	VerificationRequired string           `json:"verificationRequired"`
 }
 
 type ListResponse struct {

@@ -22,15 +22,25 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // result is ambiguous, the returned Job still carries that ID so the caller
 // can immediately reconcile a row that may already have committed.
 func (r *Repository) CreatePreflight(ctx context.Context, createdByUserID string) (Job, error) {
+	return r.createJob(ctx, OperationPreflight, StagePreflight, createdByUserID)
+}
+
+// CreateDiscovery follows the same preallocated-ID durability contract as
+// CreatePreflight so an ambiguous INSERT can be reconciled immediately.
+func (r *Repository) CreateDiscovery(ctx context.Context, createdByUserID string) (Job, error) {
+	return r.createJob(ctx, OperationDiscovery, StageDiscovery, createdByUserID)
+}
+
+func (r *Repository) createJob(ctx context.Context, operation, stage, createdByUserID string) (Job, error) {
 	id, err := newUpdateJobID()
 	if err != nil {
 		return Job{}, err
 	}
 	pending := Job{
 		ID:              id,
-		Operation:       OperationPreflight,
+		Operation:       operation,
 		Status:          StatusPending,
-		Stage:           StagePreflight,
+		Stage:           stage,
 		RequestPayload:  json.RawMessage(`{}`),
 		ResultPayload:   json.RawMessage(`{}`),
 		CreatedByUserID: createdByUserID,
@@ -59,7 +69,7 @@ func (r *Repository) CreatePreflight(ctx context.Context, createdByUserID string
 			updated_at,
 			started_at,
 			completed_at
-	`, id, OperationPreflight, StatusPending, StagePreflight, createdByUserID))
+	`, id, operation, StatusPending, stage, createdByUserID))
 	if err != nil {
 		return pending, err
 	}
@@ -105,6 +115,18 @@ func (r *Repository) CompletePreflight(ctx context.Context, id string, result Pr
 	if err != nil {
 		return Job{}, err
 	}
+	return r.completeJob(ctx, id, OperationPreflight, payload)
+}
+
+func (r *Repository) CompleteDiscovery(ctx context.Context, id string, result DiscoveryResult) (Job, error) {
+	payload, err := json.Marshal(result)
+	if err != nil {
+		return Job{}, err
+	}
+	return r.completeJob(ctx, id, OperationDiscovery, payload)
+}
+
+func (r *Repository) completeJob(ctx context.Context, id, operation string, payload []byte) (Job, error) {
 	return scanJob(r.pool.QueryRow(ctx, `
 		UPDATE update_jobs
 		SET status = $2,
@@ -113,7 +135,8 @@ func (r *Repository) CompletePreflight(ctx context.Context, id string, result Pr
 		    updated_at = now(),
 		    completed_at = now()
 		WHERE id = $1::uuid
-		  AND status = $4
+		  AND operation = $4
+		  AND status = $5
 		RETURNING
 			id::text,
 			operation,
@@ -127,7 +150,7 @@ func (r *Repository) CompletePreflight(ctx context.Context, id string, result Pr
 			updated_at,
 			started_at,
 			completed_at
-	`, id, StatusSucceeded, payload, StatusRunning))
+	`, id, StatusSucceeded, payload, operation, StatusRunning))
 }
 
 func (r *Repository) Fail(ctx context.Context, id, errorCode string) (Job, error) {

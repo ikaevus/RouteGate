@@ -58,6 +58,7 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	mux.Handle("GET /api/v1/analytics/overview", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(analyticsHandler.Overview))))
 
 	mux.Handle("POST /api/v1/system/update-jobs/preflight", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.CreatePreflight))))
+	mux.Handle("POST /api/v1/system/update-jobs/discovery", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.CreateDiscovery))))
 	mux.Handle("GET /api/v1/system/update-jobs", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.List))))
 	mux.Handle("GET /api/v1/system/update-jobs/{job_id}", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.Get))))
 

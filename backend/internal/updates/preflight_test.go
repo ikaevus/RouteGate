@@ -12,7 +12,7 @@ func releaseInfo() buildinfo.Info {
 		Version:                       "v0.2.0",
 		GitCommit:                     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		BuildDate:                     "2026-08-24T00:00:00Z",
-		ExpectedDatabaseSchemaVersion: 135,
+		ExpectedDatabaseSchemaVersion: 136,
 		UpdateStatus:                  "manual",
 		UpdateChannel:                 "development",
 		AutomaticUpdatesSupported:     false,
@@ -20,7 +20,7 @@ func releaseInfo() buildinfo.Info {
 }
 
 func TestEvaluatePreflightProceed(t *testing.T) {
-	result := EvaluatePreflight(releaseInfo(), "000135_update_jobs")
+	result := EvaluatePreflight(releaseInfo(), "000136_update_job_discovery")
 	if result.Decision != DecisionProceed {
 		t.Fatalf("decision = %q, want %q", result.Decision, DecisionProceed)
 	}
@@ -36,7 +36,7 @@ func TestEvaluatePreflightProceed(t *testing.T) {
 }
 
 func TestEvaluatePreflightBlocksSchemaMismatch(t *testing.T) {
-	result := EvaluatePreflight(releaseInfo(), "000134_distinct_tcp_listener_ports")
+	result := EvaluatePreflight(releaseInfo(), "000135_update_jobs")
 	if result.Decision != DecisionBlocked {
 		t.Fatalf("decision = %q, want %q", result.Decision, DecisionBlocked)
 	}
@@ -51,7 +51,7 @@ func TestEvaluatePreflightBlocksDevelopmentBuildMetadata(t *testing.T) {
 	info.GitCommit = "unknown"
 	info.BuildDate = "unknown"
 
-	result := EvaluatePreflight(info, "000135_update_jobs")
+	result := EvaluatePreflight(info, "000136_update_job_discovery")
 	if result.Decision != DecisionBlocked {
 		t.Fatalf("decision = %q, want %q", result.Decision, DecisionBlocked)
 	}
