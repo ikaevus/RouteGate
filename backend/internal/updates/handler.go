@@ -3,9 +3,11 @@ package updates
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -23,9 +25,14 @@ import (
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 const (
-	preflightLifecycleTimeout   = 10 * time.Second
-	failurePersistTimeout       = 5 * time.Second
-	preflightInsertAmbiguousCode = "preflight_insert_ambiguous"
+	updateJobLifecycleTimeout      = 10 * time.Second
+	failurePersistTimeout          = 5 * time.Second
+	preflightInsertAmbiguousCode   = "preflight_insert_ambiguous"
+	discoveryInsertAmbiguousCode   = "discovery_insert_ambiguous"
+	discoveryExternalFailureCode   = "release_discovery_failed"
+	discoveryStateTransitionCode   = "discovery_state_transition_failed"
+	discoveryCompletionFailureCode = "discovery_completion_failed"
+	maxDiscoveryRequestBodyBytes   = 1
 )
 
 type jobRepository interface {
@@ -37,6 +44,17 @@ type jobRepository interface {
 	List(context.Context, int) ([]Job, error)
 }
 
+type discoveryJobRepository interface {
+	CreateDiscovery(context.Context, string) (Job, error)
+	MarkRunning(context.Context, string) (Job, error)
+	CompleteDiscovery(context.Context, string, DiscoveryResult) (Job, error)
+	Fail(context.Context, string, string) (Job, error)
+}
+
+type jobFailureRepository interface {
+	Fail(context.Context, string, string) (Job, error)
+}
+
 type schemaVersionReader interface {
 	AppliedSchemaVersion(context.Context) (string, error)
 }
@@ -46,25 +64,47 @@ type auditRecorder interface {
 }
 
 type Handler struct {
-	logger *slog.Logger
-	repo   jobRepository
-	reader schemaVersionReader
-	audit  auditRecorder
-	info   func() buildinfo.Info
+	logger        *slog.Logger
+	repo          jobRepository
+	discoveryRepo discoveryJobRepository
+	reader        schemaVersionReader
+	audit         auditRecorder
+	info          func() buildinfo.Info
+	discoverer    releaseDiscoverer
+	runtimeOS     string
+	runtimeArch   string
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
+	repo := NewRepository(pool)
 	return &Handler{
-		logger: logger,
-		repo:   NewRepository(pool),
-		reader: db.NewSchemaVersionRepository(pool),
-		audit:  audit.NewRecorder(logger, pool),
-		info:   buildinfo.Current,
+		logger:        logger,
+		repo:          repo,
+		discoveryRepo: repo,
+		reader:        db.NewSchemaVersionRepository(pool),
+		audit:         audit.NewRecorder(logger, pool),
+		info:          buildinfo.Current,
+		discoverer:    NewOfficialReleaseDiscoverer(nil),
+		runtimeOS:     runtime.GOOS,
+		runtimeArch:   runtime.GOARCH,
 	}
 }
 
 func NewHandlerWithDependencies(logger *slog.Logger, repo jobRepository, reader schemaVersionReader, recorder auditRecorder, info func() buildinfo.Info) *Handler {
-	return &Handler{logger: logger, repo: repo, reader: reader, audit: recorder, info: info}
+	handler := &Handler{
+		logger:      logger,
+		repo:        repo,
+		reader:      reader,
+		audit:       recorder,
+		info:        info,
+		discoverer:  NewOfficialReleaseDiscoverer(nil),
+		runtimeOS:   runtime.GOOS,
+		runtimeArch: runtime.GOARCH,
+	}
+	if discoveryRepo, ok := repo.(discoveryJobRepository); ok {
+		handler.discoveryRepo = discoveryRepo
+	}
+	return handler
 }
 
 func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
@@ -74,12 +114,12 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lifecycleCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), preflightLifecycleTimeout)
+	lifecycleCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), updateJobLifecycleTimeout)
 	defer cancel()
 
 	job, err := h.repo.CreatePreflight(lifecycleCtx, user.ID)
 	if err != nil {
-		h.reconcileAmbiguousCreate(lifecycleCtx, user.ID, job)
+		h.reconcileAmbiguousCreate(lifecycleCtx, h.repo, user.ID, job, preflightInsertAmbiguousCode, "update.preflight.failed")
 		h.logError("create update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create update preflight job."))
 		return
@@ -89,7 +129,7 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 
 	job, err = h.repo.MarkRunning(lifecycleCtx, job.ID)
 	if err != nil {
-		h.failJob(lifecycleCtx, user.ID, job, "job_state_transition_failed")
+		h.failJob(lifecycleCtx, h.repo, user.ID, job, "job_state_transition_failed", "update.preflight.failed")
 		h.logError("start update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to start update preflight job."))
 		return
@@ -97,7 +137,7 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 
 	appliedMigration, err := h.reader.AppliedSchemaVersion(lifecycleCtx)
 	if err != nil {
-		h.failJob(lifecycleCtx, user.ID, job, "database_preflight_failed")
+		h.failJob(lifecycleCtx, h.repo, user.ID, job, "database_preflight_failed", "update.preflight.failed")
 		h.logError("read database schema during update preflight failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Update preflight could not read the database schema state."))
 		return
@@ -106,7 +146,7 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 	result := EvaluatePreflight(h.info(), appliedMigration)
 	job, err = h.repo.CompletePreflight(lifecycleCtx, job.ID, result)
 	if err != nil {
-		h.failJob(lifecycleCtx, user.ID, job, "job_completion_failed")
+		h.failJob(lifecycleCtx, h.repo, user.ID, job, "job_completion_failed", "update.preflight.failed")
 		h.logError("complete update preflight job failed", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to complete update preflight job."))
 		return
@@ -115,6 +155,68 @@ func (h *Handler) CreatePreflight(w http.ResponseWriter, r *http.Request) {
 	h.record(lifecycleCtx, user.ID, "update.preflight.completed", job, audit.ResultSuccess, map[string]any{
 		"decision": result.Decision,
 		"blockers": result.Blockers,
+	})
+	httpx.WriteJSON(w, http.StatusAccepted, CreateResponse{Job: job})
+}
+
+func (h *Handler) CreateDiscovery(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		httpx.WriteJSON(w, http.StatusUnauthorized, httpx.Error("unauthorized", "Authentication is required."))
+		return
+	}
+	if hasDiscoveryRequestBody(r) {
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_update_discovery_request", "Update discovery does not accept request parameters."))
+		return
+	}
+
+	if h.discoveryRepo == nil {
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("update_discovery_unavailable", "Update discovery is unavailable."))
+		return
+	}
+
+	lifecycleCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), updateJobLifecycleTimeout)
+	defer cancel()
+
+	job, err := h.discoveryRepo.CreateDiscovery(lifecycleCtx, user.ID)
+	if err != nil {
+		h.reconcileAmbiguousCreate(lifecycleCtx, h.discoveryRepo, user.ID, job, discoveryInsertAmbiguousCode, "update.discovery.failed")
+		h.logError("create update discovery job failed", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create update discovery job."))
+		return
+	}
+	h.record(lifecycleCtx, user.ID, "update.discovery.requested", job, audit.ResultSuccess, nil)
+
+	job, err = h.discoveryRepo.MarkRunning(lifecycleCtx, job.ID)
+	if err != nil {
+		h.failJob(lifecycleCtx, h.discoveryRepo, user.ID, job, discoveryStateTransitionCode, "update.discovery.failed")
+		h.logError("start update discovery job failed", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to start update discovery job."))
+		return
+	}
+
+	result, err := h.discoverer.Discover(lifecycleCtx, h.info().Version, h.runtimeOS, h.runtimeArch)
+	if err != nil {
+		h.failJob(lifecycleCtx, h.discoveryRepo, user.ID, job, discoveryExternalFailureCode, "update.discovery.failed")
+		h.logError("official release discovery failed", err)
+		httpx.WriteJSON(w, http.StatusBadGateway, httpx.Error(discoveryExternalFailureCode, "Official RouteGate release discovery failed."))
+		return
+	}
+
+	job, err = h.discoveryRepo.CompleteDiscovery(lifecycleCtx, job.ID, result)
+	if err != nil {
+		h.failJob(lifecycleCtx, h.discoveryRepo, user.ID, job, discoveryCompletionFailureCode, "update.discovery.failed")
+		h.logError("complete update discovery job failed", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to complete update discovery job."))
+		return
+	}
+
+	h.record(lifecycleCtx, user.ID, "update.discovery.completed", job, audit.ResultSuccess, map[string]any{
+		"availability":        result.Availability,
+		"candidate_version":   result.CandidateVersion,
+		"runtime_os":          result.RuntimeOS,
+		"runtime_arch":        result.RuntimeArch,
+		"missing_asset_count": len(result.MissingAssets),
 	})
 	httpx.WriteJSON(w, http.StatusAccepted, CreateResponse{Job: job})
 }
@@ -159,7 +261,15 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, ListResponse{Items: items})
 }
 
-func (h *Handler) reconcileAmbiguousCreate(ctx context.Context, userID string, job Job) {
+func hasDiscoveryRequestBody(r *http.Request) bool {
+	if r.Body == nil {
+		return false
+	}
+	payload, err := io.ReadAll(io.LimitReader(r.Body, maxDiscoveryRequestBodyBytes))
+	return err != nil || len(payload) != 0
+}
+
+func (h *Handler) reconcileAmbiguousCreate(ctx context.Context, repo jobFailureRepository, userID string, job Job, errorCode, auditAction string) {
 	if !uuidPattern.MatchString(job.ID) {
 		return
 	}
@@ -167,27 +277,27 @@ func (h *Handler) reconcileAmbiguousCreate(ctx context.Context, userID string, j
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failurePersistTimeout)
 	defer cancel()
 
-	failed, err := h.repo.Fail(persistCtx, job.ID, preflightInsertAmbiguousCode)
+	failed, err := repo.Fail(persistCtx, job.ID, errorCode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return
 	}
 	if err != nil {
-		h.logError("reconcile ambiguous update preflight insert failed", err)
+		h.logError("reconcile ambiguous update job insert failed", err)
 		return
 	}
-	h.record(persistCtx, userID, "update.preflight.failed", failed, audit.ResultFailure, map[string]any{"error_code": preflightInsertAmbiguousCode})
+	h.record(persistCtx, userID, auditAction, failed, audit.ResultFailure, map[string]any{"error_code": errorCode})
 }
 
-func (h *Handler) failJob(ctx context.Context, userID string, job Job, errorCode string) {
+func (h *Handler) failJob(ctx context.Context, repo jobFailureRepository, userID string, job Job, errorCode, auditAction string) {
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failurePersistTimeout)
 	defer cancel()
 
-	failed, err := h.repo.Fail(persistCtx, job.ID, errorCode)
+	failed, err := repo.Fail(persistCtx, job.ID, errorCode)
 	if err != nil {
-		h.logError("mark update preflight failed", err)
+		h.logError("mark update job failed", err)
 		return
 	}
-	h.record(persistCtx, userID, "update.preflight.failed", failed, audit.ResultFailure, map[string]any{"error_code": errorCode})
+	h.record(persistCtx, userID, auditAction, failed, audit.ResultFailure, map[string]any{"error_code": errorCode})
 }
 
 func (h *Handler) record(ctx context.Context, userID, action string, job Job, result string, metadata map[string]any) {
