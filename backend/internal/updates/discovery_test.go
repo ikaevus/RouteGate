@@ -90,6 +90,8 @@ func TestReleaseVersionClassificationIsConservative(t *testing.T) {
 		"unknown current":  {"unknown", "v0.2.1", AvailabilityUnknownCurrent},
 		"invalid current":  {"0.2-rc1", "v0.2.1", AvailabilityUnknownCurrent},
 		"invalid release":  {"v0.2.0", "v0.2.999999999999999999999999999999999999999999999999", AvailabilityUncomparableRelease},
+		"prerelease tag":   {"v0.2.0", "v0.3.0-rc1", AvailabilityUncomparableRelease},
+		"non dotted tag":   {"v0.2.0", "v1", AvailabilityUncomparableRelease},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
