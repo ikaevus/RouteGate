@@ -121,7 +121,7 @@ func authenticatedRequest(method, target string) *http.Request {
 func TestCreatePreflightCompletesAndAudits(t *testing.T) {
 	repo := newFakeJobRepository()
 	recorder := &fakeAuditRecorder{}
-	handler := NewHandlerWithDependencies(nil, repo, fakeSchemaReader{applied: "000135_update_jobs"}, recorder, releaseInfo)
+	handler := NewHandlerWithDependencies(nil, repo, fakeSchemaReader{applied: "000136_update_job_discovery"}, recorder, releaseInfo)
 
 	response := httptest.NewRecorder()
 	handler.CreatePreflight(response, authenticatedRequest(http.MethodPost, "/api/v1/system/update-jobs/preflight"))
@@ -154,8 +154,8 @@ func TestCreatePreflightCompletesAndAudits(t *testing.T) {
 func TestCreatePreflightBlockedIsSuccessfulJobResult(t *testing.T) {
 	repo := newFakeJobRepository()
 	info := releaseInfo()
-	info.ExpectedDatabaseSchemaVersion = 135
-	handler := NewHandlerWithDependencies(nil, repo, fakeSchemaReader{applied: "000134_distinct_tcp_listener_ports"}, nil, func() buildinfo.Info { return info })
+	info.ExpectedDatabaseSchemaVersion = 136
+	handler := NewHandlerWithDependencies(nil, repo, fakeSchemaReader{applied: "000135_update_jobs"}, nil, func() buildinfo.Info { return info })
 
 	response := httptest.NewRecorder()
 	handler.CreatePreflight(response, authenticatedRequest(http.MethodPost, "/api/v1/system/update-jobs/preflight"))
