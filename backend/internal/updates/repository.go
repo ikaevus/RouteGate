@@ -22,26 +22,37 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 // result is ambiguous, the returned Job still carries that ID so the caller
 // can immediately reconcile a row that may already have committed.
 func (r *Repository) CreatePreflight(ctx context.Context, createdByUserID string) (Job, error) {
-	return r.createJob(ctx, OperationPreflight, StagePreflight, createdByUserID)
+	return r.createJob(ctx, OperationPreflight, StagePreflight, createdByUserID, json.RawMessage(`{}`))
 }
 
 // CreateDiscovery follows the same preallocated-ID durability contract as
 // CreatePreflight so an ambiguous INSERT can be reconciled immediately.
 func (r *Repository) CreateDiscovery(ctx context.Context, createdByUserID string) (Job, error) {
-	return r.createJob(ctx, OperationDiscovery, StageDiscovery, createdByUserID)
+	return r.createJob(ctx, OperationDiscovery, StageDiscovery, createdByUserID, json.RawMessage(`{}`))
 }
 
-func (r *Repository) createJob(ctx context.Context, operation, stage, createdByUserID string) (Job, error) {
+func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discoveryJobID string) (Job, error) {
+	payload, err := json.Marshal(StageRequest{DiscoveryJobID: discoveryJobID})
+	if err != nil {
+		return Job{}, err
+	}
+	return r.createJob(ctx, OperationStage, StageStage, createdByUserID, payload)
+}
+
+func (r *Repository) createJob(ctx context.Context, operation, stage, createdByUserID string, requestPayload json.RawMessage) (Job, error) {
 	id, err := newUpdateJobID()
 	if err != nil {
 		return Job{}, err
+	}
+	if len(requestPayload) == 0 {
+		requestPayload = json.RawMessage(`{}`)
 	}
 	pending := Job{
 		ID:              id,
 		Operation:       operation,
 		Status:          StatusPending,
 		Stage:           stage,
-		RequestPayload:  json.RawMessage(`{}`),
+		RequestPayload:  append(json.RawMessage(nil), requestPayload...),
 		ResultPayload:   json.RawMessage(`{}`),
 		CreatedByUserID: createdByUserID,
 	}
@@ -55,7 +66,7 @@ func (r *Repository) createJob(ctx context.Context, operation, stage, createdByU
 			request_payload,
 			created_by_user_id
 		)
-		VALUES ($1::uuid, $2, $3, $4, '{}'::jsonb, NULLIF($5, '')::uuid)
+		VALUES ($1::uuid, $2, $3, $4, $5::jsonb, NULLIF($6, '')::uuid)
 		RETURNING
 			id::text,
 			operation,
@@ -69,7 +80,7 @@ func (r *Repository) createJob(ctx context.Context, operation, stage, createdByU
 			updated_at,
 			started_at,
 			completed_at
-	`, id, operation, StatusPending, stage, createdByUserID))
+	`, id, operation, StatusPending, stage, requestPayload, createdByUserID))
 	if err != nil {
 		return pending, err
 	}
@@ -124,6 +135,14 @@ func (r *Repository) CompleteDiscovery(ctx context.Context, id string, result Di
 		return Job{}, err
 	}
 	return r.completeJob(ctx, id, OperationDiscovery, payload)
+}
+
+func (r *Repository) CompleteStage(ctx context.Context, id string, result StageResult) (Job, error) {
+	payload, err := json.Marshal(result)
+	if err != nil {
+		return Job{}, err
+	}
+	return r.completeJob(ctx, id, OperationStage, payload)
 }
 
 func (r *Repository) completeJob(ctx context.Context, id, operation string, payload []byte) (Job, error) {
