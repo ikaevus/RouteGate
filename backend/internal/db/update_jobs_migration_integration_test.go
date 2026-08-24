@@ -39,6 +39,13 @@ func TestUpdateJobOperationStagePairingConstraint(t *testing.T) {
 
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO update_jobs (operation, status, stage)
+		VALUES ('stage', 'pending', 'stage')
+	`); err != nil {
+		t.Fatalf("insert valid stage job: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO update_jobs (operation, status, stage)
 		VALUES ('preflight', 'pending', 'discovery')
 	`); err == nil {
 		t.Fatal("mismatched update job operation/stage was accepted")
