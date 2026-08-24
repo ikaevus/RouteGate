@@ -31,9 +31,24 @@ BUNDLE=""
 BUNDLE_ATTESTATION=""
 REQUESTED_ROLE="auto"
 WORK_DIR=""
+VERIFIED_DESCRIPTOR=""
+VERIFIED_BUNDLE=""
+VERIFIED_BUNDLE_NAME=""
+VERIFIED_SHA=""
+VERIFIED_COMMIT=""
+VERIFIED_VERSION=""
+VERIFIED_ARCH=""
 
 log() {
   printf '[routegate-verified-update] %s\n' "$*"
+}
+
+verification_log() {
+  if [[ "$OPERATION" == "verify" ]]; then
+    printf '[routegate-verified-update] %s\n' "$*" >&2
+  else
+    log "$@"
+  fi
 }
 
 die() {
@@ -48,6 +63,13 @@ RouteGate verified local update gate
 Usage:
   sudo routegate-update-verified.sh install-verifier
 
+  routegate-update-verified.sh verify \
+    --manifest /path/to/release-manifest.json \
+    --manifest-attestation /path/to/release-manifest.attestation.json \
+    --checksums /path/to/SHA256SUMS \
+    --bundle /path/to/routegate-<version>-linux-<arch>.tar.gz \
+    --bundle-attestation /path/to/release-bundles.attestation.json
+
   sudo routegate-update-verified.sh apply \
     --manifest /path/to/release-manifest.json \
     --manifest-attestation /path/to/release-manifest.attestation.json \
@@ -61,11 +83,15 @@ Trust policy is fixed in this executable:
   signer workflow: ikaevus/RouteGate/.github/workflows/release.yml
   predicate type: https://slsa.dev/provenance/v1
 
+The verify command performs no release discovery, artifact download, or host
+mutation. It snapshots the provided release files into a private temporary area,
+verifies those exact copies with the fixed RouteGate-owned attestation verifier,
+and writes only the verified target JSON descriptor to stdout. Diagnostics go
+to stderr.
+
 The apply command performs no release discovery or RouteGate artifact download.
-It snapshots the provided release files into a root-only temporary area, verifies
-those exact copies with the fixed RouteGate-owned attestation verifier, derives
-the target commit and bundle digest from the verified contract, and only then
-invokes the privileged role-aware host transaction.
+It repeats the same frozen-copy verification immediately before invoking the
+privileged role-aware host transaction.
 
 The install-verifier command installs one pinned GitHub CLI release from its
 fixed upstream URL after checking the hard-coded SHA-256 for this architecture.
@@ -92,7 +118,10 @@ require_regular_file() {
   [[ -f "$path" && ! -L "$path" && -r "$path" ]] || die "$label must be a readable regular file"
 }
 
-parse_args() {
+parse_release_args() {
+  local allow_role=$1
+  shift
+
   while (($# > 0)); do
     case "$1" in
       --manifest)
@@ -121,6 +150,7 @@ parse_args() {
         shift 2
         ;;
       --role)
+        [[ "$allow_role" == "1" ]] || die "--role is only supported by apply"
         (($# >= 2)) || die "--role requires a value"
         REQUESTED_ROLE=$2
         shift 2
@@ -428,9 +458,7 @@ print(value)
 PY
 }
 
-apply_verified_update() {
-  parse_args "$@"
-  require_root
+verify_release_candidate() {
   require_command awk
   require_command basename
   require_command chmod
@@ -447,10 +475,7 @@ apply_verified_update() {
   validate_attestation_verifier || die "pinned attestation verifier is unavailable; run 'sudo routegate-update install-verifier'"
 
   local manifest_verifier="$SCRIPT_DIR/release_manifest.py"
-  local transaction="$SCRIPT_DIR/routegate-update-transaction.sh"
   require_regular_file "$manifest_verifier" "release manifest verifier"
-  require_regular_file "$transaction" "role-aware update transaction"
-  [[ -x "$transaction" ]] || die "role-aware update transaction is not executable"
 
   require_regular_file "$MANIFEST" "release manifest"
   require_regular_file "$MANIFEST_ATTESTATION" "manifest attestation bundle"
@@ -486,11 +511,11 @@ apply_verified_update() {
     "$frozen_bundle" \
     "$frozen_bundle_attestation"
 
-  log "verifying release manifest provenance"
+  verification_log "verifying release manifest provenance"
   verify_attestation "$frozen_manifest" "$frozen_manifest_attestation" \
     || die "release manifest provenance verification failed"
 
-  log "verifying release manifest contract for ${TARGET_OS}/${arch}"
+  verification_log "verifying release manifest contract for ${TARGET_OS}/${arch}"
   python3 "$manifest_verifier" verify-target \
     --manifest "$frozen_manifest" \
     --artifacts-dir "$artifacts_dir" \
@@ -505,15 +530,40 @@ apply_verified_update() {
   verified_version=$(json_field "$descriptor" version) || die "verified descriptor is missing version"
   [[ "$bundle_name" == "$verified_name" ]] || die "provided bundle name does not match the verified target artifact"
 
-  log "verifying target bundle provenance"
+  verification_log "verifying target bundle provenance"
   verify_attestation "$frozen_bundle" "$frozen_bundle_attestation" \
     || die "release bundle provenance verification failed"
 
-  log "trusted release version=${verified_version} commit=${verified_commit} arch=${arch}; starting host transaction"
+  VERIFIED_DESCRIPTOR=$descriptor
+  VERIFIED_BUNDLE=$frozen_bundle
+  VERIFIED_BUNDLE_NAME=$verified_name
+  VERIFIED_SHA=$verified_sha
+  VERIFIED_COMMIT=$verified_commit
+  VERIFIED_VERSION=$verified_version
+  VERIFIED_ARCH=$arch
+}
+
+verify_only() {
+  parse_release_args 0 "$@"
+  verify_release_candidate
+  cat "$VERIFIED_DESCRIPTOR"
+}
+
+apply_verified_update() {
+  parse_release_args 1 "$@"
+  require_root
+
+  local transaction="$SCRIPT_DIR/routegate-update-transaction.sh"
+  require_regular_file "$transaction" "role-aware update transaction"
+  [[ -x "$transaction" ]] || die "role-aware update transaction is not executable"
+
+  verify_release_candidate
+
+  log "trusted release version=${VERIFIED_VERSION} commit=${VERIFIED_COMMIT} arch=${VERIFIED_ARCH}; starting host transaction"
   "$transaction" apply \
-    --bundle "$frozen_bundle" \
-    --sha256 "$verified_sha" \
-    --commit "$verified_commit" \
+    --bundle "$VERIFIED_BUNDLE" \
+    --sha256 "$VERIFIED_SHA" \
+    --commit "$VERIFIED_COMMIT" \
     --role "$REQUESTED_ROLE"
 }
 
@@ -530,6 +580,9 @@ main() {
     install-verifier)
       (($# == 0)) || die "install-verifier does not accept arguments"
       install_attestation_verifier
+      ;;
+    verify)
+      verify_only "$@"
       ;;
     apply)
       apply_verified_update "$@"
