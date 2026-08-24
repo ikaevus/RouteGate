@@ -18,6 +18,8 @@ STUBS="$TMP_DIR/stubs"
 GH_LOG="$TMP_DIR/gh.log"
 PATH_GH_LOG="$TMP_DIR/path-gh.log"
 TRANSACTION_LOG="$TMP_DIR/transaction.log"
+VERIFY_STDOUT="$TMP_DIR/verify.stdout"
+VERIFY_STDERR="$TMP_DIR/verify.stderr"
 VERIFIER_PARENT=/usr/local/lib/routegate
 VERIFIER_DIR="$VERIFIER_PARENT/verifier"
 VERIFIER_BACKUP="$TMP_DIR/verifier-backup"
@@ -181,6 +183,8 @@ EOF_PATH_GH
   : >"$GH_LOG"
   : >"$PATH_GH_LOG"
   : >"$TRANSACTION_LOG"
+  : >"$VERIFY_STDOUT"
+  : >"$VERIFY_STDERR"
 }
 
 run_gate() {
@@ -197,6 +201,178 @@ run_gate() {
       --bundle "$ARTIFACTS/routegate-${VERSION}-linux-amd64.tar.gz" \
       --bundle-attestation "$ARTIFACTS/release-bundles.attestation.json" \
       --role vpn
+}
+
+run_verify() {
+  env \
+    PATH="$STUBS:$PATH" \
+    RG_TEST_GH_LOG="$GH_LOG" \
+    RG_TEST_PATH_GH_LOG="$PATH_GH_LOG" \
+    RG_TEST_TRANSACTION_LOG="$TRANSACTION_LOG" \
+    RG_TEST_GH_FAIL_BASENAME="${RG_TEST_GH_FAIL_BASENAME:-}" \
+    bash "$TOOLS/routegate-update-verified.sh" verify \
+      --manifest "$ARTIFACTS/release-manifest.json" \
+      --manifest-attestation "$ARTIFACTS/release-manifest.attestation.json" \
+      --checksums "$ARTIFACTS/SHA256SUMS" \
+      --bundle "$ARTIFACTS/routegate-${VERSION}-linux-amd64.tar.gz" \
+      --bundle-attestation "$ARTIFACTS/release-bundles.attestation.json"
+}
+
+test_verify_emits_trusted_descriptor_without_transaction() {
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+  : >"$VERIFY_STDOUT"
+  : >"$VERIFY_STDERR"
+  unset RG_TEST_GH_FAIL_BASENAME || true
+
+  run_verify >"$VERIFY_STDOUT" 2>"$VERIFY_STDERR"
+
+  [[ $(wc -l <"$GH_LOG") -eq 2 ]] || fail "verify must perform exactly two provenance checks"
+  [[ ! -s "$PATH_GH_LOG" ]] || fail "verify executed gh from PATH"
+  [[ ! -s "$TRANSACTION_LOG" ]] || fail "verify reached the host transaction"
+  assert_contains "$VERIFY_STDERR" "verifying release manifest provenance"
+  assert_contains "$VERIFY_STDERR" "verifying target bundle provenance"
+
+  local sha
+  sha=$(sha256sum "$ARTIFACTS/routegate-${VERSION}-linux-amd64.tar.gz" | awk '{print $1}')
+  python3 - "$VERIFY_STDOUT" "$VERSION" "$COMMIT" "$sha" <<'PY'
+import json
+import sys
+
+path, version, commit, expected_sha = sys.argv[1:]
+with open(path, encoding="utf-8") as handle:
+    value = json.load(handle)
+if value.get("version") != version:
+    raise SystemExit("unexpected verified version")
+if value.get("commit") != commit:
+    raise SystemExit("unexpected verified commit")
+artifact = value.get("artifact")
+if not isinstance(artifact, dict):
+    raise SystemExit("verified descriptor is missing artifact")
+if artifact.get("name") != f"routegate-{version}-linux-amd64.tar.gz":
+    raise SystemExit("unexpected verified artifact name")
+if artifact.get("os") != "linux" or artifact.get("arch") != "amd64":
+    raise SystemExit("unexpected verified platform")
+if artifact.get("sha256") != expected_sha:
+    raise SystemExit("unexpected verified artifact SHA-256")
+if not isinstance(artifact.get("size"), int) or artifact["size"] <= 0:
+    raise SystemExit("unexpected verified artifact size")
+PY
+}
+
+test_verify_rejects_apply_only_role() {
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+  unset RG_TEST_GH_FAIL_BASENAME || true
+
+  if env \
+    PATH="$STUBS:$PATH" \
+    RG_TEST_GH_LOG="$GH_LOG" \
+    RG_TEST_PATH_GH_LOG="$PATH_GH_LOG" \
+    RG_TEST_TRANSACTION_LOG="$TRANSACTION_LOG" \
+    bash "$TOOLS/routegate-update-verified.sh" verify \
+      --manifest "$ARTIFACTS/release-manifest.json" \
+      --manifest-attestation "$ARTIFACTS/release-manifest.attestation.json" \
+      --checksums "$ARTIFACTS/SHA256SUMS" \
+      --bundle "$ARTIFACTS/routegate-${VERSION}-linux-amd64.tar.gz" \
+      --bundle-attestation "$ARTIFACTS/release-bundles.attestation.json" \
+      --role vpn >/dev/null 2>&1; then
+    fail "verify unexpectedly accepted --role"
+  fi
+  [[ ! -s "$GH_LOG" ]] || fail "verify --role rejection reached provenance verification"
+  [[ ! -s "$PATH_GH_LOG" ]] || fail "verify --role rejection invoked PATH gh"
+  [[ ! -s "$TRANSACTION_LOG" ]] || fail "verify --role rejection reached the host transaction"
+}
+
+test_verify_missing_fixed_verifier_fails_closed() {
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+  sudo mv "$VERIFIER_DIR" "$VERIFIER_DIR.saved"
+
+  if run_verify >/dev/null 2>&1; then
+    sudo mv "$VERIFIER_DIR.saved" "$VERIFIER_DIR"
+    fail "verify unexpectedly succeeded without its fixed verifier"
+  fi
+  [[ ! -s "$PATH_GH_LOG" ]] || {
+    sudo mv "$VERIFIER_DIR.saved" "$VERIFIER_DIR"
+    fail "verify fell back to PATH gh without its fixed verifier"
+  }
+  [[ ! -s "$TRANSACTION_LOG" ]] || {
+    sudo mv "$VERIFIER_DIR.saved" "$VERIFIER_DIR"
+    fail "verify without its fixed verifier reached the host transaction"
+  }
+  sudo mv "$VERIFIER_DIR.saved" "$VERIFIER_DIR"
+}
+
+test_verify_tampered_verifier_metadata_fails_closed() {
+  local saved="$TMP_DIR/verifier-runtime.saved"
+  sudo cp "$VERIFIER_DIR/runtime.env" "$saved"
+  sudo sed -i 's/^BINARY_SHA256=.*/BINARY_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' "$VERIFIER_DIR/runtime.env"
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+
+  if run_verify >/dev/null 2>&1; then
+    sudo cp "$saved" "$VERIFIER_DIR/runtime.env"
+    fail "verify unexpectedly accepted tampered verifier metadata"
+  fi
+  [[ ! -s "$GH_LOG" ]] || fail "tampered verifier metadata reached provenance verification"
+  [[ ! -s "$PATH_GH_LOG" ]] || fail "tampered verifier metadata invoked PATH gh"
+  [[ ! -s "$TRANSACTION_LOG" ]] || fail "tampered verifier metadata reached the host transaction"
+  sudo cp "$saved" "$VERIFIER_DIR/runtime.env"
+}
+
+test_verify_tampered_bundle_stops_before_bundle_attestation() {
+  local bundle="$ARTIFACTS/routegate-${VERSION}-linux-amd64.tar.gz"
+  local original="$TMP_DIR/verify-original-bundle.tar.gz"
+  cp "$bundle" "$original"
+  printf 'tamper' >>"$bundle"
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+  unset RG_TEST_GH_FAIL_BASENAME || true
+
+  if run_verify >/dev/null 2>&1; then
+    mv "$original" "$bundle"
+    fail "verify unexpectedly accepted a tampered target bundle"
+  fi
+  [[ $(wc -l <"$GH_LOG") -eq 1 ]] || fail "verify tampered bundle should stop after manifest attestation"
+  [[ ! -s "$PATH_GH_LOG" ]] || fail "verify tampered bundle invoked PATH gh"
+  [[ ! -s "$TRANSACTION_LOG" ]] || fail "verify tampered bundle reached the host transaction"
+  mv "$original" "$bundle"
+}
+
+test_verify_manifest_attestation_failure_stops_immediately() {
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+  export RG_TEST_GH_FAIL_BASENAME=release-manifest.json
+
+  if run_verify >/dev/null 2>&1; then
+    fail "verify unexpectedly accepted failed manifest provenance"
+  fi
+  [[ $(wc -l <"$GH_LOG") -eq 1 ]] || fail "verify manifest attestation failure should stop immediately"
+  [[ ! -s "$PATH_GH_LOG" ]] || fail "verify manifest failure invoked PATH gh"
+  [[ ! -s "$TRANSACTION_LOG" ]] || fail "verify manifest failure reached the host transaction"
+  unset RG_TEST_GH_FAIL_BASENAME
+}
+
+test_verify_bundle_attestation_failure_stops_without_transaction() {
+  : >"$GH_LOG"
+  : >"$PATH_GH_LOG"
+  : >"$TRANSACTION_LOG"
+  export RG_TEST_GH_FAIL_BASENAME="routegate-${VERSION}-linux-amd64.tar.gz"
+
+  if run_verify >/dev/null 2>&1; then
+    fail "verify unexpectedly accepted failed bundle provenance"
+  fi
+  [[ $(wc -l <"$GH_LOG") -eq 2 ]] || fail "verify bundle attestation failure should occur on the second provenance check"
+  [[ ! -s "$PATH_GH_LOG" ]] || fail "verify bundle failure invoked PATH gh"
+  [[ ! -s "$TRANSACTION_LOG" ]] || fail "verify bundle failure reached the host transaction"
+  unset RG_TEST_GH_FAIL_BASENAME
 }
 
 test_verified_handoff() {
@@ -297,6 +473,13 @@ test_bundle_attestation_failure_stops_before_transaction() {
 prepare_bundle
 prepare_fixed_verifier
 prepare_tools_and_stubs
+test_verify_emits_trusted_descriptor_without_transaction
+test_verify_rejects_apply_only_role
+test_verify_missing_fixed_verifier_fails_closed
+test_verify_tampered_verifier_metadata_fails_closed
+test_verify_tampered_bundle_stops_before_bundle_attestation
+test_verify_manifest_attestation_failure_stops_immediately
+test_verify_bundle_attestation_failure_stops_without_transaction
 test_verified_handoff
 test_missing_fixed_verifier_does_not_fall_back_to_path
 test_tampered_bundle_stops_before_bundle_attestation_and_transaction
