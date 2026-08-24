@@ -12,9 +12,9 @@ import (
 	"testing"
 )
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type stageRoundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+func (f stageRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return f(request)
 }
 
@@ -39,7 +39,7 @@ func TestStageAndVerifyDownloadsOnlyCanonicalAssetsAndFinalizesAtomically(t *tes
 	discovery := stageFixtureDiscovery(version, arch, contents)
 
 	var requested []string
-	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &http.Client{Transport: stageRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		requested = append(requested, request.URL.String())
 		name := filepath.Base(request.URL.Path)
 		body, ok := contents[name]
@@ -120,7 +120,7 @@ func TestStageAndVerifySizeMismatchCleansPartialState(t *testing.T) {
 		}
 	}
 
-	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &http.Client{Transport: stageRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := contents[filepath.Base(request.URL.Path)]
 		return &http.Response{
 			StatusCode:    http.StatusOK,
@@ -199,11 +199,11 @@ func TestValidateDiscoveryForStageRejectsNonCanonicalCandidate(t *testing.T) {
 
 func stageFixtureContents(bundleName string) map[string]string {
 	return map[string]string{
-		"release-manifest.json":              "manifest\n",
-		"release-manifest.attestation.json":  "{}\n",
-		"SHA256SUMS":                         "checksums\n",
-		"release-bundles.attestation.json":   "{}\n",
-		bundleName:                            "bundle-bytes\n",
+		"release-manifest.json":             "manifest\n",
+		"release-manifest.attestation.json": "{}\n",
+		"SHA256SUMS":                        "checksums\n",
+		"release-bundles.attestation.json":  "{}\n",
+		bundleName:                           "bundle-bytes\n",
 	}
 }
 
