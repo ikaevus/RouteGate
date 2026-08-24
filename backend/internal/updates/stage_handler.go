@@ -18,13 +18,16 @@ import (
 )
 
 const (
-	stageJobLifecycleTimeout      = 10 * time.Minute
-	stageFailurePersistTimeout    = 5 * time.Second
-	stageInsertAmbiguousCode      = "stage_insert_ambiguous"
-	stageExecutionFailureCode     = "artifact_staging_failed"
-	stageStateTransitionCode      = "stage_state_transition_failed"
-	stageCompletionFailureCode    = "stage_completion_failed"
-	maxStageRequestBodyBytes      = 1024
+	stageJobLifecycleTimeout   = 10 * time.Minute
+	stageFailurePersistTimeout = 5 * time.Second
+
+	stageInsertAmbiguousCode   = "stage_insert_ambiguous"
+	stageExecutionFailureCode  = "artifact_staging_failed"
+	stageStateTransitionCode   = "stage_state_transition_failed"
+	stageCompletionFailureCode = "stage_completion_failed"
+	stageCompletionUncertainCode = "stage_completion_uncertain"
+
+	maxStageRequestBodyBytes = 1024
 )
 
 type stageJobRepository interface {
@@ -118,6 +121,20 @@ func (h *StageHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	job, err = h.repo.CompleteStage(lifecycleCtx, job.ID, result)
 	if err != nil {
+		reconciled, committed, reconcileErr := h.reconcileAmbiguousCompletion(job.ID, result)
+		if committed {
+			job = reconciled
+			h.record(lifecycleCtx, user.ID, "update.stage.completed", job, audit.ResultSuccess)
+			httpx.WriteJSON(w, http.StatusCreated, CreateResponse{Job: job})
+			return
+		}
+		if reconcileErr != nil {
+			h.logError("complete update stage job", err)
+			h.logError("reconcile ambiguous update stage completion", reconcileErr)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(stageCompletionUncertainCode, "Unable to determine whether the verified staged candidate was persisted."))
+			return
+		}
+
 		h.failAndCleanup(job.ID, stageCompletionFailureCode, user.ID)
 		h.logError("complete update stage job", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(stageCompletionFailureCode, "Unable to persist the verified staged candidate."))
@@ -172,6 +189,35 @@ func (h *StageHandler) reconcileAmbiguousCreate(job Job, userID string) {
 	h.record(ctx, userID, "update.stage.failed", failed, audit.ResultFailure)
 }
 
+func (h *StageHandler) reconcileAmbiguousCompletion(jobID string, expected StageResult) (Job, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), stageFailurePersistTimeout)
+	defer cancel()
+
+	persisted, err := h.repo.Get(ctx, jobID)
+	if err != nil {
+		return Job{}, false, err
+	}
+	if persisted.Operation != OperationStage || persisted.Stage != StageStage {
+		return Job{}, false, errors.New("ambiguous completion resolved to a non-stage job")
+	}
+
+	switch persisted.Status {
+	case StatusSucceeded:
+		var actual StageResult
+		if err := json.Unmarshal(persisted.ResultPayload, &actual); err != nil {
+			return Job{}, false, err
+		}
+		if actual != expected {
+			return Job{}, false, errors.New("persisted stage result does not match the verified candidate")
+		}
+		return persisted, true, nil
+	case StatusPending, StatusRunning, StatusFailed:
+		return persisted, false, nil
+	default:
+		return Job{}, false, errors.New("ambiguous completion resolved to an unknown stage status")
+	}
+}
+
 func (h *StageHandler) failAndCleanup(jobID, errorCode, userID string) {
 	if h.stager != nil {
 		if err := h.stager.Cleanup(jobID); err != nil {
@@ -202,9 +248,9 @@ func (h *StageHandler) record(ctx context.Context, userID, action string, job Jo
 		ResourceID:   job.ID,
 		Result:       result,
 		Metadata: map[string]any{
-			"operation": job.Operation,
-			"stage":     job.Stage,
-			"status":    job.Status,
+			"operation":  job.Operation,
+			"stage":      job.Stage,
+			"status":     job.Status,
 			"error_code": job.ErrorCode,
 		},
 	})
