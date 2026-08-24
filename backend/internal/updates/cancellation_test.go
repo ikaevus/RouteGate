@@ -79,7 +79,7 @@ func (cancellationAwareSchemaReader) AppliedSchemaVersion(ctx context.Context) (
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return "000135_update_jobs", nil
+	return "000136_update_job_discovery", nil
 }
 
 func TestCreatePreflightSurvivesRequestCancellationDuringInsert(t *testing.T) {
