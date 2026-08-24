@@ -1,3 +1,6 @@
+ALTER TABLE update_jobs
+    DROP CONSTRAINT IF EXISTS update_jobs_operation_stage_check;
+
 DELETE FROM update_jobs
 WHERE operation = 'discovery' OR stage = 'discovery';
 
