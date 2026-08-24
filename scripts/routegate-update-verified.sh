@@ -33,7 +33,6 @@ REQUESTED_ROLE="auto"
 WORK_DIR=""
 VERIFIED_DESCRIPTOR=""
 VERIFIED_BUNDLE=""
-VERIFIED_BUNDLE_NAME=""
 VERIFIED_SHA=""
 VERIFIED_COMMIT=""
 VERIFIED_VERSION=""
@@ -536,7 +535,6 @@ verify_release_candidate() {
 
   VERIFIED_DESCRIPTOR=$descriptor
   VERIFIED_BUNDLE=$frozen_bundle
-  VERIFIED_BUNDLE_NAME=$verified_name
   VERIFIED_SHA=$verified_sha
   VERIFIED_COMMIT=$verified_commit
   VERIFIED_VERSION=$verified_version
