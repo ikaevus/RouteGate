@@ -9,10 +9,13 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/audit"
 )
 
-const ErrorCodePreflightInterrupted = "preflight_interrupted"
+const (
+	ErrorCodePreflightInterrupted = "preflight_interrupted"
+	ErrorCodeDiscoveryInterrupted = "discovery_interrupted"
+)
 
 type interruptedJobRepository interface {
-	RecoverInterruptedPreflights(context.Context) ([]Job, error)
+	RecoverInterruptedJobs(context.Context) ([]Job, error)
 }
 
 func RecoverInterruptedJobs(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool) error {
@@ -20,16 +23,20 @@ func RecoverInterruptedJobs(ctx context.Context, logger *slog.Logger, pool *pgxp
 }
 
 func recoverInterruptedJobs(ctx context.Context, logger *slog.Logger, repo interruptedJobRepository, recorder auditRecorder) error {
-	jobs, err := repo.RecoverInterruptedPreflights(ctx)
+	jobs, err := repo.RecoverInterruptedJobs(ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, job := range jobs {
+		action := interruptedAuditAction(job.Operation)
+		if action == "" {
+			continue
+		}
 		if recorder != nil {
 			recorder.RecordSafe(ctx, audit.EventInput{
 				ActorType:    audit.ActorTypeSystem,
-				Action:       "update.preflight.interrupted",
+				Action:       action,
 				ResourceType: "update_job",
 				ResourceID:   job.ID,
 				Result:       audit.ResultFailure,
@@ -37,27 +44,41 @@ func recoverInterruptedJobs(ctx context.Context, logger *slog.Logger, repo inter
 					"operation":  job.Operation,
 					"stage":      job.Stage,
 					"status":     job.Status,
-					"error_code": ErrorCodePreflightInterrupted,
+					"error_code": job.ErrorCode,
 				},
 			})
 		}
 	}
 
 	if len(jobs) > 0 && logger != nil {
-		logger.Warn("recovered interrupted update preflight jobs", "count", len(jobs))
+		logger.Warn("recovered interrupted update jobs", "count", len(jobs))
 	}
 	return nil
 }
 
-func (r *Repository) RecoverInterruptedPreflights(ctx context.Context) ([]Job, error) {
+func interruptedAuditAction(operation string) string {
+	switch operation {
+	case OperationPreflight:
+		return "update.preflight.interrupted"
+	case OperationDiscovery:
+		return "update.discovery.interrupted"
+	default:
+		return ""
+	}
+}
+
+func (r *Repository) RecoverInterruptedJobs(ctx context.Context) ([]Job, error) {
 	rows, err := r.pool.Query(ctx, `
 		UPDATE update_jobs
 		SET status = $1,
-		    error_code = $2,
+		    error_code = CASE operation
+		        WHEN $2 THEN $3
+		        WHEN $4 THEN $5
+		    END,
 		    updated_at = now(),
 		    completed_at = now()
-		WHERE operation = $3
-		  AND status IN ($4, $5)
+		WHERE operation IN ($2, $4)
+		  AND status IN ($6, $7)
 		RETURNING
 			id::text,
 			operation,
@@ -71,7 +92,11 @@ func (r *Repository) RecoverInterruptedPreflights(ctx context.Context) ([]Job, e
 			updated_at,
 			started_at,
 			completed_at
-	`, StatusFailed, ErrorCodePreflightInterrupted, OperationPreflight, StatusPending, StatusRunning)
+	`, StatusFailed,
+		OperationPreflight, ErrorCodePreflightInterrupted,
+		OperationDiscovery, ErrorCodeDiscoveryInterrupted,
+		StatusPending, StatusRunning,
+	)
 	if err != nil {
 		return nil, err
 	}
