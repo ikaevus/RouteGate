@@ -22,16 +22,16 @@ const (
 	trustedVerifiedGatePath  = "/usr/local/lib/routegate/update/routegate-update-verified.sh"
 	officialReleaseAssetBase = "https://github.com/ikaevus/RouteGate/releases/download"
 
-	maxSmallReleaseAssetBytes       int64 = 1 << 20
-	maxAttestationBundleBytes       int64 = 16 << 20
+	maxSmallReleaseAssetBytes        int64 = 1 << 20
+	maxAttestationBundleBytes        int64 = 16 << 20
 	maxReleaseBundleBytes            int64 = 512 << 20
 	maxVerifierDescriptorOutputBytes       = 64 << 10
 	maxVerifierDiagnosticOutputBytes       = 32 << 10
 )
 
 var (
-	verifiedCommitPattern   = regexp.MustCompile(`^[a-f0-9]{40}$`)
-	verifiedSHA256Pattern   = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	verifiedCommitPattern    = regexp.MustCompile(`^[a-f0-9]{40}$`)
+	verifiedSHA256Pattern    = regexp.MustCompile(`^[a-f0-9]{64}$`)
 	verifiedMigrationPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
@@ -41,9 +41,10 @@ type artifactStager interface {
 }
 
 type releaseArtifactStager struct {
-	client       *http.Client
-	stagingRoot  string
-	verifierPath string
+	client            *http.Client
+	stagingRoot       string
+	verifierPath      string
+	validateVerifier  func(string) error
 }
 
 type verifiedDescriptor struct {
@@ -90,21 +91,25 @@ func (b *boundedBuffer) String() string {
 }
 
 func newReleaseArtifactStager() artifactStager {
-	return newReleaseArtifactStagerWithDependencies(nil, managerUpdateStagingRoot, trustedVerifiedGatePath)
+	return newReleaseArtifactStagerWithDependencies(nil, managerUpdateStagingRoot, trustedVerifiedGatePath, validateTrustedVerifierPath)
 }
 
-func newReleaseArtifactStagerWithDependencies(client *http.Client, stagingRoot, verifierPath string) artifactStager {
+func newReleaseArtifactStagerWithDependencies(client *http.Client, stagingRoot, verifierPath string, validator func(string) error) artifactStager {
 	if client == nil {
 		client = &http.Client{}
 	} else {
 		copyClient := *client
 		client = &copyClient
 	}
+	if validator == nil {
+		validator = validateTrustedVerifierPath
+	}
 	client.CheckRedirect = stageRedirectPolicy
 	return &releaseArtifactStager{
-		client:       client,
-		stagingRoot:  stagingRoot,
-		verifierPath: verifierPath,
+		client:           client,
+		stagingRoot:      stagingRoot,
+		verifierPath:     verifierPath,
+		validateVerifier: validator,
 	}
 }
 
@@ -131,7 +136,7 @@ func (s *releaseArtifactStager) StageAndVerify(ctx context.Context, stageJobID s
 	if !uuidPattern.MatchString(stageJobID) {
 		return StageResult{}, errors.New("stage job ID is not a UUID")
 	}
-	if err := validateTrustedVerifierPath(s.verifierPath); err != nil {
+	if err := s.validateVerifier(s.verifierPath); err != nil {
 		return StageResult{}, err
 	}
 
@@ -376,6 +381,10 @@ func validatePrivateDirectory(path string) error {
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
 		return errors.New("update staging directory is not a private directory")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Geteuid() {
+		return errors.New("update staging directory is not owned by the Manager user")
 	}
 	return nil
 }
