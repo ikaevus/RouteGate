@@ -223,6 +223,7 @@ func (h *StageHandler) failAndCleanup(jobID, errorCode, userID string) {
 	if h.stager != nil {
 		if err := h.stager.Cleanup(jobID); err != nil {
 			h.logError("clean failed update staging directory", err)
+			return
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), stageFailurePersistTimeout)
