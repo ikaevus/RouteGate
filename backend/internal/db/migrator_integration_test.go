@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000134_distinct_tcp_listener_ports" {
-		t.Fatalf("applied schema version = %q, want 000134_distinct_tcp_listener_ports", version)
+	if version != "000135_update_jobs" {
+		t.Fatalf("applied schema version = %q, want 000135_update_jobs", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -387,8 +387,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000134_distinct_tcp_listener_ports" {
-		t.Fatalf("applied schema version = %q, want 000134_distinct_tcp_listener_ports", version)
+	if version != "000135_update_jobs" {
+		t.Fatalf("applied schema version = %q, want 000135_update_jobs", version)
 	}
 }
 
