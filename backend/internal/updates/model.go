@@ -8,8 +8,10 @@ import (
 const (
 	OperationPreflight = "preflight"
 	OperationDiscovery = "discovery"
+	OperationStage     = "stage"
 	StagePreflight     = "preflight"
 	StageDiscovery     = "discovery"
+	StageStage         = "stage"
 
 	StatusPending   = "pending"
 	StatusRunning   = "running"
@@ -30,7 +32,9 @@ const (
 
 	DiscoverySourceOfficialGitHub = "github:ikaevus/RouteGate/releases/latest"
 	ProvenanceUnverified          = "unverified"
+	ProvenanceVerified            = "verified"
 	ProvenanceVerificationRG96B   = "rg96b_provenance_and_manifest_verification_required"
+	VerificationRG96C3A           = "rg96c3a_non_mutating_verify"
 
 	HostTrustPreflightDeferred = "deferred_to_privileged_b2"
 )
@@ -81,6 +85,30 @@ type DiscoveryResult struct {
 	Availability         string           `json:"availability"`
 	ProvenanceStatus     string           `json:"provenanceStatus"`
 	VerificationRequired string           `json:"verificationRequired"`
+}
+
+type StageRequest struct {
+	DiscoveryJobID string `json:"discoveryJobId"`
+}
+
+type VerifiedArtifact struct {
+	Name   string `json:"name"`
+	OS     string `json:"os"`
+	Arch   string `json:"arch"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+type StageResult struct {
+	DiscoveryJobID   string           `json:"discoveryJobId"`
+	CandidateVersion string           `json:"candidateVersion"`
+	VerifiedVersion  string           `json:"verifiedVersion"`
+	VerifiedCommit   string           `json:"verifiedCommit"`
+	RuntimeOS        string           `json:"runtimeOs"`
+	RuntimeArch      string           `json:"runtimeArch"`
+	Artifact         VerifiedArtifact `json:"artifact"`
+	ProvenanceStatus string           `json:"provenanceStatus"`
+	Verification     string           `json:"verification"`
 }
 
 type ListResponse struct {
