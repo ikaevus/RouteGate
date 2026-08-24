@@ -21,10 +21,10 @@ const (
 	stageJobLifecycleTimeout   = 10 * time.Minute
 	stageFailurePersistTimeout = 5 * time.Second
 
-	stageInsertAmbiguousCode   = "stage_insert_ambiguous"
-	stageExecutionFailureCode  = "artifact_staging_failed"
-	stageStateTransitionCode   = "stage_state_transition_failed"
-	stageCompletionFailureCode = "stage_completion_failed"
+	stageInsertAmbiguousCode     = "stage_insert_ambiguous"
+	stageExecutionFailureCode    = "artifact_staging_failed"
+	stageStateTransitionCode     = "stage_state_transition_failed"
+	stageCompletionFailureCode   = "stage_completion_failed"
 	stageCompletionUncertainCode = "stage_completion_uncertain"
 
 	maxStageRequestBodyBytes = 1024
@@ -100,28 +100,29 @@ func (h *StageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("update_job_create_failed", "Unable to create the stage job."))
 		return
 	}
+	stageJobID := job.ID
 	h.record(lifecycleCtx, user.ID, "update.stage.requested", job, audit.ResultSuccess)
 
-	job, err = h.repo.MarkRunning(lifecycleCtx, job.ID)
+	job, err = h.repo.MarkRunning(lifecycleCtx, stageJobID)
 	if err != nil {
-		h.failAndCleanup(job.ID, stageStateTransitionCode, user.ID)
+		h.failAndCleanup(stageJobID, stageStateTransitionCode, user.ID)
 		h.logError("mark update stage job running", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(stageStateTransitionCode, "Unable to start artifact staging."))
 		return
 	}
 
-	result, err := h.stager.StageAndVerify(lifecycleCtx, job.ID, discovery)
+	result, err := h.stager.StageAndVerify(lifecycleCtx, stageJobID, discovery)
 	if err != nil {
-		h.failAndCleanup(job.ID, stageExecutionFailureCode, user.ID)
+		h.failAndCleanup(stageJobID, stageExecutionFailureCode, user.ID)
 		h.logError("stage and verify update artifacts", err)
 		httpx.WriteJSON(w, http.StatusBadGateway, httpx.Error(stageExecutionFailureCode, "Unable to stage and verify the release artifacts."))
 		return
 	}
 	result.DiscoveryJobID = request.DiscoveryJobID
 
-	job, err = h.repo.CompleteStage(lifecycleCtx, job.ID, result)
+	job, err = h.repo.CompleteStage(lifecycleCtx, stageJobID, result)
 	if err != nil {
-		reconciled, committed, reconcileErr := h.reconcileAmbiguousCompletion(job.ID, result)
+		reconciled, committed, reconcileErr := h.reconcileAmbiguousCompletion(stageJobID, result)
 		if committed {
 			job = reconciled
 			h.record(lifecycleCtx, user.ID, "update.stage.completed", job, audit.ResultSuccess)
@@ -135,7 +136,7 @@ func (h *StageHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.failAndCleanup(job.ID, stageCompletionFailureCode, user.ID)
+		h.failAndCleanup(stageJobID, stageCompletionFailureCode, user.ID)
 		h.logError("complete update stage job", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(stageCompletionFailureCode, "Unable to persist the verified staged candidate."))
 		return
