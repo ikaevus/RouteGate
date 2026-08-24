@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,16 +14,18 @@ import (
 const testDiscoveryJobID = "33333333-3333-4333-8333-333333333333"
 
 type fakeStageRepository struct {
-	discoveryJob Job
-	stageJob     Job
-	createCalls  int
-	markCalls    int
-	completeCalls int
-	failCode     string
-	createErr    error
-	markErr      error
-	completeErr  error
-	getErr       error
+	discoveryJob          Job
+	stageJob              Job
+	createCalls           int
+	markCalls             int
+	completeCalls         int
+	failCode              string
+	createErr             error
+	markErr               error
+	completeErr           error
+	completeCommitThenErr bool
+	discoveryGetErr       error
+	stageGetErr           error
 }
 
 func newFakeStageRepository(t *testing.T) *fakeStageRepository {
@@ -74,12 +77,17 @@ func (r *fakeStageRepository) MarkRunning(context.Context, string) (Job, error) 
 
 func (r *fakeStageRepository) CompleteStage(_ context.Context, _ string, result StageResult) (Job, error) {
 	r.completeCalls++
-	if r.completeErr != nil {
-		return Job{}, r.completeErr
-	}
 	payload, err := json.Marshal(result)
 	if err != nil {
 		return Job{}, err
+	}
+	if r.completeCommitThenErr {
+		r.stageJob.Status = StatusSucceeded
+		r.stageJob.ResultPayload = payload
+		return Job{}, r.completeErr
+	}
+	if r.completeErr != nil {
+		return Job{}, r.completeErr
 	}
 	r.stageJob.Status = StatusSucceeded
 	r.stageJob.ResultPayload = payload
@@ -93,11 +101,21 @@ func (r *fakeStageRepository) Fail(_ context.Context, _ string, errorCode string
 	return r.stageJob, nil
 }
 
-func (r *fakeStageRepository) Get(context.Context, string) (Job, error) {
-	if r.getErr != nil {
-		return Job{}, r.getErr
+func (r *fakeStageRepository) Get(_ context.Context, id string) (Job, error) {
+	switch id {
+	case testDiscoveryJobID:
+		if r.discoveryGetErr != nil {
+			return Job{}, r.discoveryGetErr
+		}
+		return r.discoveryJob, nil
+	case testJobID:
+		if r.stageGetErr != nil {
+			return Job{}, r.stageGetErr
+		}
+		return r.stageJob, nil
+	default:
+		return Job{}, errors.New("job not found")
 	}
-	return r.discoveryJob, nil
 }
 
 type fakeArtifactStager struct {
@@ -123,22 +141,10 @@ func stageRequest(t *testing.T) *http.Request {
 	t.Helper()
 	request := authenticatedRequest(http.MethodPost, "/api/v1/system/update-jobs/stage")
 	body := `{"discoveryJobId":"` + testDiscoveryJobID + `"}`
-	request.Body = http.NoBody
-	request = request.Clone(request.Context())
-	request.Body = ioNopCloserString(body)
+	request.Body = io.NopCloser(strings.NewReader(body))
 	request.ContentLength = int64(len(body))
 	return request
 }
-
-func ioNopCloserString(value string) *stringReadCloser {
-	return &stringReadCloser{Reader: strings.NewReader(value)}
-}
-
-type stringReadCloser struct {
-	*strings.Reader
-}
-
-func (r *stringReadCloser) Close() error { return nil }
 
 func successfulStageResult() StageResult {
 	return StageResult{
@@ -251,5 +257,54 @@ func TestCreateStageFailureCleansAndPersistsSafeCode(t *testing.T) {
 	}
 	if len(recorder.events) != 2 || recorder.events[1].Action != "update.stage.failed" || recorder.events[1].Metadata["error_code"] != stageExecutionFailureCode {
 		t.Fatalf("unexpected audit events: %#v", recorder.events)
+	}
+}
+
+func TestCreateStageReconcilesCommittedCompletionWithoutDeletingBytes(t *testing.T) {
+	repo := newFakeStageRepository(t)
+	repo.completeErr = context.DeadlineExceeded
+	repo.completeCommitThenErr = true
+	stager := &fakeArtifactStager{result: successfulStageResult()}
+	recorder := &fakeAuditRecorder{}
+	handler := newStageHandlerWithDependencies(nil, repo, recorder, stager)
+
+	response := httptest.NewRecorder()
+	handler.Create(response, stageRequest(t))
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if repo.stageJob.Status != StatusSucceeded || repo.failCode != "" {
+		t.Fatalf("reconciled stage job = %+v, failCode=%q", repo.stageJob, repo.failCode)
+	}
+	if len(stager.cleanupCalls) != 0 {
+		t.Fatalf("committed staged bytes were deleted during completion reconciliation: %#v", stager.cleanupCalls)
+	}
+	if len(recorder.events) != 2 || recorder.events[1].Action != "update.stage.completed" {
+		t.Fatalf("unexpected audit events: %#v", recorder.events)
+	}
+}
+
+func TestCreateStageUnknownCompletionStateDoesNotDeleteCandidate(t *testing.T) {
+	repo := newFakeStageRepository(t)
+	repo.completeErr = context.DeadlineExceeded
+	repo.stageGetErr = errors.New("database unavailable during reconciliation")
+	stager := &fakeArtifactStager{result: successfulStageResult()}
+	handler := newStageHandlerWithDependencies(nil, repo, nil, stager)
+
+	response := httptest.NewRecorder()
+	handler.Create(response, stageRequest(t))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), stageCompletionUncertainCode) {
+		t.Fatalf("response does not contain bounded uncertainty code: %s", response.Body.String())
+	}
+	if len(stager.cleanupCalls) != 0 {
+		t.Fatalf("candidate bytes were deleted while completion state was unknown: %#v", stager.cleanupCalls)
+	}
+	if repo.failCode != "" || repo.stageJob.Status != StatusRunning {
+		t.Fatalf("unknown completion state was destructively terminalized: job=%+v code=%q", repo.stageJob, repo.failCode)
 	}
 }
