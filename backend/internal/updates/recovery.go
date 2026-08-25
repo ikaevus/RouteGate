@@ -15,6 +15,7 @@ const (
 	ErrorCodePreflightInterrupted = "preflight_interrupted"
 	ErrorCodeDiscoveryInterrupted = "discovery_interrupted"
 	ErrorCodeStageInterrupted     = "stage_interrupted"
+	ErrorCodeApplyOutcomeUnknown  = "apply_outcome_unknown"
 )
 
 type interruptedJobRepository interface {
@@ -95,6 +96,8 @@ func interruptedErrorCode(operation string) string {
 		return ErrorCodeDiscoveryInterrupted
 	case OperationStage:
 		return ErrorCodeStageInterrupted
+	case OperationApply:
+		return ErrorCodeApplyOutcomeUnknown
 	default:
 		return ""
 	}
@@ -108,6 +111,8 @@ func interruptedAuditAction(operation string) string {
 		return "update.discovery.interrupted"
 	case OperationStage:
 		return "update.stage.interrupted"
+	case OperationApply:
+		return "update.apply.outcome_unknown"
 	default:
 		return ""
 	}
@@ -129,10 +134,10 @@ func (r *Repository) ListInterruptedJobs(ctx context.Context) ([]Job, error) {
 			started_at,
 			completed_at
 		FROM update_jobs
-		WHERE operation IN ($1, $2, $3)
-		  AND status IN ($4, $5)
+		WHERE operation IN ($1, $2, $3, $4)
+		  AND status IN ($5, $6)
 		ORDER BY created_at ASC
-	`, OperationPreflight, OperationDiscovery, OperationStage, StatusPending, StatusRunning)
+	`, OperationPreflight, OperationDiscovery, OperationStage, OperationApply, StatusPending, StatusRunning)
 	if err != nil {
 		return nil, err
 	}
