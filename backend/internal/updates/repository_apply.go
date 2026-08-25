@@ -9,7 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrApplyInProgress = errors.New("an update apply job is already pending or running")
+var (
+	ErrApplyInProgress          = errors.New("an update apply job is already pending or running")
+	ErrStageApplyAlreadyAttempted = errors.New("this staged candidate already has an apply attempt")
+)
 
 func (r *Repository) AcquireStageAdmissionLock(ctx context.Context) (func(), error) {
 	conn, err := r.pool.Acquire(ctx)
@@ -58,6 +61,19 @@ func (r *Repository) CreateApply(ctx context.Context, createdByUserID, stageJobI
 	}
 	if active != 0 {
 		return Job{}, ErrApplyInProgress
+	}
+
+	var prior int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM update_jobs
+		WHERE operation = $1
+		  AND request_payload->>'stageJobId' = $2
+	`, OperationApply, stageJobID).Scan(&prior); err != nil {
+		return Job{}, err
+	}
+	if prior != 0 {
+		return Job{}, ErrStageApplyAlreadyAttempted
 	}
 
 	job, err := createJobWithQuerier(ctx, tx, OperationApply, StageApply, createdByUserID, payload)
