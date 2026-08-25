@@ -67,7 +67,17 @@ func stageCandidatePinned(stagingRoot, stageJobID string) (bool, error) {
 	if !canonicalUUIDv4Pattern.MatchString(stageJobID) {
 		return false, errors.New("stage job ID is not a canonical UUIDv4")
 	}
-	pinPath := filepath.Join(stagingRoot, ".apply-pins", stageJobID)
+	pinRoot := filepath.Join(stagingRoot, ".apply-pins")
+	if _, err := os.Lstat(pinRoot); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("inspect staged-candidate pin root: %w", err)
+	}
+	if err := validatePrivateDirectory(pinRoot); err != nil {
+		return false, fmt.Errorf("validate staged-candidate pin root: %w", err)
+	}
+
+	pinPath := filepath.Join(pinRoot, stageJobID)
 	info, err := os.Lstat(pinPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
