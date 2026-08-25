@@ -45,7 +45,9 @@ func DecodePlatformUpdateRequest(payload json.RawMessage) (PlatformUpdateRequest
 	if request.SchemaVersion != PlatformUpdateSchemaVersion {
 		return PlatformUpdateRequest{}, fmt.Errorf("unsupported platform update schema version %d", request.SchemaVersion)
 	}
-	request.TargetVersion = strings.TrimSpace(request.TargetVersion)
+	if request.TargetVersion != strings.TrimSpace(request.TargetVersion) {
+		return PlatformUpdateRequest{}, fmt.Errorf("RouteGate target release version must be canonical")
+	}
 	if !routeGateReleaseVersionPattern.MatchString(request.TargetVersion) {
 		return PlatformUpdateRequest{}, fmt.Errorf("invalid RouteGate target release version")
 	}
