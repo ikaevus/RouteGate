@@ -31,7 +31,7 @@ const (
 )
 
 type stageJobRepository interface {
-	CreateStage(context.Context, string, string) (Job, error)
+	CreateStage(context.Context, string, string) (Job, bool, error)
 	MarkRunning(context.Context, string) (Job, error)
 	CompleteStage(context.Context, string, StageResult) (Job, error)
 	Fail(context.Context, string, string) (Job, error)
@@ -91,7 +91,15 @@ func (h *StageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := h.repo.CreateStage(lifecycleCtx, user.ID, request.DiscoveryJobID)
+	job, reused, err := h.repo.CreateStage(lifecycleCtx, user.ID, request.DiscoveryJobID)
+	if errors.Is(err, ErrStageCapacityExceeded) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("stage_capacity_exceeded", "Retained staged-candidate capacity is exhausted."))
+		return
+	}
+	if err == nil && reused {
+		httpx.WriteJSON(w, http.StatusOK, CreateResponse{Job: job})
+		return
+	}
 	if err != nil {
 		if job.ID != "" {
 			h.reconcileAmbiguousCreate(job, user.ID)
