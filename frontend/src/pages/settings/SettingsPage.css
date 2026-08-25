@@ -194,6 +194,96 @@
   padding: 12px;
 }
 
+.settings-update-workflow {
+  border-top: 1px solid var(--rg-border);
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.settings-update-workflow-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-update-workflow-heading strong,
+.settings-update-result > strong,
+.settings-update-confirm > strong {
+  color: var(--rg-text-primary);
+  font-size: 13px;
+}
+
+.settings-update-workflow-heading span,
+.settings-update-workflow-copy,
+.settings-update-result p,
+.settings-update-confirm p {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.settings-update-progress,
+.settings-update-result,
+.settings-update-confirm {
+  background: color-mix(in srgb, var(--rg-surface-raised) 92%, transparent);
+  border: 1px solid var(--rg-border);
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.settings-update-progress {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-update-progress-critical,
+.settings-update-result-warning {
+  border-color: color-mix(in srgb, #d99a2b 52%, var(--rg-border));
+}
+
+.settings-update-result-success {
+  border-color: color-mix(in srgb, #40a36a 52%, var(--rg-border));
+}
+
+.settings-update-result-error {
+  border-color: color-mix(in srgb, #d65757 58%, var(--rg-border));
+}
+
+.settings-update-result-verified {
+  border-color: color-mix(in srgb, var(--rg-primary) 55%, var(--rg-border));
+}
+
+.settings-update-descriptor {
+  display: grid;
+  gap: 4px 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.settings-update-descriptor span {
+  color: var(--rg-text-secondary);
+  font-size: 11px;
+}
+
+.settings-update-descriptor code {
+  color: var(--rg-text-primary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.settings-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-update-workflow .button {
+  justify-self: start;
+}
+
 @media (max-width: 1050px) {
   .settings-layout {
     grid-template-columns: 1fr;
@@ -229,5 +319,9 @@
   .settings-update-facts .settings-fact > strong,
   .settings-update-facts .settings-fact > code {
     text-align: left;
+  }
+
+  .settings-update-descriptor {
+    grid-template-columns: 1fr;
   }
 }
