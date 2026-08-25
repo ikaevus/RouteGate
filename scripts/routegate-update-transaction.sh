@@ -173,10 +173,10 @@ validate_trusted_toolchain_security() {
 }
 
 rollback() {
-  local rc=$?
+  local rc=${1:-$?}
   local platform_rollback_rc=0
   local toolchain_rollback_rc=0
-  trap - ERR
+  trap - ERR INT TERM
   set +e
 
   if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" && -n "$ROLE" ]]; then
@@ -292,6 +292,8 @@ main() {
   rg_update_create_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL"
   rg_update_create_toolchain_backup "$BACKUP_DIR"
   trap rollback ERR
+  trap 'rollback 130' INT
+  trap 'rollback 143' TERM
 
   STAGE=apply
   MUTATED=1
@@ -311,7 +313,7 @@ main() {
   rg_update_validate_toolchain
 
   STAGE=complete
-  trap - ERR
+  trap - ERR INT TERM
   log "status=completed role=$ROLE version=$RG_UPDATE_BUNDLE_VERSION commit=$RG_UPDATE_BUNDLE_COMMIT schema=${RG_UPDATE_EXPECTED_SCHEMA:-none} backup=$BACKUP_DIR"
 }
 
