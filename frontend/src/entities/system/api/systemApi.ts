@@ -53,6 +53,11 @@ export interface UpdateJobCreateResponse {
   job: UpdateJob;
 }
 
+export interface UpdatePreflightResult {
+  decision: 'proceed' | 'blocked';
+  blockers: string[];
+}
+
 export interface UpdateDiscoveryResult {
   source: string;
   currentVersion: string;
@@ -83,11 +88,11 @@ export function getSystemVersion(): Promise<SystemVersionResponse> {
 }
 
 export function createUpdatePreflight(): Promise<UpdateJobCreateResponse> {
-  return apiPost<Record<string, never>, UpdateJobCreateResponse>('/api/v1/system/update-jobs/preflight', {});
+  return apiPost<never, UpdateJobCreateResponse>('/api/v1/system/update-jobs/preflight');
 }
 
 export function createUpdateDiscovery(): Promise<UpdateJobCreateResponse> {
-  return apiPost<Record<string, never>, UpdateJobCreateResponse>('/api/v1/system/update-jobs/discovery', {});
+  return apiPost<never, UpdateJobCreateResponse>('/api/v1/system/update-jobs/discovery');
 }
 
 export function createUpdateStage(discoveryJobId: string): Promise<UpdateJobCreateResponse> {
