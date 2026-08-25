@@ -116,6 +116,25 @@ func (d *fakeApplyDispatcher) Apply(ctx context.Context, stageID string) error {
 	return d.err
 }
 
+type fakeStagePinner struct {
+	err          error
+	pinCalls     int
+	releaseCalls int
+	stageID      string
+}
+
+func (p *fakeStagePinner) Pin(stageID string) (func() error, error) {
+	p.pinCalls++
+	p.stageID = stageID
+	if p.err != nil {
+		return nil, p.err
+	}
+	return func() error {
+		p.releaseCalls++
+		return nil
+	}, nil
+}
+
 func applyRequest(t *testing.T) *http.Request {
 	t.Helper()
 	request := authenticatedRequest(http.MethodPost, "/api/v1/system/update-jobs/apply")
@@ -128,8 +147,10 @@ func applyRequest(t *testing.T) *http.Request {
 func TestCreateApplyCompletesThroughDispatcher(t *testing.T) {
 	repo := newFakeApplyRepository(t)
 	dispatcher := &fakeApplyDispatcher{}
+	pinner := &fakeStagePinner{}
 	recorder := &fakeAuditRecorder{}
 	handler := newApplyHandlerWithDependencies(nil, repo, recorder, dispatcher)
+	handler.pinner = pinner
 
 	response := httptest.NewRecorder()
 	handler.Create(response, applyRequest(t))
@@ -139,6 +160,9 @@ func TestCreateApplyCompletesThroughDispatcher(t *testing.T) {
 	}
 	if repo.createCalls != 1 || repo.markCalls != 1 || repo.completeCalls != 1 || dispatcher.calls != 1 {
 		t.Fatalf("unexpected lifecycle calls: create=%d mark=%d complete=%d dispatch=%d", repo.createCalls, repo.markCalls, repo.completeCalls, dispatcher.calls)
+	}
+	if pinner.pinCalls != 1 || pinner.releaseCalls != 1 || pinner.stageID != testJobID {
+		t.Fatalf("unexpected pin lifecycle: pin=%d release=%d stage=%q", pinner.pinCalls, pinner.releaseCalls, pinner.stageID)
 	}
 	if dispatcher.stageID != testJobID || dispatcher.ctxErr != nil {
 		t.Fatalf("unexpected dispatch contract: stage=%q ctxErr=%v", dispatcher.stageID, dispatcher.ctxErr)
@@ -158,10 +182,12 @@ func TestCreateApplyCompletesThroughDispatcher(t *testing.T) {
 	}
 }
 
-func TestCreateApplyMarksUnknownOutcomeWithoutRetry(t *testing.T) {
+func TestCreateApplyMarksUnknownOutcomeWithoutRetryAndKeepsPin(t *testing.T) {
 	repo := newFakeApplyRepository(t)
 	dispatcher := &fakeApplyDispatcher{err: errDispatchOutcomeUnknown}
+	pinner := &fakeStagePinner{}
 	handler := newApplyHandlerWithDependencies(nil, repo, nil, dispatcher)
+	handler.pinner = pinner
 
 	response := httptest.NewRecorder()
 	handler.Create(response, applyRequest(t))
@@ -174,6 +200,27 @@ func TestCreateApplyMarksUnknownOutcomeWithoutRetry(t *testing.T) {
 	}
 	if repo.failCode != ErrorCodeApplyOutcomeUnknown {
 		t.Fatalf("fail code = %q", repo.failCode)
+	}
+	if pinner.pinCalls != 1 || pinner.releaseCalls != 0 {
+		t.Fatalf("unknown outcome must retain pin: pin=%d release=%d", pinner.pinCalls, pinner.releaseCalls)
+	}
+}
+
+func TestCreateApplyPinFailureStopsBeforeDispatch(t *testing.T) {
+	repo := newFakeApplyRepository(t)
+	dispatcher := &fakeApplyDispatcher{}
+	pinner := &fakeStagePinner{err: errors.New("pin failed")}
+	handler := newApplyHandlerWithDependencies(nil, repo, nil, dispatcher)
+	handler.pinner = pinner
+
+	response := httptest.NewRecorder()
+	handler.Create(response, applyRequest(t))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if dispatcher.calls != 0 || repo.failCode != applyStagePinFailureCode {
+		t.Fatalf("pin failure entered privileged dispatch: calls=%d code=%q", dispatcher.calls, repo.failCode)
 	}
 }
 
