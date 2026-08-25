@@ -145,6 +145,9 @@ func (s *releaseArtifactStager) StageAndVerify(ctx context.Context, stageJobID s
 
 func (s *releaseArtifactStager) Cleanup(stageJobID string) error {
 	if !uuidPattern.MatchString(stageJobID) { return errors.New("stage job ID is not a UUID") }
+	pinned, err := stageCandidatePinned(s.stagingRoot, stageJobID)
+	if err != nil { return err }
+	if pinned { return ErrStageCandidatePinned }
 	if err := os.RemoveAll(filepath.Join(s.stagingRoot, stageJobID+".partial")); err != nil { return err }
 	return os.RemoveAll(filepath.Join(s.stagingRoot, stageJobID))
 }
