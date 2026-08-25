@@ -107,7 +107,7 @@ func (c *Client) Heartbeat(ctx context.Context, agentToken string, info systemin
 }
 
 func advertisedCapabilities(info systeminfo.Info) map[string]any {
-	capabilities := make(map[string]any, len(info.Capabilities)+1)
+	capabilities := make(map[string]any, len(info.Capabilities)+2)
 	for key, value := range info.Capabilities {
 		capabilities[key] = value
 	}
@@ -115,6 +115,14 @@ func advertisedCapabilities(info systeminfo.Info) map[string]any {
 		diagnostics.ProfileHostOverview,
 		diagnostics.ProfileVPNCoreStatus,
 		diagnostics.ProfileManagerCertificate,
+	}
+	// RG-96E2 advertises the request contract before mutation is wired. The
+	// explicit contract_only state prevents readiness code from treating this
+	// Agent as remotely updatable until the verified host primitive exists.
+	capabilities["softwareUpdate"] = map[string]any{
+		"schemaVersion": tasks.PlatformUpdateSchemaVersion,
+		"state":         "contract_only",
+		"request":       "version_only",
 	}
 	return capabilities
 }
