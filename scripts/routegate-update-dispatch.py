@@ -139,7 +139,47 @@ def apply_candidate(paths: tuple[Path, Path, Path, Path, Path]) -> None:
         reject("verified apply failed")
 
 
+def release_apply_pin(job_id: str) -> None:
+    """Best-effort release of the fixed Manager apply pin after root work ends.
+
+    The parent directory is opened with O_NOFOLLOW and all checks are performed
+    through its fd so a Manager-controlled rename/symlink race cannot redirect
+    the root unlink outside the fixed staging tree. Unsafe state is left intact
+    rather than changing the privileged apply result.
+    """
+    if not UUID4_RE.fullmatch(job_id):
+        return
+    try:
+        routegate_uid = pwd.getpwnam("routegate").pw_uid
+        pin_root = STAGING_ROOT / ".apply-pins"
+        flags = os.O_RDONLY | os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        directory_fd = os.open(pin_root, flags)
+    except (KeyError, FileNotFoundError, NotADirectoryError, OSError):
+        return
+
+    try:
+        root_info = os.fstat(directory_fd)
+        if root_info.st_uid != routegate_uid or root_info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            return
+        try:
+            pin_info = os.stat(job_id, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if stat.S_ISLNK(pin_info.st_mode) or not stat.S_ISREG(pin_info.st_mode):
+            return
+        if pin_info.st_uid != routegate_uid or pin_info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            return
+        os.unlink(job_id, dir_fd=directory_fd)
+    except OSError:
+        return
+    finally:
+        os.close(directory_fd)
+
+
 def main() -> int:
+    job_id = ""
     try:
         if os.geteuid() != 0:
             reject("dispatcher must run as root")
@@ -147,10 +187,13 @@ def main() -> int:
         paths = reconstruct_candidate(job_id)
         apply_candidate(paths)
     except (DispatchError, KeyError, OSError, subprocess.SubprocessError):
+        if job_id:
+            release_apply_pin(job_id)
         sys.stdout.write("ERR\n")
         sys.stdout.flush()
         return 1
 
+    release_apply_pin(job_id)
     sys.stdout.write("OK\n")
     sys.stdout.flush()
     return 0

@@ -109,6 +109,36 @@ class DispatchTests(unittest.TestCase):
         self.assertNotIn("sudo", command)
         self.assertEqual(run.call_args.kwargs["env"]["PATH"], "/usr/sbin:/usr/bin:/sbin:/bin")
 
+    def test_root_dispatcher_releases_safe_manager_apply_pin(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "update-staging"
+            pin_root = root / ".apply-pins"
+            pin_root.mkdir(parents=True, mode=0o700)
+            pin = pin_root / JOB_ID
+            pin.write_text("apply-in-flight\n", encoding="utf-8")
+            pin.chmod(0o600)
+            with mock.patch.object(dispatch, "STAGING_ROOT", root), mock.patch.object(
+                dispatch.pwd, "getpwnam", return_value=self.current_user()
+            ):
+                dispatch.release_apply_pin(JOB_ID)
+            self.assertFalse(pin.exists())
+
+    def test_root_dispatcher_does_not_follow_symlinked_pin_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "update-staging"
+            root.mkdir(mode=0o700)
+            outside = base / "outside"
+            outside.mkdir(mode=0o700)
+            target = outside / JOB_ID
+            target.write_text("must-remain\n", encoding="utf-8")
+            (root / ".apply-pins").symlink_to(outside, target_is_directory=True)
+            with mock.patch.object(dispatch, "STAGING_ROOT", root), mock.patch.object(
+                dispatch.pwd, "getpwnam", return_value=self.current_user()
+            ):
+                dispatch.release_apply_pin(JOB_ID)
+            self.assertTrue(target.exists())
+
     def test_canonical_request_parser(self):
         stdin = types.SimpleNamespace(buffer=io.BytesIO((JOB_ID + "\n").encode("ascii")))
         with mock.patch.object(dispatch.sys, "stdin", stdin):

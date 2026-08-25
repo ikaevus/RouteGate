@@ -9,9 +9,11 @@ const (
 	OperationPreflight = "preflight"
 	OperationDiscovery = "discovery"
 	OperationStage     = "stage"
+	OperationApply     = "apply"
 	StagePreflight     = "preflight"
 	StageDiscovery     = "discovery"
 	StageStage         = "stage"
+	StageApply         = "apply"
 
 	StatusPending   = "pending"
 	StatusRunning   = "running"
@@ -101,6 +103,23 @@ type VerifiedArtifact struct {
 
 type StageResult struct {
 	DiscoveryJobID    string           `json:"discoveryJobId"`
+	CandidateVersion  string           `json:"candidateVersion"`
+	VerifiedVersion   string           `json:"verifiedVersion"`
+	VerifiedCommit    string           `json:"verifiedCommit"`
+	ExpectedMigration string           `json:"expectedMigration"`
+	RuntimeOS         string           `json:"runtimeOs"`
+	RuntimeArch       string           `json:"runtimeArch"`
+	Artifact          VerifiedArtifact `json:"artifact"`
+	ProvenanceStatus  string           `json:"provenanceStatus"`
+	Verification      string           `json:"verification"`
+}
+
+type ApplyRequest struct {
+	StageJobID string `json:"stageJobId"`
+}
+
+type ApplyResult struct {
+	StageJobID        string           `json:"stageJobId"`
 	CandidateVersion  string           `json:"candidateVersion"`
 	VerifiedVersion   string           `json:"verifiedVersion"`
 	VerifiedCommit    string           `json:"verifiedCommit"`
