@@ -4,11 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 )
 
 var ErrApplyInProgress = errors.New("an update apply job is already pending or running")
+
+func (r *Repository) AcquireStageAdmissionLock(ctx context.Context) (func(), error) {
+	conn, err := r.pool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtext('routegate-update-stage-admission'))`); err != nil {
+		conn.Release()
+		return nil, err
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if _, err := conn.Exec(context.Background(), `SELECT pg_advisory_unlock(hashtext('routegate-update-stage-admission'))`); err != nil {
+				_ = conn.Conn().Close(context.Background())
+			}
+			conn.Release()
+		})
+	}, nil
+}
 
 func (r *Repository) CreateApply(ctx context.Context, createdByUserID, stageJobID string) (Job, error) {
 	payload, err := json.Marshal(ApplyRequest{StageJobID: stageJobID})
