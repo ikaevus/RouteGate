@@ -231,8 +231,6 @@ rg_update_verify_and_extract_bundle() {
     manager/migrations \
     systemd/routegate-manager.service \
     systemd/routegate-agent.service \
-    systemd/routegate-update-dispatch.socket \
-    systemd/routegate-update-dispatch@.service \
     metadata/manifest.env; do
     [[ -e "$work_dir/$required" && ! -L "$work_dir/$required" ]] || {
       rg_update_die "release bundle is missing required entry: $required"
