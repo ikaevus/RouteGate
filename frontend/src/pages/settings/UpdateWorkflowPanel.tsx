@@ -23,6 +23,19 @@ type WorkflowState =
   | { kind: 'unknown' }
   | { kind: 'error'; message: string };
 
+const definiteApplyFailureCodes = new Set([
+  'apply_in_progress',
+  'apply_admission_failed',
+  'apply_stage_pin_failed',
+  'apply_state_transition_failed',
+  'privileged_apply_failed',
+  'stage_job_not_applicable',
+  'stage_job_not_found',
+  'update_apply_unavailable',
+  'update_job_create_failed',
+  'update_job_lookup_failed',
+]);
+
 function resultAs<T>(job: UpdateJob): T {
   return job.resultPayload as T;
 }
@@ -32,6 +45,19 @@ function mutationError(error: unknown): string {
     return error.message;
   }
   return t('settings.updateWorkflowError');
+}
+
+function applyOutcomeIsAmbiguous(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return true;
+  }
+  if (error.code === 'apply_outcome_unknown') {
+    return true;
+  }
+  if (error.code && definiteApplyFailureCodes.has(error.code)) {
+    return false;
+  }
+  return error.status >= 500;
 }
 
 export function UpdateWorkflowPanel() {
@@ -98,7 +124,7 @@ export function UpdateWorkflowPanel() {
     },
     onError: (error) => {
       setConfirming(false);
-      if (!(error instanceof ApiError) || error.code === 'apply_outcome_unknown') {
+      if (applyOutcomeIsAmbiguous(error)) {
         setState({ kind: 'unknown' });
         return;
       }
