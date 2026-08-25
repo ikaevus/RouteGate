@@ -14,6 +14,7 @@ import (
 const (
 	maxRetainedStageJobs  = 2
 	maxReservedStageBytes = int64(maxRetainedStageJobs) * (maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes)
+	stageRetentionEvicted = "evicted"
 )
 
 var ErrStageCapacityExceeded = errors.New("retained stage job capacity exceeded")
@@ -39,7 +40,28 @@ func (r *Repository) CreateDiscovery(ctx context.Context, createdByUserID string
 	return r.createJob(ctx, OperationDiscovery, StageDiscovery, createdByUserID, json.RawMessage(`{}`))
 }
 
+// CreateStage preserves the bounded admission contract for callers that do not
+// own a staging cleanup boundary. Production staging uses
+// CreateStageWithCleanup so successful retained candidates can be evicted
+// deterministically when the two-candidate capacity is full.
 func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discoveryJobID string) (Job, bool, error) {
+	return r.createStage(ctx, createdByUserID, discoveryJobID, nil)
+}
+
+// CreateStageWithCleanup serializes duplicate detection, retention eviction and
+// job insertion under one PostgreSQL advisory transaction lock. The cleanup
+// callback receives only a durable RouteGate stage job ID; the production
+// callback maps that ID to the fixed Manager-owned staging root.
+//
+// A succeeded candidate is marked evicted only after its bytes have been
+// removed successfully. If cleanup or the database update fails, the
+// transaction rolls back and capacity remains conservatively occupied. The
+// historical update_jobs row is never deleted.
+func (r *Repository) CreateStageWithCleanup(ctx context.Context, createdByUserID, discoveryJobID string, cleanup func(string) error) (Job, bool, error) {
+	return r.createStage(ctx, createdByUserID, discoveryJobID, cleanup)
+}
+
+func (r *Repository) createStage(ctx context.Context, createdByUserID, discoveryJobID string, cleanup func(string) error) (Job, bool, error) {
 	payload, err := json.Marshal(StageRequest{DiscoveryJobID: discoveryJobID})
 	if err != nil {
 		return Job{}, false, err
@@ -65,10 +87,16 @@ func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discovery
 		FROM update_jobs
 		WHERE operation = $1
 		  AND request_payload->>'discoveryJobId' = $2
-		  AND status IN ($3, $4, $5)
+		  AND (
+			status IN ($3, $4)
+			OR (
+				status = $5
+				AND COALESCE(result_payload->>'retention', '') <> $6
+			)
+		  )
 		ORDER BY created_at DESC
 		LIMIT 1
-	`, OperationStage, discoveryJobID, StatusPending, StatusRunning, StatusSucceeded))
+	`, OperationStage, discoveryJobID, StatusPending, StatusRunning, StatusSucceeded, stageRetentionEvicted))
 	if err == nil {
 		if err := tx.Commit(ctx); err != nil {
 			return Job{}, false, err
@@ -79,17 +107,44 @@ func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discovery
 		return Job{}, false, err
 	}
 
-	var retained int
-	if err := tx.QueryRow(ctx, `
-		SELECT count(*)
-		FROM update_jobs
-		WHERE operation = $1
-		  AND status IN ($2, $3, $4)
-	`, OperationStage, StatusPending, StatusRunning, StatusSucceeded).Scan(&retained); err != nil {
+	retained, err := countRetainedStageJobs(ctx, tx)
+	if err != nil {
 		return Job{}, false, err
 	}
-	reservedBytes := int64(retained) * (maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes)
-	nextReservedBytes := reservedBytes + maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes
+	if retained >= maxRetainedStageJobs {
+		if cleanup == nil {
+			return Job{}, false, ErrStageCapacityExceeded
+		}
+		victimID, err := oldestRetainedSucceededStage(ctx, tx)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return Job{}, false, ErrStageCapacityExceeded
+			}
+			return Job{}, false, err
+		}
+		if err := cleanup(victimID); err != nil {
+			return Job{}, false, fmt.Errorf("evict retained stage candidate %s: %w", victimID, err)
+		}
+		commandTag, err := tx.Exec(ctx, `
+			UPDATE update_jobs
+			SET result_payload = jsonb_set(result_payload, '{retention}', to_jsonb($2::text), true),
+			    updated_at = now()
+			WHERE id = $1::uuid
+			  AND operation = $3
+			  AND status = $4
+			  AND COALESCE(result_payload->>'retention', '') <> $2
+		`, victimID, stageRetentionEvicted, OperationStage, StatusSucceeded)
+		if err != nil {
+			return Job{}, false, err
+		}
+		if commandTag.RowsAffected() != 1 {
+			return Job{}, false, errors.New("retained stage candidate changed during serialized eviction")
+		}
+		retained--
+	}
+
+	reservedBytes := int64(retained) * stageCandidateReservedBytes()
+	nextReservedBytes := reservedBytes + stageCandidateReservedBytes()
 	if retained >= maxRetainedStageJobs || nextReservedBytes > maxReservedStageBytes {
 		return Job{}, false, ErrStageCapacityExceeded
 	}
@@ -102,6 +157,46 @@ func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discovery
 		return job, false, err
 	}
 	return job, false, nil
+}
+
+func stageCandidateReservedBytes() int64 {
+	return maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes
+}
+
+func countRetainedStageJobs(ctx context.Context, tx pgx.Tx) (int, error) {
+	var retained int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM update_jobs
+		WHERE operation = $1
+		  AND (
+			status IN ($2, $3)
+			OR (
+				status = $4
+				AND COALESCE(result_payload->>'retention', '') <> $5
+			)
+		  )
+	`, OperationStage, StatusPending, StatusRunning, StatusSucceeded, stageRetentionEvicted).Scan(&retained); err != nil {
+		return 0, err
+	}
+	return retained, nil
+}
+
+func oldestRetainedSucceededStage(ctx context.Context, tx pgx.Tx) (string, error) {
+	var id string
+	if err := tx.QueryRow(ctx, `
+		SELECT id::text
+		FROM update_jobs
+		WHERE operation = $1
+		  AND status = $2
+		  AND COALESCE(result_payload->>'retention', '') <> $3
+		ORDER BY completed_at ASC NULLS FIRST, created_at ASC
+		LIMIT 1
+		FOR UPDATE
+	`, OperationStage, StatusSucceeded, stageRetentionEvicted).Scan(&id); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 func (r *Repository) createJob(ctx context.Context, operation, stage, createdByUserID string, requestPayload json.RawMessage) (Job, error) {
