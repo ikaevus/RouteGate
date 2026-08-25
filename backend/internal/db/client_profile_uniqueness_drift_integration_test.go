@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000137_update_job_stage" {
-		t.Fatalf("applied schema version = %q, want 000137_update_job_stage", version)
+	if version != "000138_update_job_apply" {
+		t.Fatalf("applied schema version = %q, want 000138_update_job_apply", version)
 	}
 }
