@@ -81,6 +81,11 @@ EOF_VERIFIED
 if [[
 EOF_INVALID_VERIFIED
   fi
+
+  cat >"$work/tools/routegate-update-dispatch.py" <<EOF_DISPATCH
+#!/usr/bin/env python3
+ROUTEGATE_DISPATCH_FIXTURE = ${label@Q}
+EOF_DISPATCH
 }
 
 make_transaction_bundle() {
@@ -159,6 +164,8 @@ test_absent_promotion_and_restore() {
   rg_update_validate_toolchain
   assert_eq "$(rg_update_toolchain_state)" complete "promoted updater state"
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-core.sh" 'new'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'new'
+  [[ -x "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" ]] || fail "promoted dispatcher is not executable"
   [[ -x "$root/usr/local/sbin/routegate-update" ]] || fail "promoted entrypoint is not executable"
 
   rg_update_restore_toolchain_backup "$backup"
@@ -182,15 +189,18 @@ test_complete_round_trip() {
   rg_update_validate_toolchain
   rg_update_create_toolchain_backup "$backup"
   assert_file_contains "$backup/update-toolchain.meta" 'STATE=complete'
+  assert_file_contains "$backup/update-toolchain/routegate-update-dispatch.py" 'old'
 
   rg_update_apply_toolchain "$new_work"
   rg_update_validate_toolchain
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-core.sh" 'new'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'new'
 
   rg_update_restore_toolchain_backup "$backup"
   rg_update_validate_toolchain
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-core.sh" 'old'
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-verified.sh" 'verified-old'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'old'
   RG_UPDATE_ROOT=""
 }
 
@@ -222,7 +232,7 @@ test_missing_candidate_component_fails() {
   local work="$TMP_DIR/missing-work"
   mkdir -p "$root"
   make_toolchain_candidate "$work" missing
-  rm "$work/tools/routegate-update-role.sh"
+  rm "$work/tools/routegate-update-dispatch.py"
   RG_UPDATE_ROOT=$root
   if rg_update_apply_toolchain "$work" >/dev/null 2>&1; then
     fail "incomplete candidate updater unexpectedly promoted"
@@ -263,6 +273,7 @@ test_transaction_promotes_toolchain_after_vpn_health() {
 
   assert_file_contains "$root/usr/local/bin/routegate-agent" 'agent-success'
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-verified.sh" 'verified-success'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'success'
   [[ -x "$root/usr/local/sbin/routegate-update" ]] || fail "successful transaction did not install updater entrypoint"
 }
 
