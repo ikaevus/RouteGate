@@ -26,10 +26,11 @@ const (
 	applyFailurePersistTimeout   = 5 * time.Second
 	maxApplyRequestBodyBytes     = 1024
 
-	applyInsertAmbiguousCode      = "apply_insert_ambiguous"
-	applyStateTransitionCode      = "apply_state_transition_failed"
-	applyDispatchFailureCode      = "privileged_apply_failed"
-	applyResultPersistenceCode    = "apply_result_persistence_failed"
+	applyInsertAmbiguousCode   = "apply_insert_ambiguous"
+	applyStateTransitionCode   = "apply_state_transition_failed"
+	applyStagePinFailureCode   = "apply_stage_pin_failed"
+	applyDispatchFailureCode   = "privileged_apply_failed"
+	applyResultPersistenceCode = "apply_result_persistence_failed"
 )
 
 var (
@@ -63,6 +64,7 @@ type ApplyHandler struct {
 	repo       applyJobRepository
 	audit      auditRecorder
 	dispatcher privilegedApplyDispatcher
+	pinner     stageApplyPinner
 }
 
 func NewApplyHandler(logger *slog.Logger, pool *pgxpool.Pool) *ApplyHandler {
@@ -71,6 +73,7 @@ func NewApplyHandler(logger *slog.Logger, pool *pgxpool.Pool) *ApplyHandler {
 		repo:       NewRepository(pool),
 		audit:      audit.NewRecorder(logger, pool),
 		dispatcher: unixApplyDispatcher{socketPath: trustedUpdateDispatchSocket},
+		pinner:     newStageApplyPinner(managerUpdateStagingRoot),
 	}
 }
 
@@ -145,6 +148,25 @@ func (h *ApplyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var releasePin func() error
+	keepPin := false
+	if h.pinner != nil {
+		releasePin, err = h.pinner.Pin(request.StageJobID)
+		if err != nil {
+			h.failJob(job.ID, applyStagePinFailureCode, user.ID)
+			h.logError("pin staged candidate for privileged apply", err)
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(applyStagePinFailureCode, "Unable to pin the staged candidate for privileged apply."))
+			return
+		}
+		defer func() {
+			if releasePin != nil && !keepPin {
+				if err := releasePin(); err != nil {
+					h.logError("release staged candidate apply pin", err)
+				}
+			}
+		}()
+	}
+
 	if h.dispatcher == nil {
 		h.failJob(job.ID, applyDispatchFailureCode, user.ID)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("update_apply_unavailable", "Privileged update apply is unavailable."))
@@ -152,6 +174,7 @@ func (h *ApplyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.dispatcher.Apply(executionCtx, request.StageJobID); err != nil {
 		if errors.Is(err, errDispatchOutcomeUnknown) {
+			keepPin = true
 			h.failJob(job.ID, ErrorCodeApplyOutcomeUnknown, user.ID)
 			h.logError("privileged update apply outcome became unknown", err)
 			httpx.WriteJSON(w, http.StatusBadGateway, httpx.Error(ErrorCodeApplyOutcomeUnknown, "The privileged transaction may have continued after the Manager lost its bounded result. It will not be retried automatically."))
