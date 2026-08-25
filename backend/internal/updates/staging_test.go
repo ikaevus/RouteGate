@@ -31,6 +31,63 @@ func TestProductionArtifactStagerUsesFixedPaths(t *testing.T) {
 	}
 }
 
+func TestValidateTrustedVerifierAllowsNonExecutableMetadata(t *testing.T) {
+	root, verifier, manifest, gh, metadata := writeTrustedVerifierClosure(t)
+	if err := os.Chmod(metadata, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateTrustedVerifierClosure(verifier, manifest, gh, metadata, root); err != nil {
+		t.Fatalf("validate trusted verifier closure: %v", err)
+	}
+}
+
+func TestValidateTrustedVerifierRejectsWritableCompanion(t *testing.T) {
+	root, verifier, manifest, gh, metadata := writeTrustedVerifierClosure(t)
+	if err := os.Chmod(manifest, 0o775); err != nil {
+		t.Fatal(err)
+	}
+	err := validateTrustedVerifierClosure(verifier, manifest, gh, metadata, root)
+	if err == nil || !strings.Contains(err.Error(), "group/world writable") {
+		t.Fatalf("validate writable companion error = %v", err)
+	}
+}
+
+func TestValidateTrustedVerifierRejectsWritableAncestor(t *testing.T) {
+	root, verifier, manifest, gh, metadata := writeTrustedVerifierClosure(t)
+	ancestor := filepath.Join(root, "usr", "local", "lib")
+	if err := os.Chmod(ancestor, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	err := validateTrustedVerifierClosure(verifier, manifest, gh, metadata, root)
+	if err == nil || !strings.Contains(err.Error(), "group/world writable") {
+		t.Fatalf("validate writable ancestor error = %v", err)
+	}
+}
+
+func writeTrustedVerifierClosure(t *testing.T) (string, string, string, string, string) {
+	t.Helper()
+	root := t.TempDir()
+	verifier := filepath.Join(root, "usr", "local", "lib", "routegate", "update", "routegate-update-verified.sh")
+	manifest := filepath.Join(root, "usr", "local", "lib", "routegate", "update", "release_manifest.py")
+	gh := filepath.Join(root, "usr", "local", "lib", "routegate", "verifier", "gh")
+	metadata := filepath.Join(root, "usr", "local", "lib", "routegate", "verifier", "runtime.env")
+	for _, path := range []string{verifier, manifest, gh} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(metadata), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadata, []byte("version=2.97.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root, verifier, manifest, gh, metadata
+}
+
 func TestStageAndVerifyDownloadsOnlyCanonicalAssetsAndFinalizesAtomically(t *testing.T) {
 	version := "v0.2.0"
 	arch := "amd64"
@@ -46,12 +103,7 @@ func TestStageAndVerifyDownloadsOnlyCanonicalAssetsAndFinalizesAtomically(t *tes
 		if !ok {
 			return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader("missing")), Request: request}, nil
 		}
-		return &http.Response{
-			StatusCode:    http.StatusOK,
-			Body:          io.NopCloser(strings.NewReader(body)),
-			ContentLength: int64(len(body)),
-			Request:       request,
-		}, nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), ContentLength: int64(len(body)), Request: request}, nil
 	})}
 
 	root := filepath.Join(t.TempDir(), "staging")
@@ -122,12 +174,7 @@ func TestStageAndVerifySizeMismatchCleansPartialState(t *testing.T) {
 
 	client := &http.Client{Transport: stageRoundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := contents[filepath.Base(request.URL.Path)]
-		return &http.Response{
-			StatusCode:    http.StatusOK,
-			Body:          io.NopCloser(strings.NewReader(body)),
-			ContentLength: int64(len(body)),
-			Request:       request,
-		}, nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), ContentLength: int64(len(body)), Request: request}, nil
 	})}
 	root := filepath.Join(t.TempDir(), "staging")
 	verifier := writeVerifierFixture(t, bundleName, int64(len(contents[bundleName])))
@@ -150,19 +197,12 @@ func TestStageRedirectPolicyStaysInsideGitHubHTTPSBoundary(t *testing.T) {
 	if err := stageRedirectPolicy(allowed, []*http.Request{{}}); err != nil {
 		t.Fatalf("GitHub release asset redirect rejected: %v", err)
 	}
-
-	for _, rawURL := range []string{
-		"http://release-assets.githubusercontent.com/example",
-		"https://example.com/release",
-		"https://githubusercontent.com.evil.example/release",
-		"https://user@example.github.com/release",
-	} {
+	for _, rawURL := range []string{"http://release-assets.githubusercontent.com/example", "https://example.com/release", "https://githubusercontent.com.evil.example/release", "https://user@example.github.com/release"} {
 		request, _ := http.NewRequest(http.MethodGet, rawURL, nil)
 		if err := stageRedirectPolicy(request, []*http.Request{{}}); err == nil {
 			t.Fatalf("unsafe redirect accepted: %s", rawURL)
 		}
 	}
-
 	tooMany, _ := http.NewRequest(http.MethodGet, "https://github.com/example", nil)
 	if err := stageRedirectPolicy(tooMany, []*http.Request{{}, {}, {}}); err == nil {
 		t.Fatal("redirect chain longer than policy was accepted")
@@ -173,7 +213,6 @@ func TestValidateDiscoveryForStageRejectsNonCanonicalCandidate(t *testing.T) {
 	bundleName := "routegate-v0.2.0-linux-amd64.tar.gz"
 	contents := stageFixtureContents(bundleName)
 	base := stageFixtureDiscovery("v0.2.0", "amd64", contents)
-
 	cases := []struct {
 		name   string
 		mutate func(*DiscoveryResult)
@@ -198,13 +237,7 @@ func TestValidateDiscoveryForStageRejectsNonCanonicalCandidate(t *testing.T) {
 }
 
 func stageFixtureContents(bundleName string) map[string]string {
-	return map[string]string{
-		"release-manifest.json":             "manifest\n",
-		"release-manifest.attestation.json": "{}\n",
-		"SHA256SUMS":                        "checksums\n",
-		"release-bundles.attestation.json":  "{}\n",
-		bundleName:                           "bundle-bytes\n",
-	}
+	return map[string]string{"release-manifest.json": "manifest\n", "release-manifest.attestation.json": "{}\n", "SHA256SUMS": "checksums\n", "release-bundles.attestation.json": "{}\n", bundleName: "bundle-bytes\n"}
 }
 
 func stageFixtureDiscovery(version, arch string, contents map[string]string) DiscoveryResult {
@@ -212,18 +245,7 @@ func stageFixtureDiscovery(version, arch string, contents map[string]string) Dis
 	for _, name := range requiredReleaseAssets(version, arch) {
 		assets = append(assets, DiscoveryAsset{Name: name, Size: int64(len(contents[name]))})
 	}
-	return DiscoveryResult{
-		Source:               DiscoverySourceOfficialGitHub,
-		CurrentVersion:       "v0.1.0",
-		CandidateVersion:     version,
-		RuntimeOS:            "linux",
-		RuntimeArch:          arch,
-		Assets:               assets,
-		MissingAssets:        []string{},
-		Availability:         AvailabilityUpdateAvailable,
-		ProvenanceStatus:     ProvenanceUnverified,
-		VerificationRequired: ProvenanceVerificationRG96B,
-	}
+	return DiscoveryResult{Source: DiscoverySourceOfficialGitHub, CurrentVersion: "v0.1.0", CandidateVersion: version, RuntimeOS: "linux", RuntimeArch: arch, Assets: assets, MissingAssets: []string{}, Availability: AvailabilityUpdateAvailable, ProvenanceStatus: ProvenanceUnverified, VerificationRequired: ProvenanceVerificationRG96B}
 }
 
 func writeVerifierFixture(t *testing.T, bundleName string, bundleSize int64) string {
