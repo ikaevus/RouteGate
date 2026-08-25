@@ -11,3 +11,7 @@ ALTER TABLE update_jobs
 ALTER TABLE update_jobs
     ADD CONSTRAINT update_jobs_stage_check
     CHECK (stage IN ('preflight', 'discovery', 'stage', 'apply'));
+
+CREATE UNIQUE INDEX update_jobs_apply_stage_job_unique
+    ON update_jobs ((request_payload->>'stageJobId'))
+    WHERE operation = 'apply';
