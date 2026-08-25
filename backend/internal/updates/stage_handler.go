@@ -38,6 +38,10 @@ type stageJobRepository interface {
 	Get(context.Context, string) (Job, error)
 }
 
+type stageJobRepositoryWithRetention interface {
+	CreateStageWithCleanup(context.Context, string, string, func(string) error) (Job, bool, error)
+}
+
 type StageHandler struct {
 	logger *slog.Logger
 	repo   stageJobRepository
@@ -91,7 +95,13 @@ func (h *StageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, reused, err := h.repo.CreateStage(lifecycleCtx, user.ID, request.DiscoveryJobID)
+	var job Job
+	var reused bool
+	if retentionRepo, ok := h.repo.(stageJobRepositoryWithRetention); ok && h.stager != nil {
+		job, reused, err = retentionRepo.CreateStageWithCleanup(lifecycleCtx, user.ID, request.DiscoveryJobID, h.stager.Cleanup)
+	} else {
+		job, reused, err = h.repo.CreateStage(lifecycleCtx, user.ID, request.DiscoveryJobID)
+	}
 	if errors.Is(err, ErrStageCapacityExceeded) {
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("stage_capacity_exceeded", "Retained staged-candidate capacity is exhausted."))
 		return
