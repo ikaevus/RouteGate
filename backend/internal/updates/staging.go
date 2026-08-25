@@ -20,6 +20,9 @@ import (
 const (
 	managerUpdateStagingRoot = "/var/lib/routegate-manager/update-staging"
 	trustedVerifiedGatePath  = "/usr/local/lib/routegate/update/routegate-update-verified.sh"
+	trustedManifestToolPath  = "/usr/local/lib/routegate/update/release_manifest.py"
+	trustedGHVerifierPath    = "/usr/local/lib/routegate/verifier/gh"
+	trustedGHMetadataPath    = "/usr/local/lib/routegate/verifier/runtime.env"
 	officialReleaseAssetBase = "https://github.com/ikaevus/RouteGate/releases/download"
 
 	maxSmallReleaseAssetBytes        int64 = 1 << 20
@@ -41,10 +44,10 @@ type artifactStager interface {
 }
 
 type releaseArtifactStager struct {
-	client            *http.Client
-	stagingRoot       string
-	verifierPath      string
-	validateVerifier  func(string) error
+	client           *http.Client
+	stagingRoot      string
+	verifierPath     string
+	validateVerifier func(string) error
 }
 
 type verifiedDescriptor struct {
@@ -390,26 +393,90 @@ func validatePrivateDirectory(path string) error {
 }
 
 func validateTrustedVerifierPath(path string) error {
-	clean := filepath.Clean(path)
-	parents := []string{filepath.Dir(filepath.Dir(clean)), filepath.Dir(clean), clean}
-	for i, candidate := range parents {
-		info, err := os.Lstat(candidate)
-		if err != nil {
-			return fmt.Errorf("inspect trusted verifier path: %w", err)
+	if filepath.Clean(path) != trustedVerifiedGatePath {
+		return errors.New("trusted verifier path is not the fixed verifier")
+	}
+	return validateTrustedVerifierClosure(
+		trustedVerifiedGatePath,
+		trustedManifestToolPath,
+		trustedGHVerifierPath,
+		trustedGHMetadataPath,
+		string(filepath.Separator),
+	)
+}
+
+func validateTrustedVerifierClosure(verifierPath, manifestPath, ghPath, metadataPath, trustRoot string) error {
+	requiredFiles := []struct {
+		path       string
+		executable bool
+	}{
+		{path: verifierPath, executable: true},
+		{path: manifestPath, executable: true},
+		{path: ghPath, executable: true},
+		{path: metadataPath, executable: false},
+	}
+
+	cleanRoot := filepath.Clean(trustRoot)
+	checkedDirectories := make(map[string]struct{})
+	for _, requiredFile := range requiredFiles {
+		if err := validateTrustedRootOwnedFile(requiredFile.path, requiredFile.executable); err != nil {
+			return err
 		}
-		if info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
-			return errors.New("trusted verifier path is symlinked or group/world writable")
+		for directory := filepath.Dir(requiredFile.path); ; directory = filepath.Dir(directory) {
+			cleanDirectory := filepath.Clean(directory)
+			if _, checked := checkedDirectories[cleanDirectory]; !checked {
+				if err := validateTrustedRootOwnedDirectory(cleanDirectory); err != nil {
+					return err
+				}
+				checkedDirectories[cleanDirectory] = struct{}{}
+			}
+			if cleanDirectory == cleanRoot {
+				break
+			}
+			parent := filepath.Dir(cleanDirectory)
+			if parent == cleanDirectory {
+				return fmt.Errorf("trusted verifier dependency %q is outside trust root %q", requiredFile.path, cleanRoot)
+			}
 		}
-		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 {
-			return errors.New("trusted verifier path is not root-owned")
-		}
-		if i < len(parents)-1 && !info.IsDir() {
-			return errors.New("trusted verifier parent is not a directory")
-		}
-		if i == len(parents)-1 && (!info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0) {
-			return errors.New("trusted verifier is not an executable regular file")
-		}
+	}
+	return nil
+}
+
+func validateTrustedRootOwnedFile(path string, executable bool) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect trusted verifier dependency %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return fmt.Errorf("trusted verifier dependency %q is not a regular file", path)
+	}
+	if executable && info.Mode().Perm()&0o111 == 0 {
+		return fmt.Errorf("trusted verifier dependency %q is not executable", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("trusted verifier dependency %q is group/world writable", path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 {
+		return fmt.Errorf("trusted verifier dependency %q is not root-owned", path)
+	}
+	return nil
+}
+
+func validateTrustedRootOwnedDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect trusted verifier ancestor %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("trusted verifier ancestor %q is not a non-symlink directory", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("trusted verifier ancestor %q is group/world writable", path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 {
+		return fmt.Errorf("trusted verifier ancestor %q is not root-owned", path)
 	}
 	return nil
 }
