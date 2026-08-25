@@ -26,6 +26,7 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	analyticsHandler := analytics.NewHandler(logger, pool)
 	serversHandler := servers.NewHandler(logger, pool, cfg.PublicURL)
 	updatesHandler := updates.NewHandler(logger, pool)
+	updateStageHandler := updates.NewStageHandler(logger, pool)
 	prometheusHandler := observability.NewPrometheusHandler(
 		observability.NewPrometheusRepository(pool),
 		cfg.Monitoring.Enabled,
@@ -59,6 +60,7 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 
 	mux.Handle("POST /api/v1/system/update-jobs/preflight", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.CreatePreflight))))
 	mux.Handle("POST /api/v1/system/update-jobs/discovery", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.CreateDiscovery))))
+	mux.Handle("POST /api/v1/system/update-jobs/stage", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updateStageHandler.Create))))
 	mux.Handle("GET /api/v1/system/update-jobs", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.List))))
 	mux.Handle("GET /api/v1/system/update-jobs/{job_id}", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.Get))))
 

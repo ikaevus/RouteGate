@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000136_update_job_discovery" {
-		t.Fatalf("applied schema version = %q, want 000136_update_job_discovery", version)
+	if version != "000137_update_job_stage" {
+		t.Fatalf("applied schema version = %q, want 000137_update_job_stage", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -387,8 +387,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000136_update_job_discovery" {
-		t.Fatalf("applied schema version = %q, want 000136_update_job_discovery", version)
+	if version != "000137_update_job_stage" {
+		t.Fatalf("applied schema version = %q, want 000137_update_job_stage", version)
 	}
 }
 

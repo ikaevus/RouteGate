@@ -2,6 +2,8 @@ package updates
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,23 +14,52 @@ import (
 const (
 	ErrorCodePreflightInterrupted = "preflight_interrupted"
 	ErrorCodeDiscoveryInterrupted = "discovery_interrupted"
+	ErrorCodeStageInterrupted     = "stage_interrupted"
 )
 
 type interruptedJobRepository interface {
-	RecoverInterruptedJobs(context.Context) ([]Job, error)
+	ListInterruptedJobs(context.Context) ([]Job, error)
+	Fail(context.Context, string, string) (Job, error)
+}
+
+type interruptedStageCleaner interface {
+	Cleanup(string) error
 }
 
 func RecoverInterruptedJobs(ctx context.Context, logger *slog.Logger, pool *pgxpool.Pool) error {
-	return recoverInterruptedJobs(ctx, logger, NewRepository(pool), audit.NewRecorder(logger, pool))
+	return recoverInterruptedJobsWithCleaner(ctx, logger, NewRepository(pool), audit.NewRecorder(logger, pool), newReleaseArtifactStager())
 }
 
 func recoverInterruptedJobs(ctx context.Context, logger *slog.Logger, repo interruptedJobRepository, recorder auditRecorder) error {
-	jobs, err := repo.RecoverInterruptedJobs(ctx)
+	return recoverInterruptedJobsWithCleaner(ctx, logger, repo, recorder, nil)
+}
+
+func recoverInterruptedJobsWithCleaner(ctx context.Context, logger *slog.Logger, repo interruptedJobRepository, recorder auditRecorder, cleaner interruptedStageCleaner) error {
+	jobs, err := repo.ListInterruptedJobs(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, job := range jobs {
+	for _, interrupted := range jobs {
+		errorCode := interruptedErrorCode(interrupted.Operation)
+		if errorCode == "" {
+			continue
+		}
+
+		if interrupted.Operation == OperationStage {
+			if cleaner == nil {
+				return errors.New("interrupted stage recovery requires staging cleanup")
+			}
+			if err := cleaner.Cleanup(interrupted.ID); err != nil {
+				return fmt.Errorf("clean interrupted update stage %s: %w", interrupted.ID, err)
+			}
+		}
+
+		job, err := repo.Fail(ctx, interrupted.ID, errorCode)
+		if err != nil {
+			return fmt.Errorf("terminalize interrupted update job %s: %w", interrupted.ID, err)
+		}
+
 		action := interruptedAuditAction(job.Operation)
 		if action == "" {
 			continue
@@ -56,30 +87,35 @@ func recoverInterruptedJobs(ctx context.Context, logger *slog.Logger, repo inter
 	return nil
 }
 
+func interruptedErrorCode(operation string) string {
+	switch operation {
+	case OperationPreflight:
+		return ErrorCodePreflightInterrupted
+	case OperationDiscovery:
+		return ErrorCodeDiscoveryInterrupted
+	case OperationStage:
+		return ErrorCodeStageInterrupted
+	default:
+		return ""
+	}
+}
+
 func interruptedAuditAction(operation string) string {
 	switch operation {
 	case OperationPreflight:
 		return "update.preflight.interrupted"
 	case OperationDiscovery:
 		return "update.discovery.interrupted"
+	case OperationStage:
+		return "update.stage.interrupted"
 	default:
 		return ""
 	}
 }
 
-func (r *Repository) RecoverInterruptedJobs(ctx context.Context) ([]Job, error) {
+func (r *Repository) ListInterruptedJobs(ctx context.Context) ([]Job, error) {
 	rows, err := r.pool.Query(ctx, `
-		UPDATE update_jobs
-		SET status = $1,
-		    error_code = CASE operation
-		        WHEN $2 THEN $3
-		        WHEN $4 THEN $5
-		    END,
-		    updated_at = now(),
-		    completed_at = now()
-		WHERE operation IN ($2, $4)
-		  AND status IN ($6, $7)
-		RETURNING
+		SELECT
 			id::text,
 			operation,
 			status,
@@ -92,11 +128,11 @@ func (r *Repository) RecoverInterruptedJobs(ctx context.Context) ([]Job, error) 
 			updated_at,
 			started_at,
 			completed_at
-	`, StatusFailed,
-		OperationPreflight, ErrorCodePreflightInterrupted,
-		OperationDiscovery, ErrorCodeDiscoveryInterrupted,
-		StatusPending, StatusRunning,
-	)
+		FROM update_jobs
+		WHERE operation IN ($1, $2, $3)
+		  AND status IN ($4, $5)
+		ORDER BY created_at ASC
+	`, OperationPreflight, OperationDiscovery, OperationStage, StatusPending, StatusRunning)
 	if err != nil {
 		return nil, err
 	}
