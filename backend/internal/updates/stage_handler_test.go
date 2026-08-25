@@ -18,6 +18,7 @@ type fakeStageRepository struct {
 	stageJob              Job
 	createCalls           int
 	markCalls             int
+	reuseStage            bool
 	completeCalls         int
 	failCode              string
 	createErr             error
@@ -57,13 +58,15 @@ func newFakeStageRepository(t *testing.T) *fakeStageRepository {
 	}
 }
 
-func (r *fakeStageRepository) CreateStage(context.Context, string, string) (Job, error) {
+func (r *fakeStageRepository) CreateStage(context.Context, string, string) (Job, bool, error) {
 	r.createCalls++
 	if r.createErr != nil {
-		return r.stageJob, r.createErr
+		return r.stageJob, false, r.createErr
 	}
-	r.stageJob.Status = StatusPending
-	return r.stageJob, nil
+	if !r.reuseStage {
+		r.stageJob.Status = StatusPending
+	}
+	return r.stageJob, r.reuseStage, nil
 }
 
 func (r *fakeStageRepository) MarkRunning(context.Context, string) (Job, error) {
@@ -193,6 +196,41 @@ func TestCreateStageCompletesAndAudits(t *testing.T) {
 	}
 	if len(recorder.events) != 2 || recorder.events[0].Action != "update.stage.requested" || recorder.events[1].Action != "update.stage.completed" {
 		t.Fatalf("unexpected audit events: %#v", recorder.events)
+	}
+}
+
+func TestCreateStageReusesRetainedJobWithoutStagingAgain(t *testing.T) {
+	repo := newFakeStageRepository(t)
+	repo.reuseStage = true
+	repo.stageJob.Status = StatusSucceeded
+	stager := &fakeArtifactStager{}
+	handler := newStageHandlerWithDependencies(nil, repo, nil, stager)
+
+	response := httptest.NewRecorder()
+	handler.Create(response, stageRequest(t))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if repo.createCalls != 1 || repo.markCalls != 0 || stager.stageCalls != 0 {
+		t.Fatalf("duplicate stage request performed work: create=%d mark=%d stage=%d", repo.createCalls, repo.markCalls, stager.stageCalls)
+	}
+}
+
+func TestCreateStageRejectsRetainedCapacityBeforeStaging(t *testing.T) {
+	repo := newFakeStageRepository(t)
+	repo.createErr = ErrStageCapacityExceeded
+	stager := &fakeArtifactStager{}
+	handler := newStageHandlerWithDependencies(nil, repo, nil, stager)
+
+	response := httptest.NewRecorder()
+	handler.Create(response, stageRequest(t))
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if repo.markCalls != 0 || stager.stageCalls != 0 {
+		t.Fatalf("capacity rejection entered staging pipeline: mark=%d stage=%d", repo.markCalls, stager.stageCalls)
 	}
 }
 
