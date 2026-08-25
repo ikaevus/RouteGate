@@ -1,3 +1,5 @@
+DROP INDEX IF EXISTS update_jobs_apply_stage_job_unique;
+
 ALTER TABLE update_jobs
     DROP CONSTRAINT IF EXISTS update_jobs_operation_check;
 
