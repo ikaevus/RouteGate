@@ -196,6 +196,7 @@ validate_dispatch_candidate() {
 
 dispatch_units_state() {
   local socket_path service_path
+  local -a dispatch_paths
   mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
   socket_path=${dispatch_paths[0]}
   service_path=${dispatch_paths[1]}
@@ -216,12 +217,17 @@ dispatch_units_state() {
 create_dispatch_units_backup() {
   local role=$1 backup_dir=$2 state enabled=0 active=0
   local socket_path service_path backup_units
+  local -a dispatch_paths
   rg_update_role_has_management "$role" || return 0
 
   state=$(dispatch_units_state) || return 1
   if [[ -z "$RG_UPDATE_ROOT" && "$state" == "complete" ]]; then
-    systemctl is-enabled --quiet routegate-update-dispatch.socket >/dev/null 2>&1 && enabled=1 || true
-    systemctl is-active --quiet routegate-update-dispatch.socket >/dev/null 2>&1 && active=1 || true
+    if systemctl is-enabled --quiet routegate-update-dispatch.socket >/dev/null 2>&1; then
+      enabled=1
+    fi
+    if systemctl is-active --quiet routegate-update-dispatch.socket >/dev/null 2>&1; then
+      active=1
+    fi
   fi
   cat >"$backup_dir/dispatch-units.meta" <<EOF_DISPATCH_META
 FORMAT_VERSION=1
@@ -245,6 +251,7 @@ EOF_DISPATCH_META
 
 install_dispatch_units() {
   local role=$1 work_dir=$2 socket_path service_path
+  local -a dispatch_paths
   rg_update_role_has_management "$role" || return 0
   validate_dispatch_candidate "$role" "$work_dir" || return 1
   mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
@@ -274,6 +281,7 @@ activate_dispatch_units() {
 restore_dispatch_units_backup() {
   local role=$1 backup_dir=$2 meta state enabled active rollback_rc=0
   local socket_path service_path backup_units
+  local -a dispatch_paths
   rg_update_role_has_management "$role" || return 0
 
   meta="$backup_dir/dispatch-units.meta"
