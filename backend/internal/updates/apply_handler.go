@@ -1,10 +1,10 @@
 package updates
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -26,13 +26,17 @@ const (
 	applyFailurePersistTimeout   = 5 * time.Second
 	maxApplyRequestBodyBytes     = 1024
 
-	applyInsertAmbiguousCode   = "apply_insert_ambiguous"
-	applyStateTransitionCode   = "apply_state_transition_failed"
-	applyDispatchFailureCode   = "privileged_apply_failed"
-	applyCompletionFailureCode = "apply_completion_failed"
+	applyInsertAmbiguousCode      = "apply_insert_ambiguous"
+	applyStateTransitionCode      = "apply_state_transition_failed"
+	applyDispatchFailureCode      = "privileged_apply_failed"
+	applyResultPersistenceCode    = "apply_result_persistence_failed"
 )
 
-var canonicalUUIDv4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+var (
+	canonicalUUIDv4Pattern    = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	errDispatchRejected       = errors.New("privileged dispatcher rejected apply")
+	errDispatchOutcomeUnknown = errors.New("privileged apply outcome is unknown")
+)
 
 type applyJobRepository interface {
 	CreateApply(context.Context, string, string) (Job, error)
@@ -147,9 +151,15 @@ func (h *ApplyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.dispatcher.Apply(executionCtx, request.StageJobID); err != nil {
+		if errors.Is(err, errDispatchOutcomeUnknown) {
+			h.failJob(job.ID, ErrorCodeApplyOutcomeUnknown, user.ID)
+			h.logError("privileged update apply outcome became unknown", err)
+			httpx.WriteJSON(w, http.StatusBadGateway, httpx.Error(ErrorCodeApplyOutcomeUnknown, "The privileged transaction may have continued after the Manager lost its bounded result. It will not be retried automatically."))
+			return
+		}
 		h.failJob(job.ID, applyDispatchFailureCode, user.ID)
 		h.logError("dispatch privileged update apply", err)
-		httpx.WriteJSON(w, http.StatusBadGateway, httpx.Error(applyDispatchFailureCode, "The privileged update transaction failed."))
+		httpx.WriteJSON(w, http.StatusBadGateway, httpx.Error(applyDispatchFailureCode, "The privileged update transaction failed before a successful result was returned."))
 		return
 	}
 
@@ -167,9 +177,15 @@ func (h *ApplyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err = h.repo.CompleteApply(executionCtx, job.ID, result)
 	if err != nil {
-		h.failJob(job.ID, applyCompletionFailureCode, user.ID)
+		if reconciled, committed := h.reconcileApplyCompletion(job.ID, result); committed {
+			job = reconciled
+			h.record(context.Background(), user.ID, "update.apply.completed", job, audit.ResultSuccess)
+			httpx.WriteJSON(w, http.StatusCreated, CreateResponse{Job: job})
+			return
+		}
+		h.failJob(job.ID, applyResultPersistenceCode, user.ID)
 		h.logError("complete update apply job", err)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(applyCompletionFailureCode, "The host update completed but its durable apply result could not be persisted."))
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error(applyResultPersistenceCode, "The host update returned success, but its durable Manager result could not be confirmed."))
 		return
 	}
 	h.record(executionCtx, user.ID, "update.apply.completed", job, audit.ResultSuccess)
@@ -250,27 +266,35 @@ func (d unixApplyDispatcher) Apply(ctx context.Context, stageJobID string) error
 			return err
 		}
 	}
-	if _, err := io.WriteString(conn, stageJobID+"\n"); err != nil {
-		return err
+
+	request := stageJobID + "\n"
+	n, writeErr := io.WriteString(conn, request)
+	if n != len(request) {
+		if writeErr != nil {
+			return fmt.Errorf("write dispatch request: %w", writeErr)
+		}
+		return io.ErrShortWrite
+	}
+	if writeErr != nil {
+		return fmt.Errorf("%w: request was fully sent before write error: %v", errDispatchOutcomeUnknown, writeErr)
 	}
 	if unixConn, ok := conn.(*net.UnixConn); ok {
 		if err := unixConn.CloseWrite(); err != nil {
-			return err
+			return fmt.Errorf("%w: close dispatch request stream: %v", errDispatchOutcomeUnknown, err)
 		}
 	}
 
-	reader := bufio.NewReader(io.LimitReader(conn, 5))
-	response, err := reader.ReadString('\n')
+	response, err := io.ReadAll(io.LimitReader(conn, 5))
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: read dispatch result: %v", errDispatchOutcomeUnknown, err)
 	}
-	switch response {
+	switch string(response) {
 	case "OK\n":
 		return nil
 	case "ERR\n":
-		return errors.New("privileged dispatcher returned ERR")
+		return errDispatchRejected
 	default:
-		return errors.New("privileged dispatcher returned an invalid response")
+		return fmt.Errorf("%w: invalid bounded dispatch response", errDispatchOutcomeUnknown)
 	}
 }
 
@@ -286,6 +310,20 @@ func (h *ApplyHandler) reconcileAmbiguousCreate(job Job, userID string) {
 		return
 	}
 	h.record(ctx, userID, "update.apply.failed", failed, audit.ResultFailure)
+}
+
+func (h *ApplyHandler) reconcileApplyCompletion(jobID string, expected ApplyResult) (Job, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), applyFailurePersistTimeout)
+	defer cancel()
+	persisted, err := h.repo.Get(ctx, jobID)
+	if err != nil || persisted.Operation != OperationApply || persisted.Stage != StageApply || persisted.Status != StatusSucceeded {
+		return Job{}, false
+	}
+	var actual ApplyResult
+	if err := json.Unmarshal(persisted.ResultPayload, &actual); err != nil || actual != expected {
+		return Job{}, false
+	}
+	return persisted, true
 }
 
 func (h *ApplyHandler) failJob(jobID, errorCode, userID string) {
