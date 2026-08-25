@@ -40,6 +40,9 @@ require_commands() {
     rm \
     sed \
     stat || return 1
+  if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    rg_update_require_commands systemctl || return 1
+  fi
 }
 
 trusted_path_is_secure() {
@@ -106,7 +109,9 @@ validate_installed_security() {
     trusted_path_is_secure "$tool_dir/$file" "trusted updater component" || return 1
   done < <(rg_update_toolchain_files)
 
-  [[ -x "$tool_dir/routegate-update-transaction.sh" && -x "$tool_dir/routegate-update-verified.sh" ]] || {
+  [[ -x "$tool_dir/routegate-update-transaction.sh" \
+    && -x "$tool_dir/routegate-update-verified.sh" \
+    && -x "$tool_dir/routegate-update-dispatch.py" ]] || {
     rg_update_die "trusted updater executable components are not executable"
     return 1
   }
@@ -143,6 +148,53 @@ install_attestation_verifier_runtime() {
   log "pinned attestation verifier runtime is ready"
 }
 
+install_dispatch_boundary() {
+  local manager_target dispatcher_target socket_source service_source
+  local socket_target service_target tool_dir
+
+  manager_target=$(rg_update_path /usr/local/bin/routegate-manager) || return 1
+  if [[ ! -e "$manager_target" && ! -L "$manager_target" ]]; then
+    log "privileged update dispatch boundary skipped on node without Management plane"
+    return 0
+  fi
+  [[ -f "$manager_target" && ! -L "$manager_target" ]] || {
+    rg_update_die "Management executable state is unsafe while installing privileged dispatch boundary"
+    return 1
+  }
+
+  socket_source="$BUNDLE_ROOT/systemd/routegate-update-dispatch.socket"
+  service_source="$BUNDLE_ROOT/systemd/routegate-update-dispatch@.service"
+  for source in "$socket_source" "$service_source"; do
+    [[ -f "$source" && ! -L "$source" ]] || {
+      rg_update_die "release bundle is missing privileged dispatch component: $source"
+      return 1
+    }
+  done
+
+  tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
+  dispatcher_target="$tool_dir/routegate-update-dispatch.py"
+  socket_target=$(rg_update_path /etc/systemd/system/routegate-update-dispatch.socket) || return 1
+  service_target=$(rg_update_path /etc/systemd/system/routegate-update-dispatch@.service) || return 1
+
+  [[ -f "$dispatcher_target" && ! -L "$dispatcher_target" && -x "$dispatcher_target" ]] || {
+    rg_update_die "canonical privileged dispatch executable is unavailable after updater bootstrap"
+    return 1
+  }
+  trusted_path_is_secure "$dispatcher_target" "privileged dispatch executable" || return 1
+
+  install -d -m 0755 "$(dirname "$socket_target")" || return 1
+  install -m 0644 "$socket_source" "$socket_target" || return 1
+  install -m 0644 "$service_source" "$service_target" || return 1
+  trusted_path_is_secure "$socket_target" "privileged dispatch socket unit" || return 1
+  trusted_path_is_secure "$service_target" "privileged dispatch service unit" || return 1
+
+  if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    systemctl daemon-reload || return 1
+    systemctl enable --now routegate-update-dispatch.socket || return 1
+  fi
+  log "privileged update dispatch boundary is ready"
+}
+
 main() {
   rg_update_require_root || exit 1
   require_commands || exit 1
@@ -174,6 +226,7 @@ main() {
   esac
 
   install_attestation_verifier_runtime || exit 1
+  install_dispatch_boundary || exit 1
 }
 
 main "$@"

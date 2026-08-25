@@ -173,7 +173,8 @@ rg_update_toolchain_files() {
     routegate-update-core.sh \
     routegate-update-role.sh \
     routegate-update-transaction.sh \
-    routegate-update-verified.sh
+    routegate-update-verified.sh \
+    routegate-update-dispatch.py
 }
 
 rg_update_candidate_toolchain_complete() {
@@ -276,7 +277,7 @@ rg_update_toolchain_state() {
 
   while IFS= read -r path; do
     case "$(basename -- "$path")" in
-      release_manifest.py|routegate-update-core.sh|routegate-update-role.sh|routegate-update-transaction.sh|routegate-update-verified.sh) ;;
+      release_manifest.py|routegate-update-core.sh|routegate-update-role.sh|routegate-update-transaction.sh|routegate-update-verified.sh|routegate-update-dispatch.py) ;;
       *) unexpected=1 ;;
     esac
   done < <(find "$tool_dir" -mindepth 1 -maxdepth 1 -print)
@@ -339,6 +340,7 @@ rg_update_apply_toolchain() {
   install -m 0644 "$work_dir/tools/routegate-update-role.sh" "$tool_dir/routegate-update-role.sh" || return 1
   install -m 0755 "$work_dir/tools/routegate-update-transaction.sh" "$tool_dir/routegate-update-transaction.sh" || return 1
   install -m 0755 "$work_dir/tools/routegate-update-verified.sh" "$tool_dir/routegate-update-verified.sh" || return 1
+  install -m 0755 "$work_dir/tools/routegate-update-dispatch.py" "$tool_dir/routegate-update-dispatch.py" || return 1
   rg_update_write_entrypoint || return 1
   rg_update_log "trusted updater toolchain promoted"
 }
@@ -359,6 +361,7 @@ rg_update_validate_toolchain() {
     "$tool_dir/routegate-update-transaction.sh" \
     "$tool_dir/routegate-update-verified.sh" || return 1
   python3 "$tool_dir/release_manifest.py" --help >/dev/null || return 1
+  python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())' "$tool_dir/routegate-update-dispatch.py" || return 1
   bash "$tool_dir/routegate-update-transaction.sh" --help >/dev/null || return 1
   bash "$tool_dir/routegate-update-verified.sh" --help >/dev/null || return 1
   grep -Fxq 'exec /usr/local/lib/routegate/update/routegate-update-verified.sh "$@"' "$entrypoint" || {
@@ -517,7 +520,6 @@ rg_update_apply_platform_files() {
 
   systemctl stop "$RG_UPDATE_AGENT_SERVICE" || return 1
   systemctl stop "$RG_UPDATE_MANAGER_SERVICE" || return 1
-
   install -m 0755 "$work_dir/bin/routegate-manager" "$manager_bin" || return 1
   install -m 0755 "$work_dir/bin/routegate-agent" "$agent_bin" || return 1
 

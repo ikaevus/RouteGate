@@ -159,7 +159,9 @@ validate_trusted_toolchain_security() {
     trusted_path_is_secure "$tool_dir/$file" "trusted updater component" || return 1
   done < <(rg_update_toolchain_files)
 
-  [[ -x "$tool_dir/routegate-update-transaction.sh" && -x "$tool_dir/routegate-update-verified.sh" ]] || {
+  [[ -x "$tool_dir/routegate-update-transaction.sh" \
+    && -x "$tool_dir/routegate-update-verified.sh" \
+    && -x "$tool_dir/routegate-update-dispatch.py" ]] || {
     rg_update_die "trusted updater executable components are not executable"
     return 1
   }
@@ -172,11 +174,183 @@ validate_trusted_toolchain_security() {
   }
 }
 
+dispatch_unit_paths() {
+  local socket_path service_path
+  socket_path=$(rg_update_path /etc/systemd/system/routegate-update-dispatch.socket) || return 1
+  service_path=$(rg_update_path /etc/systemd/system/routegate-update-dispatch@.service) || return 1
+  printf '%s\n%s\n' "$socket_path" "$service_path"
+}
+
+validate_dispatch_candidate() {
+  local role=$1 work_dir=$2 source
+  rg_update_role_has_management "$role" || return 0
+  for source in \
+    "$work_dir/systemd/routegate-update-dispatch.socket" \
+    "$work_dir/systemd/routegate-update-dispatch@.service"; do
+    [[ -f "$source" && ! -L "$source" ]] || {
+      rg_update_die "release bundle is missing privileged dispatch unit: $source"
+      return 1
+    }
+  done
+}
+
+dispatch_units_state() {
+  local socket_path service_path
+  local -a dispatch_paths
+  mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
+  socket_path=${dispatch_paths[0]}
+  service_path=${dispatch_paths[1]}
+
+  if [[ ! -e "$socket_path" && ! -L "$socket_path" && ! -e "$service_path" && ! -L "$service_path" ]]; then
+    printf 'absent\n'
+    return 0
+  fi
+  [[ -f "$socket_path" && ! -L "$socket_path" && -f "$service_path" && ! -L "$service_path" ]] || {
+    rg_update_die "privileged dispatch unit state is partial or unsafe"
+    return 1
+  }
+  trusted_path_is_secure "$socket_path" "privileged dispatch socket unit" || return 1
+  trusted_path_is_secure "$service_path" "privileged dispatch service unit" || return 1
+  printf 'complete\n'
+}
+
+create_dispatch_units_backup() {
+  local role=$1 backup_dir=$2 state enabled=0 active=0
+  local socket_path service_path backup_units
+  local -a dispatch_paths
+  rg_update_role_has_management "$role" || return 0
+
+  state=$(dispatch_units_state) || return 1
+  if [[ -z "$RG_UPDATE_ROOT" && "$state" == "complete" ]]; then
+    if systemctl is-enabled --quiet routegate-update-dispatch.socket >/dev/null 2>&1; then
+      enabled=1
+    fi
+    if systemctl is-active --quiet routegate-update-dispatch.socket >/dev/null 2>&1; then
+      active=1
+    fi
+  fi
+  cat >"$backup_dir/dispatch-units.meta" <<EOF_DISPATCH_META
+FORMAT_VERSION=1
+STATE=$state
+ENABLED=$enabled
+ACTIVE=$active
+EOF_DISPATCH_META
+  chmod 0600 "$backup_dir/dispatch-units.meta" || return 1
+
+  if [[ "$state" == "complete" ]]; then
+    mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
+    socket_path=${dispatch_paths[0]}
+    service_path=${dispatch_paths[1]}
+    backup_units="$backup_dir/dispatch-units"
+    install -d -m 0700 "$backup_units" || return 1
+    cp -a -- "$socket_path" "$backup_units/routegate-update-dispatch.socket" || return 1
+    cp -a -- "$service_path" "$backup_units/routegate-update-dispatch@.service" || return 1
+  fi
+  log "privileged dispatch unit backup state=$state"
+}
+
+install_dispatch_units() {
+  local role=$1 work_dir=$2 socket_path service_path
+  local -a dispatch_paths
+  rg_update_role_has_management "$role" || return 0
+  validate_dispatch_candidate "$role" "$work_dir" || return 1
+  mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
+  socket_path=${dispatch_paths[0]}
+  service_path=${dispatch_paths[1]}
+
+  install -d -m 0755 "$(dirname "$socket_path")" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-update-dispatch.socket" "$socket_path" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-update-dispatch@.service" "$service_path" || return 1
+  trusted_path_is_secure "$socket_path" "privileged dispatch socket unit" || return 1
+  trusted_path_is_secure "$service_path" "privileged dispatch service unit" || return 1
+  if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    systemctl daemon-reload || return 1
+  fi
+  log "privileged dispatch unit files promoted"
+}
+
+activate_dispatch_units() {
+  local role=$1
+  rg_update_role_has_management "$role" || return 0
+  if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    systemctl enable --now routegate-update-dispatch.socket || return 1
+  fi
+  log "privileged dispatch socket active"
+}
+
+restore_dispatch_units_backup() {
+  local role=$1 backup_dir=$2 meta state enabled active rollback_rc=0
+  local socket_path service_path backup_units
+  local -a dispatch_paths
+  rg_update_role_has_management "$role" || return 0
+
+  meta="$backup_dir/dispatch-units.meta"
+  [[ -f "$meta" && ! -L "$meta" ]] || {
+    rg_update_die "privileged dispatch unit backup metadata is missing"
+    return 1
+  }
+  [[ "$(sed -n 's/^FORMAT_VERSION=//p' "$meta" | head -n1)" == "1" ]] || {
+    rg_update_die "unsupported privileged dispatch unit backup metadata"
+    return 1
+  }
+  state=$(sed -n 's/^STATE=//p' "$meta" | head -n1) || return 1
+  enabled=$(sed -n 's/^ENABLED=//p' "$meta" | head -n1) || return 1
+  active=$(sed -n 's/^ACTIVE=//p' "$meta" | head -n1) || return 1
+  [[ "$state" == "absent" || "$state" == "complete" ]] || {
+    rg_update_die "invalid privileged dispatch unit backup state: ${state:-missing}"
+    return 1
+  }
+  [[ "$enabled" == "0" || "$enabled" == "1" ]] || return 1
+  [[ "$active" == "0" || "$active" == "1" ]] || return 1
+
+  mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
+  socket_path=${dispatch_paths[0]}
+  service_path=${dispatch_paths[1]}
+  if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    systemctl disable --now routegate-update-dispatch.socket >/dev/null 2>&1 || true
+  fi
+
+  if [[ "$state" == "absent" ]]; then
+    rm -f -- "$socket_path" "$service_path" || rollback_rc=1
+  else
+    backup_units="$backup_dir/dispatch-units"
+    [[ -f "$backup_units/routegate-update-dispatch.socket" \
+      && ! -L "$backup_units/routegate-update-dispatch.socket" \
+      && -f "$backup_units/routegate-update-dispatch@.service" \
+      && ! -L "$backup_units/routegate-update-dispatch@.service" ]] || {
+      rg_update_die "privileged dispatch unit backup is incomplete"
+      return 1
+    }
+    install -d -m 0755 "$(dirname "$socket_path")" || rollback_rc=1
+    install -m 0644 "$backup_units/routegate-update-dispatch.socket" "$socket_path" || rollback_rc=1
+    install -m 0644 "$backup_units/routegate-update-dispatch@.service" "$service_path" || rollback_rc=1
+  fi
+
+  if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    systemctl daemon-reload || rollback_rc=1
+    if [[ "$state" == "complete" ]]; then
+      if [[ "$enabled" == "1" ]]; then
+        systemctl enable routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+      else
+        systemctl disable routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+      fi
+      if [[ "$active" == "1" ]]; then
+        systemctl start routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+      else
+        systemctl stop routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+      fi
+    fi
+  fi
+  log "privileged dispatch unit rollback restored state=$state"
+  return "$rollback_rc"
+}
+
 rollback() {
-  local rc=$?
+  local rc=${1:-$?}
   local platform_rollback_rc=0
+  local dispatch_rollback_rc=0
   local toolchain_rollback_rc=0
-  trap - ERR
+  trap - ERR INT TERM
   set +e
 
   if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" && -n "$ROLE" ]]; then
@@ -184,6 +358,8 @@ rollback() {
 
     rg_update_restore_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" \
       || platform_rollback_rc=$?
+    restore_dispatch_units_backup "$ROLE" "$BACKUP_DIR" \
+      || dispatch_rollback_rc=$?
     rg_update_restore_toolchain_backup "$BACKUP_DIR" \
       || toolchain_rollback_rc=$?
     if ((toolchain_rollback_rc == 0)); then
@@ -193,6 +369,10 @@ rollback() {
     if ((platform_rollback_rc != 0)); then
       printf '[routegate-update-transaction] WARNING: platform rollback reported exit %d; backup=%s\n' \
         "$platform_rollback_rc" "$BACKUP_DIR" >&2
+    fi
+    if ((dispatch_rollback_rc != 0)); then
+      printf '[routegate-update-transaction] WARNING: privileged dispatch unit rollback reported exit %d; backup=%s\n' \
+        "$dispatch_rollback_rc" "$BACKUP_DIR" >&2
     fi
     if ((toolchain_rollback_rc != 0)); then
       printf '[routegate-update-transaction] WARNING: trusted updater rollback reported exit %d; backup=%s\n' \
@@ -282,6 +462,7 @@ main() {
     linux \
     "$TARGET_ARCH" \
     "$WORK_DIR"
+  validate_dispatch_candidate "$ROLE" "$WORK_DIR"
 
   if rg_update_role_has_management "$ROLE"; then
     DB_URL=$(rg_update_read_manager_database_url)
@@ -291,7 +472,10 @@ main() {
   BACKUP_DIR="${BACKUP_ROOT%/}/update-${ROLE}-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
   rg_update_create_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL"
   rg_update_create_toolchain_backup "$BACKUP_DIR"
+  create_dispatch_units_backup "$ROLE" "$BACKUP_DIR"
   trap rollback ERR
+  trap 'rollback 130' INT
+  trap 'rollback 143' TERM
 
   STAGE=apply
   MUTATED=1
@@ -306,12 +490,18 @@ main() {
   STAGE=toolchain_promotion
   rg_update_apply_toolchain "$WORK_DIR"
 
+  STAGE=dispatch_unit_promotion
+  install_dispatch_units "$ROLE" "$WORK_DIR"
+
   STAGE=toolchain_validation
   validate_trusted_toolchain_security
   rg_update_validate_toolchain
 
+  STAGE=dispatch_activation
+  activate_dispatch_units "$ROLE"
+
   STAGE=complete
-  trap - ERR
+  trap - ERR INT TERM
   log "status=completed role=$ROLE version=$RG_UPDATE_BUNDLE_VERSION commit=$RG_UPDATE_BUNDLE_COMMIT schema=${RG_UPDATE_EXPECTED_SCHEMA:-none} backup=$BACKUP_DIR"
 }
 

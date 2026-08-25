@@ -81,6 +81,11 @@ EOF_VERIFIED
 if [[
 EOF_INVALID_VERIFIED
   fi
+
+  cat >"$work/tools/routegate-update-dispatch.py" <<EOF_DISPATCH
+#!/usr/bin/env python3
+ROUTEGATE_DISPATCH_FIXTURE = ${label@Q}
+EOF_DISPATCH
 }
 
 make_transaction_bundle() {
@@ -101,6 +106,8 @@ make_transaction_bundle() {
   printf 'SELECT 1;\n' >"$stage/manager/migrations/${MIGRATION}.up.sql"
   printf '[Unit]\nDescription=Manager %s\n' "$label" >"$stage/systemd/routegate-manager.service"
   printf '[Unit]\nDescription=Agent %s\n' "$label" >"$stage/systemd/routegate-agent.service"
+  printf '[Unit]\nDescription=Dispatch socket %s\n' "$label" >"$stage/systemd/routegate-update-dispatch.socket"
+  printf '[Unit]\nDescription=Dispatch service %s\n' "$label" >"$stage/systemd/routegate-update-dispatch@.service"
   make_toolchain_candidate "$stage" "$label" "$verified_mode"
 
   cat >"$stage/metadata/manifest.env" <<EOF_MANIFEST
@@ -123,6 +130,21 @@ populate_vpn_host() {
   printf 'manager_url: "https://manager.example"\nagent_token: "rg_agent_fixture"\n' >"$root/etc/routegate/agent.yaml"
 }
 
+populate_management_host() {
+  local root=$1
+  mkdir -p \
+    "$root/usr/local/bin" \
+    "$root/opt/routegate-manager/migrations" \
+    "$root/var/www/routegate" \
+    "$root/etc/systemd/system" \
+    "$root/etc/routegate"
+  printf 'manager-old\n' >"$root/usr/local/bin/routegate-manager"
+  printf 'SELECT 1;\n' >"$root/opt/routegate-manager/migrations/${MIGRATION}.up.sql"
+  printf 'frontend-old\n' >"$root/var/www/routegate/index.html"
+  printf 'manager-unit-old\n' >"$root/etc/systemd/system/routegate-manager.service"
+  printf 'ROUTEGATE_DATABASE_URL=postgres://routegate:test@127.0.0.1/routegate\n' >"$root/etc/routegate/manager.env"
+}
+
 make_systemctl_stub() {
   local stub_dir=$1
   mkdir -p "$stub_dir"
@@ -137,10 +159,38 @@ case "${1:-}" in
     printf 'active\n'
     exit 0
     ;;
+  is-enabled) exit 0 ;;
   *) exit 0 ;;
 esac
 EOF_SYSTEMCTL
   chmod 0755 "$stub_dir/systemctl"
+}
+
+make_management_stubs() {
+  local stub_dir=$1
+  make_systemctl_stub "$stub_dir"
+  cat >"$stub_dir/pg_dump" <<'EOF_PG_DUMP'
+#!/usr/bin/env bash
+set -euo pipefail
+for arg in "$@"; do
+  case "$arg" in
+    --file=*) printf 'database-backup\n' >"${arg#--file=}" ;;
+  esac
+done
+EOF_PG_DUMP
+  cat >"$stub_dir/pg_restore" <<'EOF_PG_RESTORE'
+#!/usr/bin/env bash
+exit 0
+EOF_PG_RESTORE
+  cat >"$stub_dir/psql" <<EOF_PSQL
+#!/usr/bin/env bash
+printf '%s\\n' '$MIGRATION'
+EOF_PSQL
+  cat >"$stub_dir/curl" <<'EOF_CURL'
+#!/usr/bin/env bash
+exit 0
+EOF_CURL
+  chmod 0755 "$stub_dir/pg_dump" "$stub_dir/pg_restore" "$stub_dir/psql" "$stub_dir/curl"
 }
 
 test_absent_promotion_and_restore() {
@@ -159,6 +209,8 @@ test_absent_promotion_and_restore() {
   rg_update_validate_toolchain
   assert_eq "$(rg_update_toolchain_state)" complete "promoted updater state"
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-core.sh" 'new'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'new'
+  [[ -x "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" ]] || fail "promoted dispatcher is not executable"
   [[ -x "$root/usr/local/sbin/routegate-update" ]] || fail "promoted entrypoint is not executable"
 
   rg_update_restore_toolchain_backup "$backup"
@@ -182,15 +234,18 @@ test_complete_round_trip() {
   rg_update_validate_toolchain
   rg_update_create_toolchain_backup "$backup"
   assert_file_contains "$backup/update-toolchain.meta" 'STATE=complete'
+  assert_file_contains "$backup/update-toolchain/routegate-update-dispatch.py" 'old'
 
   rg_update_apply_toolchain "$new_work"
   rg_update_validate_toolchain
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-core.sh" 'new'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'new'
 
   rg_update_restore_toolchain_backup "$backup"
   rg_update_validate_toolchain
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-core.sh" 'old'
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-verified.sh" 'verified-old'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'old'
   RG_UPDATE_ROOT=""
 }
 
@@ -222,7 +277,7 @@ test_missing_candidate_component_fails() {
   local work="$TMP_DIR/missing-work"
   mkdir -p "$root"
   make_toolchain_candidate "$work" missing
-  rm "$work/tools/routegate-update-role.sh"
+  rm "$work/tools/routegate-update-dispatch.py"
   RG_UPDATE_ROOT=$root
   if rg_update_apply_toolchain "$work" >/dev/null 2>&1; then
     fail "incomplete candidate updater unexpectedly promoted"
@@ -250,6 +305,27 @@ run_vpn_transaction() {
       --role vpn
 }
 
+run_management_transaction() {
+  local root=$1
+  local bundle=$2
+  local backup_root=$3
+  local stub_dir=$4
+  local sha
+  sha=$(sha256sum "$bundle" | awk '{print $1}')
+
+  sudo env \
+    PATH="$stub_dir:$PATH" \
+    RG_UPDATE_ROOT="$root" \
+    RG_UPDATE_MANAGER_OWNER=root:root \
+    RG_UPDATE_LOCK_FILE="$TMP_DIR/management-transaction.lock" \
+    RG_UPDATE_BACKUP_ROOT="$backup_root" \
+    bash "$ROOT_DIR/scripts/routegate-update-transaction.sh" apply \
+      --bundle "$bundle" \
+      --sha256 "$sha" \
+      --commit "$COMMIT" \
+      --role management
+}
+
 test_transaction_promotes_toolchain_after_vpn_health() {
   local root="$TMP_DIR/transaction-success-root"
   local bundle="$TMP_DIR/transaction-success.tar.gz"
@@ -263,7 +339,50 @@ test_transaction_promotes_toolchain_after_vpn_health() {
 
   assert_file_contains "$root/usr/local/bin/routegate-agent" 'agent-success'
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-verified.sh" 'verified-success'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'success'
   [[ -x "$root/usr/local/sbin/routegate-update" ]] || fail "successful transaction did not install updater entrypoint"
+  [[ ! -e "$root/etc/systemd/system/routegate-update-dispatch.socket" ]] || fail "VPN-only transaction installed Manager-facing dispatch socket"
+  [[ ! -e "$root/etc/systemd/system/routegate-update-dispatch@.service" ]] || fail "VPN-only transaction installed Manager-facing dispatch service"
+}
+
+test_management_transaction_promotes_dispatch_units() {
+  local root="$TMP_DIR/management-success-root"
+  local bundle="$TMP_DIR/management-success.tar.gz"
+  local backups="$TMP_DIR/management-success-backups"
+  local stubs="$TMP_DIR/management-success-stubs"
+  populate_management_host "$root"
+  make_management_stubs "$stubs"
+  make_transaction_bundle "$bundle" management-new valid
+
+  run_management_transaction "$root" "$bundle" "$backups" "$stubs" >/dev/null
+
+  assert_file_contains "$root/usr/local/bin/routegate-manager" 'manager-management-new'
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch.socket" 'management-new'
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch@.service" 'management-new'
+}
+
+test_management_transaction_restores_dispatch_units_on_toolchain_validation_failure() {
+  local root="$TMP_DIR/management-rollback-root"
+  local trusted_bundle="$TMP_DIR/management-trusted.tar.gz"
+  local broken_bundle="$TMP_DIR/management-broken.tar.gz"
+  local stubs="$TMP_DIR/management-rollback-stubs"
+  populate_management_host "$root"
+  make_management_stubs "$stubs"
+  make_transaction_bundle "$trusted_bundle" trusted valid
+  make_transaction_bundle "$broken_bundle" broken invalid
+
+  run_management_transaction "$root" "$trusted_bundle" "$TMP_DIR/management-trusted-backups" "$stubs" >/dev/null
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch.socket" 'trusted'
+  assert_file_contains "$root/usr/local/bin/routegate-manager" 'manager-trusted'
+
+  if run_management_transaction "$root" "$broken_bundle" "$TMP_DIR/management-broken-backups" "$stubs" >/dev/null 2>&1; then
+    fail "Management transaction with invalid promoted toolchain unexpectedly succeeded"
+  fi
+
+  assert_file_contains "$root/usr/local/bin/routegate-manager" 'manager-trusted'
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch.socket" 'trusted'
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch@.service" 'trusted'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'trusted'
 }
 
 test_transaction_rolls_back_platform_and_absent_toolchain_on_validation_failure() {
@@ -319,6 +438,8 @@ test_complete_round_trip
 test_partial_and_unexpected_state_fail_closed
 test_missing_candidate_component_fails
 test_transaction_promotes_toolchain_after_vpn_health
+test_management_transaction_promotes_dispatch_units
+test_management_transaction_restores_dispatch_units_on_toolchain_validation_failure
 test_transaction_rolls_back_platform_and_absent_toolchain_on_validation_failure
 test_transaction_rejects_writable_trusted_verifier_before_mutation
 
