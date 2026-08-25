@@ -40,6 +40,8 @@ func TestDecodePlatformUpdateRequestRejectsInvalidShape(t *testing.T) {
 		`{"schemaVersion":1,"targetVersion":"latest"}`,
 		`{"schemaVersion":1,"targetVersion":"../v1.2.3"}`,
 		`{"schemaVersion":1,"targetVersion":"https://example.com/v1.2.3"}`,
+		`{"schemaVersion":1,"targetVersion":" v1.2.3"}`,
+		`{"schemaVersion":1,"targetVersion":"v1.2.3 "}`,
 		`{"schemaVersion":1,"targetVersion":"v1.2.3"} {"schemaVersion":1,"targetVersion":"v1.2.4"}`,
 	}
 	for _, payload := range cases {
