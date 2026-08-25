@@ -1,0 +1,22 @@
+[Unit]
+Description=RouteGate privileged update dispatcher
+Documentation=https://github.com/ikaevus/RouteGate
+After=local-fs.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+ExecStart=/usr/local/lib/routegate/update/routegate-update-dispatch.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=15min
+KillMode=control-group
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/usr/local/bin /usr/local/sbin /usr/local/lib/routegate /opt/routegate-manager /var/www/routegate /var/lib/routegate-manager /var/lib/routegate-agent /etc/routegate /etc/systemd/system /run/routegate
