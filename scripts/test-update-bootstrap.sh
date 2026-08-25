@@ -20,12 +20,15 @@ assert_contains() {
 
 make_bundle_fixture() {
   local bundle=$1
-  mkdir -p "$bundle/tools"
+  mkdir -p "$bundle/tools" "$bundle/systemd"
   cp "$ROOT_DIR/scripts/release_manifest.py" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-bootstrap.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-core.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-role.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-transaction.sh" "$bundle/tools/"
+  cp "$ROOT_DIR/scripts/routegate-update-dispatch.py" "$bundle/tools/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-update-dispatch.socket" "$bundle/systemd/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-update-dispatch@.service" "$bundle/systemd/"
 
   cat >"$bundle/tools/routegate-update-verified.sh" <<'EOF_VERIFIED_FIXTURE'
 #!/usr/bin/env bash
@@ -46,7 +49,8 @@ esac
 EOF_VERIFIED_FIXTURE
   chmod 0755 \
     "$bundle/tools/routegate-update-bootstrap.sh" \
-    "$bundle/tools/routegate-update-verified.sh"
+    "$bundle/tools/routegate-update-verified.sh" \
+    "$bundle/tools/routegate-update-dispatch.py"
 }
 
 run_bootstrap() {
@@ -74,6 +78,14 @@ test_fresh_bootstrap_and_preserve() {
   [[ $(stat -c '%a' "$tool_dir/routegate-update-core.sh") == 644 ]] || fail "core mode is not 0644"
   [[ $(stat -c '%a' "$tool_dir/routegate-update-verified.sh") == 755 ]] || fail "verified gate mode is not 0755"
   [[ $(stat -c '%u' "$tool_dir/routegate-update-verified.sh") == 0 ]] || fail "trusted verifier is not root-owned"
+  [[ -x "$tool_dir/routegate-update-dispatch.py" && ! -L "$tool_dir/routegate-update-dispatch.py" ]] \
+    || fail "privileged dispatch executable was not installed"
+  [[ -f "$root/etc/systemd/system/routegate-update-dispatch.socket" ]] \
+    || fail "dispatch socket unit was not installed"
+  [[ -f "$root/etc/systemd/system/routegate-update-dispatch@.service" ]] \
+    || fail "dispatch service unit was not installed"
+  [[ $(stat -c '%a' "$root/etc/systemd/system/routegate-update-dispatch.socket") == 644 ]] \
+    || fail "dispatch socket unit mode is not 0644"
   sudo test -f "$root/var/lib/routegate-test/verifier-runtime" \
     || fail "fresh bootstrap did not invoke verifier runtime installation"
 
