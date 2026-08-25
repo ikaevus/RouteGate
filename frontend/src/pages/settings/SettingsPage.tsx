@@ -6,6 +6,7 @@ import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { DeliverySettingsPanel } from './DeliverySettingsPanel';
 import { TelegramRecipientsPanel } from './TelegramRecipientsPanel';
+import { UpdateWorkflowPanel } from './UpdateWorkflowPanel';
 import './SettingsPage.css';
 
 function formatValue(value?: string | number | null): string {
@@ -221,9 +222,8 @@ export function SettingsPage() {
               <Fact label={t('settings.recommendedAgent')} value={system.agentCompatibility.recommendedAgentVersion} />
             </div>
 
-            {!system.update.automaticUpdatesSupported && (
-              <div className="settings-update-notice">{t('settings.manualUpdateNotice')}</div>
-            )}
+            <div className="settings-update-notice">{t('settings.manualUpdateNotice')}</div>
+            <UpdateWorkflowPanel />
           </aside>
         </div>
       )}
