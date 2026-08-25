@@ -1,0 +1,15 @@
+[Unit]
+Description=RouteGate privileged update dispatch socket
+Documentation=https://github.com/ikaevus/RouteGate
+
+[Socket]
+ListenStream=/run/routegate/update-dispatch.sock
+SocketUser=root
+SocketGroup=routegate
+SocketMode=0660
+DirectoryMode=0750
+Accept=yes
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
