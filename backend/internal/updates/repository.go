@@ -4,11 +4,19 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const (
+	maxRetainedStageJobs  = 2
+	maxReservedStageBytes = int64(maxRetainedStageJobs) * (maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes)
+)
+
+var ErrStageCapacityExceeded = errors.New("retained stage job capacity exceeded")
 
 type Repository struct {
 	pool *pgxpool.Pool
@@ -31,15 +39,80 @@ func (r *Repository) CreateDiscovery(ctx context.Context, createdByUserID string
 	return r.createJob(ctx, OperationDiscovery, StageDiscovery, createdByUserID, json.RawMessage(`{}`))
 }
 
-func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discoveryJobID string) (Job, error) {
+func (r *Repository) CreateStage(ctx context.Context, createdByUserID, discoveryJobID string) (Job, bool, error) {
 	payload, err := json.Marshal(StageRequest{DiscoveryJobID: discoveryJobID})
 	if err != nil {
-		return Job{}, err
+		return Job{}, false, err
 	}
-	return r.createJob(ctx, OperationStage, StageStage, createdByUserID, payload)
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return Job{}, false, err
+	}
+	defer func() {
+		_ = tx.Rollback(context.Background())
+	}()
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('routegate-update-stage-admission'))`); err != nil {
+		return Job{}, false, err
+	}
+
+	existing, err := scanJob(tx.QueryRow(ctx, `
+		SELECT
+			id::text, operation, status, stage, request_payload, result_payload,
+			COALESCE(error_code, ''), COALESCE(created_by_user_id::text, ''),
+			created_at, updated_at, started_at, completed_at
+		FROM update_jobs
+		WHERE operation = $1
+		  AND request_payload->>'discoveryJobId' = $2
+		  AND status IN ($3, $4, $5)
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, OperationStage, discoveryJobID, StatusPending, StatusRunning, StatusSucceeded))
+	if err == nil {
+		if err := tx.Commit(ctx); err != nil {
+			return Job{}, false, err
+		}
+		return existing, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Job{}, false, err
+	}
+
+	var retained int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM update_jobs
+		WHERE operation = $1
+		  AND status IN ($2, $3, $4)
+	`, OperationStage, StatusPending, StatusRunning, StatusSucceeded).Scan(&retained); err != nil {
+		return Job{}, false, err
+	}
+	reservedBytes := int64(retained) * (maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes)
+	nextReservedBytes := reservedBytes + maxReleaseBundleBytes + maxAttestationBundleBytes + 3*maxSmallReleaseAssetBytes
+	if retained >= maxRetainedStageJobs || nextReservedBytes > maxReservedStageBytes {
+		return Job{}, false, ErrStageCapacityExceeded
+	}
+
+	job, err := createJobWithQuerier(ctx, tx, OperationStage, StageStage, createdByUserID, payload)
+	if err != nil {
+		return job, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return job, false, err
+	}
+	return job, false, nil
 }
 
 func (r *Repository) createJob(ctx context.Context, operation, stage, createdByUserID string, requestPayload json.RawMessage) (Job, error) {
+	return createJobWithQuerier(ctx, r.pool, operation, stage, createdByUserID, requestPayload)
+}
+
+type jobQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func createJobWithQuerier(ctx context.Context, querier jobQuerier, operation, stage, createdByUserID string, requestPayload json.RawMessage) (Job, error) {
 	id, err := newUpdateJobID()
 	if err != nil {
 		return Job{}, err
@@ -57,7 +130,7 @@ func (r *Repository) createJob(ctx context.Context, operation, stage, createdByU
 		CreatedByUserID: createdByUserID,
 	}
 
-	job, err := scanJob(r.pool.QueryRow(ctx, `
+	job, err := scanJob(querier.QueryRow(ctx, `
 		INSERT INTO update_jobs (
 			id,
 			operation,
