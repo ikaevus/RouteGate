@@ -98,7 +98,12 @@ func TestValidatePlatformUpdateCommandRuntimeRejectsSymlinkThroughWritableParent
 	if err := os.Mkdir(binDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(writableDir, 0775); err != nil {
+	if err := os.Mkdir(writableDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// os.Mkdir respects the process umask. Set the unsafe mode explicitly so
+	// this regression proves the validator rejects a writable resolved parent.
+	if err := os.Chmod(writableDir, 0775); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(writableDir, "python3")
