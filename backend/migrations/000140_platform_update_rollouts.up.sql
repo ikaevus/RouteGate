@@ -75,6 +75,13 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.status <> 'pending' THEN
+            RAISE EXCEPTION 'platform update rollout must be created pending';
+        END IF;
+        RETURN NEW;
+    END IF;
+
     IF NEW.target_version IS DISTINCT FROM OLD.target_version THEN
         RAISE EXCEPTION 'platform update rollout target_version is immutable';
     END IF;
@@ -93,7 +100,7 @@ END;
 $$;
 
 CREATE TRIGGER trg_platform_update_rollouts_transition
-BEFORE UPDATE ON platform_update_rollouts
+BEFORE INSERT OR UPDATE ON platform_update_rollouts
 FOR EACH ROW
 EXECUTE FUNCTION enforce_platform_update_rollout_transition();
 
@@ -102,6 +109,13 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.status <> 'queued' OR NEW.platform_update_job_id IS NOT NULL THEN
+            RAISE EXCEPTION 'platform update rollout entry must be created queued and unbound';
+        END IF;
+        RETURN NEW;
+    END IF;
+
     IF NEW.rollout_id IS DISTINCT FROM OLD.rollout_id
         OR NEW.server_id IS DISTINCT FROM OLD.server_id
         OR NEW.target_version IS DISTINCT FROM OLD.target_version
@@ -129,13 +143,13 @@ END;
 $$;
 
 CREATE TRIGGER trg_platform_update_rollout_entries_transition
-BEFORE UPDATE ON platform_update_rollout_entries
+BEFORE INSERT OR UPDATE ON platform_update_rollout_entries
 FOR EACH ROW
 EXECUTE FUNCTION enforce_platform_update_rollout_entry_transition();
 
 -- Rollout and entry rows are durable mutation-history identities. Deleting a
 -- row would release its uniqueness slots and permit delete/reinsert replay with
--- a fresh runnable state or job binding, bypassing the UPDATE transition guards.
+-- a fresh runnable state or job binding, bypassing the transition guards.
 -- Retention/archival, if added later, must preserve that identity explicitly.
 CREATE OR REPLACE FUNCTION reject_platform_update_rollout_delete()
 RETURNS trigger
