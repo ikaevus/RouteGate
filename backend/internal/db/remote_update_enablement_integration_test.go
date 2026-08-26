@@ -95,14 +95,19 @@ func TestRemotePlatformUpdateCreationRequiresExactReadyCapabilityAndOneActiveJob
 		t.Fatalf("new update job contains unexpected execution state: %+v", job)
 	}
 
-	if _, err := repository.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{ServerID: serverID, TargetVersion: "v1.2.4"}); err == nil {
-		t.Fatal("second active update job was created")
-	} else {
-		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
-			t.Fatalf("second active update returned unexpected error: %v", err)
+	assertPlatformUpdateCreateConflict := func(targetVersion string) {
+		t.Helper()
+		if _, err := repository.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{ServerID: serverID, TargetVersion: targetVersion}); err == nil {
+			t.Fatalf("additional platform update %s was created while the server is interlocked", targetVersion)
+		} else {
+			var pgErr *pgconn.PgError
+			if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+				t.Fatalf("interlocked platform update returned unexpected error: %v", err)
+			}
 		}
 	}
+
+	assertPlatformUpdateCreateConflict("v1.2.4")
 
 	readBack, err := repository.GetPlatformUpdateJob(ctx, serverID, job.ID)
 	if err != nil {
@@ -112,7 +117,24 @@ func TestRemotePlatformUpdateCreationRequiresExactReadyCapabilityAndOneActiveJob
 		t.Fatalf("read-back mismatch: got=%+v want=%+v", readBack, job)
 	}
 
-	if _, err := repository.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{ServerID: serverID, TargetVersion: " v1.2.5"}); err == nil {
+	// outcome_unknown means mutation may have happened and the final host state
+	// is not established. It remains an interlock, not a retryable terminal
+	// state: E2j has no force/retry/resolution operation that may bypass it.
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET
+			status = 'outcome_unknown',
+			dispatched_at = now(),
+			completed_at = now(),
+			error_code = 'detached_worker_missing',
+			updated_at = now()
+		WHERE id = $1::uuid
+	`, job.ID); err != nil {
+		t.Fatalf("mark update outcome unknown: %v", err)
+	}
+	assertPlatformUpdateCreateConflict("v1.2.5")
+
+	if _, err := repository.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{ServerID: serverID, TargetVersion: " v1.2.6"}); err == nil {
 		t.Fatal("whitespace-normalized target version was accepted")
 	}
 }
