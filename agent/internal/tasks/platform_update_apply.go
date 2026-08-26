@@ -128,12 +128,30 @@ func RunPlatformUpdateWorker(taskID string) error {
 				}
 				return nil
 			}
+			if platformUpdateWaitOutcomeUnknown(waitErr) {
+				if _, err := store.MarkOutcomeUnknown(taskID, "verified_updater_signaled"); err != nil {
+					return fmt.Errorf("verified platform updater outcome unknown: %v; persist unknown receipt: %w", waitErr, err)
+				}
+				return fmt.Errorf("verified platform updater outcome unknown: %w", waitErr)
+			}
 			if _, err := store.MarkFailed(taskID, "verified_updater_failed"); err != nil {
 				return fmt.Errorf("verified platform updater failed: %v; persist failure receipt: %w", waitErr, err)
 			}
 			return fmt.Errorf("verified platform updater failed: %w", waitErr)
 		}
 	}
+}
+
+func platformUpdateWaitOutcomeUnknown(waitErr error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(waitErr, &exitErr) || exitErr.ProcessState == nil {
+		return true
+	}
+	status, ok := exitErr.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok {
+		return true
+	}
+	return status.Signaled()
 }
 
 // rejectOrReconcileExistingPlatformUpdateReceipt is called only from a newly
