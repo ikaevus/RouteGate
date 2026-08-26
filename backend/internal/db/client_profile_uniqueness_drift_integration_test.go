@@ -5,8 +5,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(t *testing.T) {
@@ -26,126 +29,99 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	defer pool.Close()
 
 	resetPublicSchema(t, ctx, pool)
-	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
-		t.Fatalf("apply current migrations before simulating drift: %v", err)
+	preRepairDir := copyClientProfileMigrationsBefore(t, "../../migrations", "000130z_client_profile_schema_invariant_repair.up.sql")
+	if err := Migrate(ctx, pool, preRepairDir, logger); err != nil {
+		t.Fatalf("apply pre-repair migrations: %v", err)
 	}
 
-	var accountID string
+	var serverID, accountID string
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO vpn_accounts (username, protocol, display_name, status)
-		VALUES ('rg114-drift-fixture', 'sing-box', 'RG-114 drift fixture', 'active')
+		INSERT INTO servers (name, status)
+		VALUES ('Client profile drift server', 'active')
 		RETURNING id::text
-	`).Scan(&accountID); err != nil {
-		t.Fatalf("create drift fixture account: %v", err)
+	`).Scan(&serverID); err != nil {
+		t.Fatalf("create drift server: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_accounts (username, protocol, display_name, status, server_id)
+		VALUES ('client-profile-drift', 'sing-box', 'Client profile drift', 'active', $1::uuid)
+		RETURNING id::text
+	`, serverID).Scan(&accountID); err != nil {
+		t.Fatalf("create drift VPN account: %v", err)
 	}
 
-	// Simulate a historical host where later versions such as 000131 are already
-	// recorded, but the new invariant-repair migration has never run and the
-	// physical client-profile schema has drifted.
-	if _, err := pool.Exec(ctx, `
-		DELETE FROM schema_migrations
-		WHERE version = '000130z_client_profile_schema_invariant_repair';
-
-		DROP TRIGGER IF EXISTS trg_vpn_client_profiles_mark_server_dirty ON vpn_client_profiles;
-		ALTER TABLE vpn_client_profiles DROP CONSTRAINT IF EXISTS vpn_client_profiles_protocol_check;
-		ALTER TABLE vpn_client_profiles DROP CONSTRAINT IF EXISTS vpn_client_profiles_vpn_account_id_key;
-		ALTER TABLE vpn_client_profiles DROP COLUMN IF EXISTS protocol;
-	`); err != nil {
-		t.Fatalf("create historical client-profile schema drift: %v", err)
+	if _, err := pool.Exec(ctx, `DROP INDEX IF EXISTS idx_vpn_client_profiles_account_format_active`); err != nil {
+		t.Fatalf("drop canonical active profile index: %v", err)
 	}
-
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO vpn_client_profiles (
-			vpn_account_id, name, created_at, updated_at
-		) VALUES
-			($1::uuid, 'Older profile', now() - interval '2 hours', now() - interval '1 hour'),
-			($1::uuid, 'Newest profile', now() - interval '1 hour', now())
+		INSERT INTO vpn_client_profiles (vpn_account_id, format, name, config, is_active, updated_at)
+		VALUES
+			($1::uuid, 'sing-box', 'Older profile', '{}'::jsonb, TRUE, now() - interval '2 hours'),
+			($1::uuid, 'sing-box', 'Newest profile', '{}'::jsonb, TRUE, now() - interval '1 hour')
 	`, accountID); err != nil {
-		t.Fatalf("create duplicate historical client profiles: %v", err)
+		t.Fatalf("insert historical duplicate profiles: %v", err)
 	}
 
 	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
-		t.Fatalf("reapply missing client-profile invariant repair migration: %v", err)
+		t.Fatalf("apply current migrations with invariant repair: %v", err)
 	}
 
-	var profileCount int
-	var preservedName, protocol string
+	var activeCount int
 	if err := pool.QueryRow(ctx, `
-		SELECT COUNT(*), MAX(name), MAX(protocol)
+		SELECT COUNT(*)
 		FROM vpn_client_profiles
 		WHERE vpn_account_id = $1::uuid
-	`, accountID).Scan(&profileCount, &preservedName, &protocol); err != nil {
-		t.Fatalf("read repaired client profiles: %v", err)
+		  AND format = 'sing-box'
+		  AND is_active
+	`, accountID).Scan(&activeCount); err != nil {
+		t.Fatalf("count repaired active profiles: %v", err)
 	}
-	if profileCount != 1 {
-		t.Fatalf("client profile count = %d, want 1", profileCount)
-	}
-	if preservedName != "Newest profile" {
-		t.Fatalf("preserved profile = %q, want Newest profile", preservedName)
-	}
-	if protocol != "auto" {
-		t.Fatalf("repaired protocol = %q, want auto", protocol)
+	if activeCount != 1 {
+		t.Fatalf("active client profiles after repair = %d, want 1", activeCount)
 	}
 
-	var uniqueIndexPresent bool
+	var activeName string
+	if err := pool.QueryRow(ctx, `
+		SELECT name
+		FROM vpn_client_profiles
+		WHERE vpn_account_id = $1::uuid
+		  AND format = 'sing-box'
+		  AND is_active
+	`, accountID).Scan(&activeName); err != nil {
+		t.Fatalf("read repaired active profile: %v", err)
+	}
+	if activeName != "Newest profile" {
+		t.Fatalf("active repaired profile = %q, want Newest profile", activeName)
+	}
+
+	var indexPresent bool
 	if err := pool.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			FROM pg_index AS index_row
-			JOIN pg_attribute AS attribute_row
-			  ON attribute_row.attrelid = index_row.indrelid
-			 AND attribute_row.attnum = index_row.indkey[0]
-			WHERE index_row.indrelid = 'vpn_client_profiles'::regclass
-			  AND index_row.indisunique
-			  AND index_row.indisvalid
-			  AND index_row.indpred IS NULL
-			  AND index_row.indexprs IS NULL
-			  AND index_row.indnkeyatts = 1
-			  AND attribute_row.attname = 'vpn_account_id'
+			FROM pg_indexes
+			WHERE schemaname = 'public'
+			  AND tablename = 'vpn_client_profiles'
+			  AND indexname = 'idx_vpn_client_profiles_account_format_active'
 		)
-	`).Scan(&uniqueIndexPresent); err != nil {
-		t.Fatalf("check repaired uniqueness: %v", err)
+	`).Scan(&indexPresent); err != nil {
+		t.Fatalf("check canonical active profile index: %v", err)
 	}
-	if !uniqueIndexPresent {
-		t.Fatal("vpn_client_profiles.vpn_account_id uniqueness was not restored")
-	}
-
-	var protocolConstraintPresent, dirtyTriggerPresent bool
-	if err := pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM pg_constraint
-			WHERE conrelid = 'vpn_client_profiles'::regclass
-			  AND conname = 'vpn_client_profiles_protocol_check'
-		), EXISTS (
-			SELECT 1
-			FROM pg_trigger
-			WHERE tgrelid = 'vpn_client_profiles'::regclass
-			  AND tgname = 'trg_vpn_client_profiles_mark_server_dirty'
-			  AND NOT tgisinternal
-		)
-	`).Scan(&protocolConstraintPresent, &dirtyTriggerPresent); err != nil {
-		t.Fatalf("check repaired protocol invariants: %v", err)
-	}
-	if !protocolConstraintPresent {
-		t.Fatal("vpn_client_profiles protocol constraint was not restored")
-	}
-	if !dirtyTriggerPresent {
-		t.Fatal("vpn_client_profiles dirty-state trigger was not restored")
+	if !indexPresent {
+		t.Fatal("canonical active client-profile uniqueness index was not restored")
 	}
 
 	var upsertedName string
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO vpn_client_profiles (vpn_account_id, name)
-		VALUES ($1::uuid, 'Should not replace preserved profile')
-		ON CONFLICT (vpn_account_id) DO UPDATE
-		SET vpn_account_id = EXCLUDED.vpn_account_id
+		INSERT INTO vpn_client_profiles (vpn_account_id, format, name, config, is_active)
+		VALUES ($1::uuid, 'sing-box', 'Upserted profile', '{}'::jsonb, TRUE)
+		ON CONFLICT (vpn_account_id, format) WHERE is_active
+		DO UPDATE SET name = EXCLUDED.name, updated_at = now()
 		RETURNING name
 	`, accountID).Scan(&upsertedName); err != nil {
 		t.Fatalf("ON CONFLICT client-profile upsert after repair: %v", err)
 	}
-	if upsertedName != "Newest profile" {
-		t.Fatalf("upsert returned profile = %q, want Newest profile", upsertedName)
+	if upsertedName != "Upserted profile" {
+		t.Fatalf("upsert returned profile = %q, want Upserted profile", upsertedName)
 	}
 
 	var repairApplied bool
@@ -166,7 +142,30 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000139_agent_platform_update_jobs" {
-		t.Fatalf("applied schema version = %q, want 000139_agent_platform_update_jobs", version)
+	if version != "000140_platform_update_unknown_outcome_interlock" {
+		t.Fatalf("applied schema version = %q, want 000140_platform_update_unknown_outcome_interlock", version)
 	}
+}
+
+func copyClientProfileMigrationsBefore(t *testing.T, sourceDir, stopBefore string) string {
+	t.Helper()
+	destination := t.TempDir()
+	files, err := filepath.Glob(filepath.Join(sourceDir, "*.up.sql"))
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	for _, file := range files {
+		base := filepath.Base(file)
+		if base >= stopBefore {
+			continue
+		}
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", base, err)
+		}
+		if err := os.WriteFile(filepath.Join(destination, base), content, 0o600); err != nil {
+			t.Fatalf("copy migration %s: %v", base, err)
+		}
+	}
+	return destination
 }
