@@ -2,23 +2,19 @@ package agents
 
 import "strings"
 
-const (
-	// Agent DecodePlatformUpdateRequest rejects the complete Manager-generated
-	// task payload above 256 bytes. The fixed schema-v1 JSON envelope contributes
-	// 38 ASCII bytes, so a canonical targetVersion may occupy at most 218 bytes.
-	// Keep this bound aligned with the Agent decoder before changing the task
-	// schema or payload representation.
-	maxPlatformUpdateAgentTaskPayloadBytes = 256
-	platformUpdateTaskEnvelopeBytes        = len("{\"schemaVersion\":1,\"targetVersion\":\"\"}")
-	maxPlatformUpdateTargetVersionBytes    = maxPlatformUpdateAgentTaskPayloadBytes - platformUpdateTaskEnvelopeBytes
-)
+const maxPlatformUpdateAgentTaskPayloadBytes = 256
 
 func validPlatformUpdateTargetVersion(targetVersion string) bool {
-	if targetVersion != strings.TrimSpace(targetVersion) {
+	if targetVersion != strings.TrimSpace(targetVersion) || targetVersion == "" {
 		return false
 	}
-	if len(targetVersion) == 0 || len(targetVersion) > maxPlatformUpdateTargetVersionBytes {
+	if !canonicalRouteGateVersionPattern.MatchString(targetVersion) {
 		return false
 	}
-	return canonicalRouteGateVersionPattern.MatchString(targetVersion)
+	// Validate against the exact Manager serialization used by task claim rather
+	// than a duplicated character-count formula. This keeps the public create
+	// contract fail-closed if the schema-v1 payload representation ever changes
+	// while the Agent's 256-byte decoder bound remains in force.
+	payload, err := platformUpdateTaskPayload(targetVersion)
+	return err == nil && len(payload) <= maxPlatformUpdateAgentTaskPayloadBytes
 }
