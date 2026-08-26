@@ -3,13 +3,12 @@ package tasks
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"syscall"
 )
 
-const (
-	platformUpdateSystemctlPath = "/usr/bin/systemctl"
-)
+const platformUpdateSystemctlPath = "/usr/bin/systemctl"
 
 var fixedPlatformUpdateReadinessExecutables = []string{
 	platformUpdateSystemdRun,
@@ -43,6 +42,9 @@ func platformUpdateRuntimeReady(euid int, arch string, expectedUID uint32, execu
 	return true
 }
 
+// validatePlatformUpdateReadinessExecutable validates both the executable and
+// every directory used to reach it. A writable or symlinked parent would let a
+// different principal replace a previously checked binary by rename.
 func validatePlatformUpdateReadinessExecutable(path string, expectedUID uint32) error {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -51,6 +53,39 @@ func validatePlatformUpdateReadinessExecutable(path string, expectedUID uint32) 
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return fmt.Errorf("not a regular file")
 	}
+	if err := validatePlatformUpdateOwnedNonWritable(info, expectedUID); err != nil {
+		return err
+	}
+	if info.Mode().Perm()&0111 == 0 {
+		return fmt.Errorf("not executable")
+	}
+	return validatePlatformUpdateParentChain(path, expectedUID)
+}
+
+func validatePlatformUpdateParentChain(path string, expectedUID uint32) error {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		return fmt.Errorf("path is not absolute")
+	}
+	for dir := filepath.Dir(clean); ; dir = filepath.Dir(dir) {
+		info, err := os.Lstat(dir)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("unsafe parent directory %s", dir)
+		}
+		if err := validatePlatformUpdateOwnedNonWritable(info, expectedUID); err != nil {
+			return fmt.Errorf("unsafe parent directory %s: %w", dir, err)
+		}
+		if dir == string(filepath.Separator) {
+			break
+		}
+	}
+	return nil
+}
+
+func validatePlatformUpdateOwnedNonWritable(info os.FileInfo, expectedUID uint32) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return fmt.Errorf("filesystem ownership metadata unavailable")
@@ -60,9 +95,6 @@ func validatePlatformUpdateReadinessExecutable(path string, expectedUID uint32) 
 	}
 	if info.Mode().Perm()&0022 != 0 {
 		return fmt.Errorf("group/world writable")
-	}
-	if info.Mode().Perm()&0111 == 0 {
-		return fmt.Errorf("not executable")
 	}
 	return nil
 }
