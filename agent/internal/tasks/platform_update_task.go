@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	TaskKindPlatformUpdate             = "platform_update"
-	PlatformUpdateOperationReconcile   = "reconcile"
-	PlatformUpdateSchemaVersion        = 1
+	TaskKindPlatformUpdate           = "platform_update"
+	PlatformUpdateOperationDispatch  = "dispatch"
+	PlatformUpdateOperationReconcile = "reconcile"
+	PlatformUpdateSchemaVersion      = 1
 )
 
 var routeGateReleaseVersionPattern = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$`)

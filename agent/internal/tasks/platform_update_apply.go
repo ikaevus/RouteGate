@@ -18,12 +18,20 @@ const (
 	platformUpdateSystemdRun      = "/usr/bin/systemd-run"
 )
 
-var platformUpdateWorkerEnvironment = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+var (
+	platformUpdateWorkerEnvironment = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+
+	// ErrPlatformUpdateDispatchAmbiguous means the caller must not terminalize
+	// or retry the remote update. Once the systemd-run process has started, a
+	// later acknowledgement error cannot prove that the transient unit was not
+	// accepted by systemd.
+	ErrPlatformUpdateDispatchAmbiguous = errors.New("platform update dispatch outcome is ambiguous")
+)
 
 // DetachedPlatformUpdateCommand returns the fixed transient-systemd invocation
-// used to detach a VPN update from routegate-agent.service. The caller may
-// supply only one canonical task UUID; every privileged selector is rebuilt by
-// the root worker from fixed RouteGate-owned policy.
+// used to detach a VPN update from routegate-agent.service. The caller supplies
+// only one canonical task UUID; every privileged selector is reconstructed by
+// trusted local RouteGate policy.
 func DetachedPlatformUpdateCommand(taskID string) (string, []string, error) {
 	if !canonicalTaskIDPattern.MatchString(taskID) {
 		return "", nil, fmt.Errorf("platform update task id must be canonical UUIDv4")
@@ -41,6 +49,11 @@ func DetachedPlatformUpdateCommand(taskID string) (string, []string, error) {
 	}, nil
 }
 
+// StartDetachedPlatformUpdate distinguishes the only deterministic launch
+// failure from the post-start ambiguity boundary. If exec.Start fails, the
+// systemd-run process never existed and no unit can have been accepted through
+// this invocation. After Start succeeds, every Wait/context/non-zero failure is
+// conservative ambiguity because systemd may already have accepted the unit.
 func StartDetachedPlatformUpdate(ctx context.Context, taskID string) error {
 	path, argv, err := DetachedPlatformUpdateCommand(taskID)
 	if err != nil {
@@ -48,18 +61,85 @@ func StartDetachedPlatformUpdate(ctx context.Context, taskID string) error {
 	}
 	cmd := exec.CommandContext(ctx, path, argv[1:]...)
 	cmd.Env = platformUpdateWorkerEnvironment
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("start detached platform update: %w: %s", err, boundedPlatformUpdateOutput(output))
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start detached platform update launcher: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("%w: wait for detached platform update launcher: %v", ErrPlatformUpdateDispatchAmbiguous, err)
 	}
 	return nil
 }
 
-// RunPlatformUpdateWorker is intentionally local-only. It reconstructs every
-// privileged path from one canonical task UUID, persists monotonic root-owned
-// receipt state, starts only the fixed verified updater with --role vpn, and
-// remains alive long enough to persist a bounded terminal outcome. INT/TERM are
-// forwarded to the updater so the existing transaction rollback traps remain
-// authoritative.
+// PrepareAndStartDetachedPlatformUpdate performs the durable handoff required
+// before systemd may accept a detached host mutation. Any evidence of a prior
+// attempt is fail-closed to ambiguity so a replay can never become a second
+// mutation attempt.
+func PrepareAndStartDetachedPlatformUpdate(ctx context.Context, taskID string, request PlatformUpdateRequest) (PlatformUpdateStagedCandidate, error) {
+	if !canonicalTaskIDPattern.MatchString(taskID) {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update task id must be canonical UUIDv4")
+	}
+	if _, err := DecodePlatformUpdateRequest(mustMarshalPlatformUpdateRequest(request)); err != nil {
+		return PlatformUpdateStagedCandidate{}, err
+	}
+	if prior, err := platformUpdateDispatchHasPriorState(taskID); err != nil {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("inspect prior platform update dispatch state: %w", err)
+	} else if prior {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: task already has local dispatch state", ErrPlatformUpdateDispatchAmbiguous)
+	}
+
+	candidate, err := NewPlatformUpdateStager().Stage(ctx, taskID, request)
+	if err != nil {
+		return PlatformUpdateStagedCandidate{}, err
+	}
+	if candidate.TaskID != taskID || candidate.TargetVersion != request.TargetVersion {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update staged identity mismatch")
+	}
+
+	store := fixedPlatformUpdateReceiptStore()
+	if _, err := store.CreatePrepared(taskID, request.TargetVersion); err != nil {
+		// A concurrent or prior writer may have created durable handoff evidence.
+		// Never reinterpret that state as permission to retry.
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: persist prepared receipt: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	}
+	if err := StartDetachedPlatformUpdate(ctx, taskID); err != nil {
+		if errors.Is(err, ErrPlatformUpdateDispatchAmbiguous) {
+			return PlatformUpdateStagedCandidate{}, err
+		}
+		// exec.Start failed, so this invocation provably never created a
+		// systemd-run process. Only this narrow case is deterministic pre-dispatch.
+		if _, receiptErr := store.MarkPreDispatchFailed(taskID, "detached_launch_failed"); receiptErr != nil {
+			return PlatformUpdateStagedCandidate{}, fmt.Errorf("detached launch failed: %v; persist pre-dispatch failure: %w", err, receiptErr)
+		}
+		return PlatformUpdateStagedCandidate{}, err
+	}
+	return candidate, nil
+}
+
+func platformUpdateDispatchHasPriorState(taskID string) (bool, error) {
+	store := fixedPlatformUpdateReceiptStore()
+	if _, err := store.Read(taskID); err == nil {
+		return true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+
+	finalDir := filepath.Join(platformUpdateStagingRoot, taskID)
+	if _, err := os.Lstat(finalDir); err == nil {
+		return true, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	partials, err := filepath.Glob(filepath.Join(platformUpdateStagingRoot, ".partial-"+taskID+"-*"))
+	if err != nil {
+		return false, err
+	}
+	return len(partials) != 0, nil
+}
+
+// RunPlatformUpdateWorker is local-only. A Manager-facing dispatch must have
+// already staged the exact release and durably persisted a matching prepared
+// receipt before systemd-run is invoked. The worker verifies the handoff and
+// monotonically crosses mutation_started before invoking the verified updater.
 func RunPlatformUpdateWorker(taskID string) error {
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("platform update worker must run as root")
@@ -75,13 +155,9 @@ func RunPlatformUpdateWorker(taskID string) error {
 	if err != nil {
 		return err
 	}
-
 	store := fixedPlatformUpdateReceiptStore()
-	if err := rejectOrReconcileExistingPlatformUpdateReceipt(store, taskID); err != nil {
+	if err := acceptPreparedPlatformUpdateReceipt(store, taskID, targetVersion); err != nil {
 		return err
-	}
-	if _, err := store.CreatePrepared(taskID, targetVersion); err != nil {
-		return fmt.Errorf("create platform update receipt: %w", err)
 	}
 	if _, err := store.MarkMutationStarted(taskID); err != nil {
 		return fmt.Errorf("persist platform update mutation start: %w", err)
@@ -100,7 +176,6 @@ func RunPlatformUpdateWorker(taskID string) error {
 	cmd.Env = platformUpdateWorkerEnvironment
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
 	if err := cmd.Start(); err != nil {
 		_, receiptErr := store.MarkFailed(taskID, "updater_start_failed")
 		if receiptErr != nil {
@@ -154,20 +229,16 @@ func platformUpdateWaitOutcomeUnknown(waitErr error) bool {
 	return status.Signaled()
 }
 
-// rejectOrReconcileExistingPlatformUpdateReceipt is called only from a newly
-// created task-specific transient worker. systemd refuses a second unit with the
-// same fixed name while the original worker is still active, so reaching this
-// function with mutation_started means the previous unit is no longer alive and
-// its terminal outcome cannot be proven. Ordinary routegate-agent.service startup
-// must never call this helper because the detached worker may legitimately still
-// be running while the updated Agent becomes healthy.
-func rejectOrReconcileExistingPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID string) error {
+func acceptPreparedPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID, targetVersion string) error {
 	receipt, err := store.Read(taskID)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return fmt.Errorf("platform update prepared receipt is missing")
 		}
-		return fmt.Errorf("inspect existing platform update receipt: %w", err)
+		return fmt.Errorf("inspect platform update prepared receipt: %w", err)
+	}
+	if receipt.TargetVersion != targetVersion {
+		return fmt.Errorf("platform update prepared receipt version mismatch")
 	}
 	if receipt.Phase == PlatformUpdateReceiptMutationStarted {
 		reconciled, reconcileErr := store.ReconcileInterrupted(taskID)
@@ -176,7 +247,10 @@ func rejectOrReconcileExistingPlatformUpdateReceipt(store platformUpdateReceiptS
 		}
 		return fmt.Errorf("platform update task has unknown prior outcome: %s", reconciled.Code)
 	}
-	return fmt.Errorf("platform update task receipt already exists in terminal or non-runnable phase %s", receipt.Phase)
+	if receipt.Phase != PlatformUpdateReceiptPrepared || receipt.MutationStarted {
+		return fmt.Errorf("platform update task receipt is not runnable in phase %s", receipt.Phase)
+	}
+	return nil
 }
 
 func validatedPlatformUpdateStage(taskID string) (string, string, error) {
@@ -290,12 +364,4 @@ func validateRootOwnedNonWritable(info os.FileInfo) error {
 		return fmt.Errorf("group/world writable")
 	}
 	return nil
-}
-
-func boundedPlatformUpdateOutput(output []byte) string {
-	const limit = 512
-	if len(output) > limit {
-		output = output[:limit]
-	}
-	return string(output)
 }

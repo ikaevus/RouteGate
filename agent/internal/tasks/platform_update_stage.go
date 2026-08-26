@@ -2,14 +2,17 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -24,9 +27,8 @@ const (
 var canonicalTaskIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 // PlatformUpdateStagedCandidate is a host-local, non-authoritative staging result.
-// E2b intentionally does not claim provenance verification or permission to
-// mutate the host; E2c must pass these exact files through the fixed trusted
-// verified updater before any transaction may start.
+// It does not grant permission to mutate the host; the detached worker must pass
+// these exact files through the fixed trusted verified updater before mutation.
 type PlatformUpdateStagedCandidate struct {
 	TaskID        string
 	TargetVersion string
@@ -45,15 +47,32 @@ type PlatformUpdateStager struct {
 func NewPlatformUpdateStager() PlatformUpdateStager {
 	return PlatformUpdateStager{
 		client: &http.Client{
-			Timeout: platformUpdateHTTPTimeout,
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+			Timeout:       platformUpdateHTTPTimeout,
+			CheckRedirect: platformUpdateRedirectPolicy,
 		},
 		baseURL:     platformUpdateReleaseBaseURL,
 		stagingRoot: platformUpdateStagingRoot,
 		arch:        runtime.GOARCH,
 	}
+}
+
+// platformUpdateRedirectPolicy allows only the bounded HTTPS redirect closure
+// used by official GitHub release assets. It intentionally mirrors the Manager
+// staging boundary instead of either rejecting real GitHub CDN redirects or
+// following arbitrary redirect targets.
+func platformUpdateRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 3 {
+		return errors.New("too many platform update release redirects")
+	}
+	if req.URL.Scheme != "https" || req.URL.User != nil || !allowedPlatformUpdateDownloadHost(req.URL.Hostname()) {
+		return errors.New("platform update release redirect left the fixed GitHub HTTPS boundary")
+	}
+	return nil
+}
+
+func allowedPlatformUpdateDownloadHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return host == "github.com" || strings.HasSuffix(host, ".githubusercontent.com")
 }
 
 func (s PlatformUpdateStager) Stage(ctx context.Context, taskID string, request PlatformUpdateRequest) (PlatformUpdateStagedCandidate, error) {
@@ -144,19 +163,24 @@ func ensurePrivatePlatformUpdateStagingRoot(root string) error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return fmt.Errorf("platform update staging root is unsafe")
 	}
-	if err := os.Chmod(root, 0700); err != nil {
-		return fmt.Errorf("secure platform update staging root: %w", err)
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Geteuid() {
+		return fmt.Errorf("platform update staging root has unexpected owner")
+	}
+	if info.Mode().Perm() != 0700 {
+		return fmt.Errorf("platform update staging root mode must be 0700")
 	}
 	return nil
 }
 
 func (s PlatformUpdateStager) downloadAsset(ctx context.Context, version, assetName string, limit int64, partialDir string) error {
-	url := strings.TrimRight(s.baseURL, "/") + "/" + version + "/" + assetName
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	assetURL := strings.TrimRight(s.baseURL, "/") + "/" + url.PathEscape(version) + "/" + url.PathEscape(assetName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, assetURL, nil)
 	if err != nil {
 		return fmt.Errorf("build platform update asset request: %w", err)
 	}
 	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("User-Agent", "RouteGate-Agent/update-staging")
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("download platform update asset %s: %w", assetName, err)
@@ -176,15 +200,19 @@ func (s PlatformUpdateStager) downloadAsset(ctx context.Context, version, assetN
 	}
 	reader := io.LimitReader(resp.Body, limit+1)
 	written, copyErr := io.Copy(file, reader)
+	syncErr := file.Sync()
 	closeErr := file.Close()
 	if copyErr != nil {
 		return fmt.Errorf("write staged platform update asset %s: %w", assetName, copyErr)
 	}
-	if closeErr != nil {
-		return fmt.Errorf("close staged platform update asset %s: %w", assetName, closeErr)
-	}
 	if written > limit {
 		return fmt.Errorf("platform update asset %s exceeds size limit", assetName)
+	}
+	if syncErr != nil {
+		return fmt.Errorf("sync staged platform update asset %s: %w", assetName, syncErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close staged platform update asset %s: %w", assetName, closeErr)
 	}
 	return nil
 }

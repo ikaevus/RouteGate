@@ -11,16 +11,15 @@ func testPlatformUpdateReceiptStore(t *testing.T) platformUpdateReceiptStore {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "receipts")
 	return platformUpdateReceiptStore{
-		root: root,
+		root:     root,
 		ownerUID: uint32(os.Geteuid()),
-		now: func() time.Time { return time.Date(2026, 8, 26, 2, 0, 0, 0, time.UTC) },
+		now:      func() time.Time { return time.Date(2026, 8, 26, 2, 0, 0, 0, time.UTC) },
 	}
 }
 
 func TestPlatformUpdateReceiptLifecycle(t *testing.T) {
 	store := testPlatformUpdateReceiptStore(t)
 	taskID := "550e8400-e29b-41d4-a716-446655440000"
-
 	prepared, err := store.CreatePrepared(taskID, "v1.2.3")
 	if err != nil {
 		t.Fatalf("CreatePrepared: %v", err)
@@ -28,7 +27,6 @@ func TestPlatformUpdateReceiptLifecycle(t *testing.T) {
 	if prepared.Phase != PlatformUpdateReceiptPrepared || prepared.MutationStarted {
 		t.Fatalf("unexpected prepared receipt: %+v", prepared)
 	}
-
 	started, err := store.MarkMutationStarted(taskID)
 	if err != nil {
 		t.Fatalf("MarkMutationStarted: %v", err)
@@ -36,7 +34,6 @@ func TestPlatformUpdateReceiptLifecycle(t *testing.T) {
 	if started.Phase != PlatformUpdateReceiptMutationStarted || !started.MutationStarted {
 		t.Fatalf("unexpected mutation-started receipt: %+v", started)
 	}
-
 	succeeded, err := store.MarkSucceeded(taskID)
 	if err != nil {
 		t.Fatalf("MarkSucceeded: %v", err)
@@ -47,13 +44,62 @@ func TestPlatformUpdateReceiptLifecycle(t *testing.T) {
 	if _, err := store.MarkFailed(taskID, "late_failure"); err == nil {
 		t.Fatal("terminal receipt accepted a later transition")
 	}
-
 	info, err := os.Lstat(store.path(taskID))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Mode().Perm() != 0600 {
 		t.Fatalf("receipt mode = %o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestPlatformUpdateReceiptPreDispatchFailure(t *testing.T) {
+	store := testPlatformUpdateReceiptStore(t)
+	taskID := "550e8400-e29b-41d4-a716-446655440000"
+	if _, err := store.CreatePrepared(taskID, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := store.MarkPreDispatchFailed(taskID, "detached_launch_failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Phase != PlatformUpdateReceiptFailed || failed.MutationStarted || failed.Code != "detached_launch_failed" {
+		t.Fatalf("unexpected pre-dispatch failure: %+v", failed)
+	}
+	if _, err := store.MarkMutationStarted(taskID); err == nil {
+		t.Fatal("pre-dispatch failed receipt became runnable")
+	}
+}
+
+func TestPreDispatchFailureCannotEraseMutationStarted(t *testing.T) {
+	store := testPlatformUpdateReceiptStore(t)
+	taskID := "550e8400-e29b-41d4-a716-446655440000"
+	if _, err := store.CreatePrepared(taskID, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkMutationStarted(taskID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkPreDispatchFailed(taskID, "detached_launch_failed"); err == nil {
+		t.Fatal("pre-dispatch failure erased mutation-started evidence")
+	}
+	receipt, err := store.Read(taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Phase != PlatformUpdateReceiptMutationStarted || !receipt.MutationStarted {
+		t.Fatalf("mutation evidence changed after rejected pre-dispatch failure: %+v", receipt)
+	}
+}
+
+func TestPostDispatchFailureRequiresMutationStarted(t *testing.T) {
+	store := testPlatformUpdateReceiptStore(t)
+	taskID := "550e8400-e29b-41d4-a716-446655440000"
+	if _, err := store.CreatePrepared(taskID, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkFailed(taskID, "verified_updater_failed"); err == nil {
+		t.Fatal("post-dispatch failure was accepted from prepared")
 	}
 }
 
@@ -136,7 +182,6 @@ func TestPlatformUpdateReceiptRejectsInconsistentPhaseState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = []byte(string(data))
 	old := `"mutationStarted":false`
 	newValue := `"mutationStarted":true`
 	updated := []byte(string(data))
@@ -155,12 +200,12 @@ func TestPlatformUpdateReceiptRejectsInconsistentPhaseState(t *testing.T) {
 }
 
 func TestPlatformUpdateReceiptCodeIsBounded(t *testing.T) {
-	for _, code := range []string{"", "contains space", "../escape", string(make([]byte, 65))} {
+	for _, code := range []string{"", "contains space", "../escape", "update-error-1", string(make([]byte, 65))} {
 		if validPlatformUpdateReceiptCode(code) {
 			t.Fatalf("invalid receipt code %q was accepted", code)
 		}
 	}
-	for _, code := range []string{"rollback_failed", "update-error-1"} {
+	for _, code := range []string{"rollback_failed", "update_error_1"} {
 		if !validPlatformUpdateReceiptCode(code) {
 			t.Fatalf("valid receipt code %q was rejected", code)
 		}

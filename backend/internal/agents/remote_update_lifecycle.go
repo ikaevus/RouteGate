@@ -3,10 +3,11 @@ package agents
 // Remote VPN-node software updates use a stricter lifecycle than ordinary
 // synchronous Agent operations. A successful dispatch only proves that the
 // detached worker was accepted; it does not prove that host mutation
-// succeeded. Terminal state is therefore allowed only after receipt
-// reconciliation.
+// succeeded. Terminal state is therefore allowed only after deterministic
+// pre-dispatch failure or durable receipt reconciliation.
 const (
 	AgentTaskKindPlatformUpdate       = "platform_update"
+	PlatformUpdateOperationDispatch  = "dispatch"
 	PlatformUpdateOperationReconcile = "reconcile"
 
 	AgentOperationJobStatusMutationDispatched = "mutation_dispatched"
@@ -44,11 +45,10 @@ func PlatformUpdateStatusIsActive(status string) bool {
 // ValidPlatformUpdateTransition is the single Manager-side state-machine
 // contract for remote VPN-node updates.
 //
-// A deterministic failure before dispatch may terminate directly from
-// in_progress. Once mutation has been dispatched, only receipt reconciliation
-// may choose succeeded, failed, or outcome_unknown. There is deliberately no
-// transition back to pending/in_progress from mutation_dispatched, which makes
-// automatic redispatch after Manager restart invalid by construction.
+// A deterministic failure before detached launcher start may terminate from
+// in_progress. Once durable handoff may have happened, recovery is
+// reconciliation-only. There is deliberately no transition back to pending or
+// another dispatch-capable state.
 func ValidPlatformUpdateTransition(from, to string) bool {
 	switch from {
 	case AgentOperationJobStatusPending:

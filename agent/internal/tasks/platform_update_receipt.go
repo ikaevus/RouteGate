@@ -61,9 +61,11 @@ func (s platformUpdateReceiptStore) CreatePrepared(taskID, targetVersion string)
 	now := s.now().UTC()
 	receipt := PlatformUpdateReceipt{
 		SchemaVersion: platformUpdateReceiptSchemaVersion,
-		TaskID: taskID, TargetVersion: targetVersion,
-		Phase: PlatformUpdateReceiptPrepared,
-		CreatedAt: now, UpdatedAt: now,
+		TaskID:        taskID,
+		TargetVersion: targetVersion,
+		Phase:         PlatformUpdateReceiptPrepared,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	if err := s.writeAtomic(receipt, false); err != nil {
 		return PlatformUpdateReceipt{}, err
@@ -84,6 +86,13 @@ func (s platformUpdateReceiptStore) MarkFailed(taskID, code string) (PlatformUpd
 		return PlatformUpdateReceipt{}, fmt.Errorf("invalid platform update receipt code")
 	}
 	return s.transition(taskID, PlatformUpdateReceiptFailed, true, code)
+}
+
+func (s platformUpdateReceiptStore) MarkPreDispatchFailed(taskID, code string) (PlatformUpdateReceipt, error) {
+	if !validPlatformUpdateReceiptCode(code) {
+		return PlatformUpdateReceipt{}, fmt.Errorf("invalid platform update receipt code")
+	}
+	return s.transition(taskID, PlatformUpdateReceiptFailed, false, code)
 }
 
 func (s platformUpdateReceiptStore) MarkOutcomeUnknown(taskID, code string) (PlatformUpdateReceipt, error) {
@@ -141,7 +150,19 @@ func (s platformUpdateReceiptStore) Read(taskID string) (PlatformUpdateReceipt, 
 	return receipt, nil
 }
 
+// transition is serialized across detached workers and the Agent dispatch path.
+// The lock prevents a stale prepared read from overwriting a concurrent
+// mutation_started receipt and thereby erasing the durable at-most-once proof.
 func (s platformUpdateReceiptStore) transition(taskID string, phase PlatformUpdateReceiptPhase, mutationStarted bool, code string) (PlatformUpdateReceipt, error) {
+	lock, err := s.acquireTransitionLock()
+	if err != nil {
+		return PlatformUpdateReceipt{}, err
+	}
+	defer func() {
+		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		_ = lock.Close()
+	}()
+
 	receipt, err := s.Read(taskID)
 	if err != nil {
 		return PlatformUpdateReceipt{}, err
@@ -149,6 +170,18 @@ func (s platformUpdateReceiptStore) transition(taskID string, phase PlatformUpda
 	if !allowedPlatformUpdateReceiptTransition(receipt.Phase, phase) {
 		return PlatformUpdateReceipt{}, fmt.Errorf("invalid platform update receipt transition %s -> %s", receipt.Phase, phase)
 	}
+	if receipt.MutationStarted && !mutationStarted {
+		return PlatformUpdateReceipt{}, fmt.Errorf("platform update mutation-started evidence cannot be cleared")
+	}
+	if phase == PlatformUpdateReceiptFailed {
+		if mutationStarted && receipt.Phase != PlatformUpdateReceiptMutationStarted {
+			return PlatformUpdateReceipt{}, fmt.Errorf("post-dispatch failure requires mutation_started receipt")
+		}
+		if !mutationStarted && receipt.Phase != PlatformUpdateReceiptPrepared {
+			return PlatformUpdateReceipt{}, fmt.Errorf("pre-dispatch failure requires prepared receipt")
+		}
+	}
+
 	receipt.Phase = phase
 	receipt.MutationStarted = mutationStarted
 	receipt.Code = code
@@ -162,18 +195,53 @@ func (s platformUpdateReceiptStore) transition(taskID string, phase PlatformUpda
 	return receipt, nil
 }
 
+func (s platformUpdateReceiptStore) acquireTransitionLock() (*os.File, error) {
+	if err := s.ensureRoot(); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(s.root, ".transition.lock")
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open platform update receipt transition lock: %w", err)
+	}
+	info, err := lock.Stat()
+	if err != nil {
+		_ = lock.Close()
+		return nil, err
+	}
+	if err := s.validateOwnedRegular(info); err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("unsafe platform update receipt transition lock: %w", err)
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("lock platform update receipt transition: %w", err)
+	}
+	return lock, nil
+}
+
 func (s platformUpdateReceiptStore) path(taskID string) string {
 	return filepath.Join(s.root, taskID+".json")
 }
 
 func (s platformUpdateReceiptStore) ensureRoot() error {
-	if err := os.MkdirAll(s.root, 0700); err != nil {
+	if err := os.Mkdir(s.root, 0700); err != nil && !os.IsExist(err) {
 		return fmt.Errorf("create platform update receipt root: %w", err)
 	}
-	if err := os.Chmod(s.root, 0700); err != nil {
-		return fmt.Errorf("secure platform update receipt root: %w", err)
+	info, err := os.Lstat(s.root)
+	if err != nil {
+		return fmt.Errorf("inspect platform update receipt root: %w", err)
 	}
-	return s.validateRoot()
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("platform update receipt root is unsafe")
+	}
+	if err := s.validateOwnerMode(info); err != nil {
+		return err
+	}
+	if info.Mode().Perm() != 0700 {
+		return fmt.Errorf("platform update receipt root mode must be 0700")
+	}
+	return nil
 }
 
 func (s platformUpdateReceiptStore) validateRoot() error {
@@ -183,6 +251,9 @@ func (s platformUpdateReceiptStore) validateRoot() error {
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return fmt.Errorf("platform update receipt root is unsafe")
+	}
+	if info.Mode().Perm() != 0700 {
+		return fmt.Errorf("platform update receipt root mode must be 0700")
 	}
 	return s.validateOwnerMode(info)
 }
@@ -267,10 +338,7 @@ func (s platformUpdateReceiptStore) writeAtomic(receipt PlatformUpdateReceipt, r
 		return err
 	}
 	defer dir.Close()
-	if err := dir.Sync(); err != nil {
-		return err
-	}
-	return nil
+	return dir.Sync()
 }
 
 func ensureJSONEOF(decoder *json.Decoder) error {
@@ -285,7 +353,10 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 }
 
 func validatePlatformUpdateReceiptContract(receipt PlatformUpdateReceipt, taskID string) error {
-	if receipt.SchemaVersion != platformUpdateReceiptSchemaVersion || receipt.TaskID != taskID || !routeGateReleaseVersionPattern.MatchString(receipt.TargetVersion) || !validPlatformUpdateReceiptPhase(receipt.Phase) {
+	if receipt.SchemaVersion != platformUpdateReceiptSchemaVersion ||
+		receipt.TaskID != taskID ||
+		!routeGateReleaseVersionPattern.MatchString(receipt.TargetVersion) ||
+		!validPlatformUpdateReceiptPhase(receipt.Phase) {
 		return fmt.Errorf("platform update receipt contract is invalid")
 	}
 	if receipt.CreatedAt.IsZero() || receipt.UpdatedAt.IsZero() || receipt.UpdatedAt.Before(receipt.CreatedAt) {
@@ -300,7 +371,11 @@ func validatePlatformUpdateReceiptContract(receipt PlatformUpdateReceipt, taskID
 		if !receipt.MutationStarted || receipt.Code != "" {
 			return fmt.Errorf("platform update receipt phase is inconsistent")
 		}
-	case PlatformUpdateReceiptFailed, PlatformUpdateReceiptOutcomeUnknown:
+	case PlatformUpdateReceiptFailed:
+		if !validPlatformUpdateReceiptCode(receipt.Code) {
+			return fmt.Errorf("platform update terminal receipt is inconsistent")
+		}
+	case PlatformUpdateReceiptOutcomeUnknown:
 		if !receipt.MutationStarted || !validPlatformUpdateReceiptCode(receipt.Code) {
 			return fmt.Errorf("platform update terminal receipt is inconsistent")
 		}
@@ -311,7 +386,7 @@ func validatePlatformUpdateReceiptContract(receipt PlatformUpdateReceipt, taskID
 func allowedPlatformUpdateReceiptTransition(from, to PlatformUpdateReceiptPhase) bool {
 	switch from {
 	case PlatformUpdateReceiptPrepared:
-		return to == PlatformUpdateReceiptMutationStarted
+		return to == PlatformUpdateReceiptMutationStarted || to == PlatformUpdateReceiptFailed
 	case PlatformUpdateReceiptMutationStarted:
 		return to == PlatformUpdateReceiptSucceeded || to == PlatformUpdateReceiptFailed || to == PlatformUpdateReceiptOutcomeUnknown
 	default:
@@ -321,7 +396,11 @@ func allowedPlatformUpdateReceiptTransition(from, to PlatformUpdateReceiptPhase)
 
 func validPlatformUpdateReceiptPhase(phase PlatformUpdateReceiptPhase) bool {
 	switch phase {
-	case PlatformUpdateReceiptPrepared, PlatformUpdateReceiptMutationStarted, PlatformUpdateReceiptSucceeded, PlatformUpdateReceiptFailed, PlatformUpdateReceiptOutcomeUnknown:
+	case PlatformUpdateReceiptPrepared,
+		PlatformUpdateReceiptMutationStarted,
+		PlatformUpdateReceiptSucceeded,
+		PlatformUpdateReceiptFailed,
+		PlatformUpdateReceiptOutcomeUnknown:
 		return true
 	default:
 		return false
@@ -333,7 +412,7 @@ func validPlatformUpdateReceiptCode(code string) bool {
 		return false
 	}
 	for _, r := range code {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
 			continue
 		}
 		return false

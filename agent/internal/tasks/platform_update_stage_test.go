@@ -12,6 +12,15 @@ import (
 	"testing"
 )
 
+func privatePlatformUpdateTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestPlatformUpdateStagerStagesOnlyFixedOfficialAssetSet(t *testing.T) {
 	var requested []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +30,7 @@ func TestPlatformUpdateStagerStagesOnlyFixedOfficialAssetSet(t *testing.T) {
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
+	root := privatePlatformUpdateTempDir(t)
 	stager := NewPlatformUpdateStager()
 	stager.baseURL = server.URL
 	stager.stagingRoot = root
@@ -83,7 +92,7 @@ func TestPlatformUpdateStagerRejectsUnsafeIdentityAndArchitectureBeforeDownload(
 
 	stager := NewPlatformUpdateStager()
 	stager.baseURL = server.URL
-	stager.stagingRoot = t.TempDir()
+	stager.stagingRoot = privatePlatformUpdateTempDir(t)
 	stager.client = server.Client()
 
 	request := PlatformUpdateRequest{SchemaVersion: PlatformUpdateSchemaVersion, TargetVersion: "v1.2.3"}
@@ -105,7 +114,7 @@ func TestPlatformUpdateStagerRejectsRedirectAndCleansPartialState(t *testing.T) 
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
+	root := privatePlatformUpdateTempDir(t)
 	stager := NewPlatformUpdateStager()
 	stager.baseURL = server.URL
 	stager.stagingRoot = root
@@ -136,7 +145,7 @@ func TestPlatformUpdateStagerRejectsOversizedAsset(t *testing.T) {
 	}))
 	defer server.Close()
 
-	root := t.TempDir()
+	root := privatePlatformUpdateTempDir(t)
 	stager := NewPlatformUpdateStager()
 	stager.baseURL = server.URL
 	stager.stagingRoot = root
