@@ -35,10 +35,13 @@ func (r *Runner) processPlatformUpdateDispatchTask(ctx context.Context, task tas
 	}
 
 	// Heartbeat readiness is only discovery evidence and may be stale. Repeat
-	// the fixed executable + full parent-chain validation immediately before
-	// staging/dispatch so a previously ready node fails closed if its trusted
-	// local execution boundary has changed.
+	// the fixed executable + full parent-chain validation before staging. If it
+	// fails, persist the deterministic pre-dispatch outcome before attempting to
+	// acknowledge it to Manager so an acknowledgement loss remains reconcilable.
 	if !tasks.PlatformUpdateRuntimeReady() {
+		if receiptErr := tasks.RecordPlatformUpdatePreDispatchFailure(task.ID, request.TargetVersion, "runtime_not_ready"); receiptErr != nil {
+			return fmt.Errorf("platform update runtime is not safely ready; persist bounded failure: %w", receiptErr)
+		}
 		report := map[string]any{
 			"taskId":        task.ID,
 			"targetVersion": request.TargetVersion,
