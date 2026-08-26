@@ -168,4 +168,20 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 	`, rolloutID); err == nil {
 		t.Fatal("rollout target version was mutated after creation")
 	}
+
+	var immutableHistoryTriggerCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*)
+		FROM pg_trigger
+		WHERE NOT tgisinternal
+		  AND tgname IN (
+			'trg_platform_update_rollouts_no_delete',
+			'trg_platform_update_rollout_entries_no_delete'
+		  )
+	`).Scan(&immutableHistoryTriggerCount); err != nil {
+		t.Fatalf("inspect immutable rollout history triggers: %v", err)
+	}
+	if immutableHistoryTriggerCount != 2 {
+		t.Fatalf("immutable rollout history trigger count=%d want=2", immutableHistoryTriggerCount)
+	}
 }
