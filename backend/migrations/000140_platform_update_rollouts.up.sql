@@ -133,6 +133,29 @@ BEFORE UPDATE ON platform_update_rollout_entries
 FOR EACH ROW
 EXECUTE FUNCTION enforce_platform_update_rollout_entry_transition();
 
+-- Rollout and entry rows are durable mutation-history identities. Deleting a
+-- row would release its uniqueness slots and permit delete/reinsert replay with
+-- a fresh runnable state or job binding, bypassing the UPDATE transition guards.
+-- Retention/archival, if added later, must preserve that identity explicitly.
+CREATE OR REPLACE FUNCTION reject_platform_update_rollout_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'platform update rollout history is immutable and cannot be deleted';
+END;
+$$;
+
+CREATE TRIGGER trg_platform_update_rollouts_no_delete
+BEFORE DELETE ON platform_update_rollouts
+FOR EACH ROW
+EXECUTE FUNCTION reject_platform_update_rollout_delete();
+
+CREATE TRIGGER trg_platform_update_rollout_entries_no_delete
+BEFORE DELETE ON platform_update_rollout_entries
+FOR EACH ROW
+EXECUTE FUNCTION reject_platform_update_rollout_delete();
+
 CREATE UNIQUE INDEX idx_platform_update_rollout_entries_one_updating
     ON platform_update_rollout_entries(rollout_id)
     WHERE status = 'updating';
