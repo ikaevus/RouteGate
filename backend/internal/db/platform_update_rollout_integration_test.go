@@ -29,9 +29,9 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		t.Fatalf("apply migrations: %v", err)
 	}
 
-	serverIDs := make([]string, 2)
-	agentIDs := make([]string, 2)
-	for index, name := range []string{"rollout-node-a", "rollout-node-b"} {
+	serverIDs := make([]string, 3)
+	agentIDs := make([]string, 3)
+	for index, name := range []string{"rollout-node-a", "rollout-node-b", "rollout-node-c"} {
 		if err := pool.QueryRow(ctx, `
 			INSERT INTO servers (name, status, deployment_role)
 			VALUES ($1, 'active', 'vpn')
@@ -67,8 +67,8 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 	}
 
 	matchingJobID := createJob(serverIDs[0], agentIDs[0], "v1.2.3")
-	otherServerJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
 	secondMatchingJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
+	otherServerJobID := createJob(serverIDs[2], agentIDs[2], "v1.2.3")
 	var wrongVersionJobID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO agent_platform_update_jobs (
@@ -150,7 +150,7 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
 		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 2)
-	`, rolloutID, serverIDs[0]); err == nil {
+	`, rolloutID, serverIDs[2]); err == nil {
 		t.Fatal("rollout membership changed after execution started")
 	}
 
