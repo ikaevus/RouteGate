@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -122,5 +123,21 @@ func TestMissingReceiptAllowsFirstWorker(t *testing.T) {
 	store := testPlatformUpdateReceiptStore(t)
 	if err := rejectOrReconcileExistingPlatformUpdateReceipt(store, "550e8400-e29b-41d4-a716-446655440000"); err != nil {
 		t.Fatalf("first worker rejected without a receipt: %v", err)
+	}
+}
+
+func TestPlatformUpdateWaitOutcomeClassification(t *testing.T) {
+	signaledErr := exec.Command("sh", "-c", "kill -KILL $$").Run()
+	if signaledErr == nil || !platformUpdateWaitOutcomeUnknown(signaledErr) {
+		t.Fatalf("signaled updater must be outcome_unknown, err=%v", signaledErr)
+	}
+
+	exitErr := exec.Command("sh", "-c", "exit 7").Run()
+	if exitErr == nil || platformUpdateWaitOutcomeUnknown(exitErr) {
+		t.Fatalf("normal nonzero updater exit must be deterministic failure, err=%v", exitErr)
+	}
+
+	if !platformUpdateWaitOutcomeUnknown(exec.ErrNotFound) {
+		t.Fatal("unclassified wait error must fail closed to outcome_unknown")
 	}
 }
