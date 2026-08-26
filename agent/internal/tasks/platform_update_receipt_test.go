@@ -105,6 +105,55 @@ func TestPlatformUpdateReceiptRejectsUnsafeRoot(t *testing.T) {
 	}
 }
 
+func TestPlatformUpdateReceiptRejectsUnknownJSONFields(t *testing.T) {
+	store := testPlatformUpdateReceiptStore(t)
+	taskID := "550e8400-e29b-41d4-a716-446655440000"
+	if _, err := store.CreatePrepared(taskID, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	path := store.path(taskID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data[:len(data)-1], []byte(`,"unexpected":true}`)...)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Read(taskID); err == nil {
+		t.Fatal("receipt with unknown JSON field was accepted")
+	}
+}
+
+func TestPlatformUpdateReceiptRejectsInconsistentPhaseState(t *testing.T) {
+	store := testPlatformUpdateReceiptStore(t)
+	taskID := "550e8400-e29b-41d4-a716-446655440000"
+	if _, err := store.CreatePrepared(taskID, "v1.2.3"); err != nil {
+		t.Fatal(err)
+	}
+	path := store.path(taskID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = []byte(string(data))
+	old := `"mutationStarted":false`
+	newValue := `"mutationStarted":true`
+	updated := []byte(string(data))
+	for i := 0; i+len(old) <= len(updated); i++ {
+		if string(updated[i:i+len(old)]) == old {
+			updated = append(updated[:i], append([]byte(newValue), updated[i+len(old):]...)...)
+			break
+		}
+	}
+	if err := os.WriteFile(path, updated, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Read(taskID); err == nil {
+		t.Fatal("semantically inconsistent receipt was accepted")
+	}
+}
+
 func TestPlatformUpdateReceiptCodeIsBounded(t *testing.T) {
 	for _, code := range []string{"", "contains space", "../escape", string(make([]byte, 65))} {
 		if validPlatformUpdateReceiptCode(code) {
