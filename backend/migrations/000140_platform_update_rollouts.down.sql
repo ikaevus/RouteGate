@@ -1,3 +1,6 @@
+DROP TRIGGER IF EXISTS trg_platform_update_rollout_entries_no_delete ON platform_update_rollout_entries;
+DROP TRIGGER IF EXISTS trg_platform_update_rollouts_no_delete ON platform_update_rollouts;
+DROP FUNCTION IF EXISTS reject_platform_update_rollout_delete();
 DROP TRIGGER IF EXISTS trg_platform_update_rollout_entries_transition ON platform_update_rollout_entries;
 DROP FUNCTION IF EXISTS enforce_platform_update_rollout_entry_transition();
 DROP TRIGGER IF EXISTS trg_platform_update_rollouts_transition ON platform_update_rollouts;
