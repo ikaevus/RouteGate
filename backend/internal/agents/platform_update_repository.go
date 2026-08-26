@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	PlatformUpdateCapabilityStateReady       = "ready"
+	PlatformUpdateCapabilityStateReady         = "ready"
 	PlatformUpdateCapabilityRequestVersionOnly = "version_only"
-	PlatformUpdateCapabilitySchemaVersion    = 1
+	PlatformUpdateCapabilitySchemaVersion      = 1
 )
 
 type PlatformUpdateJob struct {
@@ -65,7 +65,7 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 		) a ON true
 		WHERE s.id = $1::uuid
 		  AND s.status <> 'disabled'
-		  AND s.deployment_role IN ('vpn', 'hybrid')
+		  AND s.deployment_role = 'vpn'
 		  AND a.capabilities -> 'softwareUpdate' = $3::jsonb
 		RETURNING
 			id::text,
