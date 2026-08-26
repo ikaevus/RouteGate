@@ -39,6 +39,18 @@ func TestFixedPlatformUpdateCommandRuntimeCoversCoreMigrationSelectors(t *testin
 	}
 }
 
+func TestFixedPlatformUpdateCommandRuntimeCoversTarGzipFilter(t *testing.T) {
+	required := make(map[string]bool, len(fixedPlatformUpdateRequiredCommands))
+	for _, name := range fixedPlatformUpdateRequiredCommands {
+		required[name] = true
+	}
+	for _, name := range []string{"tar", "gzip"} {
+		if !required[name] {
+			t.Fatalf("fixed updater command runtime does not cover compressed archive dependency %q", name)
+		}
+	}
+}
+
 func TestValidatePlatformUpdateCommandRuntimeAcceptsTrustedDirectExecutable(t *testing.T) {
 	root := commandRuntimeFixtureRoot(t)
 	uid := uint32(os.Geteuid())
