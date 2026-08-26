@@ -39,7 +39,11 @@ Each rollout has an ordered immutable set of VPN-node entries created from a Man
 
 `queued -> waiting -> updating -> healthy|failed|outcome_unknown|skipped`
 
-Only one entry in a rollout may be `updating` at a time in E3a. The rollout references the concrete single-node platform-update job used for that entry once one is created.
+Rollout membership is frozen at the `pending -> running` boundary. Entry insertion must atomically lock and verify a still-`pending` parent so a planner retry or concurrent writer cannot append a previously unsnapshotted node after execution begins.
+
+Only one entry in a rollout may be `updating` at a time in E3a. Transitioning an entry to `updating` must atomically lock and verify the parent rollout is still `running` before binding the immutable single-node platform-update job. Parent terminalization and mutation admission therefore serialize on the same durable rollout row.
+
+A rollout must not become terminal while any entry remains `updating`. This prevents a pending single-node mutation job from surviving behind a terminal rollout and later being claimed independently of the rollout stop state.
 
 A rollout never infers update success from dispatch acknowledgement. An entry becomes `healthy` only after its single-node update job is `succeeded` and a post-update health gate confirms the node is operational under Manager-observed Agent evidence.
 
@@ -90,6 +94,9 @@ Before the first mutation-capable rollout API is enabled, focused tests must pro
 - Management-first target-version gate;
 - VPN-only eligibility and Hybrid/Management rejection;
 - immutable node ordering for one rollout;
+- membership cannot be added after the rollout leaves `pending`;
+- mutation-job admission is rejected unless the parent rollout is `running`;
+- parent terminalization cannot race past an `updating` entry;
 - at most one `updating` node at a time;
 - creation of at most one single-node platform-update job per rollout entry;
 - restart/replay cannot create a second single-node mutation for an entry;
