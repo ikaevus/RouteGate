@@ -39,7 +39,7 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 	if serverID == "" {
 		return PlatformUpdateJob{}, fmt.Errorf("server id is required")
 	}
-	if !canonicalRouteGateVersionPattern.MatchString(targetVersion) {
+	if !validPlatformUpdateTargetVersion(targetVersion) {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid RouteGate target version")
 	}
 	capability, err := json.Marshal(map[string]any{
