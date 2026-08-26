@@ -49,9 +49,9 @@ func (h *Handler) CreatePlatformUpdate(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Request body must contain exactly one valid platform update request."))
 		return
 	}
-	if !canonicalRouteGateVersionPattern.MatchString(request.TargetVersion) {
+	if !validPlatformUpdateTargetVersion(request.TargetVersion) {
 		h.recordPlatformUpdateCreateAudit(r, serverID, "", "", audit.ResultFailure, "invalid_target_version")
-		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_target_version", "targetVersion must be a canonical RouteGate release version."))
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_target_version", "targetVersion must be a canonical RouteGate release version that fits the Agent update-task contract."))
 		return
 	}
 
