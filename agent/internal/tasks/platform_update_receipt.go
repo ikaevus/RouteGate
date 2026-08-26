@@ -1,8 +1,10 @@
 package tasks
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -18,11 +20,11 @@ const (
 type PlatformUpdateReceiptPhase string
 
 const (
-	PlatformUpdateReceiptPrepared       PlatformUpdateReceiptPhase = "prepared"
+	PlatformUpdateReceiptPrepared        PlatformUpdateReceiptPhase = "prepared"
 	PlatformUpdateReceiptMutationStarted PlatformUpdateReceiptPhase = "mutation_started"
-	PlatformUpdateReceiptSucceeded      PlatformUpdateReceiptPhase = "succeeded"
-	PlatformUpdateReceiptFailed         PlatformUpdateReceiptPhase = "failed"
-	PlatformUpdateReceiptOutcomeUnknown PlatformUpdateReceiptPhase = "outcome_unknown"
+	PlatformUpdateReceiptSucceeded       PlatformUpdateReceiptPhase = "succeeded"
+	PlatformUpdateReceiptFailed          PlatformUpdateReceiptPhase = "failed"
+	PlatformUpdateReceiptOutcomeUnknown  PlatformUpdateReceiptPhase = "outcome_unknown"
 )
 
 type PlatformUpdateReceipt struct {
@@ -55,12 +57,6 @@ func (s platformUpdateReceiptStore) CreatePrepared(taskID, targetVersion string)
 	}
 	if err := s.ensureRoot(); err != nil {
 		return PlatformUpdateReceipt{}, err
-	}
-	path := s.path(taskID)
-	if _, err := os.Lstat(path); err == nil {
-		return PlatformUpdateReceipt{}, fmt.Errorf("platform update receipt already exists")
-	} else if !os.IsNotExist(err) {
-		return PlatformUpdateReceipt{}, fmt.Errorf("inspect platform update receipt: %w", err)
 	}
 	now := s.now().UTC()
 	receipt := PlatformUpdateReceipt{
@@ -123,12 +119,17 @@ func (s platformUpdateReceiptStore) Read(taskID string) (PlatformUpdateReceipt, 
 	if err != nil {
 		return PlatformUpdateReceipt{}, err
 	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
 	var receipt PlatformUpdateReceipt
-	if err := json.Unmarshal(data, &receipt); err != nil {
+	if err := decoder.Decode(&receipt); err != nil {
 		return PlatformUpdateReceipt{}, fmt.Errorf("decode platform update receipt: %w", err)
 	}
-	if receipt.SchemaVersion != platformUpdateReceiptSchemaVersion || receipt.TaskID != taskID || !routeGateReleaseVersionPattern.MatchString(receipt.TargetVersion) || !validPlatformUpdateReceiptPhase(receipt.Phase) {
-		return PlatformUpdateReceipt{}, fmt.Errorf("platform update receipt contract is invalid")
+	if err := ensureJSONEOF(decoder); err != nil {
+		return PlatformUpdateReceipt{}, fmt.Errorf("decode platform update receipt: %w", err)
+	}
+	if err := validatePlatformUpdateReceiptContract(receipt, taskID); err != nil {
+		return PlatformUpdateReceipt{}, err
 	}
 	return receipt, nil
 }
@@ -145,6 +146,9 @@ func (s platformUpdateReceiptStore) transition(taskID string, phase PlatformUpda
 	receipt.MutationStarted = mutationStarted
 	receipt.Code = code
 	receipt.UpdatedAt = s.now().UTC()
+	if err := validatePlatformUpdateReceiptContract(receipt, taskID); err != nil {
+		return PlatformUpdateReceipt{}, err
+	}
 	if err := s.writeAtomic(receipt, true); err != nil {
 		return PlatformUpdateReceipt{}, err
 	}
@@ -233,17 +237,24 @@ func (s platformUpdateReceiptStore) writeAtomic(receipt PlatformUpdateReceipt, r
 		return err
 	}
 	path := s.path(receipt.TaskID)
-	if !replace {
-		if _, err := os.Lstat(path); err == nil {
-			return fmt.Errorf("platform update receipt already exists")
-		} else if !os.IsNotExist(err) {
+	if replace {
+		if err := os.Rename(tmpPath, path); err != nil {
 			return err
 		}
+		cleanup = false
+	} else {
+		if err := os.Link(tmpPath, path); err != nil {
+			if os.IsExist(err) {
+				return fmt.Errorf("platform update receipt already exists")
+			}
+			return err
+		}
+		if err := os.Remove(tmpPath); err != nil {
+			_ = os.Remove(path)
+			return err
+		}
+		cleanup = false
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return err
-	}
-	cleanup = false
 	dir, err := os.Open(s.root)
 	if err != nil {
 		return err
@@ -251,6 +262,41 @@ func (s platformUpdateReceiptStore) writeAtomic(receipt PlatformUpdateReceipt, r
 	defer dir.Close()
 	if err := dir.Sync(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		return err
+	}
+	return nil
+}
+
+func validatePlatformUpdateReceiptContract(receipt PlatformUpdateReceipt, taskID string) error {
+	if receipt.SchemaVersion != platformUpdateReceiptSchemaVersion || receipt.TaskID != taskID || !routeGateReleaseVersionPattern.MatchString(receipt.TargetVersion) || !validPlatformUpdateReceiptPhase(receipt.Phase) {
+		return fmt.Errorf("platform update receipt contract is invalid")
+	}
+	if receipt.CreatedAt.IsZero() || receipt.UpdatedAt.IsZero() || receipt.UpdatedAt.Before(receipt.CreatedAt) {
+		return fmt.Errorf("platform update receipt timestamps are invalid")
+	}
+	switch receipt.Phase {
+	case PlatformUpdateReceiptPrepared:
+		if receipt.MutationStarted || receipt.Code != "" {
+			return fmt.Errorf("platform update prepared receipt is inconsistent")
+		}
+	case PlatformUpdateReceiptMutationStarted, PlatformUpdateReceiptSucceeded:
+		if !receipt.MutationStarted || receipt.Code != "" {
+			return fmt.Errorf("platform update receipt phase is inconsistent")
+		}
+	case PlatformUpdateReceiptFailed, PlatformUpdateReceiptOutcomeUnknown:
+		if !receipt.MutationStarted || !validPlatformUpdateReceiptCode(receipt.Code) {
+			return fmt.Errorf("platform update terminal receipt is inconsistent")
+		}
 	}
 	return nil
 }
