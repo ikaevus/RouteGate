@@ -9,7 +9,7 @@ const (
 	// Keep this bound aligned with the Agent decoder before changing the task
 	// schema or payload representation.
 	maxPlatformUpdateAgentTaskPayloadBytes = 256
-	platformUpdateTaskEnvelopeBytes        = len(`{"schemaVersion":1,"targetVersion":""}`)
+	platformUpdateTaskEnvelopeBytes        = len("{\"schemaVersion\":1,\"targetVersion\":\"\"}")
 	maxPlatformUpdateTargetVersionBytes    = maxPlatformUpdateAgentTaskPayloadBytes - platformUpdateTaskEnvelopeBytes
 )
 
