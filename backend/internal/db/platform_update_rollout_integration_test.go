@@ -96,6 +96,13 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		t.Fatalf("create rollout: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollouts
+		SET id = gen_random_uuid()
+		WHERE id = $1::uuid
+	`, rolloutID); err == nil {
+		t.Fatal("rollout primary identity was mutated after creation")
+	}
+	if _, err := pool.Exec(ctx, `
 		INSERT INTO platform_update_rollout_entries (
 			rollout_id, server_id, target_version, position, platform_update_job_id, status
 		) VALUES ($1::uuid, $2::uuid, 'v1.2.3', 99, $3::uuid, 'updating')
@@ -108,6 +115,13 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		RETURNING id::text
 	`, rolloutID, serverIDs[0]).Scan(&entryID); err != nil {
 		t.Fatalf("create rollout entry: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollout_entries
+		SET id = gen_random_uuid()
+		WHERE id = $1::uuid
+	`, entryID); err == nil {
+		t.Fatal("rollout entry primary identity was mutated after creation")
 	}
 
 	if _, err := pool.Exec(ctx, `
