@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	platformUpdateVerifiedUpdater = "/usr/local/lib/routegate/update/routegate-update-verified.sh"
-	platformUpdateAgentBinary     = "/usr/local/bin/routegate-agent"
-	platformUpdateSystemdRun      = "/usr/bin/systemd-run"
+	platformUpdateVerifiedUpdater           = "/usr/local/lib/routegate/update/routegate-update-verified.sh"
+	platformUpdateAgentBinary               = "/usr/local/bin/routegate-agent"
+	platformUpdateSystemdRun                = "/usr/bin/systemd-run"
+	platformUpdateRollbackIncompleteExitCode = 75
 )
 
 var (
@@ -263,7 +264,8 @@ func RunPlatformUpdateWorker(taskID string) error {
 				return nil
 			}
 			if platformUpdateWaitOutcomeUnknown(waitErr) {
-				if _, err := store.MarkOutcomeUnknown(taskID, "verified_updater_signaled"); err != nil {
+				code := platformUpdateOutcomeUnknownCode(waitErr)
+				if _, err := store.MarkOutcomeUnknown(taskID, code); err != nil {
 					return fmt.Errorf("verified platform updater outcome unknown: %v; persist unknown receipt: %w", waitErr, err)
 				}
 				return fmt.Errorf("verified platform updater outcome unknown: %w", waitErr)
@@ -285,7 +287,15 @@ func platformUpdateWaitOutcomeUnknown(waitErr error) bool {
 	if !ok {
 		return true
 	}
-	return status.Signaled()
+	return status.Signaled() || exitErr.ExitCode() == platformUpdateRollbackIncompleteExitCode
+}
+
+func platformUpdateOutcomeUnknownCode(waitErr error) string {
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == platformUpdateRollbackIncompleteExitCode {
+		return "rollback_incomplete"
+	}
+	return "verified_updater_signaled"
 }
 
 func acceptPreparedPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID, targetVersion string) error {
