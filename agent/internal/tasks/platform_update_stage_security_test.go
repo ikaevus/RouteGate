@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,5 +43,52 @@ func TestPlatformUpdateStagerRejectsSymlinkStagingRootBeforeDownload(t *testing.
 	}
 	if requests != 0 {
 		t.Fatalf("HTTP requests = %d, want 0", requests)
+	}
+}
+
+func TestPlatformUpdateStagerRejectsUnexpectedExistingRootMode(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "staging")
+	if err := os.Mkdir(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensurePrivatePlatformUpdateStagingRoot(root); err == nil {
+		t.Fatal("staging root with non-private mode was accepted")
+	}
+}
+
+func TestPlatformUpdateRedirectPolicyAllowsOnlyGitHubHTTPSClosure(t *testing.T) {
+	allowed := []string{
+		"https://github.com/ikaevus/RouteGate/releases/download/v1.2.3/file",
+		"https://release-assets.githubusercontent.com/github-production-release-asset/file",
+		"https://objects.githubusercontent.com/file",
+	}
+	for _, raw := range allowed {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := platformUpdateRedirectPolicy(&http.Request{URL: u}, []*http.Request{{}}); err != nil {
+			t.Fatalf("trusted redirect %q rejected: %v", raw, err)
+		}
+	}
+
+	rejected := []string{
+		"http://github.com/file",
+		"https://example.com/file",
+		"https://user@example.github.com/file",
+	}
+	for _, raw := range rejected {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := platformUpdateRedirectPolicy(&http.Request{URL: u}, []*http.Request{{}}); err == nil {
+			t.Fatalf("untrusted redirect %q was accepted", raw)
+		}
+	}
+
+	u, _ := url.Parse("https://github.com/file")
+	if err := platformUpdateRedirectPolicy(&http.Request{URL: u}, []*http.Request{{}, {}, {}}); err == nil {
+		t.Fatal("excessive redirect chain was accepted")
 	}
 }
