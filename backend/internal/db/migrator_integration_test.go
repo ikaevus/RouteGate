@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000138_update_job_apply" {
-		t.Fatalf("applied schema version = %q, want 000138_update_job_apply", version)
+	if version != "000139_agent_platform_update_jobs" {
+		t.Fatalf("applied schema version = %q, want 000139_agent_platform_update_jobs", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -64,7 +64,7 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 		VALUES ('RG-114H integration group', 'weighted')
 		RETURNING id::text
 	`).Scan(&nodeGroupID); err != nil {
-		t.Fatalf("create node group: %v", err)
+		t.Fatalf("create node group member: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO node_group_members (node_group_id, server_id, priority, weight)
@@ -387,8 +387,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000138_update_job_apply" {
-		t.Fatalf("applied schema version = %q, want 000138_update_job_apply", version)
+	if version != "000139_agent_platform_update_jobs" {
+		t.Fatalf("applied schema version = %q, want 000139_agent_platform_update_jobs", version)
 	}
 }
 
