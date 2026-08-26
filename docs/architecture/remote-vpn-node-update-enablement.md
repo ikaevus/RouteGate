@@ -39,14 +39,15 @@ Readiness requires at least:
 - fixed `/usr/local/bin/routegate-agent` is a root-owned regular executable and not group/world writable;
 - the complete canonical `/usr/local/lib/routegate/update` toolchain is present with no unexpected entries, with the expected executable/non-executable components, root ownership, and non-writable trusted parent chains;
 - fixed `/usr/local/sbin/routegate-update` is a trusted root-owned executable;
+- every PATH-resolved command required by the remote VPN updater is present in the fixed trusted `/usr/sbin` or `/usr/bin` command roots, resolves through a bounded root-controlled symlink chain, and ends at a root-owned executable that is not group/world writable;
 - the pinned `/usr/local/lib/routegate/verifier` runtime is complete, contains only `gh` and `runtime.env`, matches the fixed architecture/version/source/archive policy, and the verifier binary digest matches its root-owned metadata;
 - the pinned verifier reports the expected GitHub CLI version and the required `attestation verify --predicate-type` capability.
 
-Every fixed executable and every directory used to reach it is checked fail-closed for symlinks, ownership, and group/world writability. This prevents a writable parent directory from turning a previously checked path into a replacement surface.
+Every fixed executable and every directory used to reach it is checked fail-closed for ownership and group/world writability. RouteGate-owned privileged entrypoints must not be symlinks. Standard Ubuntu command alternatives may use root-controlled symlink chains, but every hop and target is validated and the chain is bounded. This prevents a writable command or parent directory from turning a previously checked PATH lookup into root code execution.
 
-If any prerequisite is absent, partial, inconsistent, or unsafe, the Agent continues advertising `contract_only`. In particular, a partial updater bootstrap that installed the toolchain but did not successfully install the pinned attestation verifier must never advertise `ready`. The capability carries no caller-controlled path or detailed host error text.
+If any prerequisite is absent, partial, inconsistent, or unsafe, the Agent continues advertising `contract_only`. In particular, a partial updater bootstrap that installed the toolchain but did not successfully install the pinned attestation verifier, or a host missing an updater command dependency, must never advertise `ready`. The capability carries no caller-controlled path or detailed host error text.
 
-Heartbeat readiness is discovery evidence, not host authorization, and may become stale. The Agent repeats the same complete local runtime readiness check before staging, again after staging immediately before resolving/starting `systemd-run`, and once more inside the detached worker immediately before crossing the durable `mutation_started` boundary. The verified updater still repeats release provenance and verifier-runtime validation immediately before host mutation.
+Heartbeat readiness is discovery evidence, not host authorization, and may become stale. The Agent repeats the same complete local runtime readiness check before staging, again after staging immediately before resolving/starting `systemd-run`, and once more inside the detached worker immediately before crossing the durable `mutation_started` boundary. This repeated check includes the fixed command runtime. The verified updater still repeats release provenance and verifier-runtime validation immediately before host mutation.
 
 Canonical ready capability:
 
@@ -73,9 +74,12 @@ Creation must fail closed when:
 - Agent is disabled;
 - readiness capability is missing, malformed, wrong schema, or not `ready`;
 - another platform-update job for the server is `pending`, `in_progress`, or `mutation_dispatched`;
+- a prior platform-update job is `outcome_unknown` and therefore has no proven final host state;
 - target version is non-canonical or would exceed the fixed Agent task-payload bound after serialization.
 
-The database partial unique index remains the final concurrency authority. A race that violates the one-active-job invariant maps to a conflict response rather than creating a second mutation attempt.
+The database partial unique index remains the final concurrency and unresolved-outcome authority. Its predicate covers `pending`, `in_progress`, `mutation_dispatched`, and `outcome_unknown`. A race that violates this interlock maps to a conflict response rather than creating another mutation attempt.
+
+`outcome_unknown` is deliberately not retryable in E2j. This slice has no force, retry, acknowledge-risk, or manual-resolution API that could release the interlock. A later recovery design may add an explicit operator resolution workflow, but an unresolved host outcome must never silently authorize a second mutation.
 
 E2j does not require the Agent to be currently online. A ready registered Agent may temporarily be offline and later claim the durable `pending` job. Capability readiness comes from the Agent's last authenticated registration/heartbeat and does not itself authorize host mutation; the execution-time readiness checks are authoritative for entering staging/dispatch and mutation.
 
@@ -88,7 +92,7 @@ Initial endpoints:
 
 The response may expose only bounded control-plane fields such as job ID, server ID, target version, lifecycle status, bounded error code, and timestamps. It must not expose Agent token material, release URLs, local staging paths, updater output, systemd details, or privileged selectors.
 
-No cancel, retry, force, rollback, batch, or list-all-fleet endpoint is introduced in E2j.
+A durable active or unresolved-outcome interlock returns a bounded conflict (`update_blocked`). No cancel, retry, force, rollback, batch, or list-all-fleet endpoint is introduced in E2j.
 
 ## Audit
 
@@ -101,11 +105,11 @@ Creation is an administrator-originated host mutation request and must be record
 
 Do not record request headers, tokens, release URLs, local paths, raw Agent/updater output, or arbitrary failure strings.
 
-Agent dispatch/reconciliation audit remains under the existing task audit path.
+Agent dispatch/reconciliation audit remains under the existing task audit path and uses the platform-update job identity.
 
 ## Lifecycle
 
-E2j creates only the durable `pending` state. From that point the already-reviewed E2i lifecycle is unchanged:
+E2j creates only the durable `pending` state. From that point the already-reviewed E2i lifecycle is:
 
 `pending -> in_progress -> mutation_dispatched -> succeeded|failed|outcome_unknown`
 
@@ -113,17 +117,20 @@ Immediately after Manager has claimed a job into `in_progress`, the Agent create
 
 A deterministic pre-dispatch failure may terminate from `in_progress`, but it must be represented by the same bounded local `prepared -> failed` receipt before Manager acknowledgement. This includes stale execution readiness, staging/identity failure, and deterministic detached-launch failure. If the acknowledgement is lost, subsequent reconciliation reads that receipt and terminalizes the Manager job without redispatching mutation. Before `systemd-run`, the Agent re-reads the prepared receipt so a concurrently terminalized receipt cannot be followed by a new worker launch. Interrupted `in_progress` with any prior/concurrent local dispatch evidence and all `mutation_dispatched` work are reconciliation-only. No automatic mutation retry is added.
 
+After the worker crosses `mutation_started`, an ordinary verified-updater nonzero exit may be recorded as `failed` only when the transaction can classify the failure deterministically. If host mutation fails and any role, dispatch-unit, toolchain, or database rollback step also fails, the transaction emits the fixed reserved exit code `75`. The worker maps that exit to receipt code `rollback_incomplete` and lifecycle state `outcome_unknown`, because the final host state was not proven. Signals and otherwise unclassifiable updater termination also remain `outcome_unknown`.
+
 ## Explicit non-goals
 
-E2j does not add Admin Web UI, release-channel selection, automatic discovery-based update choice, rolling/canary rollout, parallel fleet scheduling, maintenance windows, auto-update, caller-selected artifacts, generic remote commands, cancellation, rollback orchestration, Hybrid remote-update orchestration, or VPN-core updates.
+E2j does not add Admin Web UI, release-channel selection, automatic discovery-based update choice, rolling/canary rollout, parallel fleet scheduling, maintenance windows, auto-update, caller-selected artifacts, generic remote commands, cancellation, rollback orchestration, Hybrid remote-update orchestration, VPN-core updates, or an operator workflow for resolving an `outcome_unknown` interlock.
 
 ## Validation
 
 Focused tests must prove:
 
 - readiness is `ready` only for the complete fixed trusted host runtime and supported architecture;
-- unsafe/missing executable paths, missing toolchain components, partial verifier installation, verifier metadata/digest mismatch, and writable/symlinked parents remain `contract_only`;
-- execution-time dispatch repeats readiness before staging, after staging immediately before `systemd-run`, and inside the worker before `mutation_started`, rather than trusting stale heartbeat capability;
+- unsafe/missing executable paths, missing toolchain components, missing/unsafe PATH command dependencies, partial verifier installation, verifier metadata/digest mismatch, and writable/symlinked parents remain `contract_only`;
+- trusted Ubuntu alternatives-style command symlinks are accepted only when every hop/parent/final executable remains root-controlled and non-writable;
+- execution-time dispatch repeats complete readiness before staging, after staging immediately before `systemd-run`, and inside the worker before `mutation_started`, rather than trusting stale heartbeat capability;
 - the no-replace prepared receipt is durable before the staging function is entered, so a crash/restart during asset download has reconciliation evidence before any mutation;
 - staging/identity/detached-launch failures monotonically terminalize that existing prepared receipt, and existing receipt evidence prevents a second staging attempt;
 - deterministic pre-dispatch failures are durably receipt-backed before Manager acknowledgement so acknowledgement loss remains reconciliation-only;
@@ -133,6 +140,8 @@ Focused tests must prove:
 - Management and Hybrid nodes are rejected by the VPN-only create path;
 - missing/non-ready capability fails closed before job creation;
 - a second active update for the same server returns conflict;
+- `outcome_unknown` remains covered by the durable database interlock and prevents a second update until a future explicit resolution workflow exists;
+- incomplete rollback maps to `outcome_unknown`, while a normal deterministic updater failure remains `failed`;
 - creation persists only canonical task-safe target version plus Manager-owned server/Agent identity;
 - status response is bounded and does not expose privileged/local data;
 - create does not directly stage, invoke systemd, call the verified updater, or bypass the existing Agent task channel;
