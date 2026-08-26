@@ -15,17 +15,18 @@ var (
 )
 
 const (
-	PlatformUpdateReceiptStatusPending        = "pending"
-	PlatformUpdateReceiptStatusSucceeded      = "succeeded"
-	PlatformUpdateReceiptStatusFailed         = "failed"
-	PlatformUpdateReceiptStatusOutcomeUnknown = "outcome_unknown"
-	maxPlatformUpdateReconciliationBytes      = 512
+	PlatformUpdateReceiptStatusPending            = "pending"
+	PlatformUpdateReceiptStatusMutationDispatched = "mutation_dispatched"
+	PlatformUpdateReceiptStatusSucceeded          = "succeeded"
+	PlatformUpdateReceiptStatusFailed             = "failed"
+	PlatformUpdateReceiptStatusOutcomeUnknown     = "outcome_unknown"
+	maxPlatformUpdateReconciliationBytes          = 512
 )
 
-// PlatformUpdateReconciliationEvidence is the bounded receipt projection the
-// Manager is allowed to consume from an Agent. It intentionally contains no
-// filesystem path, URL, command, signer, trust-root, role, artifact selector,
-// raw updater output, or other privileged input.
+// PlatformUpdateReconciliationEvidence is the bounded receipt/dispatch
+// projection the Manager is allowed to consume from an Agent. It intentionally
+// contains no filesystem path, URL, command, signer, trust-root, role, artifact
+// selector, raw updater output, or other privileged input.
 type PlatformUpdateReconciliationEvidence struct {
 	TaskID        string `json:"taskId"`
 	TargetVersion string `json:"targetVersion"`
@@ -34,9 +35,9 @@ type PlatformUpdateReconciliationEvidence struct {
 }
 
 // DecodePlatformUpdateReconciliationEvidence converts the generic Agent result
-// envelope back into the strict, bounded reconciliation contract. Unknown
-// fields fail closed so result payloads cannot become a side channel for
-// privileged selectors or unbounded updater output.
+// envelope back into the strict, bounded update contract. Unknown fields fail
+// closed so result payloads cannot become a side channel for privileged
+// selectors or unbounded updater output.
 func DecodePlatformUpdateReconciliationEvidence(payload map[string]any) (PlatformUpdateReconciliationEvidence, error) {
 	if payload == nil {
 		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("platform update reconciliation evidence is required")
@@ -64,9 +65,10 @@ func DecodePlatformUpdateReconciliationEvidence(payload map[string]any) (Platfor
 	return evidence, nil
 }
 
-// ReconcilePlatformUpdateEvidence validates receipt identity and converts
-// bounded Agent evidence into a Manager lifecycle transition. Missing evidence
-// is represented by pending and never implies success or redispatch.
+// ReconcilePlatformUpdateEvidence validates durable receipt identity and
+// converts it into a Manager lifecycle transition. mutation_dispatched is a
+// dispatch acknowledgement, not a receipt state, and is therefore handled by
+// the in_progress dispatch completion path instead of this function.
 func ReconcilePlatformUpdateEvidence(expectedTaskID, expectedVersion string, evidence PlatformUpdateReconciliationEvidence) (string, error) {
 	if !canonicalPlatformUpdateTaskIDPattern.MatchString(expectedTaskID) {
 		return "", fmt.Errorf("expected platform update task id must be canonical UUIDv4")
