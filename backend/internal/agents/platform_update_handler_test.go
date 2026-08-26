@@ -107,14 +107,14 @@ func TestCreatePlatformUpdateRejectsNonCanonicalOrTrailingInput(t *testing.T) {
 	}
 }
 
-func TestCreatePlatformUpdateMapsReadinessAndActiveJobConflicts(t *testing.T) {
+func TestCreatePlatformUpdateMapsReadinessAndDurableInterlockConflicts(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		err  error
 		code string
 	}{
 		{name: "not ready", err: pgx.ErrNoRows, code: "update_not_ready"},
-		{name: "active job", err: &pgconn.PgError{Code: "23505"}, code: "update_in_progress"},
+		{name: "active or unresolved", err: &pgconn.PgError{Code: "23505"}, code: "update_blocked"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repository := newPlatformUpdateAwareFakeRepository()
