@@ -23,7 +23,7 @@ The request body contains exactly:
 {"targetVersion":"v1.2.3"}
 ```
 
-Unknown fields, extra JSON values, missing/empty versions, non-canonical versions, URLs, paths, repositories, artifact names, checksums, roles, commands, signer/trust-root selectors, environment values, retry flags, force flags, and rollout options are rejected before persistence.
+Unknown fields, extra JSON values, missing/empty versions, non-canonical versions, versions whose fixed schema-v1 Agent task would exceed the 256-byte Agent payload bound, URLs, paths, repositories, artifact names, checksums, roles, commands, signer/trust-root selectors, environment values, retry flags, force flags, and rollout options are rejected before persistence.
 
 The server identity comes only from the canonical route path. The Manager binds the job to the currently registered Agent for that server; the caller cannot select an Agent ID.
 
@@ -73,7 +73,7 @@ Creation must fail closed when:
 - Agent is disabled;
 - readiness capability is missing, malformed, wrong schema, or not `ready`;
 - another platform-update job for the server is `pending`, `in_progress`, or `mutation_dispatched`;
-- target version is non-canonical.
+- target version is non-canonical or would exceed the fixed Agent task-payload bound after serialization.
 
 The database partial unique index remains the final concurrency authority. A race that violates the one-active-job invariant maps to a conflict response rather than creating a second mutation attempt.
 
@@ -109,7 +109,9 @@ E2j creates only the durable `pending` state. From that point the already-review
 
 `pending -> in_progress -> mutation_dispatched -> succeeded|failed|outcome_unknown`
 
-A deterministic pre-dispatch failure may terminate from `in_progress`, but it must first be persisted as a bounded local `prepared -> failed` receipt before Manager acknowledgement. This includes stale execution readiness, staging/identity failure, and deterministic detached-launch failure. If the acknowledgement is lost, subsequent reconciliation reads that receipt and terminalizes the Manager job without redispatching mutation. Interrupted `in_progress` with any prior/concurrent local dispatch evidence and all `mutation_dispatched` work are reconciliation-only. No automatic mutation retry is added.
+Immediately after Manager has claimed a job into `in_progress`, the Agent creates a no-replace local `prepared` receipt **before staging begins**. Staging may spend minutes downloading assets, so this ordering is part of the crash-consistency contract: if the Agent is killed, restarted, or the host reboots during staging, the next reconciliation sees durable pre-mutation evidence and can terminalize the job without redispatching mutation. A second local attempt cannot reuse that receipt as permission to stage or launch again.
+
+A deterministic pre-dispatch failure may terminate from `in_progress`, but it must be represented by the same bounded local `prepared -> failed` receipt before Manager acknowledgement. This includes stale execution readiness, staging/identity failure, and deterministic detached-launch failure. If the acknowledgement is lost, subsequent reconciliation reads that receipt and terminalizes the Manager job without redispatching mutation. Before `systemd-run`, the Agent re-reads the prepared receipt so a concurrently terminalized receipt cannot be followed by a new worker launch. Interrupted `in_progress` with any prior/concurrent local dispatch evidence and all `mutation_dispatched` work are reconciliation-only. No automatic mutation retry is added.
 
 ## Explicit non-goals
 
@@ -122,6 +124,8 @@ Focused tests must prove:
 - readiness is `ready` only for the complete fixed trusted host runtime and supported architecture;
 - unsafe/missing executable paths, missing toolchain components, partial verifier installation, verifier metadata/digest mismatch, and writable/symlinked parents remain `contract_only`;
 - execution-time dispatch repeats readiness before staging, after staging immediately before `systemd-run`, and inside the worker before `mutation_started`, rather than trusting stale heartbeat capability;
+- the no-replace prepared receipt is durable before the staging function is entered, so a crash/restart during asset download has reconciliation evidence before any mutation;
+- staging/identity/detached-launch failures monotonically terminalize that existing prepared receipt, and existing receipt evidence prevents a second staging attempt;
 - deterministic pre-dispatch failures are durably receipt-backed before Manager acknowledgement so acknowledgement loss remains reconciliation-only;
 - API requires `system:manage` for create and `servers:read` for status;
 - strict request decoding rejects unknown fields and privileged selectors;
@@ -129,7 +133,7 @@ Focused tests must prove:
 - Management and Hybrid nodes are rejected by the VPN-only create path;
 - missing/non-ready capability fails closed before job creation;
 - a second active update for the same server returns conflict;
-- creation persists only canonical target version plus Manager-owned server/Agent identity;
+- creation persists only canonical task-safe target version plus Manager-owned server/Agent identity;
 - status response is bounded and does not expose privileged/local data;
 - create does not directly stage, invoke systemd, call the verified updater, or bypass the existing Agent task channel;
 - existing E2i exact at-most-once/reconciliation semantics remain green.
