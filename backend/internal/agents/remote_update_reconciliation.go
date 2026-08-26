@@ -1,14 +1,16 @@
 package agents
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"regexp"
 )
 
 var (
 	canonicalPlatformUpdateTaskIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	canonicalRouteGateVersionPattern     = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$`)
-	platformUpdateReceiptCodePattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+	canonicalRouteGateVersionPattern     = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z][0-9A-Za-z.-]*)?$`)
+	platformUpdateReceiptCodePattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9_]{0,63}$`)
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 	PlatformUpdateReceiptStatusSucceeded      = "succeeded"
 	PlatformUpdateReceiptStatusFailed         = "failed"
 	PlatformUpdateReceiptStatusOutcomeUnknown = "outcome_unknown"
+	maxPlatformUpdateReconciliationBytes      = 512
 )
 
 // PlatformUpdateReconciliationEvidence is the bounded receipt projection the
@@ -27,6 +30,33 @@ type PlatformUpdateReconciliationEvidence struct {
 	TargetVersion string `json:"targetVersion"`
 	Status        string `json:"status"`
 	Code          string `json:"code,omitempty"`
+}
+
+// DecodePlatformUpdateReconciliationEvidence converts the generic Agent result
+// envelope back into the strict, bounded reconciliation contract. Unknown
+// fields fail closed so result payloads cannot become a side channel for
+// privileged selectors or unbounded updater output.
+func DecodePlatformUpdateReconciliationEvidence(payload map[string]any) (PlatformUpdateReconciliationEvidence, error) {
+	if payload == nil {
+		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("platform update reconciliation evidence is required")
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("encode platform update reconciliation evidence: %w", err)
+	}
+	if len(data) == 0 || len(data) > maxPlatformUpdateReconciliationBytes {
+		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("platform update reconciliation evidence exceeds bounded size")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var evidence PlatformUpdateReconciliationEvidence
+	if err := decoder.Decode(&evidence); err != nil {
+		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("decode platform update reconciliation evidence: %w", err)
+	}
+	if decoder.More() {
+		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("platform update reconciliation evidence contains trailing data")
+	}
+	return evidence, nil
 }
 
 // ReconcilePlatformUpdateEvidence validates receipt identity and converts
