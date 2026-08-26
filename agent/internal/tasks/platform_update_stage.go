@@ -85,11 +85,8 @@ func (s PlatformUpdateStager) Stage(ctx context.Context, taskID string, request 
 		{bundleName, platformUpdateBundleLimit},
 	}
 
-	if err := os.MkdirAll(s.stagingRoot, 0700); err != nil {
-		return PlatformUpdateStagedCandidate{}, fmt.Errorf("create platform update staging root: %w", err)
-	}
-	if err := os.Chmod(s.stagingRoot, 0700); err != nil {
-		return PlatformUpdateStagedCandidate{}, fmt.Errorf("secure platform update staging root: %w", err)
+	if err := ensurePrivatePlatformUpdateStagingRoot(s.stagingRoot); err != nil {
+		return PlatformUpdateStagedCandidate{}, err
 	}
 
 	finalDir := filepath.Join(s.stagingRoot, taskID)
@@ -131,6 +128,26 @@ func (s PlatformUpdateStager) Stage(ctx context.Context, taskID string, request 
 		Directory:     finalDir,
 		BundleName:    bundleName,
 	}, nil
+}
+
+func ensurePrivatePlatformUpdateStagingRoot(root string) error {
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
+		if err := os.MkdirAll(root, 0700); err != nil {
+			return fmt.Errorf("create platform update staging root: %w", err)
+		}
+		info, err = os.Lstat(root)
+	}
+	if err != nil {
+		return fmt.Errorf("inspect platform update staging root: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("platform update staging root is unsafe")
+	}
+	if err := os.Chmod(root, 0700); err != nil {
+		return fmt.Errorf("secure platform update staging root: %w", err)
+	}
+	return nil
 }
 
 func (s PlatformUpdateStager) downloadAsset(ctx context.Context, version, assetName string, limit int64, partialDir string) error {
