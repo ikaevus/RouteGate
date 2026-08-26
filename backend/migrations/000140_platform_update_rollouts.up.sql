@@ -94,6 +94,21 @@ BEGIN
         ) THEN
             RAISE EXCEPTION 'invalid platform update rollout transition % -> %', OLD.status, NEW.status;
         END IF;
+
+        -- A rollout cannot stop while a host-mutation admission is active.
+        -- Entry admission locks this parent row before binding its job, so the
+        -- two transitions serialize: either admission commits while running,
+        -- or the stop transition commits first and admission is rejected.
+        IF OLD.status = 'running'
+            AND NEW.status IN ('succeeded', 'failed', 'outcome_unknown')
+            AND EXISTS (
+                SELECT 1
+                FROM platform_update_rollout_entries
+                WHERE rollout_id = OLD.id
+                  AND status = 'updating'
+            ) THEN
+            RAISE EXCEPTION 'platform update rollout cannot become terminal while an entry is updating';
+        END IF;
     END IF;
 
     RETURN NEW;
@@ -114,6 +129,21 @@ BEGIN
         IF NEW.status <> 'queued' OR NEW.platform_update_job_id IS NOT NULL THEN
             RAISE EXCEPTION 'platform update rollout entry must be created queued and unbound';
         END IF;
+
+        -- Lock the parent while admitting snapshot membership. A concurrent
+        -- pending -> running transition must wait for this insert, while an
+        -- insert that starts after execution has begun sees non-pending state
+        -- and is rejected. This freezes rollout membership at start.
+        PERFORM 1
+        FROM platform_update_rollouts
+        WHERE id = NEW.rollout_id
+          AND target_version = NEW.target_version
+          AND status = 'pending'
+        FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'platform update rollout entries may only be added while parent is pending';
+        END IF;
+
         RETURN NEW;
     END IF;
 
@@ -137,6 +167,21 @@ BEGIN
             OR (OLD.status = 'updating' AND NEW.status IN ('healthy', 'failed', 'outcome_unknown'))
         ) THEN
             RAISE EXCEPTION 'invalid platform update rollout entry transition % -> %', OLD.status, NEW.status;
+        END IF;
+
+        IF NEW.status = 'updating' THEN
+            -- Serialize mutation admission with parent stop. The parent row
+            -- lock is held until this transaction commits the immutable job
+            -- binding, and a terminal parent can never admit a new mutation.
+            PERFORM 1
+            FROM platform_update_rollouts
+            WHERE id = OLD.rollout_id
+              AND target_version = OLD.target_version
+              AND status = 'running'
+            FOR UPDATE;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'platform update rollout entry can only begin updating while parent is running';
+            END IF;
         END IF;
     END IF;
 
