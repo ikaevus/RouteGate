@@ -68,6 +68,17 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 
 	matchingJobID := createJob(serverIDs[0], agentIDs[0], "v1.2.3")
 	otherServerJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
+	var wrongVersionJobID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO agent_platform_update_jobs (
+			server_id, agent_id, target_version, status, error_code, started_at, completed_at
+		) VALUES (
+			$1::uuid, $2::uuid, 'v1.2.4', 'failed', 'fixture_failed', now(), now()
+		)
+		RETURNING id::text
+	`, serverIDs[0], agentIDs[0]).Scan(&wrongVersionJobID); err != nil {
+		t.Fatalf("create wrong-version platform update job: %v", err)
+	}
 
 	var rolloutID, entryID string
 	if err := pool.QueryRow(ctx, `
@@ -91,6 +102,13 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		WHERE id = $1::uuid
 	`, entryID, otherServerJobID); err == nil {
 		t.Fatal("rollout entry accepted an update job belonging to another server")
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollout_entries
+		SET platform_update_job_id = $2::uuid, status = 'updating'
+		WHERE id = $1::uuid
+	`, entryID, wrongVersionJobID); err == nil {
+		t.Fatal("rollout entry accepted an update job for another target version")
 	}
 
 	if _, err := pool.Exec(ctx, `
