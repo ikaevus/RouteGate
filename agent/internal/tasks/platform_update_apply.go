@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -145,7 +146,7 @@ func RunPlatformUpdateWorker(taskID string) error {
 func rejectOrReconcileExistingPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID string) error {
 	receipt, err := store.Read(taskID)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("inspect existing platform update receipt: %w", err)
@@ -211,6 +212,9 @@ func validatedPlatformUpdateStage(taskID string) (string, string, error) {
 }
 
 func isCanonicalPlatformUpdateBundleName(name string) bool {
+	if filepath.Base(name) != name {
+		return false
+	}
 	_, err := platformUpdateVersionFromBundle(name)
 	return err == nil
 }
