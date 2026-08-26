@@ -7,16 +7,22 @@ import (
 	"testing"
 )
 
-func maxLengthPlatformUpdateVersion() string {
+func maxLengthPlatformUpdateVersion(t *testing.T) string {
+	t.Helper()
 	const prefix = "v1.2.3-"
-	return prefix + strings.Repeat("a", maxPlatformUpdateTargetVersionBytes-len(prefix))
+	emptyPayload, err := platformUpdateTaskPayload("")
+	if err != nil {
+		t.Fatalf("marshal empty target-version envelope: %v", err)
+	}
+	maxTargetBytes := maxPlatformUpdateAgentTaskPayloadBytes - len(emptyPayload)
+	if maxTargetBytes < len(prefix) {
+		t.Fatalf("Agent update-task payload leaves no room for canonical target version")
+	}
+	return prefix + strings.Repeat("a", maxTargetBytes-len(prefix))
 }
 
 func TestPlatformUpdateTargetVersionBoundMatchesAgentTaskLimit(t *testing.T) {
-	maxVersion := maxLengthPlatformUpdateVersion()
-	if len(maxVersion) != maxPlatformUpdateTargetVersionBytes {
-		t.Fatalf("fixture length=%d want=%d", len(maxVersion), maxPlatformUpdateTargetVersionBytes)
-	}
+	maxVersion := maxLengthPlatformUpdateVersion(t)
 	if !validPlatformUpdateTargetVersion(maxVersion) {
 		t.Fatal("largest task-safe canonical target version was rejected")
 	}
@@ -44,7 +50,7 @@ func TestPlatformUpdateTargetVersionBoundMatchesAgentTaskLimit(t *testing.T) {
 func TestCreatePlatformUpdateRejectsVersionThatExceedsAgentTaskLimit(t *testing.T) {
 	repository := newPlatformUpdateAwareFakeRepository()
 	handler := testAgentHandler(repository)
-	tooLong := maxLengthPlatformUpdateVersion() + "a"
+	tooLong := maxLengthPlatformUpdateVersion(t) + "a"
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/servers/server-id/software-updates",
