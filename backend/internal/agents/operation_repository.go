@@ -105,6 +105,13 @@ func operationCapability(kind, operation string) (string, error) {
 	}
 }
 
+func platformUpdateTaskPayload(targetVersion string) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"schemaVersion": 1,
+		"targetVersion": targetVersion,
+	})
+}
+
 func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash string) (*AgentConfigTask, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -117,9 +124,10 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 		return nil, err
 	}
 
-	// Post-dispatch platform updates are reconciliation-only. Claiming this task
-	// does not move the durable lifecycle back to in_progress and therefore can
-	// never make the mutation worker remotely reachable a second time.
+	// An interrupted in_progress update and every mutation_dispatched update are
+	// reconciliation-only. They can never return to the dispatch path. The
+	// one-second touch interval prevents a tight polling loop while still
+	// preserving durable read-only recovery after an acknowledgement loss.
 	var reconcileTask AgentConfigTask
 	var targetVersion string
 	var startedAt sql.NullTime
@@ -129,9 +137,13 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 			FROM agent_platform_update_jobs
 			WHERE server_id = $1::uuid
 			  AND agent_id = $2::uuid
-			  AND status = 'mutation_dispatched'
+			  AND status IN ('in_progress', 'mutation_dispatched')
 			  AND updated_at <= now() - interval '1 second'
-			ORDER BY updated_at ASC, created_at ASC, id ASC
+			ORDER BY
+			  CASE status WHEN 'mutation_dispatched' THEN 0 ELSE 1 END,
+			  updated_at ASC,
+			  created_at ASC,
+			  id ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
@@ -157,10 +169,7 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 		&startedAt,
 	)
 	if err == nil {
-		payload, marshalErr := json.Marshal(map[string]any{
-			"schemaVersion": 1,
-			"targetVersion": targetVersion,
-		})
+		payload, marshalErr := platformUpdateTaskPayload(targetVersion)
 		if marshalErr != nil {
 			return nil, marshalErr
 		}
@@ -177,6 +186,88 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+
+	// This is the one and only mutation-capable claim. pending is atomically
+	// consumed into in_progress before the task leaves the Manager. No later
+	// state is eligible for this query, so a transport loss cannot redispatch.
+	var dispatchTask AgentConfigTask
+	startedAt = sql.NullTime{}
+	err = tx.QueryRow(ctx, `
+		WITH next_job AS (
+			SELECT id
+			FROM agent_platform_update_jobs
+			WHERE server_id = $1::uuid
+			  AND agent_id = $2::uuid
+			  AND status = 'pending'
+			ORDER BY created_at ASC, id ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE agent_platform_update_jobs j
+		SET
+			status = 'in_progress',
+			started_at = COALESCE(j.started_at, now()),
+			updated_at = now()
+		FROM next_job
+		WHERE j.id = next_job.id
+		RETURNING
+			j.id::text,
+			j.server_id::text,
+			j.agent_id::text,
+			j.target_version,
+			j.status,
+			j.created_at,
+			j.started_at
+	`, agent.ServerID, agent.ID).Scan(
+		&dispatchTask.ID,
+		&dispatchTask.ServerID,
+		&dispatchTask.AgentID,
+		&targetVersion,
+		&dispatchTask.Status,
+		&dispatchTask.CreatedAt,
+		&startedAt,
+	)
+	if err == nil {
+		payload, marshalErr := platformUpdateTaskPayload(targetVersion)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		dispatchTask.Kind = AgentTaskKindPlatformUpdate
+		dispatchTask.Operation = PlatformUpdateOperationDispatch
+		dispatchTask.RenderedConfig = payload
+		if startedAt.Valid {
+			dispatchTask.StartedAt = &startedAt.Time
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return nil, commitErr
+		}
+		return &dispatchTask, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	// Do not let an ordinary mutating Agent operation run alongside an active
+	// platform update merely because its reconciliation task is throttled or
+	// another transaction currently owns the row lock.
+	var platformUpdateActive bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM agent_platform_update_jobs
+			WHERE server_id = $1::uuid
+			  AND agent_id = $2::uuid
+			  AND status IN ('pending', 'in_progress', 'mutation_dispatched')
+		)
+	`, agent.ServerID, agent.ID).Scan(&platformUpdateActive); err != nil {
+		return nil, err
+	}
+	if platformUpdateActive {
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return nil, commitErr
+		}
+		return nil, nil
 	}
 
 	task, err := scanAgentOperationTask(tx.QueryRow(ctx, `
@@ -242,10 +333,29 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 		return "", fmt.Errorf("agent operation error message exceeds %d bytes", maxAgentOperationErrorMessageBytes)
 	}
 
-	// A platform_update result is a read-only receipt projection, never the
-	// mutation outcome by itself. Only a successful transport response carrying
-	// matching strict evidence is allowed to reconcile the durable lifecycle.
+	// First handle the at-most-once dispatch state. The same in_progress row may
+	// receive either the direct bounded dispatch acknowledgement or read-only
+	// receipt evidence after an acknowledgement loss. It is never made runnable
+	// again in either case.
 	var targetVersion string
+	err = r.pool.QueryRow(ctx, `
+		SELECT j.target_version
+		FROM agent_platform_update_jobs j
+		JOIN agents a ON a.id = j.agent_id
+		WHERE j.id = $1::uuid
+		  AND a.token_hash = $2
+		  AND j.status = 'in_progress'
+	`, input.JobID, input.TokenHash).Scan(&targetVersion)
+	if err == nil {
+		return r.completeInProgressPlatformUpdate(ctx, input, targetVersion, errorMessage)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+
+	// A platform_update result in mutation_dispatched is a read-only receipt
+	// projection, never a mutation outcome by itself. Only a successful transport
+	// response carrying matching strict evidence may reconcile the lifecycle.
 	err = r.pool.QueryRow(ctx, `
 		SELECT j.target_version
 		FROM agent_platform_update_jobs j
@@ -332,6 +442,131 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 		return "", err
 	}
 	return kind, nil
+}
+
+func (r *Repository) completeInProgressPlatformUpdate(ctx context.Context, input CompleteAgentOperationJobInput, targetVersion, errorMessage string) (string, error) {
+	evidence, err := DecodePlatformUpdateReconciliationEvidence(input.ResultPayload)
+	if err != nil {
+		return "", err
+	}
+	if evidence.TaskID != input.JobID || evidence.TargetVersion != targetVersion {
+		return "", fmt.Errorf("platform update dispatch identity mismatch")
+	}
+
+	if input.Status == AgentOperationJobStatusFailed {
+		// Deterministic pre-dispatch failure is the only failed transport envelope
+		// allowed while the Manager row is in_progress. Raw error text is rejected.
+		if errorMessage != "" {
+			return "", fmt.Errorf("platform update pre-dispatch failure must not contain raw error text")
+		}
+		nextStatus, reconcileErr := ReconcilePlatformUpdateEvidence(input.JobID, targetVersion, evidence)
+		if reconcileErr != nil {
+			return "", reconcileErr
+		}
+		if nextStatus != AgentOperationJobStatusFailed {
+			return "", fmt.Errorf("platform update failed dispatch envelope requires failed evidence")
+		}
+		commandTag, updateErr := r.pool.Exec(ctx, `
+			UPDATE agent_platform_update_jobs
+			SET
+				status = 'failed',
+				error_code = $3,
+				completed_at = now(),
+				updated_at = now()
+			WHERE id = $1::uuid
+			  AND agent_id = (SELECT id FROM agents WHERE token_hash = $2)
+			  AND status = 'in_progress'
+			  AND dispatched_at IS NULL
+		`, input.JobID, input.TokenHash, evidence.Code)
+		if updateErr != nil {
+			return "", updateErr
+		}
+		if commandTag.RowsAffected() != 1 {
+			return "", pgx.ErrNoRows
+		}
+		return AgentTaskKindPlatformUpdate, nil
+	}
+
+	if errorMessage != "" {
+		return "", fmt.Errorf("platform update dispatch acknowledgement must not contain raw error text")
+	}
+	if evidence.Status == PlatformUpdateReceiptStatusMutationDispatched {
+		if evidence.Code != "" {
+			return "", fmt.Errorf("mutation_dispatched evidence must not carry a code")
+		}
+		commandTag, updateErr := r.pool.Exec(ctx, `
+			UPDATE agent_platform_update_jobs
+			SET
+				status = 'mutation_dispatched',
+				dispatched_at = COALESCE(dispatched_at, now()),
+				updated_at = now()
+			WHERE id = $1::uuid
+			  AND agent_id = (SELECT id FROM agents WHERE token_hash = $2)
+			  AND status = 'in_progress'
+		`, input.JobID, input.TokenHash)
+		if updateErr != nil {
+			return "", updateErr
+		}
+		if commandTag.RowsAffected() != 1 {
+			return "", pgx.ErrNoRows
+		}
+		return AgentTaskKindPlatformUpdate, nil
+	}
+
+	// Successful transport while Manager is still in_progress means this was a
+	// reconciliation task after a lost acknowledgement. Matching receipt evidence
+	// proves durable Agent handoff, so even pending evidence is promoted to the
+	// non-runnable mutation_dispatched state. Terminal receipt evidence may
+	// terminalize directly while recording dispatched_at to preserve provenance.
+	nextStatus, reconcileErr := ReconcilePlatformUpdateEvidence(input.JobID, targetVersion, evidence)
+	if reconcileErr != nil {
+		return "", reconcileErr
+	}
+	if nextStatus == AgentOperationJobStatusMutationDispatched {
+		commandTag, updateErr := r.pool.Exec(ctx, `
+			UPDATE agent_platform_update_jobs
+			SET
+				status = 'mutation_dispatched',
+				dispatched_at = COALESCE(dispatched_at, now()),
+				updated_at = now()
+			WHERE id = $1::uuid
+			  AND agent_id = (SELECT id FROM agents WHERE token_hash = $2)
+			  AND status = 'in_progress'
+		`, input.JobID, input.TokenHash)
+		if updateErr != nil {
+			return "", updateErr
+		}
+		if commandTag.RowsAffected() != 1 {
+			return "", pgx.ErrNoRows
+		}
+		return AgentTaskKindPlatformUpdate, nil
+	}
+	if !PlatformUpdateStatusIsTerminal(nextStatus) {
+		return "", fmt.Errorf("invalid in-progress platform update reconciliation result")
+	}
+	errorCode := ""
+	if nextStatus == AgentOperationJobStatusFailed || nextStatus == AgentOperationJobStatusOutcomeUnknown {
+		errorCode = evidence.Code
+	}
+	commandTag, updateErr := r.pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET
+			status = $3,
+			dispatched_at = COALESCE(dispatched_at, now()),
+			error_code = NULLIF($4, ''),
+			completed_at = now(),
+			updated_at = now()
+		WHERE id = $1::uuid
+		  AND agent_id = (SELECT id FROM agents WHERE token_hash = $2)
+		  AND status = 'in_progress'
+	`, input.JobID, input.TokenHash, nextStatus, errorCode)
+	if updateErr != nil {
+		return "", updateErr
+	}
+	if commandTag.RowsAffected() != 1 {
+		return "", pgx.ErrNoRows
+	}
+	return AgentTaskKindPlatformUpdate, nil
 }
 
 func scanAgentOperationTask(row scanner) (AgentConfigTask, error) {
