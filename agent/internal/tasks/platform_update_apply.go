@@ -2,9 +2,11 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -19,8 +21,9 @@ const (
 var platformUpdateWorkerEnvironment = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
 
 // DetachedPlatformUpdateCommand returns the fixed transient-systemd invocation
-// used by E2d to detach a VPN update from routegate-agent.service. E2c exposes
-// the primitive but does not wire it to remote tasks yet.
+// used to detach a VPN update from routegate-agent.service. The caller may
+// supply only one canonical task UUID; every privileged selector is rebuilt by
+// the root worker from fixed RouteGate-owned policy.
 func DetachedPlatformUpdateCommand(taskID string) (string, []string, error) {
 	if !canonicalTaskIDPattern.MatchString(taskID) {
 		return "", nil, fmt.Errorf("platform update task id must be canonical UUIDv4")
@@ -51,9 +54,12 @@ func StartDetachedPlatformUpdate(ctx context.Context, taskID string) error {
 	return nil
 }
 
-// RunPlatformUpdateWorker is intentionally local-only. The worker reconstructs
-// every privileged path from one canonical task UUID and replaces itself with
-// the fixed trusted updater so transaction signals reach the rollback trap.
+// RunPlatformUpdateWorker is intentionally local-only. It reconstructs every
+// privileged path from one canonical task UUID, persists monotonic root-owned
+// receipt state, starts only the fixed verified updater with --role vpn, and
+// remains alive long enough to persist a bounded terminal outcome. INT/TERM are
+// forwarded to the updater so the existing transaction rollback traps remain
+// authoritative.
 func RunPlatformUpdateWorker(taskID string) error {
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("platform update worker must run as root")
@@ -65,8 +71,23 @@ func RunPlatformUpdateWorker(taskID string) error {
 	if err := validateRootOwnedNonWritableRegular(platformUpdateVerifiedUpdater); err != nil {
 		return fmt.Errorf("trusted verified updater is unsafe: %w", err)
 	}
+	targetVersion, err := platformUpdateVersionFromBundle(bundle)
+	if err != nil {
+		return err
+	}
+
+	store := fixedPlatformUpdateReceiptStore()
+	if err := rejectOrReconcileExistingPlatformUpdateReceipt(store, taskID); err != nil {
+		return err
+	}
+	if _, err := store.CreatePrepared(taskID, targetVersion); err != nil {
+		return fmt.Errorf("create platform update receipt: %w", err)
+	}
+	if _, err := store.MarkMutationStarted(taskID); err != nil {
+		return fmt.Errorf("persist platform update mutation start: %w", err)
+	}
+
 	argv := []string{
-		platformUpdateVerifiedUpdater,
 		"apply",
 		"--manifest", filepath.Join(stageDir, "release-manifest.json"),
 		"--manifest-attestation", filepath.Join(stageDir, "release-manifest.attestation.json"),
@@ -75,7 +96,87 @@ func RunPlatformUpdateWorker(taskID string) error {
 		"--bundle-attestation", filepath.Join(stageDir, "release-bundles.attestation.json"),
 		"--role", "vpn",
 	}
-	return syscall.Exec(platformUpdateVerifiedUpdater, argv, platformUpdateWorkerEnvironment)
+	cmd := exec.Command(platformUpdateVerifiedUpdater, argv...)
+	cmd.Env = platformUpdateWorkerEnvironment
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		_, receiptErr := store.MarkFailed(taskID, "updater_start_failed")
+		if receiptErr != nil {
+			return fmt.Errorf("start verified platform updater: %v; persist failure receipt: %w", err, receiptErr)
+		}
+		return fmt.Errorf("start verified platform updater: %w", err)
+	}
+
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	for {
+		select {
+		case sig := <-signals:
+			if cmd.Process != nil {
+				_ = cmd.Process.Signal(sig)
+			}
+		case waitErr := <-done:
+			if waitErr == nil {
+				if _, err := store.MarkSucceeded(taskID); err != nil {
+					return fmt.Errorf("persist platform update success receipt: %w", err)
+				}
+				return nil
+			}
+			if platformUpdateWaitOutcomeUnknown(waitErr) {
+				if _, err := store.MarkOutcomeUnknown(taskID, "verified_updater_signaled"); err != nil {
+					return fmt.Errorf("verified platform updater outcome unknown: %v; persist unknown receipt: %w", waitErr, err)
+				}
+				return fmt.Errorf("verified platform updater outcome unknown: %w", waitErr)
+			}
+			if _, err := store.MarkFailed(taskID, "verified_updater_failed"); err != nil {
+				return fmt.Errorf("verified platform updater failed: %v; persist failure receipt: %w", waitErr, err)
+			}
+			return fmt.Errorf("verified platform updater failed: %w", waitErr)
+		}
+	}
+}
+
+func platformUpdateWaitOutcomeUnknown(waitErr error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(waitErr, &exitErr) || exitErr.ProcessState == nil {
+		return true
+	}
+	status, ok := exitErr.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok {
+		return true
+	}
+	return status.Signaled()
+}
+
+// rejectOrReconcileExistingPlatformUpdateReceipt is called only from a newly
+// created task-specific transient worker. systemd refuses a second unit with the
+// same fixed name while the original worker is still active, so reaching this
+// function with mutation_started means the previous unit is no longer alive and
+// its terminal outcome cannot be proven. Ordinary routegate-agent.service startup
+// must never call this helper because the detached worker may legitimately still
+// be running while the updated Agent becomes healthy.
+func rejectOrReconcileExistingPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID string) error {
+	receipt, err := store.Read(taskID)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("inspect existing platform update receipt: %w", err)
+	}
+	if receipt.Phase == PlatformUpdateReceiptMutationStarted {
+		reconciled, reconcileErr := store.ReconcileInterrupted(taskID)
+		if reconcileErr != nil {
+			return fmt.Errorf("reconcile orphaned platform update receipt: %w", reconcileErr)
+		}
+		return fmt.Errorf("platform update task has unknown prior outcome: %s", reconciled.Code)
+	}
+	return fmt.Errorf("platform update task receipt already exists in terminal or non-runnable phase %s", receipt.Phase)
 }
 
 func validatedPlatformUpdateStage(taskID string) (string, string, error) {
@@ -129,16 +230,30 @@ func validatedPlatformUpdateStage(taskID string) (string, string, error) {
 }
 
 func isCanonicalPlatformUpdateBundleName(name string) bool {
+	if filepath.Base(name) != name {
+		return false
+	}
+	_, err := platformUpdateVersionFromBundle(name)
+	return err == nil
+}
+
+func platformUpdateVersionFromBundle(path string) (string, error) {
+	name := filepath.Base(path)
 	const prefix = "routegate-"
+	if !strings.HasPrefix(name, prefix) {
+		return "", fmt.Errorf("platform update bundle name is not canonical")
+	}
 	for _, arch := range []string{"amd64", "arm64"} {
 		suffix := "-linux-" + arch + ".tar.gz"
-		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+		if !strings.HasSuffix(name, suffix) {
 			continue
 		}
 		version := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
-		return routeGateReleaseVersionPattern.MatchString(version)
+		if routeGateReleaseVersionPattern.MatchString(version) {
+			return version, nil
+		}
 	}
-	return false
+	return "", fmt.Errorf("platform update bundle name is not canonical")
 }
 
 func validateRootOwnedNonWritableDir(path string) error {
