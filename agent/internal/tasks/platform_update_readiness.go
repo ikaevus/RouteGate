@@ -17,21 +17,12 @@ var fixedPlatformUpdateReadinessExecutables = []string{
 	platformUpdateVerifiedUpdater,
 }
 
-// PlatformUpdateRuntimeReady reports only whether this Agent host has the fixed
-// local execution prerequisites required by the already-reviewed remote update
-// path. It does not verify a release and does not authorize mutation.
 func PlatformUpdateRuntimeReady() bool {
 	return platformUpdateRuntimeReady(os.Geteuid(), runtime.GOARCH, 0, fixedPlatformUpdateReadinessExecutables)
 }
 
 func platformUpdateRuntimeReady(euid int, arch string, expectedUID uint32, executables []string) bool {
-	if euid != 0 {
-		return false
-	}
-	if arch != "amd64" && arch != "arm64" {
-		return false
-	}
-	if len(executables) != 4 {
+	if euid != 0 || (arch != "amd64" && arch != "arm64") || len(executables) != 4 {
 		return false
 	}
 	for _, path := range executables {
@@ -75,8 +66,18 @@ func validatePlatformUpdateParentChain(path string, expectedUID uint32) error {
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return fmt.Errorf("unsafe parent directory %s", dir)
 		}
-		if err := validatePlatformUpdateOwnedNonWritable(info, expectedUID); err != nil {
-			return fmt.Errorf("unsafe parent directory %s: %w", dir, err)
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return fmt.Errorf("unsafe parent directory %s: filesystem ownership metadata unavailable", dir)
+		}
+		// Production passes expectedUID=0. Allowing root ancestors as well as the
+		// fixture owner keeps this helper testable as an unprivileged user without
+		// weakening the production root-only policy.
+		if stat.Uid != 0 && stat.Uid != expectedUID {
+			return fmt.Errorf("unsafe parent directory %s: unexpected owner", dir)
+		}
+		if info.Mode().Perm()&0022 != 0 {
+			return fmt.Errorf("unsafe parent directory %s: group/world writable", dir)
 		}
 		if dir == string(filepath.Separator) {
 			break
