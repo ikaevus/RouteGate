@@ -10,7 +10,7 @@ help:
 	@echo "Usage:"
 	@echo "  make dev                  Start full dev stack"
 	@echo "  make up                   Start full dev stack"
-	@echo "  make down                 Stop dev stack"
+	@echo "  make down                 Stop full dev stack"
 	@echo "  make restart              Restart dev stack"
 	@echo "  make rebuild              Rebuild and start dev stack"
 	@echo "  make logs                 Follow dev stack logs"
@@ -64,10 +64,11 @@ frontend-build:
 	cd frontend && npm run build
 
 installer-test:
-	bash -n install.sh install-agent.sh scripts/build-release-bundle.sh scripts/routegate-recovery scripts/test-agent-installer.sh scripts/test-clean-vps-installer.sh scripts/test-recovery-tool.sh
+	bash -n install.sh install-agent.sh scripts/build-release-bundle.sh scripts/routegate-recovery scripts/routegate-vpn-update-worker.sh scripts/test-agent-installer.sh scripts/test-clean-vps-installer.sh scripts/test-recovery-tool.sh scripts/test-vpn-update-worker.sh
 	bash scripts/test-agent-installer.sh
 	scripts/test-clean-vps-installer.sh
 	bash scripts/test-recovery-tool.sh
+	bash scripts/test-vpn-update-worker.sh
 
 release-bundle:
 	@test -n "$(VERSION)" || (echo "VERSION is required, for example: make release-bundle VERSION=v1.0.0" >&2; exit 1)
