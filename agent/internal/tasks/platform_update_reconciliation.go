@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	platformUpdateSystemctlProbePath = "/usr/bin/systemctl"
-	platformUpdateWorkerProbeTimeout = 5 * time.Second
+	platformUpdateSystemctlProbePath  = "/usr/bin/systemctl"
+	platformUpdateWorkerProbeTimeout  = 5 * time.Second
 	platformUpdateWorkerProbeMaxBytes = 512
 )
 
@@ -163,15 +163,15 @@ func parsePlatformUpdateWorkerState(output string) (bool, error) {
 	if !ok {
 		return false, fmt.Errorf("platform update worker LoadState is missing")
 	}
-	activeState, ok := values["ActiveState"]
-	if !ok {
-		return false, fmt.Errorf("platform update worker ActiveState is missing")
-	}
 	if loadState == "not-found" {
 		return false, nil
 	}
 	if loadState != "loaded" {
 		return false, fmt.Errorf("unexpected platform update worker LoadState %q", loadState)
+	}
+	activeState, ok := values["ActiveState"]
+	if !ok {
+		return false, fmt.Errorf("platform update worker ActiveState is missing")
 	}
 	switch activeState {
 	case "active", "activating", "reloading", "deactivating":
