@@ -30,6 +30,7 @@ const (
 
 	platformUpdateVerifierProbeTimeout  = 5 * time.Second
 	platformUpdateVerifierProbeMaxBytes = 128 * 1024
+	platformUpdateCommandSymlinkLimit   = 16
 )
 
 var fixedPlatformUpdateReadinessExecutables = []string{
@@ -37,6 +38,44 @@ var fixedPlatformUpdateReadinessExecutables = []string{
 	platformUpdateSystemctlPath,
 	platformUpdateAgentBinary,
 	platformUpdateVerifiedUpdater,
+}
+
+// The remote VPN updater executes shell tooling as root with a fixed PATH.
+// Every external command reachable on the VPN apply path must therefore be
+// present in the trusted /usr command roots and resolve through a root-owned,
+// non-writable path. env and bash cover the toolchain shebangs themselves.
+var fixedPlatformUpdateRequiredCommands = []string{
+	"awk",
+	"bash",
+	"basename",
+	"cat",
+	"chmod",
+	"cp",
+	"date",
+	"dirname",
+	"env",
+	"find",
+	"flock",
+	"grep",
+	"head",
+	"install",
+	"mkdir",
+	"mktemp",
+	"python3",
+	"rm",
+	"sed",
+	"sha256sum",
+	"sleep",
+	"stat",
+	"systemctl",
+	"tar",
+	"uname",
+	"wc",
+}
+
+var fixedPlatformUpdateCommandSearchDirs = []string{
+	"/usr/sbin",
+	"/usr/bin",
 }
 
 type platformUpdateTrustedFile struct {
@@ -69,7 +108,10 @@ func PlatformUpdateRuntimeReady() bool {
 	if !ok {
 		return false
 	}
-	return platformUpdateRuntimeReady(os.Geteuid(), runtime.GOARCH, 0, fixedPlatformUpdateReadinessExecutables, policy)
+	if !platformUpdateRuntimeReady(os.Geteuid(), runtime.GOARCH, 0, fixedPlatformUpdateReadinessExecutables, policy) {
+		return false
+	}
+	return validatePlatformUpdateCommandRuntime(fixedPlatformUpdateCommandSearchDirs, fixedPlatformUpdateRequiredCommands, 0) == nil
 }
 
 func fixedPlatformUpdateRuntimePolicy(arch string) (platformUpdateRuntimePolicy, bool) {
@@ -285,6 +327,86 @@ func isLowerHex(value string, length int) bool {
 		}
 	}
 	return true
+}
+
+// validatePlatformUpdateCommandRuntime mirrors the fixed worker PATH without
+// accepting arbitrary caller PATH entries. The VPN updater is supported on
+// usr-merged Ubuntu hosts, so every required command must be found under the
+// trusted /usr command roots before mutation is allowed.
+func validatePlatformUpdateCommandRuntime(searchDirs, commandNames []string, expectedUID uint32) error {
+	if len(searchDirs) == 0 || len(commandNames) == 0 {
+		return fmt.Errorf("platform update command policy is empty")
+	}
+	for _, name := range commandNames {
+		if name == "" || strings.ContainsRune(name, filepath.Separator) {
+			return fmt.Errorf("invalid platform update command name")
+		}
+		path := ""
+		for _, dir := range searchDirs {
+			if !filepath.IsAbs(dir) {
+				return fmt.Errorf("platform update command root is not absolute")
+			}
+			candidate := filepath.Join(dir, name)
+			if _, err := os.Lstat(candidate); err == nil {
+				path = candidate
+				break
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("inspect required command %s: %w", name, err)
+			}
+		}
+		if path == "" {
+			return fmt.Errorf("required platform update command %s is missing", name)
+		}
+		if err := validatePlatformUpdateTrustedCommand(path, expectedUID); err != nil {
+			return fmt.Errorf("required platform update command %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// validatePlatformUpdateTrustedCommand permits root-controlled alternatives
+// symlinks while validating each link's parent boundary and the final regular
+// executable. This is necessary for standard Ubuntu paths such as python3/awk.
+func validatePlatformUpdateTrustedCommand(path string, expectedUID uint32) error {
+	current := filepath.Clean(path)
+	if !filepath.IsAbs(current) {
+		return fmt.Errorf("command path is not absolute")
+	}
+	for hop := 0; hop <= platformUpdateCommandSymlinkLimit; hop++ {
+		if err := validatePlatformUpdateParentChain(current, expectedUID); err != nil {
+			return err
+		}
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != expectedUID {
+			return fmt.Errorf("command path has unexpected owner")
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(current)
+			if err != nil {
+				return err
+			}
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(current), target)
+			}
+			current = filepath.Clean(target)
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("command target is not a regular file")
+		}
+		if info.Mode().Perm()&0022 != 0 {
+			return fmt.Errorf("command target is group/world writable")
+		}
+		if info.Mode().Perm()&0111 == 0 {
+			return fmt.Errorf("command target is not executable")
+		}
+		return nil
+	}
+	return fmt.Errorf("command symlink chain is too deep")
 }
 
 // validatePlatformUpdateReadinessExecutable validates both the executable and
