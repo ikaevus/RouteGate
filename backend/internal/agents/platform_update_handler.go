@@ -73,8 +73,8 @@ func (h *Handler) CreatePlatformUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		h.recordPlatformUpdateCreateAudit(r, serverID, request.TargetVersion, "", audit.ResultFailure, "update_in_progress")
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("update_in_progress", "Another RouteGate software update is already active for this server."))
+		h.recordPlatformUpdateCreateAudit(r, serverID, request.TargetVersion, "", audit.ResultFailure, "update_blocked")
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("update_blocked", "Another RouteGate software update is active or a prior update outcome remains unresolved for this server."))
 		return
 	}
 	if err != nil {
