@@ -86,6 +86,13 @@ func (s platformUpdateReceiptStore) MarkFailed(taskID, code string) (PlatformUpd
 	return s.transition(taskID, PlatformUpdateReceiptFailed, true, code)
 }
 
+func (s platformUpdateReceiptStore) MarkOutcomeUnknown(taskID, code string) (PlatformUpdateReceipt, error) {
+	if !validPlatformUpdateReceiptCode(code) {
+		return PlatformUpdateReceipt{}, fmt.Errorf("invalid platform update receipt code")
+	}
+	return s.transition(taskID, PlatformUpdateReceiptOutcomeUnknown, true, code)
+}
+
 func (s platformUpdateReceiptStore) ReconcileInterrupted(taskID string) (PlatformUpdateReceipt, error) {
 	receipt, err := s.Read(taskID)
 	if err != nil {
@@ -94,7 +101,7 @@ func (s platformUpdateReceiptStore) ReconcileInterrupted(taskID string) (Platfor
 	if receipt.Phase != PlatformUpdateReceiptMutationStarted {
 		return receipt, nil
 	}
-	return s.transition(taskID, PlatformUpdateReceiptOutcomeUnknown, true, "agent_restart_after_mutation_started")
+	return s.MarkOutcomeUnknown(taskID, "agent_restart_after_mutation_started")
 }
 
 func (s platformUpdateReceiptStore) Read(taskID string) (PlatformUpdateReceipt, error) {
