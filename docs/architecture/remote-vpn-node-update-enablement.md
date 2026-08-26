@@ -46,7 +46,7 @@ Every fixed executable and every directory used to reach it is checked fail-clos
 
 If any prerequisite is absent, partial, inconsistent, or unsafe, the Agent continues advertising `contract_only`. In particular, a partial updater bootstrap that installed the toolchain but did not successfully install the pinned attestation verifier must never advertise `ready`. The capability carries no caller-controlled path or detailed host error text.
 
-Heartbeat readiness is discovery evidence, not host authorization, and may become stale. The Agent repeats the same complete local runtime readiness check immediately before staging and detached dispatch. The verified updater still repeats release provenance and verifier-runtime validation immediately before host mutation.
+Heartbeat readiness is discovery evidence, not host authorization, and may become stale. The Agent repeats the same complete local runtime readiness check before staging, again after staging immediately before resolving/starting `systemd-run`, and once more inside the detached worker immediately before crossing the durable `mutation_started` boundary. The verified updater still repeats release provenance and verifier-runtime validation immediately before host mutation.
 
 Canonical ready capability:
 
@@ -77,7 +77,7 @@ Creation must fail closed when:
 
 The database partial unique index remains the final concurrency authority. A race that violates the one-active-job invariant maps to a conflict response rather than creating a second mutation attempt.
 
-E2j does not require the Agent to be currently online. A ready registered Agent may temporarily be offline and later claim the durable `pending` job. Capability readiness comes from the Agent's last authenticated registration/heartbeat and does not itself authorize host mutation; the execution-time readiness check is authoritative for entering staging/dispatch.
+E2j does not require the Agent to be currently online. A ready registered Agent may temporarily be offline and later claim the durable `pending` job. Capability readiness comes from the Agent's last authenticated registration/heartbeat and does not itself authorize host mutation; the execution-time readiness checks are authoritative for entering staging/dispatch and mutation.
 
 ## API
 
@@ -109,7 +109,7 @@ E2j creates only the durable `pending` state. From that point the already-review
 
 `pending -> in_progress -> mutation_dispatched -> succeeded|failed|outcome_unknown`
 
-A deterministic pre-dispatch failure may terminate from `in_progress`. Interrupted `in_progress` and all `mutation_dispatched` work are reconciliation-only. No automatic mutation retry is added.
+A deterministic pre-dispatch failure may terminate from `in_progress`, but it must first be persisted as a bounded local `prepared -> failed` receipt before Manager acknowledgement. This includes stale execution readiness, staging/identity failure, and deterministic detached-launch failure. If the acknowledgement is lost, subsequent reconciliation reads that receipt and terminalizes the Manager job without redispatching mutation. Interrupted `in_progress` with any prior/concurrent local dispatch evidence and all `mutation_dispatched` work are reconciliation-only. No automatic mutation retry is added.
 
 ## Explicit non-goals
 
@@ -121,7 +121,8 @@ Focused tests must prove:
 
 - readiness is `ready` only for the complete fixed trusted host runtime and supported architecture;
 - unsafe/missing executable paths, missing toolchain components, partial verifier installation, verifier metadata/digest mismatch, and writable/symlinked parents remain `contract_only`;
-- execution-time dispatch repeats readiness rather than trusting stale heartbeat capability;
+- execution-time dispatch repeats readiness before staging, after staging immediately before `systemd-run`, and inside the worker before `mutation_started`, rather than trusting stale heartbeat capability;
+- deterministic pre-dispatch failures are durably receipt-backed before Manager acknowledgement so acknowledgement loss remains reconciliation-only;
 - API requires `system:manage` for create and `servers:read` for status;
 - strict request decoding rejects unknown fields and privileged selectors;
 - Manager binds the job to the server's eligible ready Agent, never a caller-selected Agent;
