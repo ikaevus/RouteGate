@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 )
 
@@ -53,8 +54,12 @@ func DecodePlatformUpdateReconciliationEvidence(payload map[string]any) (Platfor
 	if err := decoder.Decode(&evidence); err != nil {
 		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("decode platform update reconciliation evidence: %w", err)
 	}
-	if decoder.More() {
-		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("platform update reconciliation evidence contains trailing data")
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("platform update reconciliation evidence contains trailing data")
+		}
+		return PlatformUpdateReconciliationEvidence{}, fmt.Errorf("decode trailing platform update reconciliation evidence: %w", err)
 	}
 	return evidence, nil
 }
