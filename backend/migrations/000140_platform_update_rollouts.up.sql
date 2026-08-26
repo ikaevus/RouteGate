@@ -82,8 +82,9 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF NEW.target_version IS DISTINCT FROM OLD.target_version THEN
-        RAISE EXCEPTION 'platform update rollout target_version is immutable';
+    IF NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.target_version IS DISTINCT FROM OLD.target_version THEN
+        RAISE EXCEPTION 'platform update rollout identity is immutable';
     END IF;
 
     IF NEW.status IS DISTINCT FROM OLD.status THEN
@@ -116,7 +117,8 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF NEW.rollout_id IS DISTINCT FROM OLD.rollout_id
+    IF NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.rollout_id IS DISTINCT FROM OLD.rollout_id
         OR NEW.server_id IS DISTINCT FROM OLD.server_id
         OR NEW.target_version IS DISTINCT FROM OLD.target_version
         OR NEW.position IS DISTINCT FROM OLD.position THEN
