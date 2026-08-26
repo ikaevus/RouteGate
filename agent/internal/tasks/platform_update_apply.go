@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"strings"
 	"syscall"
 )
 
@@ -55,6 +55,9 @@ func StartDetachedPlatformUpdate(ctx context.Context, taskID string) error {
 // every privileged path from one canonical task UUID and replaces itself with
 // the fixed trusted updater so transaction signals reach the rollback trap.
 func RunPlatformUpdateWorker(taskID string) error {
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("platform update worker must run as root")
+	}
 	stageDir, bundle, err := validatedPlatformUpdateStage(taskID)
 	if err != nil {
 		return err
@@ -102,10 +105,8 @@ func validatedPlatformUpdateStage(taskID string) (string, string, error) {
 	}
 
 	bundle := ""
-	seen := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		name := entry.Name()
-		seen = append(seen, name)
 		path := filepath.Join(stageDir, name)
 		if _, ok := required[name]; ok {
 			if err := validateRootOwnedNonWritableRegular(path); err != nil {
@@ -114,7 +115,6 @@ func validatedPlatformUpdateStage(taskID string) (string, string, error) {
 			continue
 		}
 		if bundle != "" || !isCanonicalPlatformUpdateBundleName(name) {
-			sort.Strings(seen)
 			return "", "", fmt.Errorf("platform update staged candidate contains unexpected or duplicate bundle entry")
 		}
 		if err := validateRootOwnedNonWritableRegular(path); err != nil {
@@ -129,12 +129,14 @@ func validatedPlatformUpdateStage(taskID string) (string, string, error) {
 }
 
 func isCanonicalPlatformUpdateBundleName(name string) bool {
+	const prefix = "routegate-"
 	for _, arch := range []string{"amd64", "arm64"} {
-		prefix := "routegate-"
 		suffix := "-linux-" + arch + ".tar.gz"
-		if len(name) > len(prefix)+len(suffix) && name[:len(prefix)] == prefix && name[len(name)-len(suffix):] == suffix {
-			return true
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+			continue
 		}
+		version := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
+		return routeGateReleaseVersionPattern.MatchString(version)
 	}
 	return false
 }
