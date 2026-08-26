@@ -44,6 +44,8 @@ var fixedPlatformUpdateReadinessExecutables = []string{
 // Every external command reachable on the VPN apply path must therefore be
 // present in the trusted /usr command roots and resolve through a root-owned,
 // non-writable path. env and bash cover the toolchain shebangs themselves.
+// gzip is included because GNU tar's -z path executes the compressor through
+// PATH while validating/extracting the verified release bundle.
 var fixedPlatformUpdateRequiredCommands = []string{
 	"awk",
 	"bash",
@@ -57,6 +59,7 @@ var fixedPlatformUpdateRequiredCommands = []string{
 	"find",
 	"flock",
 	"grep",
+	"gzip",
 	"head",
 	"install",
 	"mkdir",
