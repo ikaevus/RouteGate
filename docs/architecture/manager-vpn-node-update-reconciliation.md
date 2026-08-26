@@ -12,6 +12,21 @@ The Manager may identify a remote software-update task only by canonical task UU
 
 The Agent must validate the existing version-only platform-update request contract before any update-specific handling. Reconciliation is read-only: it may inspect only the durable receipt for the same canonical task UUID and must require the receipt target version to exactly match the Manager job target version.
 
+## Transport contract
+
+E2h reuses the authenticated Agent task/result transport instead of adding a second network channel. A `mutation_dispatched` job may be surfaced to its bound Agent only as a reconciliation task:
+
+- task `kind` is fixed to `platform_update`;
+- task `operation` is fixed to `reconcile`;
+- task ID is the existing canonical platform-update job UUID;
+- the task payload is the existing schema-versioned, version-only platform-update request envelope;
+- claiming the task updates only reconciliation scheduling metadata and must not change `mutation_dispatched` back to `in_progress`;
+- the Agent handler may call only the existing read-only durable receipt projection; it must not stage a release, invoke `systemd-run`, start the detached update worker, or otherwise mutate the host;
+- the Agent result contains only `taskId`, `targetVersion`, `status`, and optional bounded RouteGate error `code`;
+- Manager rejects unknown result fields, oversized evidence, identity mismatch, non-canonical values, and evidence that cannot be persisted safely.
+
+A transport-level `succeeded` result means only that the Agent successfully read and returned reconciliation evidence. It is never itself proof that the host update succeeded. Manager terminal state is derived solely from the validated receipt status inside that bounded evidence.
+
 ## Lifecycle mapping
 
 Manager persistence remains authoritative for orchestration state:
@@ -27,12 +42,12 @@ A missing, malformed, mismatched, unsafe, or otherwise unclassifiable receipt mu
 
 ## Restart behavior
 
-After Manager restart, `mutation_dispatched` jobs are reconciliation-only. They must never be returned to a mutation-dispatch path. Agent restart recovery continues to use the existing durable receipt rules and detached worker contract.
+After Manager restart, `mutation_dispatched` jobs are reconciliation-only. They must never be returned to a mutation-dispatch path. Agent restart recovery continues to use the existing durable receipt rules and detached worker contract. A failed reconciliation read is retried only as another read-only reconciliation attempt; it never re-dispatches mutation.
 
 ## Scope exclusions
 
-This slice does not expose a Manager API that creates remote update mutation jobs and does not enable the Agent detached update worker from a remote task. It only wires the bounded task/reconciliation transport needed for the later enablement slice.
+This slice does not expose a Manager API that creates remote update mutation jobs and does not enable the Agent detached update worker from a remote task. `capabilities.softwareUpdate.state` remains `contract_only`. E2h only wires the bounded task/reconciliation transport needed for the later enablement slice.
 
 ## Validation
 
-Focused tests must prove canonical version/task identity matching, pending versus terminal receipt mapping, no false success after dispatch, restart-safe reconciliation-only behavior, rejection of privileged selectors, and preservation of existing synchronous Agent operation semantics.
+Focused tests must prove canonical version/task identity matching, pending versus terminal receipt mapping, no false success after dispatch, restart-safe reconciliation-only behavior, rejection of privileged selectors, bounded result projection, and preservation of existing synchronous Agent operation semantics.
