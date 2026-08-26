@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -67,7 +66,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		return node
 	}
 
-	createRollout := func(name string, running bool) (string, nodeFixture) {
+	createRollout := func(name string) (string, nodeFixture) {
 		t.Helper()
 		node := createNode(name)
 		var rolloutID string
@@ -78,26 +77,49 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		`).Scan(&rolloutID); err != nil {
 			t.Fatalf("create rollout %s: %v", name, err)
 		}
-		if running {
-			if _, err := pool.Exec(ctx, `
-				UPDATE platform_update_rollouts
-				SET status = 'running', started_at = now()
-				WHERE id = $1::uuid
-			`, rolloutID); err != nil {
-				t.Fatalf("start rollout %s: %v", name, err)
-			}
-		}
 		return rolloutID, node
 	}
 
-	assertBlocked := func(label string, result <-chan error) {
+	startBlockedExec := func(label, query string, args ...any) <-chan error {
 		t.Helper()
-		select {
-		case err := <-result:
-			t.Fatalf("%s completed before the parent-row lock was released: %v", label, err)
-		case <-time.After(150 * time.Millisecond):
+		conn, err := pool.Acquire(ctx)
+		if err != nil {
+			t.Fatalf("acquire connection for %s: %v", label, err)
+		}
+		pid := conn.Conn().PgConn().PID()
+		result := make(chan error, 1)
+		go func() {
+			_, err := conn.Exec(ctx, query, args...)
+			result <- err
+			conn.Release()
+		}()
+
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			select {
+			case err := <-result:
+				t.Fatalf("%s completed before PostgreSQL reported a lock wait: %v", label, err)
+			default:
+			}
+
+			var waitEventType string
+			if err := pool.QueryRow(ctx, `
+				SELECT COALESCE(wait_event_type, '')
+				FROM pg_stat_activity
+				WHERE pid = $1
+			`, pid).Scan(&waitEventType); err != nil {
+				t.Fatalf("inspect PostgreSQL wait state for %s: %v", label, err)
+			}
+			if waitEventType == "Lock" {
+				return result
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s did not enter a PostgreSQL lock wait", label)
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
+
 	awaitResult := func(label string, result <-chan error) error {
 		t.Helper()
 		select {
@@ -110,7 +132,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 	}
 
 	t.Run("membership commit before start admits the member then start succeeds", func(t *testing.T) {
-		rolloutID, node := createRollout("membership-first", false)
+		rolloutID, node := createRollout("membership-first")
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			t.Fatalf("begin membership transaction: %v", err)
@@ -123,16 +145,11 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("admit member while pending: %v", err)
 		}
 
-		startResult := make(chan error, 1)
-		go func() {
-			_, err := pool.Exec(ctx, `
-				UPDATE platform_update_rollouts
-				SET status = 'running', started_at = now()
-				WHERE id = $1::uuid
-			`, rolloutID)
-			startResult <- err
-		}()
-		assertBlocked("concurrent rollout start", startResult)
+		startResult := startBlockedExec("concurrent rollout start", `
+			UPDATE platform_update_rollouts
+			SET status = 'running', started_at = now()
+			WHERE id = $1::uuid
+		`, rolloutID)
 		if err := tx.Commit(ctx); err != nil {
 			t.Fatalf("commit membership: %v", err)
 		}
@@ -154,7 +171,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 	})
 
 	t.Run("start commit before membership rejects the late member", func(t *testing.T) {
-		rolloutID, node := createRollout("start-first", false)
+		rolloutID, node := createRollout("start-first")
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			t.Fatalf("begin start transaction: %v", err)
@@ -168,15 +185,10 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stage rollout start: %v", err)
 		}
 
-		membershipResult := make(chan error, 1)
-		go func() {
-			_, err := pool.Exec(ctx, `
-				INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
-				VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
-			`, rolloutID, node.serverID)
-			membershipResult <- err
-		}()
-		assertBlocked("concurrent membership admission", membershipResult)
+		membershipResult := startBlockedExec("concurrent membership admission", `
+			INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+			VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
+		`, rolloutID, node.serverID)
 		if err := tx.Commit(ctx); err != nil {
 			t.Fatalf("commit rollout start: %v", err)
 		}
@@ -186,7 +198,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 	})
 
 	t.Run("update admission commit before stop wins and stop is rejected", func(t *testing.T) {
-		rolloutID, node := createRollout("admission-first", false)
+		rolloutID, node := createRollout("admission-first")
 		var entryID string
 		if err := pool.QueryRow(ctx, `
 			INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
@@ -216,16 +228,11 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stage update admission: %v", err)
 		}
 
-		stopResult := make(chan error, 1)
-		go func() {
-			_, err := pool.Exec(ctx, `
-				UPDATE platform_update_rollouts
-				SET status = 'failed', error_code = 'concurrent_stop', completed_at = now()
-				WHERE id = $1::uuid
-			`, rolloutID)
-			stopResult <- err
-		}()
-		assertBlocked("concurrent rollout stop", stopResult)
+		stopResult := startBlockedExec("concurrent rollout stop", `
+			UPDATE platform_update_rollouts
+			SET status = 'failed', error_code = 'concurrent_stop', completed_at = now()
+			WHERE id = $1::uuid
+		`, rolloutID)
 		if err := tx.Commit(ctx); err != nil {
 			t.Fatalf("commit update admission: %v", err)
 		}
@@ -246,7 +253,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 	})
 
 	t.Run("stop commit before update admission wins and admission is rejected", func(t *testing.T) {
-		rolloutID, node := createRollout("stop-first", false)
+		rolloutID, node := createRollout("stop-first")
 		var entryID string
 		if err := pool.QueryRow(ctx, `
 			INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
@@ -276,16 +283,11 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stage rollout stop: %v", err)
 		}
 
-		admissionResult := make(chan error, 1)
-		go func() {
-			_, err := pool.Exec(ctx, `
-				UPDATE platform_update_rollout_entries
-				SET platform_update_job_id = $2::uuid, status = 'updating'
-				WHERE id = $1::uuid
-			`, entryID, node.jobID)
-			admissionResult <- err
-		}()
-		assertBlocked("concurrent update admission", admissionResult)
+		admissionResult := startBlockedExec("concurrent update admission", `
+			UPDATE platform_update_rollout_entries
+			SET platform_update_job_id = $2::uuid, status = 'updating'
+			WHERE id = $1::uuid
+		`, entryID, node.jobID)
 		if err := tx.Commit(ctx); err != nil {
 			t.Fatalf("commit rollout stop: %v", err)
 		}
@@ -304,6 +306,4 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stop-first result rollout=%q entry=%q want failed/queued", rolloutStatus, entryStatus)
 		}
 	})
-
-	_ = fmt.Sprintf // keep fmt import available for future concurrency diagnostics without changing test semantics
 }
