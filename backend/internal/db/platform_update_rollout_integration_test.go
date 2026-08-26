@@ -80,6 +80,13 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		t.Fatalf("create wrong-version platform update job: %v", err)
 	}
 
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO platform_update_rollouts (target_version, status, started_at)
+		VALUES ('v9.9.9', 'running', now())
+	`); err == nil {
+		t.Fatal("rollout was created directly in a mutation-runnable state")
+	}
+
 	var rolloutID, entryID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO platform_update_rollouts (target_version)
@@ -87,6 +94,13 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		RETURNING id::text
 	`).Scan(&rolloutID); err != nil {
 		t.Fatalf("create rollout: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (
+			rollout_id, server_id, target_version, position, platform_update_job_id, status
+		) VALUES ($1::uuid, $2::uuid, 'v1.2.3', 99, $3::uuid, 'updating')
+	`, rolloutID, serverIDs[0], matchingJobID); err == nil {
+		t.Fatal("rollout entry was created directly updating with a pre-bound job")
 	}
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
