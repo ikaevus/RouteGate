@@ -36,17 +36,18 @@ The active-job uniqueness constraint continues to block a second platform update
 
 There is an unavoidable acknowledgement race if the Agent starts `systemd-run --no-block` first and only then tells Manager that mutation was dispatched: the detached worker may begin host mutation and restart `routegate-agent.service` before the acknowledgement reaches Manager. Manager would then still show `in_progress` even though mutation may already have started.
 
-E2i therefore requires a durable Agent-side handoff before detached launch:
+E2i therefore requires a durable Agent-side handoff before detached launch. The later E2j enablement review tightened this handoff further so the durable receipt also covers the long staging window:
 
-1. Strictly decode the version-only request.
-2. Stage the requested official RouteGate release using the existing fixed-policy staging primitive.
-3. Verify that staged task identity and release version exactly match the claimed task.
-4. Create the existing root-owned durable receipt in `prepared` for that exact task UUID and target version before invoking `systemd-run`.
-5. Start the existing detached transient-systemd worker using only the canonical task UUID.
-6. The worker must accept only the matching pre-existing `prepared` receipt and atomically advance it to `mutation_started` before the verified updater is invoked.
-7. Return bounded dispatch evidence only after `systemd-run --no-block` accepts the fixed unit.
+1. Strictly decode the version-only request and reject any prior local dispatch/staging evidence for the task UUID.
+2. Create the root-owned no-replace durable receipt in `prepared` for that exact task UUID and target version **before staging begins**.
+3. Stage the requested official RouteGate release using the fixed-policy staging primitive.
+4. Verify that staged task identity and release version exactly match the claimed task; deterministic staging/identity failures monotonically transition the existing receipt `prepared -> failed`.
+5. Re-read the receipt and require that it is still the same runnable `prepared` task/version before resolving or starting `systemd-run`.
+6. Revalidate the complete fixed local update runtime immediately before detached launch, then start the existing transient-systemd worker using only the canonical task UUID.
+7. The worker must accept only the matching pre-existing `prepared` receipt, revalidate the complete fixed runtime again, and atomically advance it to `mutation_started` before the verified updater is invoked.
+8. Return bounded dispatch evidence only after `systemd-run --no-block` accepts the fixed unit.
 
-A failure to create the durable `prepared` receipt prevents worker launch. If durable receipt state is uncertain after a failed create, the attempt remains conservatively non-runnable instead of being retried. If the fixed detached launcher fails before a process can be started, the Agent may mark an existing prepared receipt with a bounded deterministic failure code and report `failed`.
+A failure to create the durable `prepared` receipt prevents staging and worker launch. If durable receipt state is uncertain after a failed create, the attempt remains conservatively non-runnable instead of being retried. If the Agent is killed or the host reboots during staging, the already durable `prepared` receipt gives reconciliation pre-mutation evidence; a definitely absent fixed worker terminalizes it without redispatch. If the fixed detached launcher fails before a process can be started, the Agent marks the existing prepared receipt with a bounded deterministic failure code and reports `failed`.
 
 Once `systemd-run` has been accepted, failure to deliver the Manager acknowledgement is post-dispatch ambiguity. The job must never be redispatched. A later Agent poll/restart reconciles the durable receipt instead.
 
@@ -58,11 +59,13 @@ A successful detached launch means only `mutation_dispatched`; it is never updat
 
 ## Pre-dispatch failures
 
-Failures proven to occur before detached worker acceptance may transition `in_progress -> failed`, with only a bounded RouteGate-defined error code. Examples include invalid version request, official-release staging failure, unsafe staged state, or a fixed detached launcher that cannot be started at all.
+Failures proven to occur before detached worker acceptance may transition `in_progress -> failed`, with only a bounded RouteGate-defined error code. Examples include invalid version request, stale execution readiness, official-release staging failure, unsafe/mismatched staged state, or a fixed detached launcher that cannot be started at all.
+
+After the no-replace prepared receipt exists, every deterministic failure in the staging/launch path must terminalize that same receipt rather than creating replacement evidence. If another local path has already changed the receipt away from runnable `prepared`, dispatch fails closed and must not start a worker.
 
 Raw download errors, verifier output, command output, paths, URLs, or environment data must not be persisted in the Manager job.
 
-A transport disconnect or process restart while a job is `in_progress` is not by itself proof of a pre-dispatch failure. Recovery inspects only the matching durable receipt plus the fixed task-specific systemd unit and must never infer that it is safe to retry mutation from the absence of a Manager acknowledgement.
+A transport disconnect or process restart while a job is `in_progress` is not by itself proof that mutation is safe to retry. Recovery inspects only the matching durable receipt plus the fixed task-specific systemd unit and must never infer permission to redispatch from the absence of a Manager acknowledgement. A missing/unreadable receipt in the narrow claim-to-first-receipt window remains conservative ambiguity, not retry permission.
 
 ## Detached-worker recovery
 
@@ -73,11 +76,11 @@ Reconciliation is host-mutation read-only: it never stages a release, launches a
 The recovery rules are fail-closed:
 
 - if a `prepared` or `mutation_started` receipt has a live/activating task-specific unit, keep the receipt pending;
-- if `prepared` exists and the fixed unit is definitely inactive or not found, transition the receipt to deterministic pre-dispatch `failed`; a racing worker will then reject the terminal receipt before mutation can start;
+- if `prepared` exists and the fixed unit is definitely inactive or not found, transition the receipt to deterministic pre-dispatch `failed`; this covers interrupted staging as well as interrupted pre-launch handoff, and a racing worker will reject the terminal receipt before mutation can start;
 - if `mutation_started` exists and the fixed unit is definitely inactive or not found, transition monotonically to `outcome_unknown` because mutation may have happened but no terminal worker receipt survived;
 - if the unit state cannot be read or parsed safely, do not change the receipt and do not make the Manager job runnable; retry reconciliation later.
 
-This closes worker SIGKILL and host-reboot recovery without ever creating a second mutation attempt.
+This closes staging/worker SIGKILL and host-reboot recovery once the prepared handoff exists without ever creating a second mutation attempt.
 
 ## Post-dispatch rule
 
@@ -112,13 +115,17 @@ Focused tests must prove at least:
 - `mutation_dispatched` can produce only reconciliation tasks, never dispatch;
 - Agent dispatch accepts only operation `dispatch` plus the strict version-only request;
 - privileged selectors and unknown fields are rejected before staging or worker launch;
-- a matching durable `prepared` receipt exists before detached worker launch;
+- a matching no-replace durable `prepared` receipt exists before the staging function is entered and before detached worker launch;
+- an existing receipt prevents a second staging attempt for the same task UUID;
+- deterministic staging/identity/launch failures monotonically terminalize the existing prepared receipt;
+- the receipt is re-read after staging so a concurrently terminalized receipt cannot be followed by worker launch;
 - the detached worker accepts only the matching prepared task/version and advances it monotonically to `mutation_started`;
 - deterministic pre-dispatch failure cannot be confused with a post-dispatch outcome;
 - successful detached launch maps only to `mutation_dispatched`, never `succeeded`;
 - loss of the post-launch Manager acknowledgement cannot make the task runnable again;
 - a live task-specific unit keeps `prepared`/`mutation_started` reconciliation pending;
 - a definitely absent task-specific unit converts orphaned `mutation_started` to `outcome_unknown` without launching another worker;
+- a definitely absent task-specific unit converts an orphaned prepared receipt, including an interrupted staging handoff, to deterministic pre-dispatch failure;
 - pre-dispatch terminal reconciliation does not invent Manager dispatch provenance;
 - restart/replay cannot produce a second detached worker for the same job;
 - ordinary Agent task semantics remain unchanged;

@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	platformUpdateVerifiedUpdater = "/usr/local/lib/routegate/update/routegate-update-verified.sh"
-	platformUpdateAgentBinary     = "/usr/local/bin/routegate-agent"
-	platformUpdateSystemdRun      = "/usr/bin/systemd-run"
+	platformUpdateVerifiedUpdater           = "/usr/local/lib/routegate/update/routegate-update-verified.sh"
+	platformUpdateAgentBinary               = "/usr/local/bin/routegate-agent"
+	platformUpdateSystemdRun                = "/usr/bin/systemd-run"
+	platformUpdateRollbackIncompleteExitCode = 75
 )
 
 var (
@@ -55,6 +56,12 @@ func DetachedPlatformUpdateCommand(taskID string) (string, []string, error) {
 // this invocation. After Start succeeds, every Wait/context/non-zero failure is
 // conservative ambiguity because systemd may already have accepted the unit.
 func StartDetachedPlatformUpdate(ctx context.Context, taskID string) error {
+	// Staging can take minutes. Revalidate the complete fixed execution runtime
+	// immediately before resolving and starting systemd-run so readiness cannot
+	// go stale across the download window.
+	if !PlatformUpdateRuntimeReady() {
+		return fmt.Errorf("platform update runtime is not safely ready immediately before detached launch")
+	}
 	path, argv, err := DetachedPlatformUpdateCommand(taskID)
 	if err != nil {
 		return err
@@ -68,6 +75,54 @@ func StartDetachedPlatformUpdate(ctx context.Context, taskID string) error {
 		return fmt.Errorf("%w: wait for detached platform update launcher: %v", ErrPlatformUpdateDispatchAmbiguous, err)
 	}
 	return nil
+}
+
+// RecordPlatformUpdatePreDispatchFailure durably records a deterministic
+// failure before any host mutation. The create is no-replace: if any prior or
+// concurrent receipt exists, callers must treat the task as ambiguous rather
+// than overwriting evidence or making a replay runnable again.
+func RecordPlatformUpdatePreDispatchFailure(taskID, targetVersion, code string) error {
+	store := fixedPlatformUpdateReceiptStore()
+	if _, err := store.CreatePrepared(taskID, targetVersion); err != nil {
+		return fmt.Errorf("%w: persist prepared receipt for pre-dispatch failure: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	}
+	if _, err := store.MarkPreDispatchFailed(taskID, code); err != nil {
+		return fmt.Errorf("persist platform update pre-dispatch failure: %w", err)
+	}
+	return nil
+}
+
+type platformUpdateStageFunc func(context.Context, string, PlatformUpdateRequest) (PlatformUpdateStagedCandidate, error)
+
+// stagePlatformUpdateWithPreparedReceipt creates the no-replace durable handoff
+// before the first potentially long-running staging operation. If the Agent is
+// killed or the host reboots while assets are downloading, reconciliation can
+// therefore terminalize the still-prepared receipt without redispatching any
+// mutation. Deterministic staging failures monotonically close that same receipt.
+func stagePlatformUpdateWithPreparedReceipt(ctx context.Context, store platformUpdateReceiptStore, taskID string, request PlatformUpdateRequest, stage platformUpdateStageFunc) (PlatformUpdateStagedCandidate, error) {
+	if stage == nil {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update stager is unavailable")
+	}
+	if _, err := store.CreatePrepared(taskID, request.TargetVersion); err != nil {
+		// A concurrent or prior writer may already have durable handoff evidence.
+		// Never reinterpret that state as permission to retry staging or mutation.
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: persist prepared receipt before staging: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	}
+
+	candidate, err := stage(ctx, taskID, request)
+	if err != nil {
+		if _, receiptErr := store.MarkPreDispatchFailed(taskID, "staging_failed"); receiptErr != nil {
+			return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: platform update staging failed: %v; persist deterministic failure: %v", ErrPlatformUpdateDispatchAmbiguous, err, receiptErr)
+		}
+		return PlatformUpdateStagedCandidate{}, err
+	}
+	if candidate.TaskID != taskID || candidate.TargetVersion != request.TargetVersion {
+		if _, receiptErr := store.MarkPreDispatchFailed(taskID, "staged_identity_mismatch"); receiptErr != nil {
+			return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: staged identity mismatch; persist deterministic failure: %v", ErrPlatformUpdateDispatchAmbiguous, receiptErr)
+		}
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update staged identity mismatch")
+	}
+	return candidate, nil
 }
 
 // PrepareAndStartDetachedPlatformUpdate performs the durable handoff required
@@ -87,26 +142,23 @@ func PrepareAndStartDetachedPlatformUpdate(ctx context.Context, taskID string, r
 		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: task already has local dispatch state", ErrPlatformUpdateDispatchAmbiguous)
 	}
 
-	candidate, err := NewPlatformUpdateStager().Stage(ctx, taskID, request)
+	store := fixedPlatformUpdateReceiptStore()
+	candidate, err := stagePlatformUpdateWithPreparedReceipt(ctx, store, taskID, request, NewPlatformUpdateStager().Stage)
 	if err != nil {
 		return PlatformUpdateStagedCandidate{}, err
 	}
-	if candidate.TaskID != taskID || candidate.TargetVersion != request.TargetVersion {
-		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update staged identity mismatch")
-	}
-
-	store := fixedPlatformUpdateReceiptStore()
-	if _, err := store.CreatePrepared(taskID, request.TargetVersion); err != nil {
-		// A concurrent or prior writer may have created durable handoff evidence.
-		// Never reinterpret that state as permission to retry.
-		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: persist prepared receipt: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	// A second Agent process or reconciliation path may have terminalized a
+	// prepared receipt while staging was in progress. Re-read it before starting
+	// systemd so a terminal receipt can never be followed by a new worker launch.
+	if err := acceptPreparedPlatformUpdateReceipt(store, taskID, request.TargetVersion); err != nil {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: prepared receipt is no longer runnable before detached launch: %v", ErrPlatformUpdateDispatchAmbiguous, err)
 	}
 	if err := StartDetachedPlatformUpdate(ctx, taskID); err != nil {
 		if errors.Is(err, ErrPlatformUpdateDispatchAmbiguous) {
 			return PlatformUpdateStagedCandidate{}, err
 		}
-		// exec.Start failed, so this invocation provably never created a
-		// systemd-run process. Only this narrow case is deterministic pre-dispatch.
+		// No systemd-run process was successfully accepted through this path, so
+		// this remains a deterministic pre-dispatch failure and is reconcilable.
 		if _, receiptErr := store.MarkPreDispatchFailed(taskID, "detached_launch_failed"); receiptErr != nil {
 			return PlatformUpdateStagedCandidate{}, fmt.Errorf("detached launch failed: %v; persist pre-dispatch failure: %w", err, receiptErr)
 		}
@@ -148,9 +200,6 @@ func RunPlatformUpdateWorker(taskID string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateRootOwnedNonWritableRegular(platformUpdateVerifiedUpdater); err != nil {
-		return fmt.Errorf("trusted verified updater is unsafe: %w", err)
-	}
 	targetVersion, err := platformUpdateVersionFromBundle(bundle)
 	if err != nil {
 		return err
@@ -158,6 +207,17 @@ func RunPlatformUpdateWorker(taskID string) error {
 	store := fixedPlatformUpdateReceiptStore()
 	if err := acceptPreparedPlatformUpdateReceipt(store, taskID, targetVersion); err != nil {
 		return err
+	}
+
+	// Revalidate the complete toolchain, verifier, fixed executables and every
+	// parent chain inside the detached worker immediately before crossing the
+	// durable mutation boundary. A runtime changed after staging therefore
+	// terminalizes as a deterministic pre-dispatch failure, never as mutation.
+	if !PlatformUpdateRuntimeReady() {
+		if _, receiptErr := store.MarkPreDispatchFailed(taskID, "runtime_not_ready_before_mutation"); receiptErr != nil {
+			return fmt.Errorf("platform update runtime is not safely ready before mutation; persist failure receipt: %w", receiptErr)
+		}
+		return fmt.Errorf("platform update runtime is not safely ready before mutation")
 	}
 	if _, err := store.MarkMutationStarted(taskID); err != nil {
 		return fmt.Errorf("persist platform update mutation start: %w", err)
@@ -204,7 +264,8 @@ func RunPlatformUpdateWorker(taskID string) error {
 				return nil
 			}
 			if platformUpdateWaitOutcomeUnknown(waitErr) {
-				if _, err := store.MarkOutcomeUnknown(taskID, "verified_updater_signaled"); err != nil {
+				code := platformUpdateOutcomeUnknownCode(waitErr)
+				if _, err := store.MarkOutcomeUnknown(taskID, code); err != nil {
 					return fmt.Errorf("verified platform updater outcome unknown: %v; persist unknown receipt: %w", waitErr, err)
 				}
 				return fmt.Errorf("verified platform updater outcome unknown: %w", waitErr)
@@ -226,7 +287,15 @@ func platformUpdateWaitOutcomeUnknown(waitErr error) bool {
 	if !ok {
 		return true
 	}
-	return status.Signaled()
+	return status.Signaled() || exitErr.ExitCode() == platformUpdateRollbackIncompleteExitCode
+}
+
+func platformUpdateOutcomeUnknownCode(waitErr error) string {
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == platformUpdateRollbackIncompleteExitCode {
+		return "rollback_incomplete"
+	}
+	return "verified_updater_signaled"
 }
 
 func acceptPreparedPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID, targetVersion string) error {

@@ -116,15 +116,20 @@ func advertisedCapabilities(info systeminfo.Info) map[string]any {
 		diagnostics.ProfileVPNCoreStatus,
 		diagnostics.ProfileManagerCertificate,
 	}
-	// RG-96E2 advertises the request contract before mutation is wired. The
-	// explicit contract_only state prevents readiness code from treating this
-	// Agent as remotely updatable until the verified host primitive exists.
-	capabilities["softwareUpdate"] = map[string]any{
+	capabilities["softwareUpdate"] = softwareUpdateCapability(tasks.PlatformUpdateRuntimeReady())
+	return capabilities
+}
+
+func softwareUpdateCapability(ready bool) map[string]any {
+	state := "contract_only"
+	if ready {
+		state = "ready"
+	}
+	return map[string]any{
 		"schemaVersion": tasks.PlatformUpdateSchemaVersion,
-		"state":         "contract_only",
+		"state":         state,
 		"request":       "version_only",
 	}
-	return capabilities
 }
 
 func heartbeatCapabilities(info systeminfo.Info) map[string]any {

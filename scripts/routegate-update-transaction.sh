@@ -29,6 +29,10 @@ TARGET_ARCH=""
 MUTATED=0
 DB_MAY_BE_MUTATED=0
 STAGE=initializing
+# Exit 75 is a fixed machine-readable boundary meaning the transaction mutated
+# host state and could not prove that rollback restored it completely. Remote
+# callers must classify this as outcome_unknown, never as an ordinary failure.
+ROLLBACK_INCOMPLETE_EXIT=75
 
 usage() {
   cat <<'USAGE'
@@ -381,6 +385,12 @@ rollback() {
     if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
       printf '[routegate-update-transaction] WARNING: database restore reported exit %d; backup=%s\n' \
         "$RG_UPDATE_DB_RESTORE_RC" "$BACKUP_DIR" >&2
+    fi
+
+    if ((platform_rollback_rc != 0 || dispatch_rollback_rc != 0 || toolchain_rollback_rc != 0 || RG_UPDATE_DB_RESTORE_RC != 0)); then
+      printf '[routegate-update-transaction] WARNING: rollback completeness is unknown; reporting reserved exit %d\n' \
+        "$ROLLBACK_INCOMPLETE_EXIT" >&2
+      rc=$ROLLBACK_INCOMPLETE_EXIT
     fi
   fi
 
