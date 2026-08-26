@@ -6,8 +6,22 @@ import (
 	"testing"
 )
 
+func readinessFixtureRoot(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(".", ".platform-update-readiness-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(abs) })
+	return abs
+}
+
 func TestPlatformUpdateRuntimeReadyRequiresFixedSafeExecutables(t *testing.T) {
-	root := t.TempDir()
+	root := readinessFixtureRoot(t)
 	uid := uint32(os.Geteuid())
 	paths := make([]string, 0, 4)
 	for _, name := range []string{"systemd-run", "systemctl", "routegate-agent", "routegate-update-verified.sh"} {
@@ -26,7 +40,7 @@ func TestPlatformUpdateRuntimeReadyRequiresFixedSafeExecutables(t *testing.T) {
 }
 
 func TestPlatformUpdateRuntimeReadyFailsClosed(t *testing.T) {
-	root := t.TempDir()
+	root := readinessFixtureRoot(t)
 	uid := uint32(os.Geteuid())
 	makePaths := func() []string {
 		t.Helper()
@@ -67,7 +81,7 @@ func TestPlatformUpdateRuntimeReadyFailsClosed(t *testing.T) {
 }
 
 func TestPlatformUpdateReadinessRejectsSymlink(t *testing.T) {
-	root := t.TempDir()
+	root := readinessFixtureRoot(t)
 	target := filepath.Join(root, "target")
 	if err := os.WriteFile(target, []byte("fixture\n"), 0755); err != nil {
 		t.Fatal(err)
@@ -78,5 +92,23 @@ func TestPlatformUpdateReadinessRejectsSymlink(t *testing.T) {
 	}
 	if err := validatePlatformUpdateReadinessExecutable(link, uint32(os.Geteuid())); err == nil {
 		t.Fatal("symlink readiness executable was accepted")
+	}
+}
+
+func TestPlatformUpdateReadinessRejectsWritableParent(t *testing.T) {
+	root := readinessFixtureRoot(t)
+	unsafe := filepath.Join(root, "unsafe")
+	if err := os.Mkdir(unsafe, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(unsafe, "routegate-agent")
+	if err := os.WriteFile(path, []byte("fixture\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unsafe, 0775); err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePlatformUpdateReadinessExecutable(path, uint32(os.Geteuid())); err == nil {
+		t.Fatal("executable below group-writable parent was accepted")
 	}
 }
