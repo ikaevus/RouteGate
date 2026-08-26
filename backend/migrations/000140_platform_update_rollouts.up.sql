@@ -23,21 +23,34 @@ CREATE TABLE platform_update_rollouts (
     CONSTRAINT platform_update_rollouts_completed_timestamp_check CHECK (
         (status IN ('succeeded', 'failed', 'outcome_unknown') AND completed_at IS NOT NULL)
         OR (status IN ('pending', 'running') AND completed_at IS NULL)
-    )
+    ),
+    CONSTRAINT platform_update_rollouts_identity UNIQUE (id, target_version)
 );
+
+ALTER TABLE agent_platform_update_jobs
+    ADD CONSTRAINT agent_platform_update_jobs_rollout_identity
+    UNIQUE (id, server_id, target_version);
 
 CREATE TABLE platform_update_rollout_entries (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    rollout_id UUID NOT NULL REFERENCES platform_update_rollouts(id) ON DELETE CASCADE,
+    rollout_id UUID NOT NULL,
     server_id UUID NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+    target_version TEXT NOT NULL,
     position INTEGER NOT NULL,
-    platform_update_job_id UUID REFERENCES agent_platform_update_jobs(id) ON DELETE RESTRICT,
+    platform_update_job_id UUID,
     status TEXT NOT NULL DEFAULT 'queued',
     blocker_code TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at TIMESTAMPTZ,
+    CONSTRAINT platform_update_rollout_entries_rollout_identity_fk FOREIGN KEY (rollout_id, target_version)
+        REFERENCES platform_update_rollouts(id, target_version) ON DELETE CASCADE,
+    CONSTRAINT platform_update_rollout_entries_job_identity_fk FOREIGN KEY (platform_update_job_id, server_id, target_version)
+        REFERENCES agent_platform_update_jobs(id, server_id, target_version) ON DELETE RESTRICT,
     CONSTRAINT platform_update_rollout_entries_position_check CHECK (position >= 0),
+    CONSTRAINT platform_update_rollout_entries_target_version_check CHECK (
+        target_version ~ '^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?(\+[0-9A-Za-z][0-9A-Za-z.-]*)?$'
+    ),
     CONSTRAINT platform_update_rollout_entries_status_check CHECK (
         status IN ('queued', 'waiting', 'updating', 'healthy', 'failed', 'outcome_unknown', 'skipped')
     ),
@@ -56,6 +69,69 @@ CREATE TABLE platform_update_rollout_entries (
     CONSTRAINT platform_update_rollout_entries_unique_server UNIQUE (rollout_id, server_id),
     CONSTRAINT platform_update_rollout_entries_unique_job UNIQUE (platform_update_job_id)
 );
+
+CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.target_version IS DISTINCT FROM OLD.target_version THEN
+        RAISE EXCEPTION 'platform update rollout target_version is immutable';
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        IF NOT (
+            (OLD.status = 'pending' AND NEW.status IN ('running', 'failed'))
+            OR (OLD.status = 'running' AND NEW.status IN ('succeeded', 'failed', 'outcome_unknown'))
+        ) THEN
+            RAISE EXCEPTION 'invalid platform update rollout transition % -> %', OLD.status, NEW.status;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_platform_update_rollouts_transition
+BEFORE UPDATE ON platform_update_rollouts
+FOR EACH ROW
+EXECUTE FUNCTION enforce_platform_update_rollout_transition();
+
+CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_entry_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.rollout_id IS DISTINCT FROM OLD.rollout_id
+        OR NEW.server_id IS DISTINCT FROM OLD.server_id
+        OR NEW.target_version IS DISTINCT FROM OLD.target_version
+        OR NEW.position IS DISTINCT FROM OLD.position THEN
+        RAISE EXCEPTION 'platform update rollout entry identity is immutable';
+    END IF;
+
+    IF OLD.platform_update_job_id IS NOT NULL
+        AND NEW.platform_update_job_id IS DISTINCT FROM OLD.platform_update_job_id THEN
+        RAISE EXCEPTION 'platform update rollout entry job identity is immutable once bound';
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        IF NOT (
+            (OLD.status = 'queued' AND NEW.status IN ('waiting', 'updating', 'skipped'))
+            OR (OLD.status = 'waiting' AND NEW.status IN ('updating', 'skipped'))
+            OR (OLD.status = 'updating' AND NEW.status IN ('healthy', 'failed', 'outcome_unknown'))
+        ) THEN
+            RAISE EXCEPTION 'invalid platform update rollout entry transition % -> %', OLD.status, NEW.status;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_platform_update_rollout_entries_transition
+BEFORE UPDATE ON platform_update_rollout_entries
+FOR EACH ROW
+EXECUTE FUNCTION enforce_platform_update_rollout_entry_transition();
 
 CREATE UNIQUE INDEX idx_platform_update_rollout_entries_one_updating
     ON platform_update_rollout_entries(rollout_id)
