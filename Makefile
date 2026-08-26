@@ -10,7 +10,7 @@ help:
 	@echo "Usage:"
 	@echo "  make dev                  Start full dev stack"
 	@echo "  make up                   Start full dev stack"
-	@echo "  make down                 Stop full dev stack"
+	@echo "  make down                 Stop dev stack"
 	@echo "  make restart              Restart dev stack"
 	@echo "  make rebuild              Rebuild and start dev stack"
 	@echo "  make logs                 Follow dev stack logs"
