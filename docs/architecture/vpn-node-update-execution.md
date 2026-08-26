@@ -10,7 +10,9 @@ RG-96E2c connects the fixed-policy VPN-node staging primitive to the existing ve
 
 If it did, `systemctl stop routegate-agent` could terminate both the old Agent and its updater child during the transaction. That would turn an otherwise deterministic self-update into an avoidable mid-mutation interruption and weaken rollback/reconciliation guarantees.
 
-E2c therefore requires a RouteGate-owned detached systemd execution boundary. The mutation worker must run in its own transient or fixed unit/cgroup, independently of the Agent service lifecycle, before it is allowed to stop the Agent.
+E2c therefore uses a RouteGate-owned transient systemd execution boundary. The normal Agent launches `/usr/bin/systemd-run` with a fixed unit name derived only from a canonical task UUID and a fixed executable `/usr/local/bin/routegate-agent`. The transient service starts the same trusted Agent binary in a local-only worker mode, outside the `routegate-agent.service` cgroup. The worker then replaces itself with the fixed verified updater through `exec`, so transaction signals reach the updater's existing rollback traps directly.
+
+A second privileged worker executable or shell wrapper is deliberately not introduced. This keeps the worker lifecycle tied to the already installed and verified Agent binary and avoids a separate packaging/update trust surface.
 
 ## Fixed privileged request language
 
@@ -18,7 +20,7 @@ The detached worker receives only locally reconstructed, bounded RouteGate state
 
 - canonical UUIDv4 task identity;
 - fixed staging directory derived as `/var/lib/routegate-agent/update-staging/<task-id>`;
-- exactly the four canonical metadata/attestation files plus exactly one deterministic `routegate-<version>-linux-<arch>.tar.gz` bundle;
+- exactly the four canonical metadata/attestation files plus exactly one canonical `routegate-<version>-linux-<arch>.tar.gz` bundle;
 - fixed operation `apply`;
 - fixed requested role `vpn`.
 
@@ -30,19 +32,31 @@ Passing `--role vpn` is deliberate. The existing trusted role resolver must reje
 
 ## Staging revalidation
 
-Immediately before detached execution, the worker must reconstruct the staging directory from the canonical task ID and fail closed unless it contains exactly:
+Immediately before detached execution, the worker reconstructs the staging directory from the canonical task ID and fails closed unless it contains exactly:
 
 - `release-manifest.json`;
 - `release-manifest.attestation.json`;
 - `SHA256SUMS`;
 - `release-bundles.attestation.json`;
-- one regular non-symlink bundle matching the locally determined target version and architecture.
+- one regular non-symlink bundle matching the canonical RouteGate release-version grammar and supported `amd64` or `arm64` architecture suffix.
 
-Unexpected, missing, duplicate, symlinked or non-regular entries fail before the trusted updater is invoked. A prior E2b staging success is not release authorization; the verified updater repeats frozen-copy provenance, manifest, target and bundle verification immediately before mutation.
+The staging root, candidate directory, staged files and trusted updater must be root-owned, non-symlinked and not group/world writable. Unexpected, missing, duplicate, symlinked or non-regular entries fail before the trusted updater is invoked. A prior E2b staging success is not release authorization; the verified updater repeats frozen-copy provenance, manifest, target and bundle verification immediately before mutation.
+
+## Detached launcher
+
+The detached launcher accepts only a canonical task UUID. It constructs a fixed `systemd-run` argv with:
+
+- an instance name `routegate-vpn-update-<task-id>`;
+- `--collect` and `--no-block`;
+- a private `UMask=0077` and `NoNewPrivileges=yes` property;
+- the fixed `/usr/local/bin/routegate-agent` executable;
+- the single internal worker flag containing the canonical task UUID.
+
+No shell is used and no task-supplied value becomes a command, environment assignment, unit path or updater option.
 
 ## Lifecycle and result boundary
 
-E2c is responsible for starting one detached mutation worker at most once for a task. It must preserve the existing host update lock and must not start a second worker when an update transaction is active.
+E2c exposes the detached launcher and worker primitives but intentionally does not wire them to the Manager task runner. The existing host update lock inside the verified transaction remains authoritative for concurrent mutation exclusion.
 
 Because the Agent can legitimately disappear while its detached worker continues, the original task connection cannot be treated as a reliable final acknowledgement channel once mutation starts. E2d must add a root-owned bounded receipt/reconciliation record that survives Agent restart and distinguishes:
 
@@ -60,15 +74,16 @@ Until that receipt contract exists, E2c must not expose the detached mutation pr
 - no caller-controlled privileged selector crosses the boundary;
 - VPN-only role is fixed locally and independently revalidated by the trusted updater;
 - the updater runs outside the Agent service cgroup so stopping the old Agent cannot kill the transaction worker;
+- the trusted worker is the already installed Agent binary, not a separately managed privileged script;
 - raw verifier/transaction stdout or stderr is not returned to Manager;
 - ambiguous post-mutation outcomes are never automatically replayed;
 - VPN runtime binaries/configuration and unrelated packages remain outside this platform-update transaction.
 
 ## E2c implementation sequence
 
-1. add the fixed detached worker/unit contract and exact staging reconstruction;
-2. prove the worker survives `routegate-agent` stop/restart in focused systemd integration tests;
-3. invoke only the absolute verified updater with fixed `apply --role vpn`;
-4. preserve existing transaction lock and rollback behavior;
+1. add the fixed transient-systemd launcher and local Agent worker mode;
+2. reconstruct and revalidate the exact staged candidate from the canonical task UUID;
+3. invoke only the absolute verified updater with fixed `apply --role vpn` through process replacement;
+4. preserve the existing transaction lock and rollback behavior;
 5. keep Manager task wiring disabled until E2d adds durable result reconciliation;
 6. require exact-head CI and security review before enabling remote mutation.
