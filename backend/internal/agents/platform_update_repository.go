@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -9,22 +10,22 @@ import (
 )
 
 const (
-	PlatformUpdateCapabilityStateReady = "ready"
+	PlatformUpdateCapabilityStateReady       = "ready"
 	PlatformUpdateCapabilityRequestVersionOnly = "version_only"
-	PlatformUpdateCapabilitySchemaVersion = 1
+	PlatformUpdateCapabilitySchemaVersion    = 1
 )
 
 type PlatformUpdateJob struct {
-	ID             string     `json:"id"`
-	ServerID       string     `json:"serverId"`
-	TargetVersion  string     `json:"targetVersion"`
-	Status         string     `json:"status"`
-	ErrorCode      string     `json:"errorCode,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	StartedAt      *time.Time `json:"startedAt,omitempty"`
-	DispatchedAt   *time.Time `json:"dispatchedAt,omitempty"`
-	CompletedAt    *time.Time `json:"completedAt,omitempty"`
+	ID            string     `json:"id"`
+	ServerID      string     `json:"serverId"`
+	TargetVersion string     `json:"targetVersion"`
+	Status        string     `json:"status"`
+	ErrorCode     string     `json:"errorCode,omitempty"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
+	StartedAt     *time.Time `json:"startedAt,omitempty"`
+	DispatchedAt  *time.Time `json:"dispatchedAt,omitempty"`
+	CompletedAt   *time.Time `json:"completedAt,omitempty"`
 }
 
 type CreatePlatformUpdateJobInput struct {
@@ -34,7 +35,7 @@ type CreatePlatformUpdateJobInput struct {
 
 func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePlatformUpdateJobInput) (PlatformUpdateJob, error) {
 	serverID := strings.TrimSpace(input.ServerID)
-	targetVersion := strings.TrimSpace(input.TargetVersion)
+	targetVersion := input.TargetVersion
 	if serverID == "" {
 		return PlatformUpdateJob{}, fmt.Errorf("server id is required")
 	}
@@ -106,7 +107,7 @@ func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID s
 
 func scanPlatformUpdateJob(row scanner) (PlatformUpdateJob, error) {
 	var job PlatformUpdateJob
-	var startedAt, dispatchedAt, completedAt *time.Time
+	var startedAt, dispatchedAt, completedAt sql.NullTime
 	if err := row.Scan(
 		&job.ID,
 		&job.ServerID,
@@ -121,8 +122,14 @@ func scanPlatformUpdateJob(row scanner) (PlatformUpdateJob, error) {
 	); err != nil {
 		return PlatformUpdateJob{}, err
 	}
-	job.StartedAt = startedAt
-	job.DispatchedAt = dispatchedAt
-	job.CompletedAt = completedAt
+	if startedAt.Valid {
+		job.StartedAt = &startedAt.Time
+	}
+	if dispatchedAt.Valid {
+		job.DispatchedAt = &dispatchedAt.Time
+	}
+	if completedAt.Valid {
+		job.CompletedAt = &completedAt.Time
+	}
 	return job, nil
 }
