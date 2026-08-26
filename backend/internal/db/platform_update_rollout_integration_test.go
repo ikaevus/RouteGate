@@ -68,6 +68,7 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 
 	matchingJobID := createJob(serverIDs[0], agentIDs[0], "v1.2.3")
 	otherServerJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
+	secondMatchingJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
 	var wrongVersionJobID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO agent_platform_update_jobs (
@@ -87,7 +88,7 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		t.Fatal("rollout was created directly in a mutation-runnable state")
 	}
 
-	var rolloutID, entryID string
+	var rolloutID, entryID, secondEntryID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO platform_update_rollouts (target_version)
 		VALUES ('v1.2.3')
@@ -116,12 +117,41 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 	`, rolloutID, serverIDs[0]).Scan(&entryID); err != nil {
 		t.Fatalf("create rollout entry: %v", err)
 	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 1)
+		RETURNING id::text
+	`, rolloutID, serverIDs[1]).Scan(&secondEntryID); err != nil {
+		t.Fatalf("create second rollout entry: %v", err)
+	}
 	if _, err := pool.Exec(ctx, `
 		UPDATE platform_update_rollout_entries
 		SET id = gen_random_uuid()
 		WHERE id = $1::uuid
 	`, entryID); err == nil {
 		t.Fatal("rollout entry primary identity was mutated after creation")
+	}
+
+	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollout_entries
+		SET platform_update_job_id = $2::uuid, status = 'updating'
+		WHERE id = $1::uuid
+	`, entryID, matchingJobID); err == nil {
+		t.Fatal("rollout entry began updating while parent rollout was still pending")
+	}
+
+	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollouts
+		SET status = 'running', started_at = now()
+		WHERE id = $1::uuid
+	`, rolloutID); err != nil {
+		t.Fatalf("start rollout: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 2)
+	`, rolloutID, serverIDs[0]); err == nil {
+		t.Fatal("rollout membership changed after execution started")
 	}
 
 	if _, err := pool.Exec(ctx, `
@@ -147,6 +177,13 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		t.Fatalf("bind matching update job: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollouts
+		SET status = 'failed', error_code = 'premature_stop', completed_at = now()
+		WHERE id = $1::uuid
+	`, rolloutID); err == nil {
+		t.Fatal("rollout became terminal while an entry was still updating")
+	}
+	if _, err := pool.Exec(ctx, `
 		UPDATE platform_update_rollout_entries
 		SET status = 'failed', blocker_code = 'update_failed', completed_at = now()
 		WHERE id = $1::uuid
@@ -170,17 +207,17 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 
 	if _, err := pool.Exec(ctx, `
 		UPDATE platform_update_rollouts
-		SET status = 'running', started_at = now()
-		WHERE id = $1::uuid
-	`, rolloutID); err != nil {
-		t.Fatalf("start rollout: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `
-		UPDATE platform_update_rollouts
 		SET status = 'failed', error_code = 'entry_failed', completed_at = now()
 		WHERE id = $1::uuid
 	`, rolloutID); err != nil {
 		t.Fatalf("terminalize rollout: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE platform_update_rollout_entries
+		SET platform_update_job_id = $2::uuid, status = 'updating'
+		WHERE id = $1::uuid
+	`, secondEntryID, secondMatchingJobID); err == nil {
+		t.Fatal("terminal parent rollout admitted a new update job")
 	}
 	if _, err := pool.Exec(ctx, `
 		UPDATE platform_update_rollouts
