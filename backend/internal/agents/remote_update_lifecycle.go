@@ -6,7 +6,8 @@ package agents
 // succeeded. Terminal state is therefore allowed only after receipt
 // reconciliation.
 const (
-	AgentTaskKindPlatformUpdate = "platform_update"
+	AgentTaskKindPlatformUpdate       = "platform_update"
+	PlatformUpdateOperationReconcile = "reconcile"
 
 	AgentOperationJobStatusMutationDispatched = "mutation_dispatched"
 	AgentOperationJobStatusOutcomeUnknown     = "outcome_unknown"

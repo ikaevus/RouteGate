@@ -195,6 +195,8 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return r.processVPNCoreInstallTask(ctx, *task)
 	case tasks.TaskKindDiagnostic:
 		return r.processDiagnosticTask(ctx, *task)
+	case tasks.TaskKindPlatformUpdate:
+		return r.processPlatformUpdateReconciliationTask(ctx, *task)
 	case tasks.TaskKindConfigApply:
 		return r.processConfigApplyTask(ctx, *task)
 	default:

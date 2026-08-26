@@ -117,6 +117,68 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 		return nil, err
 	}
 
+	// Post-dispatch platform updates are reconciliation-only. Claiming this task
+	// does not move the durable lifecycle back to in_progress and therefore can
+	// never make the mutation worker remotely reachable a second time.
+	var reconcileTask AgentConfigTask
+	var targetVersion string
+	var startedAt sql.NullTime
+	err = tx.QueryRow(ctx, `
+		WITH next_job AS (
+			SELECT id
+			FROM agent_platform_update_jobs
+			WHERE server_id = $1::uuid
+			  AND agent_id = $2::uuid
+			  AND status = 'mutation_dispatched'
+			  AND updated_at <= now() - interval '1 second'
+			ORDER BY updated_at ASC, created_at ASC, id ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE agent_platform_update_jobs j
+		SET updated_at = now()
+		FROM next_job
+		WHERE j.id = next_job.id
+		RETURNING
+			j.id::text,
+			j.server_id::text,
+			j.agent_id::text,
+			j.target_version,
+			j.status,
+			j.created_at,
+			j.started_at
+	`, agent.ServerID, agent.ID).Scan(
+		&reconcileTask.ID,
+		&reconcileTask.ServerID,
+		&reconcileTask.AgentID,
+		&targetVersion,
+		&reconcileTask.Status,
+		&reconcileTask.CreatedAt,
+		&startedAt,
+	)
+	if err == nil {
+		payload, marshalErr := json.Marshal(map[string]any{
+			"schemaVersion": 1,
+			"targetVersion": targetVersion,
+		})
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		reconcileTask.Kind = AgentTaskKindPlatformUpdate
+		reconcileTask.Operation = PlatformUpdateOperationReconcile
+		reconcileTask.RenderedConfig = payload
+		if startedAt.Valid {
+			reconcileTask.StartedAt = &startedAt.Time
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			return nil, commitErr
+		}
+		return &reconcileTask, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
 	task, err := scanAgentOperationTask(tx.QueryRow(ctx, `
 		WITH next_job AS (
 			SELECT id
@@ -178,6 +240,76 @@ func (r *Repository) CompleteAgentOperationTask(ctx context.Context, input Compl
 	errorMessage := strings.TrimSpace(input.ErrorMessage)
 	if len(errorMessage) > maxAgentOperationErrorMessageBytes {
 		return "", fmt.Errorf("agent operation error message exceeds %d bytes", maxAgentOperationErrorMessageBytes)
+	}
+
+	// A platform_update result is a read-only receipt projection, never the
+	// mutation outcome by itself. Only a successful transport response carrying
+	// matching strict evidence is allowed to reconcile the durable lifecycle.
+	var targetVersion string
+	err = r.pool.QueryRow(ctx, `
+		SELECT j.target_version
+		FROM agent_platform_update_jobs j
+		JOIN agents a ON a.id = j.agent_id
+		WHERE j.id = $1::uuid
+		  AND a.token_hash = $2
+		  AND j.status = 'mutation_dispatched'
+	`, input.JobID, input.TokenHash).Scan(&targetVersion)
+	if err == nil {
+		if input.Status != AgentOperationJobStatusSucceeded || errorMessage != "" {
+			return "", fmt.Errorf("platform update reconciliation transport must succeed before evidence is accepted")
+		}
+		evidence, decodeErr := DecodePlatformUpdateReconciliationEvidence(resultPayload)
+		if decodeErr != nil {
+			return "", decodeErr
+		}
+		nextStatus, reconcileErr := ReconcilePlatformUpdateEvidence(input.JobID, targetVersion, evidence)
+		if reconcileErr != nil {
+			return "", reconcileErr
+		}
+		if nextStatus == AgentOperationJobStatusMutationDispatched {
+			commandTag, updateErr := r.pool.Exec(ctx, `
+				UPDATE agent_platform_update_jobs
+				SET updated_at = now()
+				WHERE id = $1::uuid
+				  AND agent_id = (SELECT id FROM agents WHERE token_hash = $2)
+				  AND status = 'mutation_dispatched'
+			`, input.JobID, input.TokenHash)
+			if updateErr != nil {
+				return "", updateErr
+			}
+			if commandTag.RowsAffected() != 1 {
+				return "", pgx.ErrNoRows
+			}
+			return AgentTaskKindPlatformUpdate, nil
+		}
+		if !ValidPlatformUpdateTransition(AgentOperationJobStatusMutationDispatched, nextStatus) {
+			return "", fmt.Errorf("invalid platform update reconciliation transition")
+		}
+		errorCode := ""
+		if nextStatus == AgentOperationJobStatusFailed || nextStatus == AgentOperationJobStatusOutcomeUnknown {
+			errorCode = evidence.Code
+		}
+		commandTag, updateErr := r.pool.Exec(ctx, `
+			UPDATE agent_platform_update_jobs
+			SET
+				status = $3,
+				error_code = NULLIF($4, ''),
+				completed_at = now(),
+				updated_at = now()
+			WHERE id = $1::uuid
+			  AND agent_id = (SELECT id FROM agents WHERE token_hash = $2)
+			  AND status = 'mutation_dispatched'
+		`, input.JobID, input.TokenHash, nextStatus, errorCode)
+		if updateErr != nil {
+			return "", updateErr
+		}
+		if commandTag.RowsAffected() != 1 {
+			return "", pgx.ErrNoRows
+		}
+		return AgentTaskKindPlatformUpdate, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
 	}
 
 	var kind string
