@@ -76,6 +76,9 @@ func RunPlatformUpdateWorker(taskID string) error {
 	}
 
 	store := fixedPlatformUpdateReceiptStore()
+	if err := rejectOrReconcileExistingPlatformUpdateReceipt(store, taskID); err != nil {
+		return err
+	}
 	if _, err := store.CreatePrepared(taskID, targetVersion); err != nil {
 		return fmt.Errorf("create platform update receipt: %w", err)
 	}
@@ -130,6 +133,31 @@ func RunPlatformUpdateWorker(taskID string) error {
 			return fmt.Errorf("verified platform updater failed: %w", waitErr)
 		}
 	}
+}
+
+// rejectOrReconcileExistingPlatformUpdateReceipt is called only from a newly
+// created task-specific transient worker. systemd refuses a second unit with the
+// same fixed name while the original worker is still active, so reaching this
+// function with mutation_started means the previous unit is no longer alive and
+// its terminal outcome cannot be proven. Ordinary routegate-agent.service startup
+// must never call this helper because the detached worker may legitimately still
+// be running while the updated Agent becomes healthy.
+func rejectOrReconcileExistingPlatformUpdateReceipt(store platformUpdateReceiptStore, taskID string) error {
+	receipt, err := store.Read(taskID)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect existing platform update receipt: %w", err)
+	}
+	if receipt.Phase == PlatformUpdateReceiptMutationStarted {
+		reconciled, reconcileErr := store.ReconcileInterrupted(taskID)
+		if reconcileErr != nil {
+			return fmt.Errorf("reconcile orphaned platform update receipt: %w", reconcileErr)
+		}
+		return fmt.Errorf("platform update task has unknown prior outcome: %s", reconciled.Code)
+	}
+	return fmt.Errorf("platform update task receipt already exists in terminal or non-runnable phase %s", receipt.Phase)
 }
 
 func validatedPlatformUpdateStage(taskID string) (string, string, error) {
