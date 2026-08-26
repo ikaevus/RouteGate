@@ -2,7 +2,7 @@
 
 ## Purpose
 
-RG-96E2e is the control-plane bridge from a Manager-owned `platform_update` task to the already established VPN-node update primitives: E2a's version-only request contract, E2b's fixed official-release staging, E2c's detached root worker, and E2d's durable receipt state machine.
+RG-96E2e/E2f is the control-plane bridge from a Manager-owned `platform_update` task to the already established VPN-node update primitives: E2a's version-only request contract, E2b's fixed official-release staging, E2c's detached root worker, and E2d's durable receipt state machine.
 
 This slice must not widen the privileged language. The Manager selects only a canonical RouteGate target version for a specific registered VPN node. The Agent reconstructs release URLs, asset names, local paths, trust policy, updater path, node role, and systemd unit identity from fixed RouteGate policy.
 
@@ -14,6 +14,14 @@ Therefore acceptance by `systemd-run --no-block` is **not update success** and m
 
 E2e must introduce an explicit update-task lifecycle rather than mapping detached-worker acceptance onto the existing success completion semantics.
 
+## Current Agent privilege model
+
+`routegate-agent.service` currently runs as `User=root`. Root ownership and mode `0600` therefore protect update receipts from other host users, but they do **not** create an OS privilege boundary against the Agent process itself.
+
+A separate local receipt-reader socket would not materially strengthen isolation while its caller is already root. Until the Agent privilege model is reduced in a separate architecture change, E2f uses a narrow in-process read-only reconciliation function over the existing strict receipt parser. That function accepts only canonical task UUID plus canonical target version and returns only bounded receipt evidence.
+
+This does not broaden the remote privileged language: Manager input still cannot select receipt paths, updater paths, artifacts, commands, roles, signers, trust roots, or other host selectors.
+
 ## Required lifecycle
 
 The minimum safe lifecycle is:
@@ -23,7 +31,7 @@ The minimum safe lifecycle is:
 3. Agent strictly decodes the version-only payload and stages only the fixed official RouteGate release assets locally.
 4. Agent launches the fixed task-specific detached worker. A successful launch means only `mutation_dispatched`; the task remains non-terminal.
 5. The detached worker owns the durable host receipt: `prepared -> mutation_started -> succeeded|failed|outcome_unknown`.
-6. A narrow Agent-to-Manager reconciliation path later maps the bounded root receipt into the Manager task's terminal state. Neither Agent liveness nor worker dispatch is sufficient proof of success.
+6. A narrow reconciliation path maps validated bounded receipt evidence into the Manager task's terminal state. Neither Agent liveness nor worker dispatch is sufficient proof of success.
 7. `mutation_started` or `outcome_unknown` is never automatically replayed.
 
 ## Task payload
@@ -51,11 +59,13 @@ It must not contain staging paths, release URLs, verifier output, raw updater ou
 
 ## Receipt reconciliation boundary
 
-E2d receipts are root-owned and intentionally inaccessible to the ordinary unprivileged Agent service. E2e must preserve that boundary. Reading terminal receipt evidence therefore requires a narrow RouteGate-owned bridge whose output is limited to the canonical task UUID, target version, receipt phase, bounded code, and timestamps.
+E2d receipts remain under the fixed root-owned `/var/lib/routegate-agent/update-receipts/` directory and are parsed with strict ownership, mode, size, schema and semantic validation. The reconciliation call never accepts a filesystem path; it derives the receipt only from a canonical task UUID and also requires the expected canonical target version to match the durable receipt.
 
-That read bridge is read-only. It must not accept caller-controlled receipt paths and must never mutate a receipt or start an updater.
+Its output is limited to task UUID, target version, normalized reconciliation state, bounded receipt code, and timestamps. `prepared` and `mutation_started` both map to non-terminal `pending`; only `succeeded`, `failed`, and `outcome_unknown` map to terminal control-plane evidence.
 
-Until that bridge and Manager-side non-terminal task state are implemented, remote mutation dispatch remains disabled.
+The reconciliation path is read-only: it does not transition a receipt, start an updater, or perform staging.
+
+Until Manager-side non-terminal task state and this reconciliation result are wired end-to-end, remote mutation dispatch remains disabled.
 
 ## Failure semantics
 
@@ -69,4 +79,4 @@ Until that bridge and Manager-side non-terminal task state are implemented, remo
 
 ## Explicit non-goals
 
-No rolling fleet scheduler, parallel node updates, release channels, Admin UI, generic remote shell, arbitrary artifact selection, caller-controlled privileged arguments, or automatic retry are introduced by this boundary.
+No rolling fleet scheduler, parallel node updates, release channels, Admin UI, generic remote shell, arbitrary artifact selection, caller-controlled privileged arguments, Agent privilege reduction, or automatic retry are introduced by this boundary.
