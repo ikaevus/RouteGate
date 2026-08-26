@@ -1,6 +1,9 @@
 package agents
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestReconcilePlatformUpdateEvidence(t *testing.T) {
 	const taskID = "123e4567-e89b-42d3-a456-426614174000"
@@ -20,6 +23,7 @@ func TestReconcilePlatformUpdateEvidence(t *testing.T) {
 		{name: "version mismatch", evidence: PlatformUpdateReconciliationEvidence{TaskID: taskID, TargetVersion: "1.2.4", Status: PlatformUpdateReceiptStatusSucceeded}, wantErr: true},
 		{name: "success with code", evidence: PlatformUpdateReconciliationEvidence{TaskID: taskID, TargetVersion: version, Status: PlatformUpdateReceiptStatusSucceeded, Code: "unexpected"}, wantErr: true},
 		{name: "failed without code", evidence: PlatformUpdateReconciliationEvidence{TaskID: taskID, TargetVersion: version, Status: PlatformUpdateReceiptStatusFailed}, wantErr: true},
+		{name: "failed code outside persistence contract", evidence: PlatformUpdateReconciliationEvidence{TaskID: taskID, TargetVersion: version, Status: PlatformUpdateReceiptStatusFailed, Code: "update-failed"}, wantErr: true},
 		{name: "unsupported status", evidence: PlatformUpdateReconciliationEvidence{TaskID: taskID, TargetVersion: version, Status: "mutation_started"}, wantErr: true},
 	}
 
@@ -42,6 +46,15 @@ func TestReconcilePlatformUpdateEvidence(t *testing.T) {
 	}
 }
 
+func TestReconcilePlatformUpdateEvidenceCanonicalVersionParity(t *testing.T) {
+	const taskID = "123e4567-e89b-42d3-a456-426614174000"
+	const version = "v1.2.3-rc.1+build.7"
+	evidence := PlatformUpdateReconciliationEvidence{TaskID: taskID, TargetVersion: version, Status: PlatformUpdateReceiptStatusSucceeded}
+	if got, err := ReconcilePlatformUpdateEvidence(taskID, version, evidence); err != nil || got != AgentOperationJobStatusSucceeded {
+		t.Fatalf("expected Agent-compatible version to reconcile, got status=%q err=%v", got, err)
+	}
+}
+
 func TestReconcilePlatformUpdateEvidenceRejectsNonCanonicalIdentity(t *testing.T) {
 	validEvidence := PlatformUpdateReconciliationEvidence{
 		TaskID:        "123e4567-e89b-42d3-a456-426614174000",
@@ -53,5 +66,36 @@ func TestReconcilePlatformUpdateEvidenceRejectsNonCanonicalIdentity(t *testing.T
 	}
 	if _, err := ReconcilePlatformUpdateEvidence(validEvidence.TaskID, " 1.2.3", validEvidence); err == nil {
 		t.Fatal("expected whitespace version to be rejected")
+	}
+}
+
+func TestDecodePlatformUpdateReconciliationEvidenceFailClosed(t *testing.T) {
+	valid := map[string]any{
+		"taskId":        "123e4567-e89b-42d3-a456-426614174000",
+		"targetVersion": "1.2.3",
+		"status":        PlatformUpdateReceiptStatusPending,
+	}
+	if evidence, err := DecodePlatformUpdateReconciliationEvidence(valid); err != nil || evidence.Status != PlatformUpdateReceiptStatusPending {
+		t.Fatalf("expected valid evidence, got evidence=%+v err=%v", evidence, err)
+	}
+
+	withPrivilegedSelector := map[string]any{
+		"taskId":        valid["taskId"],
+		"targetVersion": valid["targetVersion"],
+		"status":        valid["status"],
+		"path":          "/tmp/forbidden",
+	}
+	if _, err := DecodePlatformUpdateReconciliationEvidence(withPrivilegedSelector); err == nil {
+		t.Fatal("expected unknown privileged selector to be rejected")
+	}
+
+	oversized := map[string]any{
+		"taskId":        valid["taskId"],
+		"targetVersion": valid["targetVersion"],
+		"status":        PlatformUpdateReceiptStatusFailed,
+		"code":          strings.Repeat("a", maxPlatformUpdateReconciliationBytes),
+	}
+	if _, err := DecodePlatformUpdateReconciliationEvidence(oversized); err == nil {
+		t.Fatal("expected oversized evidence to be rejected")
 	}
 }
