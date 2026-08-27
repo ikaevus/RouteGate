@@ -2,8 +2,8 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 	"github.com/jackc/pgx/v5"
@@ -12,8 +12,9 @@ import (
 // PersistPlatformUpdateRolloutPlan atomically records a pending rollout and its
 // ordered eligibility snapshot. Caller-supplied Eligible/Blockers values are
 // deliberately ignored: eligibility is re-derived from Manager-owned state
-// while the relevant server and Agent rows are locked in this transaction.
-// It does not start the rollout, create update jobs, or dispatch Agent work.
+// while the relevant update-admission lock and database rows are held in this
+// transaction. It does not start the rollout, create update jobs, or dispatch
+// Agent work.
 func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan PlatformUpdateRolloutPlan) (string, error) {
 	if !validPlatformUpdateTargetVersion(plan.TargetVersion) {
 		return "", fmt.Errorf("invalid target version")
@@ -41,6 +42,17 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", err
 	}
 	defer tx.Rollback(ctx)
+
+	// Acquire all per-server update-admission locks in deterministic order so
+	// concurrent overlapping rollout snapshots cannot deadlock each other. The
+	// original entry order remains unchanged for the persisted snapshot.
+	lockIDs := append([]string(nil), serverIDs...)
+	sort.Strings(lockIDs)
+	for _, serverID := range lockIDs {
+		if err := lockPlatformUpdateServer(ctx, tx, serverID); err != nil {
+			return "", err
+		}
+	}
 
 	entries := make([]PlatformUpdateRolloutPlanEntry, 0, len(serverIDs))
 	for _, serverID := range serverIDs {
@@ -97,6 +109,46 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerManagerVersionMismatch)
 	}
 
+	capabilityJSON, err := platformUpdateCapabilityJSON()
+	if err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
+	}
+
+	// Heartbeats lock/update the Agent row before the Server row. Preserve the
+	// same row-lock order here to avoid server->Agent / Agent->server deadlocks.
+	var agentStatus, agentVersion string
+	var protocolVersion *int
+	var exactUpdateCapability bool
+	err = tx.QueryRow(ctx, `
+		SELECT status, agent_version, protocol_version,
+		       capabilities -> 'softwareUpdate' = $2::jsonb
+		FROM agents
+		WHERE server_id = $1::uuid
+		ORDER BY updated_at DESC, id DESC
+		LIMIT 1
+		FOR UPDATE
+	`, serverID, capabilityJSON).Scan(&agentStatus, &agentVersion, &protocolVersion, &exactUpdateCapability)
+	if err == pgx.ErrNoRows {
+		entry.Blockers = append(entry.Blockers,
+			PlatformUpdateRolloutBlockerAgentMissing,
+			PlatformUpdateRolloutBlockerUpdateCapability,
+			PlatformUpdateRolloutBlockerProtocolIncompatible,
+		)
+	} else if err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
+	} else {
+		if agentStatus == StatusDisabled {
+			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerAgentDisabled)
+		}
+		if !exactUpdateCapability {
+			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerUpdateCapability)
+		}
+		compatibility := EvaluateCompatibility(agentVersion, protocolVersion)
+		if compatibility.Status != CompatibilityCompatible && compatibility.Status != CompatibilityUpgradeRecommended {
+			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerProtocolIncompatible)
+		}
+	}
+
 	var deploymentRole, serverStatus string
 	if err := tx.QueryRow(ctx, `
 		SELECT deployment_role, status
@@ -111,39 +163,6 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 	}
 	if serverStatus == "disabled" {
 		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerServerDisabled)
-	}
-
-	var agentStatus, agentVersion string
-	var protocolVersion *int
-	var capabilitiesJSON []byte
-	err := tx.QueryRow(ctx, `
-		SELECT status, agent_version, protocol_version, capabilities
-		FROM agents
-		WHERE server_id = $1::uuid
-		ORDER BY updated_at DESC, id DESC
-		LIMIT 1
-		FOR UPDATE
-	`, serverID).Scan(&agentStatus, &agentVersion, &protocolVersion, &capabilitiesJSON)
-	if err == pgx.ErrNoRows {
-		entry.Blockers = append(entry.Blockers,
-			PlatformUpdateRolloutBlockerAgentMissing,
-			PlatformUpdateRolloutBlockerUpdateCapability,
-			PlatformUpdateRolloutBlockerProtocolIncompatible,
-		)
-	} else if err != nil {
-		return PlatformUpdateRolloutPlanEntry{}, err
-	} else {
-		if agentStatus == StatusDisabled {
-			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerAgentDisabled)
-		}
-		var capabilities Capabilities
-		if err := json.Unmarshal(capabilitiesJSON, &capabilities); err != nil || !platformUpdateCapabilityReady(capabilities) {
-			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerUpdateCapability)
-		}
-		compatibility := EvaluateCompatibility(agentVersion, protocolVersion)
-		if compatibility.Status != CompatibilityCompatible && compatibility.Status != CompatibilityUpgradeRecommended {
-			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerProtocolIncompatible)
-		}
 	}
 
 	var hasInterlock bool
@@ -163,24 +182,6 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 
 	entry.Eligible = len(entry.Blockers) == 0
 	return entry, nil
-}
-
-func platformUpdateCapabilityReady(capabilities Capabilities) bool {
-	encoded, err := json.Marshal(capabilities["softwareUpdate"])
-	if err != nil {
-		return false
-	}
-	var capability struct {
-		SchemaVersion int    `json:"schemaVersion"`
-		State         string `json:"state"`
-		Request       string `json:"request"`
-	}
-	if err := json.Unmarshal(encoded, &capability); err != nil {
-		return false
-	}
-	return capability.SchemaVersion == PlatformUpdateCapabilitySchemaVersion &&
-		capability.State == PlatformUpdateCapabilityStateReady &&
-		capability.Request == PlatformUpdateCapabilityRequestVersionOnly
 }
 
 func validPlatformUpdateRolloutBlocker(blocker PlatformUpdateRolloutBlocker) bool {
