@@ -121,7 +121,7 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 	var exactUpdateCapability bool
 	err = tx.QueryRow(ctx, `
 		SELECT status, agent_version, protocol_version,
-		       capabilities -> 'softwareUpdate' = $2::jsonb
+		       COALESCE(capabilities -> 'softwareUpdate' = $2::jsonb, false)
 		FROM agents
 		WHERE server_id = $1::uuid
 		ORDER BY updated_at DESC, id DESC
