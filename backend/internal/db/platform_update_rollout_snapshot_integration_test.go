@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ikaevus/routegate/backend/internal/agents"
+	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 )
 
 func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
@@ -36,25 +37,39 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 	serverIDs := make([]string, 2)
 	for i := range serverIDs {
 		if err := pool.QueryRow(ctx, `
-			INSERT INTO servers (name, status)
-			VALUES ($1, 'active')
+			INSERT INTO servers (name, status, deployment_role)
+			VALUES ($1, 'active', 'vpn')
 			RETURNING id::text
 		`, "RG-96E3c snapshot fixture").Scan(&serverIDs[i]); err != nil {
 			t.Fatalf("create server fixture %d: %v", i, err)
 		}
 	}
 
+	previousVersion := buildinfo.Version
+	buildinfo.Version = "v1.2.3"
+	t.Cleanup(func() { buildinfo.Version = previousVersion })
+	protocolVersion := buildinfo.AgentProtocolVersion
+	now := time.Now().UTC()
+	if _, err := agents.NewRepository(pool).CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
+		ServerID: serverIDs[0], Hostname: "rollout-ready-agent", OS: "linux", Arch: "amd64",
+		AgentVersion: "v1.2.3", ProtocolVersion: &protocolVersion, TokenHash: "rollout-ready-token",
+		Status: agents.StatusOnline, RegisteredAt: &now, LastSeenAt: &now,
+		Capabilities: agents.Capabilities{"softwareUpdate": map[string]any{
+			"schemaVersion": agents.PlatformUpdateCapabilitySchemaVersion,
+			"state": agents.PlatformUpdateCapabilityStateReady,
+			"request": agents.PlatformUpdateCapabilityRequestVersionOnly,
+		}},
+	}); err != nil {
+		t.Fatalf("create ready Agent: %v", err)
+	}
+
+	// Deliberately fabricate both caller-supplied eligibility values. Persistence
+	// must ignore them and re-derive the authoritative snapshot from DB state.
 	plan := agents.PlatformUpdateRolloutPlan{
 		TargetVersion: "v1.2.3",
 		Entries: []agents.PlatformUpdateRolloutPlanEntry{
-			{ServerID: serverIDs[0], Eligible: true},
-			{
-				ServerID: serverIDs[1],
-				Blockers: []agents.PlatformUpdateRolloutBlocker{
-					agents.PlatformUpdateRolloutBlockerAgentMissing,
-					agents.PlatformUpdateRolloutBlockerUpdateCapability,
-				},
-			},
+			{ServerID: serverIDs[0], Eligible: false, Blockers: []agents.PlatformUpdateRolloutBlocker{agents.PlatformUpdateRolloutBlockerServerDisabled}},
+			{ServerID: serverIDs[1], Eligible: true},
 		},
 	}
 
@@ -107,13 +122,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 
 	want := []persistedEntry{
 		{serverID: serverIDs[0], position: 0, status: "queued", blockers: []string{}},
-		{
-			serverID:    serverIDs[1],
-			position:    1,
-			status:      "skipped",
-			blockers:    []string{"agent_missing", "update_capability_not_ready"},
-			isCompleted: true,
-		},
+		{serverID: serverIDs[1], position: 1, status: "skipped", blockers: []string{"agent_missing", "update_capability_not_ready", "agent_protocol_incompatible"}, isCompleted: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted rollout entries = %#v, want %#v", got, want)
