@@ -1,6 +1,15 @@
 ALTER TABLE platform_update_rollout_entries
     ADD COLUMN planning_blockers TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 
+-- Migration 000140 could already contain durable skipped entries, but those
+-- rows predate planning evidence. Give them a bounded fail-closed blocker
+-- before validating the new snapshot constraint so an in-place upgrade cannot
+-- fail merely because legacy skipped rows exist.
+UPDATE platform_update_rollout_entries
+SET planning_blockers = ARRAY['update_capability_not_ready']::TEXT[]
+WHERE status = 'skipped'
+  AND cardinality(planning_blockers) = 0;
+
 ALTER TABLE platform_update_rollout_entries
     ADD CONSTRAINT platform_update_rollout_entries_planning_blockers_check CHECK (
         cardinality(planning_blockers) <= 8
