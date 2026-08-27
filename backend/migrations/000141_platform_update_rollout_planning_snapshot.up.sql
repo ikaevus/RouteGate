@@ -4,11 +4,16 @@ ALTER TABLE platform_update_rollout_entries
 ALTER TABLE platform_update_rollout_entries
     ADD CONSTRAINT platform_update_rollout_entries_planning_blockers_check CHECK (
         cardinality(planning_blockers) <= 8
-        AND NOT EXISTS (
-            SELECT 1
-            FROM unnest(planning_blockers) AS blocker
-            WHERE blocker !~ '^[a-z0-9_]{1,96}$'
-        )
+        AND planning_blockers <@ ARRAY[
+            'manager_version_mismatch',
+            'not_vpn_role',
+            'server_disabled',
+            'agent_missing',
+            'agent_disabled',
+            'update_capability_not_ready',
+            'active_or_unresolved_update',
+            'agent_protocol_incompatible'
+        ]::TEXT[]
     ),
     ADD CONSTRAINT platform_update_rollout_entries_planning_snapshot_check CHECK (
         (status = 'queued' AND cardinality(planning_blockers) = 0)
