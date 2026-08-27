@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -33,6 +35,22 @@ type CreatePlatformUpdateJobInput struct {
 	TargetVersion string
 }
 
+func platformUpdateCapabilityJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"schemaVersion": PlatformUpdateCapabilitySchemaVersion,
+		"state":         PlatformUpdateCapabilityStateReady,
+		"request":       PlatformUpdateCapabilityRequestVersionOnly,
+	})
+}
+
+// lockPlatformUpdateServer serializes the absence/presence check for active
+// update jobs with update-job admission. Callers must hold the returned
+// transaction until their decision has been durably committed.
+func lockPlatformUpdateServer(ctx context.Context, tx pgx.Tx, serverID string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, serverID)
+	return err
+}
+
 func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePlatformUpdateJobInput) (PlatformUpdateJob, error) {
 	serverID := strings.TrimSpace(input.ServerID)
 	targetVersion := input.TargetVersion
@@ -42,16 +60,21 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 	if !validPlatformUpdateTargetVersion(targetVersion) {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid RouteGate target version")
 	}
-	capability, err := json.Marshal(map[string]any{
-		"schemaVersion": PlatformUpdateCapabilitySchemaVersion,
-		"state":         PlatformUpdateCapabilityStateReady,
-		"request":       PlatformUpdateCapabilityRequestVersionOnly,
-	})
+	capability, err := platformUpdateCapabilityJSON()
 	if err != nil {
 		return PlatformUpdateJob{}, err
 	}
 
-	return scanPlatformUpdateJob(r.pool.QueryRow(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockPlatformUpdateServer(ctx, tx, serverID); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+
+	job, err := scanPlatformUpdateJob(tx.QueryRow(ctx, `
 		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
 		SELECT s.id, a.id, $2
 		FROM servers s
@@ -79,6 +102,13 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 			dispatched_at,
 			completed_at
 	`, serverID, targetVersion, capability))
+	if err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	return job, nil
 }
 
 func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID string) (PlatformUpdateJob, error) {
@@ -116,9 +146,9 @@ func scanPlatformUpdateJob(row scanner) (PlatformUpdateJob, error) {
 		&job.ErrorCode,
 		&job.CreatedAt,
 		&job.UpdatedAt,
-		&startedAt,
-		&dispatchedAt,
-		&completedAt,
+		&job.StartedAt,
+		&job.DispatchedAt,
+		&job.CompletedAt,
 	); err != nil {
 		return PlatformUpdateJob{}, err
 	}
