@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -47,6 +48,34 @@ type PlatformUpdateRolloutPlan struct {
 	Entries       []PlatformUpdateRolloutPlanEntry
 }
 
+// canonicalPlatformUpdateServerID accepts PostgreSQL-compatible UUID spellings
+// used by Manager-owned server identities and returns the canonical lowercase
+// 8-4-4-4-12 form. Canonicalization happens before duplicate detection so two
+// textual spellings cannot identify the same durable server twice.
+func canonicalPlatformUpdateServerID(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", fmt.Errorf("candidate server id is required")
+	}
+	if strings.HasPrefix(strings.ToLower(value), "urn:uuid:") {
+		value = value[len("urn:uuid:"):]
+	}
+	if len(value) >= 2 && value[0] == '{' && value[len(value)-1] == '}' {
+		value = value[1 : len(value)-1]
+	}
+
+	compact := strings.ReplaceAll(value, "-", "")
+	if len(compact) != 32 {
+		return "", fmt.Errorf("candidate server id must be a UUID")
+	}
+	decoded, err := hex.DecodeString(compact)
+	if err != nil || len(decoded) != 16 {
+		return "", fmt.Errorf("candidate server id must be a UUID")
+	}
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		decoded[0:4], decoded[4:6], decoded[6:8], decoded[8:10], decoded[10:16]), nil
+}
+
 // PlanPlatformUpdateRollout evaluates candidates in caller-supplied order and
 // never silently drops an ineligible requested node. Management-first is a
 // rollout-wide fail-closed gate: when Manager is not already on targetVersion,
@@ -65,9 +94,9 @@ func PlanPlatformUpdateRollout(managerVersion, targetVersion string, candidates 
 	}
 	seen := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
-		serverID := strings.TrimSpace(candidate.ServerID)
-		if serverID == "" {
-			return PlatformUpdateRolloutPlan{}, fmt.Errorf("candidate server id is required")
+		serverID, err := canonicalPlatformUpdateServerID(candidate.ServerID)
+		if err != nil {
+			return PlatformUpdateRolloutPlan{}, err
 		}
 		if _, exists := seen[serverID]; exists {
 			return PlatformUpdateRolloutPlan{}, fmt.Errorf("duplicate rollout candidate server id %q", serverID)
