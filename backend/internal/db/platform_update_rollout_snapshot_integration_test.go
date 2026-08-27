@@ -35,7 +35,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 		t.Fatalf("apply migrations: %v", err)
 	}
 
-	serverIDs := make([]string, 2)
+	serverIDs := make([]string, 3)
 	for i := range serverIDs {
 		if err := pool.QueryRow(ctx, `
 			INSERT INTO servers (name, status, deployment_role)
@@ -51,7 +51,8 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 	t.Cleanup(func() { buildinfo.Version = previousVersion })
 	protocolVersion := buildinfo.AgentProtocolVersion
 	now := time.Now().UTC()
-	if _, err := agents.NewRepository(pool).CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
+	repo := agents.NewRepository(pool)
+	if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
 		ServerID: serverIDs[0], Hostname: "rollout-ready-agent", OS: "linux", Arch: "amd64",
 		AgentVersion: "v1.2.3", ProtocolVersion: &protocolVersion, TokenHash: "rollout-ready-token",
 		Status: agents.StatusOnline, RegisteredAt: &now, LastSeenAt: &now,
@@ -63,18 +64,32 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create ready Agent: %v", err)
 	}
+	if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
+		ServerID: serverIDs[2], Hostname: "rollout-additive-capability-agent", OS: "linux", Arch: "amd64",
+		AgentVersion: "v1.2.3", ProtocolVersion: &protocolVersion, TokenHash: "rollout-additive-token",
+		Status: agents.StatusOnline, RegisteredAt: &now, LastSeenAt: &now,
+		Capabilities: agents.Capabilities{"softwareUpdate": map[string]any{
+			"schemaVersion": agents.PlatformUpdateCapabilitySchemaVersion,
+			"state": agents.PlatformUpdateCapabilityStateReady,
+			"request": agents.PlatformUpdateCapabilityRequestVersionOnly,
+			"unexpected": true,
+		}},
+	}); err != nil {
+		t.Fatalf("create additive-capability Agent: %v", err)
+	}
 
-	// Deliberately fabricate both caller-supplied eligibility values. Persistence
+	// Deliberately fabricate caller-supplied eligibility values. Persistence
 	// must ignore them and re-derive the authoritative snapshot from DB state.
 	plan := agents.PlatformUpdateRolloutPlan{
 		TargetVersion: "v1.2.3",
 		Entries: []agents.PlatformUpdateRolloutPlanEntry{
 			{ServerID: serverIDs[0], Eligible: false, Blockers: []agents.PlatformUpdateRolloutBlocker{agents.PlatformUpdateRolloutBlockerServerDisabled}},
 			{ServerID: serverIDs[1], Eligible: true},
+			{ServerID: serverIDs[2], Eligible: true},
 		},
 	}
 
-	rolloutID, err := agents.NewRepository(pool).PersistPlatformUpdateRolloutPlan(ctx, plan)
+	rolloutID, err := repo.PersistPlatformUpdateRolloutPlan(ctx, plan)
 	if err != nil {
 		t.Fatalf("persist rollout planning snapshot: %v", err)
 	}
@@ -124,6 +139,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 	want := []persistedEntry{
 		{serverID: serverIDs[0], position: 0, status: "queued", blockers: []string{}},
 		{serverID: serverIDs[1], position: 1, status: "skipped", blockers: []string{"agent_missing", "update_capability_not_ready", "agent_protocol_incompatible"}, isCompleted: true},
+		{serverID: serverIDs[2], position: 2, status: "skipped", blockers: []string{"update_capability_not_ready"}, isCompleted: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted rollout entries = %#v, want %#v", got, want)
