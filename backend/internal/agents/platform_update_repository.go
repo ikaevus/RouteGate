@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,8 +16,6 @@ const (
 	PlatformUpdateCapabilityRequestVersionOnly = "version_only"
 	PlatformUpdateCapabilitySchemaVersion      = 1
 )
-
-var ErrPlatformUpdateAdmissionRejected = errors.New("platform update admission rejected")
 
 type PlatformUpdateJob struct {
 	ID            string     `json:"id"`
@@ -86,34 +83,18 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 // createPlatformUpdateJobTx is the authoritative single-node mutation
 // admission primitive for callers that must bind the resulting job atomically
 // with other durable control-plane state. Inputs must already be canonical and
-// validated by the caller; the function deliberately reuses the same
-// capability/role/status predicates as the public single-node API.
+// validated by the caller; the function deliberately reuses the exact SQL
+// predicates and error semantics of the public single-node API.
 func createPlatformUpdateJobTx(ctx context.Context, tx pgx.Tx, input CreatePlatformUpdateJobInput) (PlatformUpdateJob, error) {
 	if err := lockPlatformUpdateServer(ctx, tx, input.ServerID); err != nil {
 		return PlatformUpdateJob{}, err
 	}
-
-	var hasInterlock bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM agent_platform_update_jobs
-			WHERE server_id = $1::uuid
-			  AND status IN ('pending', 'in_progress', 'mutation_dispatched', 'outcome_unknown')
-		)
-	`, input.ServerID).Scan(&hasInterlock); err != nil {
-		return PlatformUpdateJob{}, err
-	}
-	if hasInterlock {
-		return PlatformUpdateJob{}, ErrPlatformUpdateAdmissionRejected
-	}
-
 	capability, err := platformUpdateCapabilityJSON()
 	if err != nil {
 		return PlatformUpdateJob{}, err
 	}
 
-	job, err := scanPlatformUpdateJob(tx.QueryRow(ctx, `
+	return scanPlatformUpdateJob(tx.QueryRow(ctx, `
 		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
 		SELECT s.id, a.id, $2
 		FROM servers s
@@ -141,10 +122,6 @@ func createPlatformUpdateJobTx(ctx context.Context, tx pgx.Tx, input CreatePlatf
 			dispatched_at,
 			completed_at
 	`, input.ServerID, input.TargetVersion, capability))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return PlatformUpdateJob{}, ErrPlatformUpdateAdmissionRejected
-	}
-	return job, err
 }
 
 func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID string) (PlatformUpdateJob, error) {
