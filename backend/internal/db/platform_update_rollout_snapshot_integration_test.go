@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -40,7 +41,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 			INSERT INTO servers (name, status, deployment_role)
 			VALUES ($1, 'active', 'vpn')
 			RETURNING id::text
-		`, "RG-96E3c snapshot fixture").Scan(&serverIDs[i]); err != nil {
+		`, fmt.Sprintf("RG-96E3c snapshot fixture %d", i+1)).Scan(&serverIDs[i]); err != nil {
 			t.Fatalf("create server fixture %d: %v", i, err)
 		}
 	}
