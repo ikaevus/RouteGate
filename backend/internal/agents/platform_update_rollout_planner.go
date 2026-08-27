@@ -1,6 +1,9 @@
 package agents
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // PlatformUpdateRolloutBlocker is a bounded planning reason retained for
 // administrator-visible diagnostics. Planner callers must not substitute
@@ -23,14 +26,14 @@ const (
 // no updater path, URL, checksum, signer, trust-root, command, environment, or
 // Agent-identity selector fields.
 type PlatformUpdateRolloutCandidate struct {
-	ServerID             string
-	DeploymentRole       string
-	ServerDisabled       bool
-	AgentRegistered      bool
-	AgentDisabled        bool
-	UpdateCapabilityReady bool
+	ServerID                    string
+	DeploymentRole              string
+	ServerDisabled              bool
+	AgentRegistered             bool
+	AgentDisabled               bool
+	UpdateCapabilityReady       bool
 	HasActiveOrUnresolvedUpdate bool
-	AgentProtocolCompatible bool
+	AgentProtocolCompatible     bool
 }
 
 type PlatformUpdateRolloutPlanEntry struct {
@@ -49,8 +52,8 @@ type PlatformUpdateRolloutPlan struct {
 // rollout-wide fail-closed gate: when Manager is not already on targetVersion,
 // every requested candidate retains the manager-version blocker.
 func PlanPlatformUpdateRollout(managerVersion, targetVersion string, candidates []PlatformUpdateRolloutCandidate) (PlatformUpdateRolloutPlan, error) {
-	if targetVersion == "" {
-		return PlatformUpdateRolloutPlan{}, fmt.Errorf("target version is required")
+	if !validPlatformUpdateTargetVersion(targetVersion) {
+		return PlatformUpdateRolloutPlan{}, fmt.Errorf("invalid target version")
 	}
 	if len(candidates) == 0 {
 		return PlatformUpdateRolloutPlan{}, fmt.Errorf("at least one rollout candidate is required")
@@ -62,15 +65,16 @@ func PlanPlatformUpdateRollout(managerVersion, targetVersion string, candidates 
 	}
 	seen := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.ServerID == "" {
+		serverID := strings.TrimSpace(candidate.ServerID)
+		if serverID == "" {
 			return PlatformUpdateRolloutPlan{}, fmt.Errorf("candidate server id is required")
 		}
-		if _, exists := seen[candidate.ServerID]; exists {
-			return PlatformUpdateRolloutPlan{}, fmt.Errorf("duplicate rollout candidate server id %q", candidate.ServerID)
+		if _, exists := seen[serverID]; exists {
+			return PlatformUpdateRolloutPlan{}, fmt.Errorf("duplicate rollout candidate server id %q", serverID)
 		}
-		seen[candidate.ServerID] = struct{}{}
+		seen[serverID] = struct{}{}
 
-		entry := PlatformUpdateRolloutPlanEntry{ServerID: candidate.ServerID}
+		entry := PlatformUpdateRolloutPlanEntry{ServerID: serverID}
 		if managerVersion != targetVersion {
 			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerManagerVersionMismatch)
 		}
