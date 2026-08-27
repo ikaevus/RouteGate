@@ -113,6 +113,11 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 }
 
 func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID string) (PlatformUpdateJob, error) {
+	serverID = strings.TrimSpace(serverID)
+	jobID = strings.TrimSpace(jobID)
+	if serverID == "" || jobID == "" {
+		return PlatformUpdateJob{}, fmt.Errorf("server id and job id are required")
+	}
 	return scanPlatformUpdateJob(r.pool.QueryRow(ctx, `
 		SELECT
 			id::text,
@@ -126,11 +131,12 @@ func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID s
 			dispatched_at,
 			completed_at
 		FROM agent_platform_update_jobs
-		WHERE id = $1::uuid AND server_id = $2::uuid
+		WHERE id = $1::uuid
+		  AND server_id = $2::uuid
 	`, jobID, serverID))
 }
 
-func scanPlatformUpdateJob(row pgx.Row) (PlatformUpdateJob, error) {
+func scanPlatformUpdateJob(row scanner) (PlatformUpdateJob, error) {
 	var job PlatformUpdateJob
 	var startedAt, dispatchedAt, completedAt sql.NullTime
 	if err := row.Scan(
@@ -147,24 +153,14 @@ func scanPlatformUpdateJob(row pgx.Row) (PlatformUpdateJob, error) {
 	); err != nil {
 		return PlatformUpdateJob{}, err
 	}
-	job.StartedAt = nullableTimePtr(startedAt)
-	job.DispatchedAt = nullableTimePtr(dispatchedAt)
-	job.CompletedAt = nullableTimePtr(completedAt)
+	if startedAt.Valid {
+		job.StartedAt = &startedAt.Time
+	}
+	if dispatchedAt.Valid {
+		job.DispatchedAt = &dispatchedAt.Time
+	}
+	if completedAt.Valid {
+		job.CompletedAt = &completedAt.Time
+	}
 	return job, nil
-}
-
-func validPlatformUpdateTargetVersion(value string) bool {
-	if value == "" || strings.TrimSpace(value) != value || value == "latest" {
-		return false
-	}
-	if len(value) < 2 || value[0] != 'v' {
-		return false
-	}
-	for _, r := range value[1:] {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '+' {
-			continue
-		}
-		return false
-	}
-	return true
 }
