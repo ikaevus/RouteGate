@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const platformUpdateRolloutAdmissionRejected = "admission_rejected"
@@ -98,9 +99,8 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 	}
 
 	var entryID, serverID string
-	var position int
 	if err := tx.QueryRow(ctx, `
-		SELECT id::text, server_id::text, position
+		SELECT id::text, server_id::text
 		FROM platform_update_rollout_entries e
 		WHERE rollout_id = $1::uuid
 		  AND status IN ('queued', 'waiting')
@@ -115,7 +115,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		ORDER BY position
 		LIMIT 1
 		FOR UPDATE
-	`, canonicalRolloutID).Scan(&entryID, &serverID, &position); err != nil {
+	`, canonicalRolloutID).Scan(&entryID, &serverID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return PlatformUpdateJob{}, fmt.Errorf("rollout has no admissible next entry")
 		}
@@ -130,24 +130,40 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, fmt.Errorf("persisted rollout target version is invalid")
 	}
 
+	// A rejected INSERT can put PostgreSQL's transaction into error state (for
+	// example the one-active/unresolved-job unique interlock). Keep that failure
+	// inside a savepoint so E3d can durably stop the rollout rather than rolling
+	// back to a runnable state that a later retry might mutate automatically.
+	if _, err := tx.Exec(ctx, `SAVEPOINT rg96e3d_single_node_admission`); err != nil {
+		return PlatformUpdateJob{}, err
+	}
 	job, err = createPlatformUpdateJobTx(ctx, tx, CreatePlatformUpdateJobInput{
 		ServerID:      serverID,
 		TargetVersion: targetVersion,
 	})
 	if err != nil {
-		if errors.Is(err, ErrPlatformUpdateAdmissionRejected) {
-			if _, updateErr := tx.Exec(ctx, `
-				UPDATE platform_update_rollouts
-				SET status = 'failed', error_code = $2, completed_at = now(), updated_at = now()
-				WHERE id = $1::uuid AND status = 'running'
-			`, canonicalRolloutID, platformUpdateRolloutAdmissionRejected); updateErr != nil {
-				return PlatformUpdateJob{}, updateErr
-			}
-			if err := tx.Commit(ctx); err != nil {
-				return PlatformUpdateJob{}, err
-			}
-			return PlatformUpdateJob{}, ErrPlatformUpdateAdmissionRejected
+		if !isPlatformUpdateAdmissionRejection(err) {
+			return PlatformUpdateJob{}, err
 		}
+		if _, rollbackErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT rg96e3d_single_node_admission`); rollbackErr != nil {
+			return PlatformUpdateJob{}, rollbackErr
+		}
+		if _, releaseErr := tx.Exec(ctx, `RELEASE SAVEPOINT rg96e3d_single_node_admission`); releaseErr != nil {
+			return PlatformUpdateJob{}, releaseErr
+		}
+		if _, updateErr := tx.Exec(ctx, `
+			UPDATE platform_update_rollouts
+			SET status = 'failed', error_code = $2, completed_at = now(), updated_at = now()
+			WHERE id = $1::uuid AND status = 'running'
+		`, canonicalRolloutID, platformUpdateRolloutAdmissionRejected); updateErr != nil {
+			return PlatformUpdateJob{}, updateErr
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PlatformUpdateJob{}, err
+		}
+		return PlatformUpdateJob{}, fmt.Errorf("%w: current single-node admission rejected rollout entry", err)
+	}
+	if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT rg96e3d_single_node_admission`); err != nil {
 		return PlatformUpdateJob{}, err
 	}
 
@@ -165,9 +181,16 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, fmt.Errorf("rollout entry admission lost durable ownership")
 	}
 
-	_ = position // retained in the locked selection for explicit persisted-order semantics.
 	if err := tx.Commit(ctx); err != nil {
 		return PlatformUpdateJob{}, err
 	}
 	return job, nil
+}
+
+func isPlatformUpdateAdmissionRejection(err error) bool {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
