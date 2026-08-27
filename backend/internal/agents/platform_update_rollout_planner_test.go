@@ -7,11 +7,11 @@ import (
 
 func eligibleRolloutCandidate(id string) PlatformUpdateRolloutCandidate {
 	return PlatformUpdateRolloutCandidate{
-		ServerID:                 id,
-		DeploymentRole:           "vpn",
-		AgentRegistered:          true,
-		UpdateCapabilityReady:    true,
-		AgentProtocolCompatible:  true,
+		ServerID:                id,
+		DeploymentRole:          "vpn",
+		AgentRegistered:         true,
+		UpdateCapabilityReady:   true,
+		AgentProtocolCompatible: true,
 	}
 }
 
@@ -105,7 +105,13 @@ func TestPlanPlatformUpdateRolloutRejectsDuplicateOrEmptyIdentity(t *testing.T) 
 	if _, err := PlanPlatformUpdateRollout("1.2.3", "", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("vpn-a")}); err == nil {
 		t.Fatal("empty target version unexpectedly accepted")
 	}
-	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{{}}); err == nil {
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "latest", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("vpn-a")}); err == nil {
+		t.Fatal("noncanonical target version unexpectedly accepted")
+	}
+	if _, err := PlanPlatformUpdateRollout("1.2.3", " 1.2.3 ", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("vpn-a")}); err == nil {
+		t.Fatal("whitespace-padded target version unexpectedly accepted")
+	}
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{{ServerID: "   "}}); err == nil {
 		t.Fatal("empty server id unexpectedly accepted")
 	}
 	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{
@@ -113,5 +119,21 @@ func TestPlanPlatformUpdateRolloutRejectsDuplicateOrEmptyIdentity(t *testing.T) 
 		eligibleRolloutCandidate("vpn-a"),
 	}); err == nil {
 		t.Fatal("duplicate server id unexpectedly accepted")
+	}
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{
+		eligibleRolloutCandidate("vpn-a"),
+		eligibleRolloutCandidate(" vpn-a "),
+	}); err == nil {
+		t.Fatal("duplicate canonical server id unexpectedly accepted")
+	}
+}
+
+func TestPlanPlatformUpdateRolloutCanonicalizesServerID(t *testing.T) {
+	plan, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate(" vpn-a ")})
+	if err != nil {
+		t.Fatalf("plan rollout: %v", err)
+	}
+	if got := plan.Entries[0].ServerID; got != "vpn-a" {
+		t.Fatalf("server id = %q, want canonical vpn-a", got)
 	}
 }
