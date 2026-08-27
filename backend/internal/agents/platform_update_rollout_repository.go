@@ -115,28 +115,58 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 	}
 
 	// Heartbeats lock/update the Agent row before the Server row. Preserve the
-	// same row-lock order here to avoid server->Agent / Agent->server deadlocks.
+	// same row-lock order here whenever an Agent already exists to avoid
+	// server->Agent / Agent->server deadlocks. If no Agent row exists, there is
+	// nothing to lock yet; after locking the Server row below, retry the Agent
+	// lookup so a concurrent first registration either becomes visible before
+	// the snapshot is derived or remains blocked by the Server FK lock until
+	// this transaction commits.
 	var agentStatus, agentVersion string
 	var protocolVersion *int
 	var exactUpdateCapability bool
-	err = tx.QueryRow(ctx, `
-		SELECT status, agent_version, protocol_version,
-		       COALESCE(capabilities -> 'softwareUpdate' = $2::jsonb, false)
-		FROM agents
-		WHERE server_id = $1::uuid
-		ORDER BY updated_at DESC, id DESC
-		LIMIT 1
-		FOR UPDATE
-	`, serverID, capabilityJSON).Scan(&agentStatus, &agentVersion, &protocolVersion, &exactUpdateCapability)
-	if err == pgx.ErrNoRows {
-		entry.Blockers = append(entry.Blockers,
-			PlatformUpdateRolloutBlockerAgentMissing,
-			PlatformUpdateRolloutBlockerUpdateCapability,
-			PlatformUpdateRolloutBlockerProtocolIncompatible,
-		)
+	agentFound := true
+	readAgent := func() error {
+		return tx.QueryRow(ctx, `
+			SELECT status, agent_version, protocol_version,
+			       COALESCE(capabilities -> 'softwareUpdate' = $2::jsonb, false)
+			FROM agents
+			WHERE server_id = $1::uuid
+			ORDER BY updated_at DESC, id DESC
+			LIMIT 1
+			FOR UPDATE
+		`, serverID, capabilityJSON).Scan(&agentStatus, &agentVersion, &protocolVersion, &exactUpdateCapability)
+	}
+	if err := readAgent(); err == pgx.ErrNoRows {
+		agentFound = false
 	} else if err != nil {
 		return PlatformUpdateRolloutPlanEntry{}, err
-	} else {
+	}
+
+	var deploymentRole, serverStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT deployment_role, status
+		FROM servers
+		WHERE id = $1::uuid
+		FOR UPDATE
+	`, serverID).Scan(&deploymentRole, &serverStatus); err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
+	}
+
+	if !agentFound {
+		if err := readAgent(); err == pgx.ErrNoRows {
+			entry.Blockers = append(entry.Blockers,
+				PlatformUpdateRolloutBlockerAgentMissing,
+				PlatformUpdateRolloutBlockerUpdateCapability,
+				PlatformUpdateRolloutBlockerProtocolIncompatible,
+			)
+		} else if err != nil {
+			return PlatformUpdateRolloutPlanEntry{}, err
+		} else {
+			agentFound = true
+		}
+	}
+
+	if agentFound {
 		if agentStatus == StatusDisabled {
 			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerAgentDisabled)
 		}
@@ -149,15 +179,6 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 		}
 	}
 
-	var deploymentRole, serverStatus string
-	if err := tx.QueryRow(ctx, `
-		SELECT deployment_role, status
-		FROM servers
-		WHERE id = $1::uuid
-		FOR UPDATE
-	`, serverID).Scan(&deploymentRole, &serverStatus); err != nil {
-		return PlatformUpdateRolloutPlanEntry{}, err
-	}
 	if deploymentRole != "vpn" {
 		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerNotVPNRole)
 	}
