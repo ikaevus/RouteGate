@@ -183,19 +183,3 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 	entry.Eligible = len(entry.Blockers) == 0
 	return entry, nil
 }
-
-func validPlatformUpdateRolloutBlocker(blocker PlatformUpdateRolloutBlocker) bool {
-	switch blocker {
-	case PlatformUpdateRolloutBlockerManagerVersionMismatch,
-		PlatformUpdateRolloutBlockerNotVPNRole,
-		PlatformUpdateRolloutBlockerServerDisabled,
-		PlatformUpdateRolloutBlockerAgentMissing,
-		PlatformUpdateRolloutBlockerAgentDisabled,
-		PlatformUpdateRolloutBlockerUpdateCapability,
-		PlatformUpdateRolloutBlockerActiveUpdate,
-		PlatformUpdateRolloutBlockerProtocolIncompatible:
-		return true
-	default:
-		return false
-	}
-}
