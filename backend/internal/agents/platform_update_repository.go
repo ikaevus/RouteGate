@@ -44,8 +44,8 @@ func platformUpdateCapabilityJSON() ([]byte, error) {
 }
 
 // lockPlatformUpdateServer serializes the absence/presence check for active
-// update jobs with update-job admission. Callers must hold the returned
-// transaction until their decision has been durably committed.
+// update jobs with update-job admission. Callers must hold the transaction
+// until their decision has been durably committed.
 func lockPlatformUpdateServer(ctx context.Context, tx pgx.Tx, serverID string) error {
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, serverID)
 	return err
@@ -146,9 +146,9 @@ func scanPlatformUpdateJob(row scanner) (PlatformUpdateJob, error) {
 		&job.ErrorCode,
 		&job.CreatedAt,
 		&job.UpdatedAt,
-		&job.StartedAt,
-		&job.DispatchedAt,
-		&job.CompletedAt,
+		&startedAt,
+		&dispatchedAt,
+		&completedAt,
 	); err != nil {
 		return PlatformUpdateJob{}, err
 	}
