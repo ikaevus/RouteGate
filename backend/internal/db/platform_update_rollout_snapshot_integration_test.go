@@ -35,7 +35,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 		t.Fatalf("apply migrations: %v", err)
 	}
 
-	serverIDs := make([]string, 3)
+	serverIDs := make([]string, 4)
 	for i := range serverIDs {
 		if err := pool.QueryRow(ctx, `
 			INSERT INTO servers (name, status, deployment_role)
@@ -77,6 +77,14 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create additive-capability Agent: %v", err)
 	}
+	if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
+		ServerID: serverIDs[3], Hostname: "rollout-no-update-capability-agent", OS: "linux", Arch: "amd64",
+		AgentVersion: "v1.2.3", ProtocolVersion: &protocolVersion, TokenHash: "rollout-no-update-capability-token",
+		Status: agents.StatusOnline, RegisteredAt: &now, LastSeenAt: &now,
+		Capabilities: agents.Capabilities{},
+	}); err != nil {
+		t.Fatalf("create Agent without update capability: %v", err)
+	}
 
 	// Deliberately fabricate caller-supplied eligibility values. Persistence
 	// must ignore them and re-derive the authoritative snapshot from DB state.
@@ -86,6 +94,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 			{ServerID: serverIDs[0], Eligible: false, Blockers: []agents.PlatformUpdateRolloutBlocker{agents.PlatformUpdateRolloutBlockerServerDisabled}},
 			{ServerID: serverIDs[1], Eligible: true},
 			{ServerID: serverIDs[2], Eligible: true},
+			{ServerID: serverIDs[3], Eligible: true},
 		},
 	}
 
@@ -140,6 +149,7 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 		{serverID: serverIDs[0], position: 0, status: "queued", blockers: []string{}},
 		{serverID: serverIDs[1], position: 1, status: "skipped", blockers: []string{"agent_missing", "update_capability_not_ready", "agent_protocol_incompatible"}, isCompleted: true},
 		{serverID: serverIDs[2], position: 2, status: "skipped", blockers: []string{"update_capability_not_ready"}, isCompleted: true},
+		{serverID: serverIDs[3], position: 3, status: "skipped", blockers: []string{"update_capability_not_ready"}, isCompleted: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted rollout entries = %#v, want %#v", got, want)
