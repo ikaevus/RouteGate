@@ -2,12 +2,18 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+
+	"github.com/ikaevus/routegate/backend/internal/buildinfo"
+	"github.com/jackc/pgx/v5"
 )
 
 // PersistPlatformUpdateRolloutPlan atomically records a pending rollout and its
-// ordered eligibility snapshot. It does not start the rollout, create update
-// jobs, or dispatch Agent work.
+// ordered eligibility snapshot. Caller-supplied Eligible/Blockers values are
+// deliberately ignored: eligibility is re-derived from Manager-owned state
+// while the relevant server and Agent rows are locked in this transaction.
+// It does not start the rollout, create update jobs, or dispatch Agent work.
 func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan PlatformUpdateRolloutPlan) (string, error) {
 	if !validPlatformUpdateTargetVersion(plan.TargetVersion) {
 		return "", fmt.Errorf("invalid target version")
@@ -17,6 +23,7 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 	}
 
 	seen := make(map[string]struct{}, len(plan.Entries))
+	serverIDs := make([]string, 0, len(plan.Entries))
 	for _, entry := range plan.Entries {
 		serverID, err := canonicalPlatformUpdateServerID(entry.ServerID)
 		if err != nil || serverID != entry.ServerID {
@@ -26,17 +33,7 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 			return "", fmt.Errorf("duplicate rollout plan server id %q", serverID)
 		}
 		seen[serverID] = struct{}{}
-		if entry.Eligible != (len(entry.Blockers) == 0) {
-			return "", fmt.Errorf("rollout plan eligibility evidence is inconsistent")
-		}
-		if len(entry.Blockers) > 8 {
-			return "", fmt.Errorf("too many rollout planning blockers")
-		}
-		for _, blocker := range entry.Blockers {
-			if !validPlatformUpdateRolloutBlocker(blocker) {
-				return "", fmt.Errorf("invalid rollout planning blocker")
-			}
-		}
+		serverIDs = append(serverIDs, serverID)
 	}
 
 	tx, err := r.pool.Begin(ctx)
@@ -44,6 +41,15 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", err
 	}
 	defer tx.Rollback(ctx)
+
+	entries := make([]PlatformUpdateRolloutPlanEntry, 0, len(serverIDs))
+	for _, serverID := range serverIDs {
+		entry, err := revalidatePlatformUpdateRolloutEntry(ctx, tx, serverID, plan.TargetVersion)
+		if err != nil {
+			return "", err
+		}
+		entries = append(entries, entry)
+	}
 
 	var rolloutID string
 	if err := tx.QueryRow(ctx, `
@@ -54,24 +60,20 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", err
 	}
 
-	for position, entry := range plan.Entries {
+	for position, entry := range entries {
 		blockers := make([]string, len(entry.Blockers))
 		for i, blocker := range entry.Blockers {
 			blockers[i] = string(blocker)
 		}
 		status := "queued"
-		var completedAt any
-		if !entry.Eligible {
-			status = "skipped"
-			completedAt = "now"
-		}
-		if completedAt == nil {
+		if entry.Eligible {
 			_, err = tx.Exec(ctx, `
 				INSERT INTO platform_update_rollout_entries
 					(rollout_id, server_id, target_version, position, status, planning_blockers)
 				VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::text[])
 			`, rolloutID, entry.ServerID, plan.TargetVersion, position, status, blockers)
 		} else {
+			status = "skipped"
 			_, err = tx.Exec(ctx, `
 				INSERT INTO platform_update_rollout_entries
 					(rollout_id, server_id, target_version, position, status, planning_blockers, completed_at)
@@ -87,6 +89,98 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", err
 	}
 	return rolloutID, nil
+}
+
+func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, serverID, targetVersion string) (PlatformUpdateRolloutPlanEntry, error) {
+	entry := PlatformUpdateRolloutPlanEntry{ServerID: serverID}
+	if buildinfo.Current().Version != targetVersion {
+		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerManagerVersionMismatch)
+	}
+
+	var deploymentRole, serverStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT deployment_role, status
+		FROM servers
+		WHERE id = $1::uuid
+		FOR UPDATE
+	`, serverID).Scan(&deploymentRole, &serverStatus); err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
+	}
+	if deploymentRole != "vpn" {
+		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerNotVPNRole)
+	}
+	if serverStatus == "disabled" {
+		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerServerDisabled)
+	}
+
+	var agentStatus, agentVersion string
+	var protocolVersion *int
+	var capabilitiesJSON []byte
+	err := tx.QueryRow(ctx, `
+		SELECT status, agent_version, protocol_version, capabilities
+		FROM agents
+		WHERE server_id = $1::uuid
+		ORDER BY updated_at DESC, id DESC
+		LIMIT 1
+		FOR UPDATE
+	`, serverID).Scan(&agentStatus, &agentVersion, &protocolVersion, &capabilitiesJSON)
+	if err == pgx.ErrNoRows {
+		entry.Blockers = append(entry.Blockers,
+			PlatformUpdateRolloutBlockerAgentMissing,
+			PlatformUpdateRolloutBlockerUpdateCapability,
+			PlatformUpdateRolloutBlockerProtocolIncompatible,
+		)
+	} else if err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
+	} else {
+		if agentStatus == StatusDisabled {
+			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerAgentDisabled)
+		}
+		var capabilities Capabilities
+		if err := json.Unmarshal(capabilitiesJSON, &capabilities); err != nil || !platformUpdateCapabilityReady(capabilities) {
+			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerUpdateCapability)
+		}
+		compatibility := EvaluateCompatibility(agentVersion, protocolVersion)
+		if compatibility.Status != CompatibilityCompatible && compatibility.Status != CompatibilityUpgradeRecommended {
+			entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerProtocolIncompatible)
+		}
+	}
+
+	var hasInterlock bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM agent_platform_update_jobs
+			WHERE server_id = $1::uuid
+			  AND status IN ('pending', 'in_progress', 'mutation_dispatched', 'outcome_unknown')
+		)
+	`, serverID).Scan(&hasInterlock); err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
+	}
+	if hasInterlock {
+		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerActiveUpdate)
+	}
+
+	entry.Eligible = len(entry.Blockers) == 0
+	return entry, nil
+}
+
+func platformUpdateCapabilityReady(capabilities Capabilities) bool {
+	encoded, err := json.Marshal(capabilities["softwareUpdate"])
+	if err != nil {
+		return false
+	}
+	var capability struct {
+		SchemaVersion int    `json:"schemaVersion"`
+		State         string `json:"state"`
+		Request       string `json:"request"`
+	}
+	if err := json.Unmarshal(encoded, &capability); err != nil {
+		return false
+	}
+	return capability.SchemaVersion == PlatformUpdateCapabilitySchemaVersion &&
+		capability.State == PlatformUpdateCapabilityStateReady &&
+		capability.Request == PlatformUpdateCapabilityRequestVersionOnly
 }
 
 func validPlatformUpdateRolloutBlocker(blocker PlatformUpdateRolloutBlocker) bool {
