@@ -57,13 +57,8 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 	if err != nil {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid server id: %w", err)
 	}
-	targetVersion := input.TargetVersion
-	if !validPlatformUpdateTargetVersion(targetVersion) {
+	if !validPlatformUpdateTargetVersion(input.TargetVersion) {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid RouteGate target version")
-	}
-	capability, err := platformUpdateCapabilityJSON()
-	if err != nil {
-		return PlatformUpdateJob{}, err
 	}
 
 	tx, err := r.pool.Begin(ctx)
@@ -71,11 +66,35 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 		return PlatformUpdateJob{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := lockPlatformUpdateServer(ctx, tx, serverID); err != nil {
+
+	job, err := createPlatformUpdateJobTx(ctx, tx, CreatePlatformUpdateJobInput{
+		ServerID:      serverID,
+		TargetVersion: input.TargetVersion,
+	})
+	if err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	return job, nil
+}
+
+// createPlatformUpdateJobTx is the authoritative single-node mutation
+// admission primitive for callers that must bind the resulting job atomically
+// with other durable control-plane state. Inputs must already be canonical and
+// validated by the caller; the function deliberately reuses the same
+// capability/role/status predicates as the public single-node API.
+func createPlatformUpdateJobTx(ctx context.Context, tx pgx.Tx, input CreatePlatformUpdateJobInput) (PlatformUpdateJob, error) {
+	if err := lockPlatformUpdateServer(ctx, tx, input.ServerID); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	capability, err := platformUpdateCapabilityJSON()
+	if err != nil {
 		return PlatformUpdateJob{}, err
 	}
 
-	job, err := scanPlatformUpdateJob(tx.QueryRow(ctx, `
+	return scanPlatformUpdateJob(tx.QueryRow(ctx, `
 		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
 		SELECT s.id, a.id, $2
 		FROM servers s
@@ -102,14 +121,7 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 			started_at,
 			dispatched_at,
 			completed_at
-	`, serverID, targetVersion, capability))
-	if err != nil {
-		return PlatformUpdateJob{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return PlatformUpdateJob{}, err
-	}
-	return job, nil
+	`, input.ServerID, input.TargetVersion, capability))
 }
 
 func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID string) (PlatformUpdateJob, error) {
