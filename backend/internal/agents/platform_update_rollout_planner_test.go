@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+const (
+	rolloutServerA = "11111111-1111-4111-8111-111111111111"
+	rolloutServerB = "22222222-2222-4222-8222-222222222222"
+	rolloutServerC = "33333333-3333-4333-8333-333333333333"
+)
+
 func eligibleRolloutCandidate(id string) PlatformUpdateRolloutCandidate {
 	return PlatformUpdateRolloutCandidate{
 		ServerID:                id,
@@ -17,14 +23,14 @@ func eligibleRolloutCandidate(id string) PlatformUpdateRolloutCandidate {
 
 func TestPlanPlatformUpdateRolloutPreservesRequestedOrder(t *testing.T) {
 	plan, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{
-		eligibleRolloutCandidate("vpn-b"),
-		eligibleRolloutCandidate("vpn-a"),
+		eligibleRolloutCandidate(rolloutServerB),
+		eligibleRolloutCandidate(rolloutServerA),
 	})
 	if err != nil {
 		t.Fatalf("plan rollout: %v", err)
 	}
 	got := []string{plan.Entries[0].ServerID, plan.Entries[1].ServerID}
-	want := []string{"vpn-b", "vpn-a"}
+	want := []string{rolloutServerB, rolloutServerA}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("entry order = %v, want %v", got, want)
 	}
@@ -37,8 +43,8 @@ func TestPlanPlatformUpdateRolloutPreservesRequestedOrder(t *testing.T) {
 
 func TestPlanPlatformUpdateRolloutFailsClosedWhenManagerNotOnTarget(t *testing.T) {
 	plan, err := PlanPlatformUpdateRollout("1.2.2", "1.2.3", []PlatformUpdateRolloutCandidate{
-		eligibleRolloutCandidate("vpn-a"),
-		eligibleRolloutCandidate("vpn-b"),
+		eligibleRolloutCandidate(rolloutServerA),
+		eligibleRolloutCandidate(rolloutServerB),
 	})
 	if err != nil {
 		t.Fatalf("plan rollout: %v", err)
@@ -54,7 +60,7 @@ func TestPlanPlatformUpdateRolloutFailsClosedWhenManagerNotOnTarget(t *testing.T
 }
 
 func TestPlanPlatformUpdateRolloutRejectsNonVPNAndPreservesBlockers(t *testing.T) {
-	candidate := eligibleRolloutCandidate("hybrid-a")
+	candidate := eligibleRolloutCandidate(rolloutServerA)
 	candidate.DeploymentRole = "hybrid"
 	candidate.ServerDisabled = true
 	candidate.AgentDisabled = true
@@ -80,7 +86,7 @@ func TestPlanPlatformUpdateRolloutRejectsNonVPNAndPreservesBlockers(t *testing.T
 }
 
 func TestPlanPlatformUpdateRolloutReportsMissingAgent(t *testing.T) {
-	candidate := eligibleRolloutCandidate("vpn-a")
+	candidate := eligibleRolloutCandidate(rolloutServerA)
 	candidate.AgentRegistered = false
 	candidate.AgentDisabled = true
 
@@ -102,38 +108,57 @@ func TestPlanPlatformUpdateRolloutRejectsDuplicateOrEmptyIdentity(t *testing.T) 
 	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", nil); err == nil {
 		t.Fatal("empty candidate set unexpectedly accepted")
 	}
-	if _, err := PlanPlatformUpdateRollout("1.2.3", "", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("vpn-a")}); err == nil {
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate(rolloutServerA)}); err == nil {
 		t.Fatal("empty target version unexpectedly accepted")
 	}
-	if _, err := PlanPlatformUpdateRollout("1.2.3", "latest", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("vpn-a")}); err == nil {
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "latest", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate(rolloutServerA)}); err == nil {
 		t.Fatal("noncanonical target version unexpectedly accepted")
 	}
-	if _, err := PlanPlatformUpdateRollout("1.2.3", " 1.2.3 ", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("vpn-a")}); err == nil {
+	if _, err := PlanPlatformUpdateRollout("1.2.3", " 1.2.3 ", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate(rolloutServerA)}); err == nil {
 		t.Fatal("whitespace-padded target version unexpectedly accepted")
 	}
 	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{{ServerID: "   "}}); err == nil {
 		t.Fatal("empty server id unexpectedly accepted")
 	}
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate("not-a-uuid")}); err == nil {
+		t.Fatal("non-UUID server id unexpectedly accepted")
+	}
 	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{
-		eligibleRolloutCandidate("vpn-a"),
-		eligibleRolloutCandidate("vpn-a"),
+		eligibleRolloutCandidate(rolloutServerA),
+		eligibleRolloutCandidate(rolloutServerA),
 	}); err == nil {
 		t.Fatal("duplicate server id unexpectedly accepted")
 	}
 	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{
-		eligibleRolloutCandidate("vpn-a"),
-		eligibleRolloutCandidate(" vpn-a "),
+		eligibleRolloutCandidate(rolloutServerA),
+		eligibleRolloutCandidate(" 11111111-1111-4111-8111-111111111111 "),
 	}); err == nil {
-		t.Fatal("duplicate canonical server id unexpectedly accepted")
+		t.Fatal("whitespace-equivalent duplicate server id unexpectedly accepted")
+	}
+	if _, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{
+		eligibleRolloutCandidate(rolloutServerA),
+		eligibleRolloutCandidate("11111111111141118111111111111111"),
+	}); err == nil {
+		t.Fatal("alternate UUID spelling unexpectedly bypassed duplicate detection")
 	}
 }
 
 func TestPlanPlatformUpdateRolloutCanonicalizesServerID(t *testing.T) {
-	plan, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate(" vpn-a ")})
+	plan, err := PlanPlatformUpdateRollout("1.2.3", "1.2.3", []PlatformUpdateRolloutCandidate{eligibleRolloutCandidate(" {11111111-1111-4111-8111-111111111111} ")})
 	if err != nil {
 		t.Fatalf("plan rollout: %v", err)
 	}
-	if got := plan.Entries[0].ServerID; got != "vpn-a" {
-		t.Fatalf("server id = %q, want canonical vpn-a", got)
+	if got := plan.Entries[0].ServerID; got != rolloutServerA {
+		t.Fatalf("server id = %q, want canonical %q", got, rolloutServerA)
+	}
+}
+
+func TestCanonicalPlatformUpdateServerIDNormalizesCaseAndURN(t *testing.T) {
+	got, err := canonicalPlatformUpdateServerID("URN:UUID:33333333-3333-4333-8333-333333333333")
+	if err != nil {
+		t.Fatalf("canonicalize UUID: %v", err)
+	}
+	if got != rolloutServerC {
+		t.Fatalf("server id = %q, want %q", got, rolloutServerC)
 	}
 }
