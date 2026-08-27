@@ -106,12 +106,12 @@ func TestPlatformUpdateRolloutPlanningSnapshotPersistsAtomically(t *testing.T) {
 	}
 
 	want := []persistedEntry{
-		{serverID: serverIDs[0], position: 0, status: "queued"},
+		{serverID: serverIDs[0], position: 0, status: "queued", blockers: []string{}},
 		{
-			serverID: serverIDs[1],
-			position: 1,
-			status:   "skipped",
-			blockers: []string{"agent_missing", "update_capability_not_ready"},
+			serverID:    serverIDs[1],
+			position:    1,
+			status:      "skipped",
+			blockers:    []string{"agent_missing", "update_capability_not_ready"},
 			isCompleted: true,
 		},
 	}
