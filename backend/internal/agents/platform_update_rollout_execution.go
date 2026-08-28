@@ -42,6 +42,13 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, fmt.Errorf("rollout is not mutation-runnable: %s", rolloutStatus)
 	}
 
+	// Record that this transaction established the rollout parent before any
+	// trigger-managed server admission lock. Migration 142 uses the same marker
+	// to reject raw job-first binding updates before they can wait on an entry row.
+	if _, err := tx.Exec(ctx, `SELECT set_config('routegate.platform_update_admission_rollout_id', $1, true)`, canonicalRolloutID); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+
 	// A running rollout may already own its one mutation. Replay that exact job
 	// before evaluating any new admission gates; a Manager upgrade must not turn
 	// restart/replay into a replacement mutation.
