@@ -13,7 +13,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 )
 
-func TestPlatformUpdateJobHistoryIsImmutableAndRawMultiRowAdmissionIsOrdered(t *testing.T) {
+func TestPlatformUpdateJobHistoryIsImmutableAndRawAdmissionIsOrdered(t *testing.T) {
 	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
@@ -75,12 +75,33 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawMultiRowAdmissionIsOrdered(t *
 	}
 	if _, err := pool.Exec(ctx, `
 		UPDATE agent_platform_update_jobs
-		SET status = 'succeeded', started_at = now(), dispatched_at = now(), completed_at = now(), updated_at = now()
+		SET status = 'in_progress', started_at = now(), updated_at = now()
+		WHERE id = $1::uuid
+	`, job.ID); err != nil {
+		t.Fatalf("start update job: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET status = 'mutation_dispatched', dispatched_at = now(), updated_at = now()
+		WHERE id = $1::uuid
+	`, job.ID); err != nil {
+		t.Fatalf("mark update job dispatched: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET status = 'succeeded', completed_at = now(), updated_at = now()
 		WHERE id = $1::uuid
 	`, job.ID); err != nil {
 		t.Fatalf("terminalize update job: %v", err)
 	}
 
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET status = 'pending', started_at = NULL, dispatched_at = NULL, completed_at = NULL, updated_at = now()
+		WHERE id = $1::uuid
+	`, job.ID); err == nil {
+		t.Fatal("terminal platform update job must not become dispatch-capable again")
+	}
 	if _, err := pool.Exec(ctx, `DELETE FROM agent_platform_update_jobs WHERE id = $1::uuid`, job.ID); err == nil {
 		t.Fatal("platform update job history deletion must be rejected")
 	}
@@ -113,6 +134,33 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawMultiRowAdmissionIsOrdered(t *
 		t.Fatalf("descending multi-row admission error = %v", err)
 	}
 
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin raw multi-statement transaction: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3')
+	`, highServer, highAgent); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("insert first high-server job: %v", err)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3')
+	`, lowServer, lowAgent)
+	if err == nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal("descending platform update admissions across one transaction must be rejected")
+	}
+	if !strings.Contains(err.Error(), "ascending canonical server_id order") {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("descending transaction admission error = %v", err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatalf("rollback raw multi-statement transaction: %v", err)
+	}
+
 	var pendingCount int
 	if err := pool.QueryRow(ctx, `
 		SELECT count(*)
@@ -123,6 +171,6 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawMultiRowAdmissionIsOrdered(t *
 		t.Fatalf("count rolled-back raw jobs: %v", err)
 	}
 	if pendingCount != 0 {
-		t.Fatalf("descending raw multi-row statement left %d pending jobs", pendingCount)
+		t.Fatalf("descending raw admission left %d pending jobs", pendingCount)
 	}
 }
