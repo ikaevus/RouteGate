@@ -124,16 +124,16 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawAdmissionIsOrdered(t *testing.
 		highAgent, lowAgent = lowAgent, highAgent
 	}
 
-	// Rollout-entry INSERTs must participate in the same transaction-wide server
-	// ordering proof as direct job INSERTs. Otherwise two raw transactions can
-	// retain opposite advisory locks while inserting overlapping rollout entries.
-	var rolloutHighFirst, rolloutLowSecond string
-	if err := pool.QueryRow(ctx, `INSERT INTO platform_update_rollouts (target_version) VALUES ('v1.2.3') RETURNING id::text`).Scan(&rolloutHighFirst); err != nil {
-		t.Fatalf("create high-first rollout: %v", err)
+	var rolloutA, rolloutB string
+	if err := pool.QueryRow(ctx, `INSERT INTO platform_update_rollouts (target_version) VALUES ('v1.2.3') RETURNING id::text`).Scan(&rolloutA); err != nil {
+		t.Fatalf("create first rollout: %v", err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO platform_update_rollouts (target_version) VALUES ('v1.2.3') RETURNING id::text`).Scan(&rolloutLowSecond); err != nil {
-		t.Fatalf("create low-second rollout: %v", err)
+	if err := pool.QueryRow(ctx, `INSERT INTO platform_update_rollouts (target_version) VALUES ('v1.2.3') RETURNING id::text`).Scan(&rolloutB); err != nil {
+		t.Fatalf("create second rollout: %v", err)
 	}
+
+	// Same-parent rollout-entry INSERTs must share the transaction-wide ascending
+	// server ordering proof.
 	rolloutTx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatalf("begin raw rollout-entry transaction: %v", err)
@@ -141,14 +141,14 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawAdmissionIsOrdered(t *testing.
 	if _, err := rolloutTx.Exec(ctx, `
 		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
 		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
-	`, rolloutHighFirst, highServer); err != nil {
+	`, rolloutA, highServer); err != nil {
 		_ = rolloutTx.Rollback(ctx)
 		t.Fatalf("insert first high-server rollout entry: %v", err)
 	}
 	_, err = rolloutTx.Exec(ctx, `
 		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
-		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
-	`, rolloutLowSecond, lowServer)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 1)
+	`, rolloutA, lowServer)
 	if err == nil {
 		_ = rolloutTx.Rollback(ctx)
 		t.Fatal("descending rollout-entry admissions across one transaction must be rejected")
@@ -159,6 +159,66 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawAdmissionIsOrdered(t *testing.
 	}
 	if err := rolloutTx.Rollback(ctx); err != nil {
 		t.Fatalf("rollback raw rollout-entry transaction: %v", err)
+	}
+
+	// Once a rollout parent has been established, introducing another parent in
+	// the same transaction must be rejected before acquiring that parent's row
+	// lock. This prevents parent/server lock inversion across concurrent rollouts.
+	parentTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin raw multi-parent rollout transaction: %v", err)
+	}
+	if _, err := parentTx.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
+	`, rolloutA, lowServer); err != nil {
+		_ = parentTx.Rollback(ctx)
+		t.Fatalf("insert first rollout-parent entry: %v", err)
+	}
+	_, err = parentTx.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
+	`, rolloutB, highServer)
+	if err == nil {
+		_ = parentTx.Rollback(ctx)
+		t.Fatal("multiple rollout parents in one admission transaction must be rejected")
+	}
+	if !strings.Contains(err.Error(), "one rollout parent") {
+		_ = parentTx.Rollback(ctx)
+		t.Fatalf("multi-parent rollout admission error = %v", err)
+	}
+	if err := parentTx.Rollback(ctx); err != nil {
+		t.Fatalf("rollback raw multi-parent rollout transaction: %v", err)
+	}
+
+	// A direct job INSERT establishes a server admission lock without a rollout
+	// parent. A later rollout-entry INSERT in that transaction must fail before
+	// taking a parent lock, preserving the global parent-before-server order.
+	mixedTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin mixed job/rollout transaction: %v", err)
+	}
+	if _, err := mixedTx.Exec(ctx, `
+		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3')
+	`, lowServer, lowAgent); err != nil {
+		_ = mixedTx.Rollback(ctx)
+		t.Fatalf("insert job before rollout entry: %v", err)
+	}
+	_, err = mixedTx.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
+	`, rolloutA, highServer)
+	if err == nil {
+		_ = mixedTx.Rollback(ctx)
+		t.Fatal("job-first mixed admission transaction must be rejected")
+	}
+	if !strings.Contains(err.Error(), "parent must be established before server admission locks") {
+		_ = mixedTx.Rollback(ctx)
+		t.Fatalf("job-first mixed admission error = %v", err)
+	}
+	if err := mixedTx.Rollback(ctx); err != nil {
+		t.Fatalf("rollback mixed job/rollout transaction: %v", err)
 	}
 
 	_, err = pool.Exec(ctx, `
