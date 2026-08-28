@@ -127,14 +127,14 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 			FROM platform_update_rollout_entries prior
 			WHERE prior.rollout_id = e.rollout_id
 			  AND prior.position < e.position
-			  AND prior.status NOT IN ('healthy', 'skipped')
+			  AND prior.status <> 'skipped'
 		  )
 		ORDER BY position
 		LIMIT 1
 		FOR UPDATE
 	`, canonicalRolloutID).Scan(&entryID, &serverID, &observedUpdateJobCount); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return PlatformUpdateJob{}, fmt.Errorf("rollout has no admissible next entry")
+			return PlatformUpdateJob{}, fmt.Errorf("rollout has no admissible next entry; post-update health has not been proven")
 		}
 		return PlatformUpdateJob{}, err
 	}
