@@ -58,6 +58,29 @@ AS $$
     SELECT pg_advisory_xact_lock(722096142::bigint);
 $$;
 
+-- Statement-level INSERT triggers are required in addition to the row guards:
+-- PostgreSQL fires them before evaluating an INSERT ... SELECT source query, so
+-- source-side FOR UPDATE locks cannot be taken before the global admission mutex.
+CREATE OR REPLACE FUNCTION lock_platform_update_admission_global_statement()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM lock_platform_update_admission_global();
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_agent_platform_update_jobs_insert_admission_lock
+BEFORE INSERT ON agent_platform_update_jobs
+FOR EACH STATEMENT
+EXECUTE FUNCTION lock_platform_update_admission_global_statement();
+
+CREATE TRIGGER trg_platform_update_rollout_entries_insert_admission_lock
+BEFORE INSERT ON platform_update_rollout_entries
+FOR EACH STATEMENT
+EXECUTE FUNCTION lock_platform_update_admission_global_statement();
+
 -- All server-scoped update admission at the database boundary shares one
 -- transaction-local ordering proof. The global admission mutex above prevents
 -- cross-transaction deadlocks; the ascending proof remains a fail-closed
@@ -161,9 +184,9 @@ BEGIN
             RAISE EXCEPTION 'platform update rollout entry planning evidence is inconsistent';
         END IF;
 
-        -- Acquire the global admission mutex before any parent or server lock.
-        -- The transaction-local parent marker below is retained as a structural
-        -- one-parent policy, not as trusted concurrency evidence.
+        -- The statement-level trigger acquires the global mutex before source
+        -- query evaluation. Keep the row-level call as defense in depth for the
+        -- invariant that every admission path owns the same transaction lock.
         PERFORM lock_platform_update_admission_global();
 
         transaction_rollout_id := current_setting('routegate.platform_update_admission_rollout_id', true);
@@ -198,6 +221,23 @@ BEGIN
 
         PERFORM set_config('routegate.platform_update_admission_last_server_id', NEW.server_id::text, true);
         PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
+
+        -- A queued snapshot represents mutation eligibility. An already active or
+        -- unresolved direct update means that eligibility is false; counting that
+        -- job into the watermark would allow a later terminal job to clear the
+        -- uniqueness interlock without changing the count and could authorize an
+        -- automatic second host mutation.
+        IF NEW.status = 'queued' THEN
+            PERFORM 1
+            FROM agent_platform_update_jobs
+            WHERE server_id = NEW.server_id
+              AND status IN ('pending', 'in_progress', 'mutation_dispatched', 'outcome_unknown')
+            LIMIT 1;
+            IF FOUND THEN
+                RAISE EXCEPTION 'queued platform update rollout entry cannot snapshot a server with an active or unresolved update job';
+            END IF;
+        END IF;
+
         SELECT count(*)
         INTO NEW.observed_update_job_count
         FROM agent_platform_update_jobs
