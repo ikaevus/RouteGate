@@ -1,3 +1,6 @@
+DROP TRIGGER IF EXISTS trg_agent_platform_update_jobs_admission_lock ON agent_platform_update_jobs;
+DROP FUNCTION IF EXISTS lock_platform_update_job_admission();
+
 DROP TRIGGER IF EXISTS trg_platform_update_rollout_entries_transition ON platform_update_rollout_entries;
 DROP FUNCTION IF EXISTS enforce_platform_update_rollout_entry_transition();
 
