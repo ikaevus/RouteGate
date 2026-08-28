@@ -4,6 +4,9 @@ DROP FUNCTION IF EXISTS lock_platform_update_job_admission();
 DROP TRIGGER IF EXISTS trg_agent_platform_update_jobs_history_identity ON agent_platform_update_jobs;
 DROP FUNCTION IF EXISTS enforce_platform_update_job_history_identity();
 
+DROP TRIGGER IF EXISTS trg_platform_update_rollout_entries_update_lock_order ON platform_update_rollout_entries;
+DROP FUNCTION IF EXISTS enforce_platform_update_rollout_update_lock_order();
+
 DROP TRIGGER IF EXISTS trg_platform_update_rollout_entries_transition ON platform_update_rollout_entries;
 DROP FUNCTION IF EXISTS enforce_platform_update_rollout_entry_transition();
 
