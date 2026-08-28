@@ -44,10 +44,14 @@ func platformUpdateCapabilityJSON() ([]byte, error) {
 }
 
 // lockPlatformUpdateServer serializes the absence/presence check for active
-// update jobs with update-job admission. Callers must pass the canonical UUID
-// spelling and hold the transaction until their decision has been durably
-// committed.
+// update jobs with update-job admission. All platform-update admission first
+// takes the short-lived global DB mutex so parent/server lock ordering cannot
+// invert across direct and rollout writers. Callers must hold the transaction
+// until their decision has been durably committed.
 func lockPlatformUpdateServer(ctx context.Context, tx pgx.Tx, serverID string) error {
+	if _, err := tx.Exec(ctx, `SELECT lock_platform_update_admission_global()`); err != nil {
+		return err
+	}
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, serverID)
 	return err
 }
@@ -57,13 +61,8 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 	if err != nil {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid server id: %w", err)
 	}
-	targetVersion := input.TargetVersion
-	if !validPlatformUpdateTargetVersion(targetVersion) {
+	if !validPlatformUpdateTargetVersion(input.TargetVersion) {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid RouteGate target version")
-	}
-	capability, err := platformUpdateCapabilityJSON()
-	if err != nil {
-		return PlatformUpdateJob{}, err
 	}
 
 	tx, err := r.pool.Begin(ctx)
@@ -71,11 +70,35 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 		return PlatformUpdateJob{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := lockPlatformUpdateServer(ctx, tx, serverID); err != nil {
+
+	job, err := createPlatformUpdateJobTx(ctx, tx, CreatePlatformUpdateJobInput{
+		ServerID:      serverID,
+		TargetVersion: input.TargetVersion,
+	})
+	if err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	return job, nil
+}
+
+// createPlatformUpdateJobTx is the authoritative single-node mutation
+// admission primitive for callers that must bind the resulting job atomically
+// with other durable control-plane state. Inputs must already be canonical and
+// validated by the caller; the function deliberately reuses the exact SQL
+// predicates and error semantics of the public single-node API.
+func createPlatformUpdateJobTx(ctx context.Context, tx pgx.Tx, input CreatePlatformUpdateJobInput) (PlatformUpdateJob, error) {
+	if err := lockPlatformUpdateServer(ctx, tx, input.ServerID); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	capability, err := platformUpdateCapabilityJSON()
+	if err != nil {
 		return PlatformUpdateJob{}, err
 	}
 
-	job, err := scanPlatformUpdateJob(tx.QueryRow(ctx, `
+	return scanPlatformUpdateJob(tx.QueryRow(ctx, `
 		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
 		SELECT s.id, a.id, $2
 		FROM servers s
@@ -102,14 +125,7 @@ func (r *Repository) CreatePlatformUpdateJob(ctx context.Context, input CreatePl
 			started_at,
 			dispatched_at,
 			completed_at
-	`, serverID, targetVersion, capability))
-	if err != nil {
-		return PlatformUpdateJob{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return PlatformUpdateJob{}, err
-	}
-	return job, nil
+	`, input.ServerID, input.TargetVersion, capability))
 }
 
 func (r *Repository) GetPlatformUpdateJob(ctx context.Context, serverID, jobID string) (PlatformUpdateJob, error) {

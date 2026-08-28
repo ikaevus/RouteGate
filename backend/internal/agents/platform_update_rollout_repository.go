@@ -72,7 +72,25 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", err
 	}
 
+	// Migration 142 enforces canonical server lock ordering for every rollout-entry
+	// INSERT at the database boundary. Persist rows in that lock order while
+	// carrying the caller's original position explicitly so rollout semantics are
+	// unchanged for plans whose requested order differs from UUID sort order.
+	type positionedEntry struct {
+		position int
+		entry    PlatformUpdateRolloutPlanEntry
+	}
+	persistedEntries := make([]positionedEntry, 0, len(entries))
 	for position, entry := range entries {
+		persistedEntries = append(persistedEntries, positionedEntry{position: position, entry: entry})
+	}
+	sort.Slice(persistedEntries, func(i, j int) bool {
+		return persistedEntries[i].entry.ServerID < persistedEntries[j].entry.ServerID
+	})
+
+	for _, positioned := range persistedEntries {
+		position := positioned.position
+		entry := positioned.entry
 		blockers := make([]string, len(entry.Blockers))
 		for i, blocker := range entry.Blockers {
 			blockers[i] = string(blocker)
@@ -81,16 +99,16 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		if entry.Eligible {
 			_, err = tx.Exec(ctx, `
 				INSERT INTO platform_update_rollout_entries
-					(rollout_id, server_id, target_version, position, status, planning_blockers)
-				VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::text[])
-			`, rolloutID, entry.ServerID, plan.TargetVersion, position, status, blockers)
+					(rollout_id, server_id, target_version, position, status, planning_blockers, observed_update_job_count)
+				VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::text[], $7)
+			`, rolloutID, entry.ServerID, plan.TargetVersion, position, status, blockers, entry.observedUpdateJobCount)
 		} else {
 			status = "skipped"
 			_, err = tx.Exec(ctx, `
 				INSERT INTO platform_update_rollout_entries
-					(rollout_id, server_id, target_version, position, status, planning_blockers, completed_at)
-				VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::text[], now())
-			`, rolloutID, entry.ServerID, plan.TargetVersion, position, status, blockers)
+					(rollout_id, server_id, target_version, position, status, planning_blockers, observed_update_job_count, completed_at)
+				VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::text[], $7, now())
+			`, rolloutID, entry.ServerID, plan.TargetVersion, position, status, blockers, entry.observedUpdateJobCount)
 		}
 		if err != nil {
 			return "", err
@@ -114,16 +132,6 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 		return PlatformUpdateRolloutPlanEntry{}, err
 	}
 
-	// Heartbeats lock/update the Agent row before the Server row. Preserve that
-	// order whenever an Agent exists. The first-registration case needs one
-	// extra step: if the first Agent lookup sees no row, lock the Server inside a
-	// savepoint and make a non-locking visibility check. While that Server lock
-	// is held, a new Agent insert cannot complete its FK check. If the Agent is
-	// still absent, the absence is stable for this transaction. If a concurrent
-	// registration became visible while the Server lock was being acquired,
-	// roll back the savepoint to release that Server row lock, then reacquire in
-	// the normal Agent -> Server order. This avoids both stale agent_missing
-	// evidence and Server -> Agent / Agent -> Server deadlocks with heartbeats.
 	var agentStatus, agentVersion string
 	var protocolVersion *int
 	var exactUpdateCapability bool
@@ -183,9 +191,6 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 		} else if err != nil {
 			return PlatformUpdateRolloutPlanEntry{}, err
 		} else {
-			// A first registration committed before the Server lock was acquired.
-			// Release that Server lock before taking the Agent row lock so the
-			// remainder follows the same Agent -> Server order as heartbeats.
 			if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT rg96e3c_agent_absence`); err != nil {
 				return PlatformUpdateRolloutPlanEntry{}, err
 			}
@@ -243,6 +248,14 @@ func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, server
 	}
 	if hasInterlock {
 		entry.Blockers = append(entry.Blockers, PlatformUpdateRolloutBlockerActiveUpdate)
+	}
+
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM agent_platform_update_jobs
+		WHERE server_id = $1::uuid
+	`, serverID).Scan(&entry.observedUpdateJobCount); err != nil {
+		return PlatformUpdateRolloutPlanEntry{}, err
 	}
 
 	entry.Eligible = len(entry.Blockers) == 0

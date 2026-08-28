@@ -1,6 +1,6 @@
 # Durable multi-node update rollout
 
-Status: RG-96E3a foundation
+Status: RG-96E3c snapshot persistence landed; RG-96E3d execution admission foundation in progress
 
 ## Purpose
 
@@ -86,6 +86,27 @@ If that job is `outcome_unknown`, the rollout becomes `outcome_unknown` and stop
 The eventual Admin API for this foundation may accept only a canonical target RouteGate version and a bounded list of Manager-known VPN server IDs. Caller-selected Agent identity or privileged update selectors remain forbidden.
 
 E3a does not add force, retry, cancel-during-mutation, rollback-all, parallelism, maintenance windows, release channels, arbitrary ordering expressions, or caller-selected health commands.
+
+## E3d execution admission foundation
+
+E3d is the first slice that may connect durable rollout state to the already-proven single-node mutation primitive. It therefore treats mutation admission as a security boundary, not as ordinary queue processing.
+
+The first execution step must:
+
+- lock the rollout row and prove it is still `pending` before changing it to `running`;
+- preserve the immutable E3c membership snapshot and target version;
+- select at most the first non-skipped entry in persisted position order;
+- never reinterpret or refresh the immutable planning snapshot as permission to bypass the single-node admission checks;
+- create at most one single-node platform-update job for an entry, using only the persisted canonical server ID and rollout target version;
+- atomically bind that exact job identity to the entry while moving it to `updating`;
+- rely on the existing `CreatePlatformUpdateJob` admission contract for current Manager-owned server/Agent/capability/interlock checks;
+- never create a replacement job if an entry already has a job identity, regardless of Manager restart or retry;
+- never advance a second entry while any entry is `updating`;
+- stop rather than retry when the bound job reaches `failed` or `outcome_unknown`.
+
+No new caller-selected privileged selector is permitted. E3d may choose only the durable rollout ID; server identity and target version must come from the immutable rollout snapshot itself.
+
+Before mutation-capable E3d code is mergeable, tests must cover crash/replay around job creation and binding, concurrent advancement attempts, parent terminalization races, exact one-job-per-entry behavior, and fail-closed behavior when current single-node admission rejects a previously eligible snapshot entry.
 
 ## Validation requirements
 
