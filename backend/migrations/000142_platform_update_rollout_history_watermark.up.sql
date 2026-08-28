@@ -46,14 +46,11 @@ BEFORE UPDATE OR DELETE ON agent_platform_update_jobs
 FOR EACH ROW
 EXECUTE FUNCTION enforce_platform_update_job_history_identity();
 
--- All update-job inserts, including direct SQL writers and tests, must join the
--- same canonical per-server admission lock used by Manager code and rollout
--- snapshots. Ordering evidence is transaction-local rather than statement-local:
--- once a transaction has admitted server A, every later job INSERT in that same
--- transaction must use A again or a greater canonical UUID before attempting the
--- next advisory lock. This prevents both multi-row statements and separate
--- INSERT statements in one transaction from acquiring server locks in opposite
--- orders.
+-- All server-scoped update admission at the database boundary shares one
+-- transaction-local ordering proof. This matters across both direct update-job
+-- INSERTs and rollout-entry INSERTs: a transaction that already acquired a lock
+-- for server B must not later try to acquire server A when A < B, regardless of
+-- which table caused either lock.
 CREATE OR REPLACE FUNCTION lock_platform_update_job_admission()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -61,14 +58,14 @@ AS $$
 DECLARE
     previous_server_id TEXT;
 BEGIN
-    previous_server_id := current_setting('routegate.platform_update_job_last_server_id', true);
+    previous_server_id := current_setting('routegate.platform_update_admission_last_server_id', true);
     IF previous_server_id IS NOT NULL
         AND previous_server_id <> ''
         AND NEW.server_id < previous_server_id::uuid THEN
         RAISE EXCEPTION 'platform update job inserts in one transaction must use ascending canonical server_id order';
     END IF;
 
-    PERFORM set_config('routegate.platform_update_job_last_server_id', NEW.server_id::text, true);
+    PERFORM set_config('routegate.platform_update_admission_last_server_id', NEW.server_id::text, true);
     PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
     RETURN NEW;
 END;
@@ -90,6 +87,8 @@ CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_entry_transition()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    previous_server_id TEXT;
 BEGIN
     IF TG_OP = 'INSERT' THEN
         IF NEW.status NOT IN ('queued', 'skipped') OR NEW.platform_update_job_id IS NOT NULL THEN
@@ -102,8 +101,10 @@ BEGIN
 
         -- Keep the structural trigger on the same lock order as rollout
         -- execution: parent rollout first, then the per-server update-admission
-        -- lock. This lets direct SQL/planner retries serialize with admission
-        -- instead of creating a rollout-row <-> advisory-lock deadlock cycle.
+        -- lock. After the parent is stable, join the same transaction-wide
+        -- canonical server ordering used by update-job INSERTs. This prevents
+        -- raw SQL transactions from acquiring overlapping server locks in
+        -- opposite orders across rollout entries or across the two tables.
         PERFORM 1
         FROM platform_update_rollouts
         WHERE id = NEW.rollout_id
@@ -114,6 +115,14 @@ BEGIN
             RAISE EXCEPTION 'platform update rollout entries may only be added while parent is pending';
         END IF;
 
+        previous_server_id := current_setting('routegate.platform_update_admission_last_server_id', true);
+        IF previous_server_id IS NOT NULL
+            AND previous_server_id <> ''
+            AND NEW.server_id < previous_server_id::uuid THEN
+            RAISE EXCEPTION 'platform update rollout entry inserts in one transaction must use ascending canonical server_id order';
+        END IF;
+
+        PERFORM set_config('routegate.platform_update_admission_last_server_id', NEW.server_id::text, true);
         PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
         SELECT count(*)
         INTO NEW.observed_update_job_count
