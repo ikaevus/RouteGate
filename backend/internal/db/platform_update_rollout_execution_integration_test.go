@@ -142,4 +142,76 @@ func TestPlatformUpdateRolloutExecutionAdmissionIsAtomicAndReplaySafe(t *testing
 	if staleStatus != "failed" || staleErrorCode != "admission_rejected" || staleEntryStatus != "queued" || staleBoundJobID != nil || jobCount != 0 {
 		t.Fatalf("stale admission rollout=%q error=%q entry=%q bound=%v jobs=%d", staleStatus, staleErrorCode, staleEntryStatus, staleBoundJobID, jobCount)
 	}
+
+	interveningServerID := createReadyServer("RG-96E3d intervening direct job fixture")
+	interveningRolloutID, err := repo.PersistPlatformUpdateRolloutPlan(ctx, agents.PlatformUpdateRolloutPlan{
+		TargetVersion: "v1.2.3",
+		Entries: []agents.PlatformUpdateRolloutPlanEntry{{ServerID: interveningServerID}},
+	})
+	if err != nil {
+		t.Fatalf("persist intervening rollout: %v", err)
+	}
+	directJob, err := repo.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{
+		ServerID: interveningServerID, TargetVersion: "v1.2.3",
+	})
+	if err != nil {
+		t.Fatalf("create intervening direct job: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET status = 'succeeded',
+		    started_at = now(),
+		    dispatched_at = now(),
+		    completed_at = now(),
+		    updated_at = now()
+		WHERE id = $1::uuid
+	`, directJob.ID); err != nil {
+		t.Fatalf("terminalize intervening direct job: %v", err)
+	}
+	if _, err := repo.AdmitPlatformUpdateRolloutMutation(ctx, interveningRolloutID); err == nil {
+		t.Fatal("intervening direct job must reject rollout admission")
+	}
+	var interveningStatus, interveningErrorCode string
+	if err := pool.QueryRow(ctx, `
+		SELECT status, COALESCE(error_code, '')
+		FROM platform_update_rollouts
+		WHERE id = $1::uuid
+	`, interveningRolloutID).Scan(&interveningStatus, &interveningErrorCode); err != nil {
+		t.Fatalf("read intervening rollout: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM agent_platform_update_jobs WHERE server_id = $1::uuid`, interveningServerID).Scan(&jobCount); err != nil {
+		t.Fatalf("count intervening jobs: %v", err)
+	}
+	if interveningStatus != "failed" || interveningErrorCode != "admission_rejected" || jobCount != 1 {
+		t.Fatalf("intervening admission rollout=%q error=%q jobs=%d", interveningStatus, interveningErrorCode, jobCount)
+	}
+
+	managerStaleServerID := createReadyServer("RG-96E3d stale manager fixture")
+	managerStaleRolloutID, err := repo.PersistPlatformUpdateRolloutPlan(ctx, agents.PlatformUpdateRolloutPlan{
+		TargetVersion: "v1.2.3",
+		Entries: []agents.PlatformUpdateRolloutPlanEntry{{ServerID: managerStaleServerID}},
+	})
+	if err != nil {
+		t.Fatalf("persist Manager-stale rollout: %v", err)
+	}
+	buildinfo.Version = "v1.2.4"
+	if _, err := repo.AdmitPlatformUpdateRolloutMutation(ctx, managerStaleRolloutID); err == nil {
+		t.Fatal("Manager-version drift must reject rollout admission")
+	}
+	buildinfo.Version = "v1.2.3"
+
+	var managerStaleStatus, managerStaleErrorCode string
+	if err := pool.QueryRow(ctx, `
+		SELECT status, COALESCE(error_code, '')
+		FROM platform_update_rollouts
+		WHERE id = $1::uuid
+	`, managerStaleRolloutID).Scan(&managerStaleStatus, &managerStaleErrorCode); err != nil {
+		t.Fatalf("read Manager-stale rollout: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM agent_platform_update_jobs WHERE server_id = $1::uuid`, managerStaleServerID).Scan(&jobCount); err != nil {
+		t.Fatalf("count Manager-stale jobs: %v", err)
+	}
+	if managerStaleStatus != "failed" || managerStaleErrorCode != "manager_version_mismatch" || jobCount != 0 {
+		t.Fatalf("Manager-stale admission rollout=%q error=%q jobs=%d", managerStaleStatus, managerStaleErrorCode, jobCount)
+	}
 }
