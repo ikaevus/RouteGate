@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000143_platform_update_history_truncate_guard" {
-		t.Fatalf("applied schema version = %q, want 000143_platform_update_history_truncate_guard", version)
+	if version != "000142_platform_update_rollout_history_watermark" {
+		t.Fatalf("applied schema version = %q, want 000142_platform_update_rollout_history_watermark", version)
 	}
 }
