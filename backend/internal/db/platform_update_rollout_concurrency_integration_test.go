@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -83,7 +84,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		return rolloutID, node
 	}
 
-	startBlockedExec := func(label, query string, args ...any) <-chan error {
+	startContendedExec := func(label, query string, args ...any) <-chan error {
 		t.Helper()
 		conn, err := pool.Acquire(ctx)
 		if err != nil {
@@ -101,7 +102,16 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		for {
 			select {
 			case err := <-result:
-				t.Fatalf("%s completed before PostgreSQL reported a lock wait: %v", label, err)
+				// Migration 142 intentionally makes raw SQL admission fail fast
+				// when another admission transaction owns the global mutex. Keep
+				// accepting a real PostgreSQL lock wait as well so this helper can
+				// verify both the fail-fast boundary and ordinary row serialization.
+				if err != nil && strings.Contains(err.Error(), "admission mutex is busy") {
+					replayed := make(chan error, 1)
+					replayed <- err
+					return replayed
+				}
+				t.Fatalf("%s completed unexpectedly before contention was observed: %v", label, err)
 			default:
 			}
 
@@ -117,7 +127,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 				return result
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("%s did not enter a PostgreSQL lock wait", label)
+				t.Fatalf("%s neither failed fast nor entered a PostgreSQL lock wait", label)
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -129,7 +139,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		case err := <-result:
 			return err
 		case <-time.After(5 * time.Second):
-			t.Fatalf("%s remained blocked after the parent-row lock was released", label)
+			t.Fatalf("%s remained blocked after the contention owner was released", label)
 			return nil
 		}
 	}
@@ -148,7 +158,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("admit member while pending: %v", err)
 		}
 
-		startResult := startBlockedExec("concurrent rollout start", `
+		startResult := startContendedExec("concurrent rollout start", `
 			UPDATE platform_update_rollouts
 			SET status = 'running', started_at = now()
 			WHERE id = $1::uuid
@@ -157,7 +167,18 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("commit membership: %v", err)
 		}
 		if err := awaitResult("concurrent rollout start", startResult); err != nil {
-			t.Fatalf("start after membership commit: %v", err)
+			if !strings.Contains(err.Error(), "admission mutex is busy") {
+				t.Fatalf("start after membership commit: %v", err)
+			}
+			// Raw SQL contention is fail-fast by design; an explicit retry after
+			// the earlier admission commits must observe the new state and succeed.
+			if _, retryErr := pool.Exec(ctx, `
+				UPDATE platform_update_rollouts
+				SET status = 'running', started_at = now()
+				WHERE id = $1::uuid
+			`, rolloutID); retryErr != nil {
+				t.Fatalf("retry rollout start after membership commit: %v", retryErr)
+			}
 		}
 
 		var status string
@@ -188,7 +209,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stage rollout start: %v", err)
 		}
 
-		membershipResult := startBlockedExec("concurrent membership admission", `
+		membershipResult := startContendedExec("concurrent membership admission", `
 			INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
 			VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
 		`, rolloutID, node.serverID)
@@ -232,7 +253,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stage update admission: %v", err)
 		}
 
-		stopResult := startBlockedExec("concurrent rollout stop", `
+		stopResult := startContendedExec("concurrent rollout stop", `
 			UPDATE platform_update_rollouts
 			SET status = 'failed', error_code = 'concurrent_stop', completed_at = now()
 			WHERE id = $1::uuid
@@ -288,7 +309,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 			t.Fatalf("stage rollout stop: %v", err)
 		}
 
-		admissionResult := startBlockedExec("concurrent update admission", `
+		admissionResult := startContendedExec("concurrent update admission", `
 			UPDATE platform_update_rollout_entries
 			SET platform_update_job_id = $2::uuid, status = 'updating'
 			WHERE id = $1::uuid
