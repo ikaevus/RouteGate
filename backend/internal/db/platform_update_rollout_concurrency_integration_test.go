@@ -56,6 +56,10 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		`, node.serverID, name, name+"-token").Scan(&node.agentID); err != nil {
 			t.Fatalf("create agent %s: %v", name, err)
 		}
+		return node
+	}
+	createJob := func(node *nodeFixture, name string) {
+		t.Helper()
 		if err := pool.QueryRow(ctx, `
 			INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
 			VALUES ($1::uuid, $2::uuid, 'v1.2.3')
@@ -63,7 +67,6 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		`, node.serverID, node.agentID).Scan(&node.jobID); err != nil {
 			t.Fatalf("create update job %s: %v", name, err)
 		}
-		return node
 	}
 
 	createRollout := func(name string) (string, nodeFixture) {
@@ -214,6 +217,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		`, rolloutID); err != nil {
 			t.Fatalf("start rollout: %v", err)
 		}
+		createJob(&node, "admission-first")
 
 		tx, err := pool.Begin(ctx)
 		if err != nil {
@@ -269,6 +273,7 @@ func TestPlatformUpdateRolloutPersistenceSerializesConcurrentAdmissionAndStop(t 
 		`, rolloutID); err != nil {
 			t.Fatalf("start rollout: %v", err)
 		}
+		createJob(&node, "stop-first")
 
 		tx, err := pool.Begin(ctx)
 		if err != nil {
