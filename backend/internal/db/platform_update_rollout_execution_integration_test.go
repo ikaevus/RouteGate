@@ -159,11 +159,21 @@ func TestPlatformUpdateRolloutExecutionAdmissionIsAtomicAndReplaySafe(t *testing
 	}
 	if _, err := pool.Exec(ctx, `
 		UPDATE agent_platform_update_jobs
-		SET status = 'succeeded',
-		    started_at = now(),
-		    dispatched_at = now(),
-		    completed_at = now(),
-		    updated_at = now()
+		SET status = 'in_progress', started_at = now(), updated_at = now()
+		WHERE id = $1::uuid
+	`, directJob.ID); err != nil {
+		t.Fatalf("start intervening direct job: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET status = 'mutation_dispatched', dispatched_at = now(), updated_at = now()
+		WHERE id = $1::uuid
+	`, directJob.ID); err != nil {
+		t.Fatalf("dispatch intervening direct job: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_platform_update_jobs
+		SET status = 'succeeded', completed_at = now(), updated_at = now()
 		WHERE id = $1::uuid
 	`, directJob.ID); err != nil {
 		t.Fatalf("terminalize intervening direct job: %v", err)
