@@ -7,8 +7,9 @@ ALTER TABLE platform_update_rollout_entries
     );
 
 -- A per-server row count is a safe history watermark only if update-job identity
--- cannot disappear or move between servers. Preserve update jobs as immutable
--- security/audit history while still allowing their lifecycle fields to change.
+-- cannot disappear or move between servers and a terminal row cannot be made
+-- dispatch-capable again. Preserve update jobs as immutable security/audit
+-- history and enforce the Manager-side forward-only lifecycle in PostgreSQL.
 CREATE OR REPLACE FUNCTION enforce_platform_update_job_history_identity()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -26,6 +27,16 @@ BEGIN
         RAISE EXCEPTION 'platform update job identity is immutable';
     END IF;
 
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        IF NOT (
+            (OLD.status = 'pending' AND NEW.status = 'in_progress')
+            OR (OLD.status = 'in_progress' AND NEW.status IN ('mutation_dispatched', 'failed'))
+            OR (OLD.status = 'mutation_dispatched' AND NEW.status IN ('succeeded', 'failed', 'outcome_unknown'))
+        ) THEN
+            RAISE EXCEPTION 'invalid platform update job transition % -> %', OLD.status, NEW.status;
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -35,29 +46,14 @@ BEFORE UPDATE OR DELETE ON agent_platform_update_jobs
 FOR EACH ROW
 EXECUTE FUNCTION enforce_platform_update_job_history_identity();
 
--- Reset statement-local ordering evidence before any INSERT statement. The row
--- trigger below requires canonical server UUIDs to arrive in ascending order,
--- so concurrent multi-row raw SQL statements cannot acquire per-server advisory
--- locks in opposite orders and deadlock each other.
-CREATE OR REPLACE FUNCTION reset_platform_update_job_admission_order()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    PERFORM set_config('routegate.platform_update_job_last_server_id', '', true);
-    RETURN NULL;
-END;
-$$;
-
-CREATE TRIGGER trg_agent_platform_update_jobs_admission_order_reset
-BEFORE INSERT ON agent_platform_update_jobs
-FOR EACH STATEMENT
-EXECUTE FUNCTION reset_platform_update_job_admission_order();
-
 -- All update-job inserts, including direct SQL writers and tests, must join the
 -- same canonical per-server admission lock used by Manager code and rollout
--- snapshots. Multi-row statements are accepted only in ascending canonical UUID
--- order, making lock acquisition deterministic across concurrent statements.
+-- snapshots. Ordering evidence is transaction-local rather than statement-local:
+-- once a transaction has admitted server A, every later job INSERT in that same
+-- transaction must use A again or a greater canonical UUID before attempting the
+-- next advisory lock. This prevents both multi-row statements and separate
+-- INSERT statements in one transaction from acquiring server locks in opposite
+-- orders.
 CREATE OR REPLACE FUNCTION lock_platform_update_job_admission()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -69,7 +65,7 @@ BEGIN
     IF previous_server_id IS NOT NULL
         AND previous_server_id <> ''
         AND NEW.server_id < previous_server_id::uuid THEN
-        RAISE EXCEPTION 'multi-row platform update job inserts must use ascending canonical server_id order';
+        RAISE EXCEPTION 'platform update job inserts in one transaction must use ascending canonical server_id order';
     END IF;
 
     PERFORM set_config('routegate.platform_update_job_last_server_id', NEW.server_id::text, true);
@@ -89,7 +85,7 @@ EXECUTE FUNCTION lock_platform_update_job_admission();
 -- already observed. Every new entry derives its watermark in PostgreSQL while
 -- holding the same canonical per-server advisory lock as update admission, so
 -- direct SQL/tests cannot fabricate the evidence either. The job-history
--- identity trigger above makes this count monotonic for each server.
+-- identity/lifecycle trigger above makes this count monotonic for each server.
 CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_entry_transition()
 RETURNS trigger
 LANGUAGE plpgsql
