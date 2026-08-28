@@ -46,11 +46,10 @@ BEFORE UPDATE OR DELETE ON agent_platform_update_jobs
 FOR EACH ROW
 EXECUTE FUNCTION enforce_platform_update_job_history_identity();
 
--- All platform-update admission transactions take this short-lived global
--- transaction lock before any rollout-parent or per-server admission lock. The
--- host mutation itself happens after commit, so this serializes only the durable
--- admission/binding decision while eliminating parent<->server lock inversions
--- for Manager code and raw SQL writers at the PostgreSQL boundary.
+-- Trusted Manager paths acquire this short-lived global transaction lock before
+-- any rollout-parent or per-server admission lock. The host mutation itself
+-- happens after commit, so this serializes only the durable admission/binding
+-- decision while eliminating parent<->server lock inversions.
 CREATE OR REPLACE FUNCTION lock_platform_update_admission_global()
 RETURNS void
 LANGUAGE sql
@@ -58,19 +57,28 @@ AS $$
     SELECT pg_advisory_xact_lock(722096142::bigint);
 $$;
 
--- Statement-level INSERT triggers are required in addition to the row guards:
--- PostgreSQL fires them before evaluating an INSERT ... SELECT source query, so
--- source-side FOR UPDATE locks cannot be taken before the global admission mutex.
+-- Raw SQL may already retain unrelated row locks before it reaches a protected
+-- admission statement. Such writers must never wait for the global mutex, or a
+-- Manager that owns the mutex and needs one of those rows could deadlock. The
+-- statement-level boundary therefore acquires the same mutex with try-lock and
+-- fails closed with a retryable serialization error when it is busy. Manager
+-- transactions that already own the mutex pass this check immediately.
 CREATE OR REPLACE FUNCTION lock_platform_update_admission_global_statement()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    PERFORM lock_platform_update_admission_global();
+    IF NOT pg_try_advisory_xact_lock(722096142::bigint) THEN
+        RAISE EXCEPTION 'platform update admission mutex is busy; retry transaction'
+            USING ERRCODE = '40001';
+    END IF;
     RETURN NULL;
 END;
 $$;
 
+-- Statement-level INSERT triggers are required in addition to the row guards:
+-- PostgreSQL fires them before evaluating an INSERT ... SELECT source query, so
+-- source-side FOR UPDATE locks cannot be taken before the global admission mutex.
 CREATE TRIGGER trg_agent_platform_update_jobs_insert_admission_lock
 BEFORE INSERT ON agent_platform_update_jobs
 FOR EACH STATEMENT
@@ -82,9 +90,9 @@ FOR EACH STATEMENT
 EXECUTE FUNCTION lock_platform_update_admission_global_statement();
 
 -- All server-scoped update admission at the database boundary shares one
--- transaction-local ordering proof. The global admission mutex above prevents
--- cross-transaction deadlocks; the ascending proof remains a fail-closed
--- structural check for accidental unordered multi-server SQL in one transaction.
+-- transaction-local ordering proof. The statement trigger above has already
+-- acquired the global admission mutex; this blocking call is therefore reentrant
+-- for the same transaction and remains defense in depth for the row invariant.
 CREATE OR REPLACE FUNCTION lock_platform_update_job_admission()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -113,10 +121,9 @@ FOR EACH ROW
 EXECUTE FUNCTION lock_platform_update_job_admission();
 
 -- UPDATE statements join the same global admission mutex before PostgreSQL can
--- acquire target rollout-entry row locks. The legacy transaction-local marker
--- remains only a fail-closed policy check for ordinary raw SQL; it is no longer
--- trusted as lock-order evidence, so a caller-written set_config cannot recreate
--- a parent/server deadlock.
+-- acquire target rollout-entry row locks. Use try-lock here because a raw writer
+-- may have retained a row lock in an earlier statement; waiting would recreate
+-- the parent<->mutex inversion the admission boundary is intended to remove.
 CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_update_lock_order()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -125,7 +132,10 @@ DECLARE
     previous_server_id TEXT;
     transaction_rollout_id TEXT;
 BEGIN
-    PERFORM lock_platform_update_admission_global();
+    IF NOT pg_try_advisory_xact_lock(722096142::bigint) THEN
+        RAISE EXCEPTION 'platform update admission mutex is busy; retry transaction'
+            USING ERRCODE = '40001';
+    END IF;
 
     previous_server_id := current_setting('routegate.platform_update_admission_last_server_id', true);
     transaction_rollout_id := current_setting('routegate.platform_update_admission_rollout_id', true);
@@ -144,15 +154,17 @@ FOR EACH STATEMENT
 EXECUTE FUNCTION enforce_platform_update_rollout_update_lock_order();
 
 -- Parent updates must also join the global admission mutex before PostgreSQL
--- acquires the parent row lock. This covers raw job-first transactions that try
--- to start/terminalize a rollout before binding an entry: peers can never hold a
--- parent while waiting for a server lock owned by that transaction.
+-- acquires the parent row lock. A raw transaction may already retain some other
+-- lock, so use the same fail-fast try-lock policy rather than waiting.
 CREATE OR REPLACE FUNCTION lock_platform_update_rollout_parent_update()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    PERFORM lock_platform_update_admission_global();
+    IF NOT pg_try_advisory_xact_lock(722096142::bigint) THEN
+        RAISE EXCEPTION 'platform update admission mutex is busy; retry transaction'
+            USING ERRCODE = '40001';
+    END IF;
     RETURN NULL;
 END;
 $$;
@@ -184,7 +196,7 @@ BEGIN
             RAISE EXCEPTION 'platform update rollout entry planning evidence is inconsistent';
         END IF;
 
-        -- The statement-level trigger acquires the global mutex before source
+        -- The statement-level trigger acquired the global mutex before source
         -- query evaluation. Keep the row-level call as defense in depth for the
         -- invariant that every admission path owns the same transaction lock.
         PERFORM lock_platform_update_admission_global();
