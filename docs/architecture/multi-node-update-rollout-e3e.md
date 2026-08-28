@@ -45,13 +45,19 @@ An immutable history-watermark mismatch after the exact bound job is different: 
 
 Progress reconciliation is part of the same platform-update admission domain as E3d. It must serialize with rollout terminalization and new mutation admission so that two Manager workers cannot prove the same entry independently and race advancement.
 
-The implementation must use the existing short-lived global platform-update admission mutex before protected rollout/entry/server state, then lock the parent rollout and current `updating` entry before evaluating its bound job, immutable history watermark, unresolved-outcome interlock, current Agent registration generation, dedicated heartbeat evidence, and protocol/liveness evidence.
+The implementation must use the existing short-lived global platform-update admission mutex before protected rollout/entry/server state, then lock the parent rollout and current `updating` entry, then the canonical per-server admission row/lock, and then the current Agent row before evaluating its registration generation, dedicated heartbeat evidence, protocol/liveness state, bound job, immutable history watermark, and unresolved-outcome interlock. This defines the canonical E3e order as: global update mutex -> rollout row -> entry row -> server admission lock/row -> Agent row.
+
+The current Agent row must be held with a write-conflicting row lock (for example `SELECT ... FOR UPDATE`) from before generation/heartbeat proof is read until the healthy/failure decision commits. Agent replacement/re-registration and authenticated heartbeat updates must modify that same row transactionally, so PostgreSQL row locking serializes them against reconciliation. Replacement must not publish a new credential generation or clear prior proof outside the row-locked transaction; heartbeat must not publish generation-matched proof outside the row-locked transaction.
+
+This common Agent-row protocol is required even under `READ COMMITTED`: merely reading generation and proof in one transaction is insufficient because a concurrent replacement could otherwise advance the generation and invalidate the proof after reconciliation's read but before it commits `healthy`. With the row lock held, replacement/heartbeat must wait until reconciliation commits or reconciliation observes their committed generation/proof before deciding.
+
+Agent registration/replacement and heartbeat paths do not need to acquire the global platform-update mutex merely to maintain Agent state, but they must never acquire rollout/entry/server update locks while holding the Agent row. Their lock dependency therefore terminates at the Agent row and cannot invert the E3e order. If a future Agent-state operation needs both domains, it must acquire them only in the canonical E3e order above.
 
 The history count and exact bound-job identity must be evaluated while the same global admission mutex and canonical per-server admission lock prevent a concurrent platform-update admission from creating an intervening job between proof evaluation and commit.
 
 Heartbeat freshness must be evaluated against transaction time, not merely against the persisted Agent status. The implementation must use one canonical freshness duration/source shared with Manager liveness semantics so E3e cannot drift from inventory behavior.
 
-Agent credential replacement/re-registration must atomically invalidate prior-generation heartbeat proof with the credential-generation change. Reconciliation must read the current generation and matching heartbeat evidence in the same transaction so a concurrent replacement cannot let stale proof survive under a new bearer.
+Agent credential replacement/re-registration must atomically invalidate prior-generation heartbeat proof with the credential-generation change. Reconciliation must read the current generation and matching heartbeat evidence while holding the current Agent row lock so a concurrent replacement cannot let stale proof survive under a new bearer.
 
 When a healthy proof commits, the durable `healthy` entry is the only evidence that may unblock the following persisted position. E3d may then admit at most that next entry using the existing one-job-per-entry mutation boundary.
 
@@ -79,6 +85,9 @@ Before E3e is mergeable, focused tests must prove:
 - registration or Agent replacement cannot manufacture heartbeat proof;
 - replacing credentials advances/changes the Agent registration generation and invalidates prior-generation heartbeat proof atomically;
 - a replacement Agent using the same durable row cannot become healthy until it sends a new authenticated heartbeat for the current generation;
+- reconciliation holds the Agent row lock across generation/heartbeat proof evaluation and commit, so concurrent same-row replacement cannot invalidate proof between read and `healthy` commit;
+- concurrent authenticated heartbeat on the Agent row either precedes reconciliation and is observed, or waits until reconciliation commits, without torn generation/proof observations;
+- Agent replacement/heartbeat locking cannot invert the canonical global -> rollout -> entry -> server -> Agent order or deadlock with E3e;
 - authenticated heartbeat evidence must be strictly newer than the bound job completion;
 - post-completion heartbeat evidence outside the canonical freshness window cannot become `healthy`;
 - offline, missing, stale, or protocol-incompatible Agent evidence cannot become `healthy`;
