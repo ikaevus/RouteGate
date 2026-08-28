@@ -9,7 +9,9 @@ ALTER TABLE platform_update_rollout_entries
 -- The update-history watermark is part of the immutable planning snapshot.
 -- Legacy entries intentionally remain NULL: E3d must fail closed rather than
 -- infer that jobs created between an older snapshot and this migration were
--- already observed.
+-- already observed. Every new entry derives its watermark in PostgreSQL while
+-- holding the same canonical per-server advisory lock as update admission, so
+-- direct SQL/tests cannot fabricate the evidence either.
 CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_entry_transition()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -19,13 +21,16 @@ BEGIN
         IF NEW.status NOT IN ('queued', 'skipped') OR NEW.platform_update_job_id IS NOT NULL THEN
             RAISE EXCEPTION 'platform update rollout entry must be created as an unbound planning snapshot';
         END IF;
-        IF NEW.observed_update_job_count IS NULL THEN
-            RAISE EXCEPTION 'platform update rollout entry update-history watermark is required';
-        END IF;
         IF (NEW.status = 'queued' AND cardinality(NEW.planning_blockers) <> 0)
             OR (NEW.status = 'skipped' AND cardinality(NEW.planning_blockers) = 0) THEN
             RAISE EXCEPTION 'platform update rollout entry planning evidence is inconsistent';
         END IF;
+
+        PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
+        SELECT count(*)
+        INTO NEW.observed_update_job_count
+        FROM agent_platform_update_jobs
+        WHERE server_id = NEW.server_id;
 
         PERFORM 1
         FROM platform_update_rollouts
