@@ -1,0 +1,4 @@
+DROP TRIGGER IF EXISTS trg_platform_update_rollout_entries_no_truncate ON platform_update_rollout_entries;
+DROP TRIGGER IF EXISTS trg_platform_update_rollouts_no_truncate ON platform_update_rollouts;
+DROP TRIGGER IF EXISTS trg_agent_platform_update_jobs_no_truncate ON agent_platform_update_jobs;
+DROP FUNCTION IF EXISTS reject_platform_update_history_truncate();
