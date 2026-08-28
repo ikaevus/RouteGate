@@ -89,6 +89,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     previous_server_id TEXT;
+    transaction_rollout_id TEXT;
 BEGIN
     IF TG_OP = 'INSERT' THEN
         IF NEW.status NOT IN ('queued', 'skipped') OR NEW.platform_update_job_id IS NOT NULL THEN
@@ -99,12 +100,26 @@ BEGIN
             RAISE EXCEPTION 'platform update rollout entry planning evidence is inconsistent';
         END IF;
 
+        -- A rollout-entry transaction must establish exactly one parent before
+        -- it acquires any trigger-managed server admission lock. Otherwise a
+        -- transaction can retain a server lock for one row and then wait for a
+        -- second parent while a peer holds that parent and waits for the same
+        -- server lock. Reject cross-parent and job-first mixed transactions
+        -- before taking a new parent row lock.
+        transaction_rollout_id := current_setting('routegate.platform_update_admission_rollout_id', true);
+        previous_server_id := current_setting('routegate.platform_update_admission_last_server_id', true);
+        IF transaction_rollout_id IS NULL OR transaction_rollout_id = '' THEN
+            IF previous_server_id IS NOT NULL AND previous_server_id <> '' THEN
+                RAISE EXCEPTION 'platform update rollout parent must be established before server admission locks';
+            END IF;
+        ELSIF transaction_rollout_id <> NEW.rollout_id::text THEN
+            RAISE EXCEPTION 'platform update rollout entry inserts in one transaction must use one rollout parent';
+        END IF;
+
         -- Keep the structural trigger on the same lock order as rollout
         -- execution: parent rollout first, then the per-server update-admission
-        -- lock. After the parent is stable, join the same transaction-wide
-        -- canonical server ordering used by update-job INSERTs. This prevents
-        -- raw SQL transactions from acquiring overlapping server locks in
-        -- opposite orders across rollout entries or across the two tables.
+        -- lock. Rechecking the same parent is safe because its row lock is
+        -- retained until transaction end; a different parent was rejected above.
         PERFORM 1
         FROM platform_update_rollouts
         WHERE id = NEW.rollout_id
@@ -114,7 +129,13 @@ BEGIN
         IF NOT FOUND THEN
             RAISE EXCEPTION 'platform update rollout entries may only be added while parent is pending';
         END IF;
+        IF transaction_rollout_id IS NULL OR transaction_rollout_id = '' THEN
+            PERFORM set_config('routegate.platform_update_admission_rollout_id', NEW.rollout_id::text, true);
+        END IF;
 
+        -- After the parent is stable, join the same transaction-wide canonical
+        -- server ordering used by update-job INSERTs. This prevents raw SQL
+        -- transactions from acquiring overlapping server locks in opposite order.
         previous_server_id := current_setting('routegate.platform_update_admission_last_server_id', true);
         IF previous_server_id IS NOT NULL
             AND previous_server_id <> ''
