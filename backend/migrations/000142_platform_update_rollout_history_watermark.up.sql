@@ -30,7 +30,7 @@ BEGIN
     IF NEW.status IS DISTINCT FROM OLD.status THEN
         IF NOT (
             (OLD.status = 'pending' AND NEW.status = 'in_progress')
-            OR (OLD.status = 'in_progress' AND NEW.status IN ('mutation_dispatched', 'failed'))
+            OR (OLD.status = 'in_progress' AND NEW.status IN ('mutation_dispatched', 'succeeded', 'failed', 'outcome_unknown'))
             OR (OLD.status = 'mutation_dispatched' AND NEW.status IN ('succeeded', 'failed', 'outcome_unknown'))
         ) THEN
             RAISE EXCEPTION 'invalid platform update job transition % -> %', OLD.status, NEW.status;
