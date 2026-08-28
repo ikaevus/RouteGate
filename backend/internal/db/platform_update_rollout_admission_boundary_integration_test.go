@@ -83,6 +83,11 @@ func TestPlatformUpdateAdmissionBoundaryGuardsRawInserts(t *testing.T) {
 		t.Fatalf("create ready Agent: %v", err)
 	}
 
+	var agentID string
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM agents WHERE server_id = $1::uuid`, serverID).Scan(&agentID); err != nil {
+		t.Fatalf("read ready Agent id: %v", err)
+	}
+
 	if _, err := repo.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{
 		ServerID: serverID,
 		TargetVersion: "v1.2.3",
@@ -120,5 +125,45 @@ func TestPlatformUpdateAdmissionBoundaryGuardsRawInserts(t *testing.T) {
 	}
 	if entryCount != 0 {
 		t.Fatalf("rejected active-job snapshot left %d rollout entries, want 0", entryCount)
+	}
+
+	// A raw transaction can retain a rollout row lock before it reaches an
+	// admission statement. If another trusted admission already owns the global
+	// mutex, the raw statement must fail immediately rather than wait for the
+	// mutex and form parent<->mutex deadlock with that trusted transaction.
+	prelockedTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin prelocked raw transaction: %v", err)
+	}
+	defer prelockedTx.Rollback(ctx)
+	if _, err := prelockedTx.Exec(ctx, `
+		SELECT 1 FROM platform_update_rollouts WHERE id = $1::uuid FOR UPDATE
+	`, rolloutID); err != nil {
+		t.Fatalf("prelock rollout row: %v", err)
+	}
+
+	mutexTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin mutex owner transaction: %v", err)
+	}
+	defer mutexTx.Rollback(ctx)
+	if _, err := mutexTx.Exec(ctx, `SELECT lock_platform_update_admission_global()`); err != nil {
+		t.Fatalf("acquire trusted admission mutex: %v", err)
+	}
+
+	attemptCtx, attemptCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer attemptCancel()
+	_, err = prelockedTx.Exec(attemptCtx, `
+		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3')
+	`, serverID, agentID)
+	if err == nil {
+		t.Fatal("prelocked raw admission must fail while trusted mutex is owned")
+	}
+	if !strings.Contains(err.Error(), "admission mutex is busy") {
+		t.Fatalf("prelocked raw admission error = %v", err)
+	}
+	if attemptCtx.Err() != nil {
+		t.Fatalf("prelocked raw admission waited instead of failing fast: %v", attemptCtx.Err())
 	}
 }
