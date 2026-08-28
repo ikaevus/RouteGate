@@ -28,6 +28,14 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 	}
 	defer tx.Rollback(ctx)
 
+	// Every platform-update admission path takes the same short-lived global DB
+	// mutex before any rollout-parent, entry, or per-server lock. This prevents a
+	// raw job-first writer from retaining a server lock while Manager execution
+	// retains rollout rows and waits in the opposite direction.
+	if _, err := tx.Exec(ctx, `SELECT lock_platform_update_admission_global()`); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+
 	var targetVersion, rolloutStatus string
 	if err := tx.QueryRow(ctx, `
 		SELECT target_version, status
@@ -42,9 +50,9 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, fmt.Errorf("rollout is not mutation-runnable: %s", rolloutStatus)
 	}
 
-	// Record that this transaction established the rollout parent before any
-	// trigger-managed server admission lock. Migration 142 uses the same marker
-	// to reject raw job-first binding updates before they can wait on an entry row.
+	// Keep the transaction-local marker as a fail-closed structural policy for
+	// raw SQL. Lock ordering no longer trusts it: the global DB mutex above is
+	// the actual concurrency evidence.
 	if _, err := tx.Exec(ctx, `SELECT set_config('routegate.platform_update_admission_rollout_id', $1, true)`, canonicalRolloutID); err != nil {
 		return PlatformUpdateJob{}, err
 	}
