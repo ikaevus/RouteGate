@@ -123,6 +123,44 @@ func TestPlatformUpdateJobHistoryIsImmutableAndRawAdmissionIsOrdered(t *testing.
 		highServer, lowServer = lowServer, highServer
 		highAgent, lowAgent = lowAgent, highAgent
 	}
+
+	// Rollout-entry INSERTs must participate in the same transaction-wide server
+	// ordering proof as direct job INSERTs. Otherwise two raw transactions can
+	// retain opposite advisory locks while inserting overlapping rollout entries.
+	var rolloutHighFirst, rolloutLowSecond string
+	if err := pool.QueryRow(ctx, `INSERT INTO platform_update_rollouts (target_version) VALUES ('v1.2.3') RETURNING id::text`).Scan(&rolloutHighFirst); err != nil {
+		t.Fatalf("create high-first rollout: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO platform_update_rollouts (target_version) VALUES ('v1.2.3') RETURNING id::text`).Scan(&rolloutLowSecond); err != nil {
+		t.Fatalf("create low-second rollout: %v", err)
+	}
+	rolloutTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin raw rollout-entry transaction: %v", err)
+	}
+	if _, err := rolloutTx.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
+	`, rolloutHighFirst, highServer); err != nil {
+		_ = rolloutTx.Rollback(ctx)
+		t.Fatalf("insert first high-server rollout entry: %v", err)
+	}
+	_, err = rolloutTx.Exec(ctx, `
+		INSERT INTO platform_update_rollout_entries (rollout_id, server_id, target_version, position)
+		VALUES ($1::uuid, $2::uuid, 'v1.2.3', 0)
+	`, rolloutLowSecond, lowServer)
+	if err == nil {
+		_ = rolloutTx.Rollback(ctx)
+		t.Fatal("descending rollout-entry admissions across one transaction must be rejected")
+	}
+	if !strings.Contains(err.Error(), "ascending canonical server_id order") {
+		_ = rolloutTx.Rollback(ctx)
+		t.Fatalf("descending rollout-entry admission error = %v", err)
+	}
+	if err := rolloutTx.Rollback(ctx); err != nil {
+		t.Fatalf("rollback raw rollout-entry transaction: %v", err)
+	}
+
 	_, err = pool.Exec(ctx, `
 		INSERT INTO agent_platform_update_jobs (server_id, agent_id, target_version)
 		VALUES ($1::uuid, $2::uuid, 'v1.2.3'), ($3::uuid, $4::uuid, 'v1.2.3')
