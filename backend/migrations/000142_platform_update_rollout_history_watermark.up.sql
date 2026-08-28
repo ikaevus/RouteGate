@@ -26,12 +26,10 @@ BEGIN
             RAISE EXCEPTION 'platform update rollout entry planning evidence is inconsistent';
         END IF;
 
-        PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
-        SELECT count(*)
-        INTO NEW.observed_update_job_count
-        FROM agent_platform_update_jobs
-        WHERE server_id = NEW.server_id;
-
+        -- Keep the structural trigger on the same lock order as rollout
+        -- execution: parent rollout first, then the per-server update-admission
+        -- lock. This lets direct SQL/planner retries serialize with admission
+        -- instead of creating a rollout-row <-> advisory-lock deadlock cycle.
         PERFORM 1
         FROM platform_update_rollouts
         WHERE id = NEW.rollout_id
@@ -41,6 +39,12 @@ BEGIN
         IF NOT FOUND THEN
             RAISE EXCEPTION 'platform update rollout entries may only be added while parent is pending';
         END IF;
+
+        PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
+        SELECT count(*)
+        INTO NEW.observed_update_job_count
+        FROM agent_platform_update_jobs
+        WHERE server_id = NEW.server_id;
         RETURN NEW;
     END IF;
 
