@@ -41,6 +41,11 @@ type PlatformUpdateRolloutPlanEntry struct {
 	ServerID string
 	Eligible bool
 	Blockers []PlatformUpdateRolloutBlocker
+
+	// observedUpdateJobCount is Manager-derived snapshot evidence. Callers do
+	// not control it; persistence fills it while the per-server admission lock
+	// is held so execution can detect any intervening direct update job.
+	observedUpdateJobCount int64
 }
 
 type PlatformUpdateRolloutPlan struct {
