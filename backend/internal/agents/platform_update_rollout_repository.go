@@ -72,7 +72,25 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", err
 	}
 
+	// Migration 142 enforces canonical server lock ordering for every rollout-entry
+	// INSERT at the database boundary. Persist rows in that lock order while
+	// carrying the caller's original position explicitly so rollout semantics are
+	// unchanged for plans whose requested order differs from UUID sort order.
+	type positionedEntry struct {
+		position int
+		entry    PlatformUpdateRolloutPlanEntry
+	}
+	persistedEntries := make([]positionedEntry, 0, len(entries))
 	for position, entry := range entries {
+		persistedEntries = append(persistedEntries, positionedEntry{position: position, entry: entry})
+	}
+	sort.Slice(persistedEntries, func(i, j int) bool {
+		return persistedEntries[i].entry.ServerID < persistedEntries[j].entry.ServerID
+	})
+
+	for _, positioned := range persistedEntries {
+		position := positioned.position
+		entry := positioned.entry
 		blockers := make([]string, len(entry.Blockers))
 		for i, blocker := range entry.Blockers {
 			blockers[i] = string(blocker)
