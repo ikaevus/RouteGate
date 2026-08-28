@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -37,8 +38,58 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, err
 	}
 
-	switch rolloutStatus {
-	case "pending":
+	if rolloutStatus != "pending" && rolloutStatus != "running" {
+		return PlatformUpdateJob{}, fmt.Errorf("rollout is not mutation-runnable: %s", rolloutStatus)
+	}
+
+	// A running rollout may already own its one mutation. Replay that exact job
+	// before evaluating any new admission gates; a Manager upgrade must not turn
+	// restart/replay into a replacement mutation.
+	if rolloutStatus == "running" {
+		job, err := scanPlatformUpdateJob(tx.QueryRow(ctx, `
+			SELECT
+				j.id::text,
+				j.server_id::text,
+				j.target_version,
+				j.status,
+				COALESCE(j.error_code, ''),
+				j.created_at,
+				j.updated_at,
+				j.started_at,
+				j.dispatched_at,
+				j.completed_at
+			FROM platform_update_rollout_entries e
+			JOIN agent_platform_update_jobs j ON j.id = e.platform_update_job_id
+			WHERE e.rollout_id = $1::uuid
+			  AND e.status = 'updating'
+			ORDER BY e.position
+			LIMIT 1
+		`, canonicalRolloutID))
+		if err == nil {
+			if err := tx.Commit(ctx); err != nil {
+				return PlatformUpdateJob{}, err
+			}
+			return job, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return PlatformUpdateJob{}, err
+		}
+	}
+
+	// Management-first is an execution-time invariant, not only planning
+	// evidence. A queued plan surviving a Manager upgrade must never downgrade a
+	// VPN node to the old target.
+	if buildinfo.Current().Version != targetVersion {
+		if err := failPlatformUpdateRolloutTx(ctx, tx, canonicalRolloutID, PlatformUpdateRolloutBlockerManagerVersionMismatch); err != nil {
+			return PlatformUpdateJob{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PlatformUpdateJob{}, err
+		}
+		return PlatformUpdateJob{}, fmt.Errorf("rollout target no longer matches current Manager version")
+	}
+
+	if rolloutStatus == "pending" {
 		if _, err := tx.Exec(ctx, `
 			UPDATE platform_update_rollouts
 			SET status = 'running', started_at = now(), updated_at = now()
@@ -46,41 +97,6 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		`, canonicalRolloutID); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-	case "running":
-		// Resume from durable state below.
-	default:
-		return PlatformUpdateJob{}, fmt.Errorf("rollout is not mutation-runnable: %s", rolloutStatus)
-	}
-
-	// Replay/restart safety: a bound updating entry is authoritative. Return its
-	// exact job rather than creating any replacement.
-	job, err := scanPlatformUpdateJob(tx.QueryRow(ctx, `
-		SELECT
-			j.id::text,
-			j.server_id::text,
-			j.target_version,
-			j.status,
-			COALESCE(j.error_code, ''),
-			j.created_at,
-			j.updated_at,
-			j.started_at,
-			j.dispatched_at,
-			j.completed_at
-		FROM platform_update_rollout_entries e
-		JOIN agent_platform_update_jobs j ON j.id = e.platform_update_job_id
-		WHERE e.rollout_id = $1::uuid
-		  AND e.status = 'updating'
-		ORDER BY e.position
-		LIMIT 1
-	`, canonicalRolloutID))
-	if err == nil {
-		if err := tx.Commit(ctx); err != nil {
-			return PlatformUpdateJob{}, err
-		}
-		return job, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return PlatformUpdateJob{}, err
 	}
 
 	var blockedTerminal bool
@@ -99,8 +115,9 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 	}
 
 	var entryID, serverID string
+	var observedUpdateJobCount *int64
 	if err := tx.QueryRow(ctx, `
-		SELECT id::text, server_id::text
+		SELECT id::text, server_id::text, observed_update_job_count
 		FROM platform_update_rollout_entries e
 		WHERE rollout_id = $1::uuid
 		  AND status IN ('queued', 'waiting')
@@ -115,7 +132,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		ORDER BY position
 		LIMIT 1
 		FOR UPDATE
-	`, canonicalRolloutID).Scan(&entryID, &serverID); err != nil {
+	`, canonicalRolloutID).Scan(&entryID, &serverID, &observedUpdateJobCount); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return PlatformUpdateJob{}, fmt.Errorf("rollout has no admissible next entry")
 		}
@@ -130,6 +147,31 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, fmt.Errorf("persisted rollout target version is invalid")
 	}
 
+	// Snapshot creation and every single-node update admission use this same
+	// canonical per-server lock. Comparing an immutable history watermark while
+	// holding it catches even a direct job that has already reached a terminal
+	// state and therefore no longer participates in the active-job unique index.
+	if err := lockPlatformUpdateServer(ctx, tx, serverID); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	var currentUpdateJobCount int64
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM agent_platform_update_jobs
+		WHERE server_id = $1::uuid
+	`, serverID).Scan(&currentUpdateJobCount); err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	if observedUpdateJobCount == nil || currentUpdateJobCount != *observedUpdateJobCount {
+		if err := failPlatformUpdateRolloutTx(ctx, tx, canonicalRolloutID, platformUpdateRolloutAdmissionRejected); err != nil {
+			return PlatformUpdateJob{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return PlatformUpdateJob{}, err
+		}
+		return PlatformUpdateJob{}, fmt.Errorf("rollout update history changed after snapshot")
+	}
+
 	// A rejected INSERT can put PostgreSQL's transaction into error state (for
 	// example the one-active/unresolved-job unique interlock). Keep that failure
 	// inside a savepoint so E3d can durably stop the rollout rather than rolling
@@ -137,7 +179,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 	if _, err := tx.Exec(ctx, `SAVEPOINT rg96e3d_single_node_admission`); err != nil {
 		return PlatformUpdateJob{}, err
 	}
-	job, err = createPlatformUpdateJobTx(ctx, tx, CreatePlatformUpdateJobInput{
+	job, err := createPlatformUpdateJobTx(ctx, tx, CreatePlatformUpdateJobInput{
 		ServerID:      serverID,
 		TargetVersion: targetVersion,
 	})
@@ -151,12 +193,8 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if _, releaseErr := tx.Exec(ctx, `RELEASE SAVEPOINT rg96e3d_single_node_admission`); releaseErr != nil {
 			return PlatformUpdateJob{}, releaseErr
 		}
-		if _, updateErr := tx.Exec(ctx, `
-			UPDATE platform_update_rollouts
-			SET status = 'failed', error_code = $2, completed_at = now(), updated_at = now()
-			WHERE id = $1::uuid AND status = 'running'
-		`, canonicalRolloutID, platformUpdateRolloutAdmissionRejected); updateErr != nil {
-			return PlatformUpdateJob{}, updateErr
+		if err := failPlatformUpdateRolloutTx(ctx, tx, canonicalRolloutID, platformUpdateRolloutAdmissionRejected); err != nil {
+			return PlatformUpdateJob{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
@@ -185,6 +223,20 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, err
 	}
 	return job, nil
+}
+
+func failPlatformUpdateRolloutTx(ctx context.Context, tx pgx.Tx, rolloutID string, errorCode any) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE platform_update_rollouts
+		SET status = 'failed',
+		    error_code = $2::text,
+		    started_at = COALESCE(started_at, now()),
+		    completed_at = now(),
+		    updated_at = now()
+		WHERE id = $1::uuid
+		  AND status IN ('pending', 'running')
+	`, rolloutID, fmt.Sprint(errorCode))
+	return err
 }
 
 func isPlatformUpdateAdmissionRejection(err error) bool {
