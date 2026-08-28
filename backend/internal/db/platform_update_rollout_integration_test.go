@@ -66,8 +66,6 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		return id
 	}
 
-	matchingJobID := createJob(serverIDs[0], agentIDs[0], "v1.2.3")
-	secondMatchingJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
 	otherServerJobID := createJob(serverIDs[2], agentIDs[2], "v1.2.3")
 	var wrongVersionJobID string
 	if err := pool.QueryRow(ctx, `
@@ -107,7 +105,7 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 		INSERT INTO platform_update_rollout_entries (
 			rollout_id, server_id, target_version, position, platform_update_job_id, status
 		) VALUES ($1::uuid, $2::uuid, 'v1.2.3', 99, $3::uuid, 'updating')
-	`, rolloutID, serverIDs[0], matchingJobID); err == nil {
+	`, rolloutID, serverIDs[0], wrongVersionJobID); err == nil {
 		t.Fatal("rollout entry was created directly updating with a pre-bound job")
 	}
 	if err := pool.QueryRow(ctx, `
@@ -124,6 +122,9 @@ func TestPlatformUpdateRolloutPersistenceEnforcesStopAndJobIdentity(t *testing.T
 	`, rolloutID, serverIDs[1]).Scan(&secondEntryID); err != nil {
 		t.Fatalf("create second rollout entry: %v", err)
 	}
+	matchingJobID := createJob(serverIDs[0], agentIDs[0], "v1.2.3")
+	secondMatchingJobID := createJob(serverIDs[1], agentIDs[1], "v1.2.3")
+
 	if _, err := pool.Exec(ctx, `
 		UPDATE platform_update_rollout_entries
 		SET id = gen_random_uuid()
