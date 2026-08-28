@@ -76,6 +76,36 @@ BEFORE INSERT ON agent_platform_update_jobs
 FOR EACH ROW
 EXECUTE FUNCTION lock_platform_update_job_admission();
 
+-- Binding an existing rollout entry is the only UPDATE path that can follow a
+-- freshly inserted update job in E3d. Reject any raw job-first UPDATE statement
+-- before PostgreSQL acquires rollout-entry row locks unless the transaction has
+-- already established its rollout parent. The Manager execution path records
+-- this marker immediately after locking the parent rollout and before any server
+-- admission lock is taken.
+CREATE OR REPLACE FUNCTION enforce_platform_update_rollout_update_lock_order()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    previous_server_id TEXT;
+    transaction_rollout_id TEXT;
+BEGIN
+    previous_server_id := current_setting('routegate.platform_update_admission_last_server_id', true);
+    transaction_rollout_id := current_setting('routegate.platform_update_admission_rollout_id', true);
+    IF previous_server_id IS NOT NULL
+        AND previous_server_id <> ''
+        AND (transaction_rollout_id IS NULL OR transaction_rollout_id = '') THEN
+        RAISE EXCEPTION 'platform update rollout parent must be established before binding update after server admission lock';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_platform_update_rollout_entries_update_lock_order
+BEFORE UPDATE ON platform_update_rollout_entries
+FOR EACH STATEMENT
+EXECUTE FUNCTION enforce_platform_update_rollout_update_lock_order();
+
 -- The update-history watermark is part of the immutable planning snapshot.
 -- Legacy entries intentionally remain NULL: E3d must fail closed rather than
 -- infer that jobs created between an older snapshot and this migration were
