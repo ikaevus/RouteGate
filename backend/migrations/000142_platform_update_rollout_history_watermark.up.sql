@@ -6,6 +6,25 @@ ALTER TABLE platform_update_rollout_entries
         observed_update_job_count IS NULL OR observed_update_job_count >= 0
     );
 
+-- All update-job inserts, including direct SQL writers and tests, must join the
+-- same canonical per-server admission lock used by Manager code and rollout
+-- snapshots. This makes the history watermark a database-level serialization
+-- boundary rather than a convention that Go callers can accidentally bypass.
+CREATE OR REPLACE FUNCTION lock_platform_update_job_admission()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.server_id::text, 0));
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_agent_platform_update_jobs_admission_lock
+BEFORE INSERT ON agent_platform_update_jobs
+FOR EACH ROW
+EXECUTE FUNCTION lock_platform_update_job_admission();
+
 -- The update-history watermark is part of the immutable planning snapshot.
 -- Legacy entries intentionally remain NULL: E3d must fail closed rather than
 -- infer that jobs created between an older snapshot and this migration were
@@ -67,11 +86,15 @@ BEGIN
         IF NOT (
             (OLD.status = 'queued' AND NEW.status IN ('waiting', 'updating'))
             OR (OLD.status = 'waiting' AND NEW.status = 'updating')
-            OR (OLD.status = 'updating' AND NEW.status IN ('healthy', 'failed', 'outcome_unknown'))
+            OR (OLD.status = 'updating' AND NEW.status IN ('failed', 'outcome_unknown'))
         ) THEN
             RAISE EXCEPTION 'invalid platform update rollout entry transition % -> %', OLD.status, NEW.status;
         END IF;
 
+        -- E3d deliberately has no updating -> healthy transition yet. A later
+        -- slice must introduce an atomic proof that the bound job succeeded and
+        -- that fresh post-update health evidence exists before fleet advancement
+        -- can authorize another host mutation.
         IF NEW.status = 'updating' THEN
             PERFORM 1
             FROM platform_update_rollouts
