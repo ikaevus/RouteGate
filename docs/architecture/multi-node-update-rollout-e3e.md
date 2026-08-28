@@ -16,7 +16,7 @@ A rollout entry may become `healthy` only when all of the following are proven i
 2. the bound job is terminal `succeeded` and has a non-null completion timestamp;
 3. durable heartbeat-only evidence exists for the currently registered Agent and was written exclusively by the bearer-authenticated heartbeat path; registration, replacement, inventory refresh, or any other `last_seen_at` writer must not be able to create this evidence;
 4. the heartbeat evidence is bound to the exact current Agent credential/registration generation; replacement or re-registration must atomically advance that generation and invalidate any heartbeat proof from the previous bearer before the new credentials become authoritative;
-5. that generation-matched authenticated-heartbeat evidence is strictly after the bound job completion timestamp and is still inside the same transaction-time Agent freshness window used by Manager inventory/liveness evaluation;
+5. that generation-matched authenticated-heartbeat evidence is strictly after the bound job completion timestamp and is still inside the same canonical Agent freshness window used by Manager inventory/liveness evaluation when measured against a wall-clock value captured only after all potentially blocking E3e locks, including the Agent row lock, have been acquired;
 6. that Agent is currently protocol-compatible with the Manager and the Manager-derived liveness result for the same generation-matched evidence is online;
 7. the server has no unresolved platform-update outcome;
 8. no platform-update job history has been added for the server after the exact bound rollout job: with E3d's immutable planning watermark, the current per-server update-job count must be exactly `observed_update_job_count + 1`, and that one additional row must be the immutable `platform_update_job_id` bound to this entry.
@@ -55,7 +55,7 @@ Agent registration/replacement and heartbeat paths do not need to acquire the gl
 
 The history count and exact bound-job identity must be evaluated while the same global admission mutex and canonical per-server admission lock prevent a concurrent platform-update admission from creating an intervening job between proof evaluation and commit.
 
-Heartbeat freshness must be evaluated against transaction time, not merely against the persisted Agent status. The implementation must use one canonical freshness duration/source shared with Manager liveness semantics so E3e cannot drift from inventory behavior.
+Heartbeat freshness must not be evaluated against PostgreSQL transaction-start time. `now()` and `CURRENT_TIMESTAMP` are explicitly insufficient because a reconciliation transaction may spend longer than the freshness window waiting for the global, rollout, entry, server, or Agent locks. After all potentially blocking E3e locks have been acquired, reconciliation must evaluate freshness from a true wall-clock source (for example PostgreSQL `clock_timestamp()` or an equivalent Manager clock captured at that point) using the one canonical freshness duration/source shared with Manager liveness semantics. The same wall-clock freshness predicate must be revalidated immediately before writing `healthy`; no earlier transaction timestamp or cached online status may authorize the transition.
 
 Agent credential replacement/re-registration must atomically invalidate prior-generation heartbeat proof with the credential-generation change. Reconciliation must read the current generation and matching heartbeat evidence while holding the current Agent row lock so a concurrent replacement cannot let stale proof survive under a new bearer.
 
@@ -90,6 +90,7 @@ Before E3e is mergeable, focused tests must prove:
 - Agent replacement/heartbeat locking cannot invert the canonical global -> rollout -> entry -> server -> Agent order or deadlock with E3e;
 - authenticated heartbeat evidence must be strictly newer than the bound job completion;
 - post-completion heartbeat evidence outside the canonical freshness window cannot become `healthy`;
+- a heartbeat proof that was fresh at transaction start but ages out while reconciliation waits for any E3e lock cannot become `healthy`; the test must exercise a lock wait that exceeds the freshness window and prove post-lock wall-clock revalidation rejects the stale proof;
 - offline, missing, stale, or protocol-incompatible Agent evidence cannot become `healthy`;
 - unresolved update outcome cannot become `healthy`;
 - any additional per-server update-job history beyond the E3d planning watermark plus the exact bound job permanently invalidates the proof and atomically stops the rollout with bounded durable failure evidence, including later terminal jobs;
