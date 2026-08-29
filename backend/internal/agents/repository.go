@@ -407,7 +407,7 @@ const agentSelect = `
 		name
 	FROM agents`
 
-type scaniner interface {
+type scanner interface {
 	Scan(dest ...any) error
 }
 
