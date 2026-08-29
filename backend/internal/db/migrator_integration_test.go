@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000142_platform_update_rollout_history_watermark" {
-		t.Fatalf("applied schema version = %q, want 000142_platform_update_rollout_history_watermark", version)
+	if version != "000143_agent_authenticated_heartbeat_proof" {
+		t.Fatalf("applied schema version = %q, want 000143_agent_authenticated_heartbeat_proof", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -217,7 +217,6 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if databaseURL == "" {
 		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
@@ -387,8 +386,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000142_platform_update_rollout_history_watermark" {
-		t.Fatalf("applied schema version = %q, want 000142_platform_update_rollout_history_watermark", version)
+	if version != "000143_agent_authenticated_heartbeat_proof" {
+		t.Fatalf("applied schema version = %q, want 000143_agent_authenticated_heartbeat_proof", version)
 	}
 }
 
