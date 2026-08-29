@@ -83,6 +83,9 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			capabilities = EXCLUDED.capabilities,
 			registered_at = EXCLUDED.registered_at,
 			last_seen_at = EXCLUDED.last_seen_at,
+			credential_generation = agents.credential_generation + 1,
+			last_authenticated_heartbeat_at = NULL,
+			last_authenticated_heartbeat_generation = NULL,
 			updated_at = now()
 		RETURNING
 			id::text,
@@ -137,6 +140,8 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 				version = COALESCE(NULLIF($2, ''), version),
 				protocol_version = COALESCE($3, protocol_version),
 				capabilities = COALESCE($4, capabilities),
+				last_authenticated_heartbeat_at = clock_timestamp(),
+				last_authenticated_heartbeat_generation = credential_generation,
 				updated_at = now()
 			WHERE token_hash = $1
 			RETURNING
@@ -402,7 +407,7 @@ const agentSelect = `
 		name
 	FROM agents`
 
-type scanner interface {
+type scaniner interface {
 	Scan(dest ...any) error
 }
 
