@@ -242,32 +242,43 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 		t.Fatalf("create legacy server: %v", err)
 	}
 
-	protocolVersion := 1
 	now := time.Now().UTC()
 	collectedAt := "2026-08-11T20:00:00Z"
-	_, err = agents.NewRepository(pool).CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
-		ServerID:        serverID,
-		Hostname:        "legacy-runtime-agent",
-		OS:              "linux",
-		Arch:            "amd64",
-		AgentVersion:    "legacy-test",
-		ProtocolVersion: &protocolVersion,
-		TokenHash:       "legacy-runtime-token-hash",
-		Capabilities: agents.Capabilities{
-			"vpnCore": true,
-			"runtimeMetrics": map[string]any{
-				"load1":       1.25,
-				"load5":       0.75,
-				"load15":      0.5,
-				"logicalCpus": 4,
-				"collectedAt": collectedAt,
-			},
-		},
-		Status:       agents.StatusOnline,
-		RegisteredAt: &now,
-		LastSeenAt:   &now,
-	})
-	if err != nil {
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO agents (
+			server_id,
+			hostname,
+			os,
+			arch,
+			agent_version,
+			token_hash,
+			capabilities,
+			status,
+			registered_at,
+			last_seen_at
+		)
+		VALUES (
+			$1::uuid,
+			'legacy-runtime-agent',
+			'linux',
+			'amd64',
+			'legacy-test',
+			'legacy-runtime-token-hash',
+			jsonb_build_object(
+				'vpnCore', true,
+				'runtimeMetrics', jsonb_build_object(
+					'load1', 1.25,
+					'load5', 0.75,
+					'load15', 0.5,
+					'logicalCpus', 4,
+					'collectedAt', $2::text
+				)
+			),
+			$3,
+			$4,
+			$4
+		)
+	`, serverID, collectedAt, agents.StatusOnline, now); err != nil {
 		t.Fatalf("create legacy agent: %v", err)
 	}
 
