@@ -10,6 +10,7 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/buildinfo"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestPlatformUpdateRolloutHealthTerminalStopSemantics(t *testing.T) {
@@ -181,6 +182,4 @@ func assertRolloutHealthTerminalState(t *testing.T, ctx context.Context, pool in
 	}
 }
 
-type pgxRow interface {
-	Scan(...any) error
-}
+type pgxRow = pgx.Row
