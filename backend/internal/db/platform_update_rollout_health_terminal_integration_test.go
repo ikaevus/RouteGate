@@ -198,7 +198,10 @@ func TestPlatformUpdateRolloutHealthTerminalStopSemantics(t *testing.T) {
 
 		if _, err := tx.Exec(ctx, `
 			UPDATE agent_platform_update_jobs
-			SET status = 'succeeded', completed_at = now(), updated_at = now()
+			SET status = 'succeeded',
+				dispatched_at = COALESCE(dispatched_at, now()),
+				completed_at = now(),
+				updated_at = now()
 			WHERE id = $1::uuid
 		`, job.ID); err != nil {
 			t.Fatalf("terminalize update job: %v", err)
