@@ -113,6 +113,116 @@ func TestAgentCredentialGenerationAndAuthenticatedHeartbeatProof(t *testing.T) {
 	assertAgentHeartbeatProof(t, ctx, pool, serverID, 2, true)
 }
 
+func TestAuthenticatedHeartbeatUsesPostLockWallClockForLiveness(t *testing.T) {
+	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	pool, err := Connect(ctx, databaseURL, logger)
+	if err != nil {
+		t.Fatalf("connect to test PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	resetPublicSchema(t, ctx, pool)
+	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	var serverID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO servers (name, status)
+		VALUES ('Authenticated heartbeat post-lock fixture', 'pending')
+		RETURNING id::text
+	`).Scan(&serverID); err != nil {
+		t.Fatalf("create server fixture: %v", err)
+	}
+
+	repo := agents.NewRepository(pool)
+	protocolVersion := 1
+	registeredAt := time.Now().UTC()
+	if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{
+		ServerID:        serverID,
+		Hostname:        "post-lock-proof-agent",
+		OS:              "linux",
+		Arch:            "amd64",
+		AgentVersion:    "proof-test-v1",
+		ProtocolVersion: &protocolVersion,
+		TokenHash:       "post-lock-proof-token",
+		Status:          agents.StatusRegistered,
+		RegisteredAt:    &registeredAt,
+	}); err != nil {
+		t.Fatalf("register Agent fixture: %v", err)
+	}
+
+	lockConn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire Agent lock connection: %v", err)
+	}
+	defer lockConn.Release()
+	lockTx, err := lockConn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin Agent lock transaction: %v", err)
+	}
+	defer lockTx.Rollback(ctx)
+	if _, err := lockTx.Exec(ctx, `
+		SELECT 1
+		FROM agents
+		WHERE server_id = $1::uuid
+		FOR UPDATE
+	`, serverID); err != nil {
+		t.Fatalf("lock Agent row: %v", err)
+	}
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := repo.UpdateAgentHeartbeat(ctx, agents.UpdateAgentHeartbeatInput{TokenHash: "post-lock-proof-token"})
+		done <- err
+	}()
+	<-started
+	// Give the heartbeat transaction enough time to begin and wait on the row.
+	time.Sleep(50 * time.Millisecond)
+
+	var releaseMarker time.Time
+	if err := lockTx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&releaseMarker); err != nil {
+		t.Fatalf("capture lock release marker: %v", err)
+	}
+	if err := lockTx.Commit(ctx); err != nil {
+		t.Fatalf("release Agent row lock: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("write blocked bearer heartbeat: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocked bearer heartbeat did not complete after Agent row unlock")
+	}
+
+	var lastSeenAt, heartbeatAt time.Time
+	if err := pool.QueryRow(ctx, `
+		SELECT last_seen_at, last_authenticated_heartbeat_at
+		FROM agents
+		WHERE server_id = $1::uuid
+	`, serverID).Scan(&lastSeenAt, &heartbeatAt); err != nil {
+		t.Fatalf("read post-lock heartbeat timestamps: %v", err)
+	}
+	if !lastSeenAt.Equal(heartbeatAt) {
+		t.Fatalf("liveness timestamp %s differs from authenticated proof %s", lastSeenAt, heartbeatAt)
+	}
+	if !lastSeenAt.After(releaseMarker) {
+		t.Fatalf("heartbeat timestamp %s is not after row-lock release marker %s", lastSeenAt, releaseMarker)
+	}
+}
+
 func assertAgentHeartbeatProof(
 	t *testing.T,
 	ctx context.Context,
@@ -126,9 +236,9 @@ func assertAgentHeartbeatProof(
 	t.Helper()
 
 	var (
-		generation      int64
-		heartbeatAt     sql.NullTime
-		heartbeatGen    sql.NullInt64
+		generation   int64
+		heartbeatAt  sql.NullTime
+		heartbeatGen sql.NullInt64
 	)
 	if err := pool.QueryRow(ctx, `
 		SELECT
