@@ -224,4 +224,42 @@ func TestPlatformUpdateRolloutExecutionAdmissionIsAtomicAndReplaySafe(t *testing
 	if managerStaleStatus != "failed" || managerStaleErrorCode != "manager_version_mismatch" || jobCount != 0 {
 		t.Fatalf("Manager-stale admission rollout=%q error=%q jobs=%d", managerStaleStatus, managerStaleErrorCode, jobCount)
 	}
+
+	allSkippedServerID := createReadyServer("RG-96E3d all-skipped fixture")
+	if _, err := pool.Exec(ctx, `UPDATE servers SET status = 'disabled' WHERE id = $1::uuid`, allSkippedServerID); err != nil {
+		t.Fatalf("disable all-skipped server before planning: %v", err)
+	}
+	allSkippedRolloutID, err := repo.PersistPlatformUpdateRolloutPlan(ctx, agents.PlatformUpdateRolloutPlan{
+		TargetVersion: "v1.2.3",
+		Entries: []agents.PlatformUpdateRolloutPlanEntry{{ServerID: allSkippedServerID}},
+	})
+	if err != nil {
+		t.Fatalf("persist all-skipped rollout: %v", err)
+	}
+	if _, err := repo.AdmitPlatformUpdateRolloutMutation(ctx, allSkippedRolloutID); !errors.Is(err, agents.ErrPlatformUpdateRolloutComplete) {
+		t.Fatalf("all-skipped admission error = %v, want ErrPlatformUpdateRolloutComplete", err)
+	}
+
+	var allSkippedStatus, allSkippedEntryStatus string
+	var allSkippedStartedAt, allSkippedCompletedAt *time.Time
+	if err := pool.QueryRow(ctx, `
+		SELECT status, started_at, completed_at
+		FROM platform_update_rollouts
+		WHERE id = $1::uuid
+	`, allSkippedRolloutID).Scan(&allSkippedStatus, &allSkippedStartedAt, &allSkippedCompletedAt); err != nil {
+		t.Fatalf("read all-skipped rollout: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT status
+		FROM platform_update_rollout_entries
+		WHERE rollout_id = $1::uuid
+	`, allSkippedRolloutID).Scan(&allSkippedEntryStatus); err != nil {
+		t.Fatalf("read all-skipped entry: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM agent_platform_update_jobs WHERE server_id = $1::uuid`, allSkippedServerID).Scan(&jobCount); err != nil {
+		t.Fatalf("count all-skipped jobs: %v", err)
+	}
+	if allSkippedStatus != "succeeded" || allSkippedEntryStatus != "skipped" || allSkippedStartedAt == nil || allSkippedCompletedAt == nil || jobCount != 0 {
+		t.Fatalf("all-skipped rollout=%q entry=%q started=%v completed=%v jobs=%d", allSkippedStatus, allSkippedEntryStatus, allSkippedStartedAt, allSkippedCompletedAt, jobCount)
+	}
 }
