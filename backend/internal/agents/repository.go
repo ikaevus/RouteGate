@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -83,6 +84,9 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			capabilities = EXCLUDED.capabilities,
 			registered_at = EXCLUDED.registered_at,
 			last_seen_at = EXCLUDED.last_seen_at,
+			credential_generation = agents.credential_generation + 1,
+			last_authenticated_heartbeat_at = NULL,
+			last_authenticated_heartbeat_generation = NULL,
 			updated_at = now()
 		RETURNING
 			id::text,
@@ -128,23 +132,43 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 
 	var row pgx.Row
 	if input.TokenHash != "" {
+		// Bearer-authenticated heartbeat provenance and ordinary liveness must be
+		// derived from the same wall-clock instant after this Agent row is locked.
+		// PostgreSQL now() is transaction-start time and may be arbitrarily stale
+		// after waiting behind credential replacement or health reconciliation.
+		var lockedAgentID string
+		if err := tx.QueryRow(ctx, `
+			SELECT id::text
+			FROM agents
+			WHERE token_hash = $1
+			FOR UPDATE
+		`, input.TokenHash).Scan(&lockedAgentID); err != nil {
+			return Agent{}, err
+		}
+		var heartbeatAt time.Time
+		if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&heartbeatAt); err != nil {
+			return Agent{}, err
+		}
 		row = tx.QueryRow(ctx, `
 			UPDATE agents
 			SET
-				last_seen_at = now(),
+				last_seen_at = $2,
 				status = 'online',
-				agent_version = COALESCE(NULLIF($2, ''), agent_version),
-				version = COALESCE(NULLIF($2, ''), version),
-				protocol_version = COALESCE($3, protocol_version),
-				capabilities = COALESCE($4, capabilities),
-				updated_at = now()
-			WHERE token_hash = $1
+				agent_version = COALESCE(NULLIF($3, ''), agent_version),
+				version = COALESCE(NULLIF($3, ''), version),
+				protocol_version = COALESCE($4, protocol_version),
+				capabilities = COALESCE($5, capabilities),
+				last_authenticated_heartbeat_at = $2,
+				last_authenticated_heartbeat_generation = credential_generation,
+				updated_at = $2
+			WHERE id = $1::uuid
+			  AND token_hash = $6
 			RETURNING
 				id::text, server_id::text, COALESCE(hostname, ''),
 				COALESCE(os, ''), COALESCE(arch, ''), agent_version, protocol_version,
 				status, token_hash, capabilities, registered_at,
 				last_seen_at, created_at, updated_at, name;
-		`, input.TokenHash, optionalString(input.AgentVersion), input.ProtocolVersion, optionalCapabilities(input.Capabilities))
+		`, lockedAgentID, heartbeatAt, optionalString(input.AgentVersion), input.ProtocolVersion, optionalCapabilities(input.Capabilities), input.TokenHash)
 	} else {
 		row = tx.QueryRow(ctx, `
 			UPDATE agents
