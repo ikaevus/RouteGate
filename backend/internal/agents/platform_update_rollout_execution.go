@@ -12,6 +12,8 @@ import (
 
 const platformUpdateRolloutAdmissionRejected = "admission_rejected"
 
+var ErrPlatformUpdateRolloutComplete = errors.New("platform update rollout completed without a mutation")
+
 // AdmitPlatformUpdateRolloutMutation starts or resumes a durable rollout and
 // atomically admits at most one single-node platform update. The caller selects
 // only the durable rollout identity; server identity and target version are read
@@ -149,6 +151,28 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		FOR UPDATE
 	`, canonicalRolloutID).Scan(&entryID, &serverID, &observedUpdateJobCount); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// A plan whose immutable membership is entirely skipped is a successful
+			// no-op rollout, not a permanently pending rollout. We already moved a
+			// pending parent to running inside this transaction; allow the normal
+			// finished-rollout proof to terminalize it before returning a bounded
+			// sentinel that tells the caller there is deliberately no host mutation.
+			if err := completePlatformUpdateRolloutIfFinishedTx(ctx, tx, canonicalRolloutID); err != nil {
+				return PlatformUpdateJob{}, err
+			}
+			var currentStatus string
+			if err := tx.QueryRow(ctx, `
+				SELECT status
+				FROM platform_update_rollouts
+				WHERE id = $1::uuid
+			`, canonicalRolloutID).Scan(&currentStatus); err != nil {
+				return PlatformUpdateJob{}, err
+			}
+			if currentStatus == "succeeded" {
+				if err := tx.Commit(ctx); err != nil {
+					return PlatformUpdateJob{}, err
+				}
+				return PlatformUpdateJob{}, ErrPlatformUpdateRolloutComplete
+			}
 			return PlatformUpdateJob{}, fmt.Errorf("rollout has no admissible next entry; post-update health has not been proven")
 		}
 		return PlatformUpdateJob{}, err
