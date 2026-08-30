@@ -93,6 +93,22 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		}
 	}
 
+	// Planning-time skipped membership is immutable and authorizes no host
+	// mutation. Complete a fully skipped/already-healthy rollout before applying
+	// mutation-only execution gates such as Manager-version equality; otherwise a
+	// harmless no-op plan can be turned into a false failure by later version
+	// drift even though there is no node that may be mutated.
+	completedWithoutMutation, err := completePlatformUpdateRolloutWithoutMutationTx(ctx, tx, canonicalRolloutID, rolloutStatus)
+	if err != nil {
+		return PlatformUpdateJob{}, err
+	}
+	if completedWithoutMutation {
+		if err := tx.Commit(ctx); err != nil {
+			return PlatformUpdateJob{}, err
+		}
+		return PlatformUpdateJob{}, ErrPlatformUpdateRolloutComplete
+	}
+
 	// Management-first is an execution-time invariant, not only planning
 	// evidence. A queued plan surviving a Manager upgrade must never downgrade a
 	// VPN node to the old target.
@@ -114,6 +130,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		`, canonicalRolloutID); err != nil {
 			return PlatformUpdateJob{}, err
 		}
+		rolloutStatus = "running"
 	}
 
 	var blockedTerminal bool
@@ -151,23 +168,11 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		FOR UPDATE
 	`, canonicalRolloutID).Scan(&entryID, &serverID, &observedUpdateJobCount); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// A plan whose immutable membership is entirely skipped is a successful
-			// no-op rollout, not a permanently pending rollout. We already moved a
-			// pending parent to running inside this transaction; allow the normal
-			// finished-rollout proof to terminalize it before returning a bounded
-			// sentinel that tells the caller there is deliberately no host mutation.
-			if err := completePlatformUpdateRolloutIfFinishedTx(ctx, tx, canonicalRolloutID); err != nil {
-				return PlatformUpdateJob{}, err
+			completedWithoutMutation, completeErr := completePlatformUpdateRolloutWithoutMutationTx(ctx, tx, canonicalRolloutID, rolloutStatus)
+			if completeErr != nil {
+				return PlatformUpdateJob{}, completeErr
 			}
-			var currentStatus string
-			if err := tx.QueryRow(ctx, `
-				SELECT status
-				FROM platform_update_rollouts
-				WHERE id = $1::uuid
-			`, canonicalRolloutID).Scan(&currentStatus); err != nil {
-				return PlatformUpdateJob{}, err
-			}
-			if currentStatus == "succeeded" {
+			if completedWithoutMutation {
 				if err := tx.Commit(ctx); err != nil {
 					return PlatformUpdateJob{}, err
 				}
@@ -262,6 +267,61 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		return PlatformUpdateJob{}, err
 	}
 	return job, nil
+}
+
+// completePlatformUpdateRolloutWithoutMutationTx recognizes only durable
+// memberships that cannot authorize another host mutation. It never changes an
+// entry status: planning-time skipped and already-proven healthy are the sole
+// finished states. A pending all-skipped parent is moved through running because
+// the existing finished-rollout boundary permits only running -> succeeded.
+func completePlatformUpdateRolloutWithoutMutationTx(ctx context.Context, tx pgx.Tx, rolloutID, rolloutStatus string) (bool, error) {
+	var unfinished bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM platform_update_rollout_entries
+			WHERE rollout_id = $1::uuid
+			  AND status NOT IN ('healthy', 'skipped')
+		)
+	`, rolloutID).Scan(&unfinished); err != nil {
+		return false, err
+	}
+	if unfinished {
+		return false, nil
+	}
+
+	if rolloutStatus == "pending" {
+		commandTag, err := tx.Exec(ctx, `
+			UPDATE platform_update_rollouts
+			SET status = 'running',
+			    started_at = clock_timestamp(),
+			    updated_at = clock_timestamp()
+			WHERE id = $1::uuid
+			  AND status = 'pending'
+		`, rolloutID)
+		if err != nil {
+			return false, err
+		}
+		if commandTag.RowsAffected() != 1 {
+			return false, fmt.Errorf("no-op rollout start lost durable ownership")
+		}
+	}
+
+	if err := completePlatformUpdateRolloutIfFinishedTx(ctx, tx, rolloutID); err != nil {
+		return false, err
+	}
+	var currentStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT status
+		FROM platform_update_rollouts
+		WHERE id = $1::uuid
+	`, rolloutID).Scan(&currentStatus); err != nil {
+		return false, err
+	}
+	if currentStatus != "succeeded" {
+		return false, fmt.Errorf("finished no-op rollout did not terminalize: %s", currentStatus)
+	}
+	return true, nil
 }
 
 func failPlatformUpdateRolloutTx(ctx context.Context, tx pgx.Tx, rolloutID string, errorCode any) error {
