@@ -142,7 +142,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 			FROM platform_update_rollout_entries prior
 			WHERE prior.rollout_id = e.rollout_id
 			  AND prior.position < e.position
-			  AND prior.status <> 'skipped'
+			  AND prior.status NOT IN ('healthy', 'skipped')
 		  )
 		ORDER BY position
 		LIMIT 1
