@@ -155,6 +155,89 @@ func TestPlatformUpdateRolloutHealthTerminalStopSemantics(t *testing.T) {
 		}
 		assertRolloutHealthTerminalState(t, ctx, pool, rolloutID, serverID, "outcome_unknown", agents.PlatformUpdateRolloutHealthOutcomeUnknown)
 	})
+
+	t.Run("terminal completion is wall-clock owned and immutable", func(t *testing.T) {
+		const name = "RG-96E3e terminal provenance"
+		_, job, _ := createRollout(name)
+		startJob(job.ID)
+
+		conn, err := pool.Acquire(ctx)
+		if err != nil {
+			t.Fatalf("acquire terminal transaction connection: %v", err)
+		}
+		defer conn.Release()
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin terminal transaction: %v", err)
+		}
+		defer tx.Rollback(ctx)
+
+		var transactionStartedAt time.Time
+		if err := tx.QueryRow(ctx, `SELECT now()`).Scan(&transactionStartedAt); err != nil {
+			t.Fatalf("read terminal transaction start: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+
+		agentVersion := "v1.2.3"
+		if _, err := repo.UpdateAgentHeartbeat(ctx, agents.UpdateAgentHeartbeatInput{
+			TokenHash: name + "-token", AgentVersion: &agentVersion, ProtocolVersion: &protocolVersion,
+		}); err != nil {
+			t.Fatalf("record authenticated heartbeat after terminal transaction start: %v", err)
+		}
+		var heartbeatAt time.Time
+		if err := pool.QueryRow(ctx, `
+			SELECT last_authenticated_heartbeat_at
+			FROM agents
+			WHERE token_hash = $1
+		`, name+"-token").Scan(&heartbeatAt); err != nil {
+			t.Fatalf("read authenticated heartbeat proof: %v", err)
+		}
+		if !heartbeatAt.After(transactionStartedAt) {
+			t.Fatalf("heartbeat %s is not after terminal transaction start %s", heartbeatAt, transactionStartedAt)
+		}
+
+		if _, err := tx.Exec(ctx, `
+			UPDATE agent_platform_update_jobs
+			SET status = 'succeeded', completed_at = now(), updated_at = now()
+			WHERE id = $1::uuid
+		`, job.ID); err != nil {
+			t.Fatalf("terminalize update job: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit terminal update job: %v", err)
+		}
+
+		var completedAt time.Time
+		if err := pool.QueryRow(ctx, `
+			SELECT completed_at
+			FROM agent_platform_update_jobs
+			WHERE id = $1::uuid
+		`, job.ID).Scan(&completedAt); err != nil {
+			t.Fatalf("read database-owned completion timestamp: %v", err)
+		}
+		if !completedAt.After(heartbeatAt) {
+			t.Fatalf("terminal completion %s must be after intervening heartbeat %s", completedAt, heartbeatAt)
+		}
+
+		if _, err := pool.Exec(ctx, `
+			UPDATE agent_platform_update_jobs
+			SET completed_at = completed_at - interval '1 second'
+			WHERE id = $1::uuid
+		`, job.ID); err == nil {
+			t.Fatal("terminal completion timestamp rewrite must be rejected")
+		}
+		var completedAfterRewrite time.Time
+		if err := pool.QueryRow(ctx, `
+			SELECT completed_at
+			FROM agent_platform_update_jobs
+			WHERE id = $1::uuid
+		`, job.ID).Scan(&completedAfterRewrite); err != nil {
+			t.Fatalf("read completion timestamp after rejected rewrite: %v", err)
+		}
+		if !completedAfterRewrite.Equal(completedAt) {
+			t.Fatalf("terminal completion changed from %s to %s after rejected rewrite", completedAt, completedAfterRewrite)
+		}
+	})
 }
 
 func assertRolloutHealthTerminalState(t *testing.T, ctx context.Context, pool interface {
