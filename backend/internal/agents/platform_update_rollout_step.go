@@ -55,9 +55,9 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 	if state.RolloutStatus == PlatformUpdateRolloutRunning && state.JobID != "" {
 		health, healthErr := r.ReconcilePlatformUpdateRolloutHealth(ctx, canonicalRolloutID)
 		if healthErr != nil {
-			if normalized, ok := r.normalizePlatformUpdateRolloutTerminalRace(ctx, canonicalRolloutID); ok {
-				return normalized, nil
-			}
+			// E3e infrastructure/commit errors are authoritative. Do not convert
+			// commit uncertainty into a successful terminal observation merely
+			// because another invocation terminalized the rollout concurrently.
 			return PlatformUpdateRolloutStepResult{}, healthErr
 		}
 
@@ -110,11 +110,14 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 		}, nil
 	}
 
-	if normalized, ok := r.normalizePlatformUpdateRolloutTerminalRace(ctx, canonicalRolloutID); ok {
-		return normalized, nil
-	}
-	if errors.Is(admissionErr, ErrPlatformUpdateRolloutComplete) {
-		return PlatformUpdateRolloutStepResult{}, admissionErr
+	// Only explicit E3d domain outcomes are eligible for the single read-only
+	// terminal-race normalization. Genuine PostgreSQL, transaction, commit, and
+	// other infrastructure errors remain authoritative and are returned intact.
+	if errors.Is(admissionErr, ErrPlatformUpdateRolloutComplete) ||
+		errors.Is(admissionErr, ErrPlatformUpdateRolloutNotMutationRunnable) {
+		if normalized, ok := r.normalizePlatformUpdateRolloutTerminalRace(ctx, canonicalRolloutID); ok {
+			return normalized, nil
+		}
 	}
 	return PlatformUpdateRolloutStepResult{}, admissionErr
 }
