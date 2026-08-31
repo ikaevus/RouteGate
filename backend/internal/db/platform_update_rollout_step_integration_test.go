@@ -103,6 +103,15 @@ func TestPlatformUpdateRolloutStepBoundary(t *testing.T) {
 		`, jobID); err != nil {
 			t.Fatalf("start terminal job %s: %v", jobID, err)
 		}
+		if status == "outcome_unknown" {
+			if _, err := pool.Exec(ctx, `
+				UPDATE agent_platform_update_jobs
+				SET status = 'mutation_dispatched', dispatched_at = clock_timestamp(), updated_at = clock_timestamp()
+				WHERE id = $1::uuid
+			`, jobID); err != nil {
+				t.Fatalf("dispatch outcome-unknown job %s: %v", jobID, err)
+			}
+		}
 		if _, err := pool.Exec(ctx, `
 			UPDATE agent_platform_update_jobs
 			SET status = $2, completed_at = clock_timestamp(), updated_at = clock_timestamp()
