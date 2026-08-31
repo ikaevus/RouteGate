@@ -64,19 +64,9 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 		result := PlatformUpdateRolloutStepResult{
 			RolloutID:     canonicalRolloutID,
 			RolloutStatus: PlatformUpdateRolloutStatus(health.RolloutStatus),
+			ServerID:      health.ServerID,
+			JobID:         health.JobID,
 			WaitingReason: health.WaitingReason,
-		}
-
-		// The pre-E3e inspection is advisory only. Another controller invocation
-		// can advance the rollout before E3e obtains its authoritative locks. Only
-		// report the inspected server/job identity when a post-reconciliation read
-		// proves that the same entry is still the durable updating entry. Otherwise
-		// omit identity rather than attributing E3e's result to a stale bound job.
-		if confirmed, confirmErr := r.inspectPlatformUpdateRolloutStepState(ctx, canonicalRolloutID); confirmErr == nil &&
-			confirmed.RolloutStatus == PlatformUpdateRolloutRunning &&
-			confirmed.ServerID == state.ServerID && confirmed.JobID == state.JobID {
-			result.ServerID = state.ServerID
-			result.JobID = state.JobID
 		}
 
 		switch PlatformUpdateRolloutStatus(health.RolloutStatus) {
@@ -124,13 +114,17 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 	// Only explicit E3d domain outcomes are eligible for the single read-only
 	// terminal-race normalization. Genuine PostgreSQL, transaction, commit, and
 	// other infrastructure errors remain authoritative and are returned intact.
-	if errors.Is(admissionErr, ErrPlatformUpdateRolloutComplete) ||
-		errors.Is(admissionErr, ErrPlatformUpdateRolloutNotMutationRunnable) {
+	if shouldNormalizePlatformUpdateRolloutAdmissionError(admissionErr) {
 		if normalized, ok := r.normalizePlatformUpdateRolloutTerminalRace(ctx, canonicalRolloutID); ok {
 			return normalized, nil
 		}
 	}
 	return PlatformUpdateRolloutStepResult{}, admissionErr
+}
+
+func shouldNormalizePlatformUpdateRolloutAdmissionError(err error) bool {
+	return errors.Is(err, ErrPlatformUpdateRolloutComplete) ||
+		errors.Is(err, ErrPlatformUpdateRolloutNotMutationRunnable)
 }
 
 func (r *Repository) normalizePlatformUpdateRolloutTerminalRace(ctx context.Context, rolloutID string) (PlatformUpdateRolloutStepResult, bool) {
