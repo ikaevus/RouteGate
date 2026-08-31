@@ -72,14 +72,18 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 		return result, nil
 	}
 
-	job, admissionErr := r.AdmitPlatformUpdateRolloutMutation(ctx, canonicalRolloutID)
+	job, replayed, admissionErr := r.admitPlatformUpdateRolloutMutationWithDisposition(ctx, canonicalRolloutID)
 	if admissionErr == nil {
+		action := PlatformUpdateRolloutStepMutationAdmitted
+		if replayed {
+			action = PlatformUpdateRolloutStepMutationInProgress
+		}
 		return PlatformUpdateRolloutStepResult{
 			RolloutID:     canonicalRolloutID,
 			RolloutStatus: PlatformUpdateRolloutRunning,
 			ServerID:      job.ServerID,
 			JobID:         job.ID,
-			Action:        PlatformUpdateRolloutStepMutationAdmitted,
+			Action:        action,
 		}, nil
 	}
 
