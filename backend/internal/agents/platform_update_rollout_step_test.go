@@ -16,6 +16,8 @@ func TestShouldNormalizePlatformUpdateRolloutAdmissionError(t *testing.T) {
 		{name: "wrapped complete", err: fmt.Errorf("wrapped: %w", ErrPlatformUpdateRolloutComplete), want: true},
 		{name: "not mutation runnable", err: ErrPlatformUpdateRolloutNotMutationRunnable, want: true},
 		{name: "wrapped not mutation runnable", err: fmt.Errorf("wrapped: %w", ErrPlatformUpdateRolloutNotMutationRunnable), want: true},
+		{name: "durable admission failure", err: ErrPlatformUpdateRolloutAdmissionFailed, want: true},
+		{name: "wrapped durable admission failure", err: fmt.Errorf("wrapped: %w", ErrPlatformUpdateRolloutAdmissionFailed), want: true},
 		{name: "infrastructure error", err: errors.New("database unavailable"), want: false},
 		{name: "nil", err: nil, want: false},
 	}
