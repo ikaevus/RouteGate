@@ -13,18 +13,20 @@ import (
 const (
 	platformUpdateRolloutHealthFreshness = 2 * time.Minute
 
-	PlatformUpdateRolloutHealthWaitingJob          = "job_not_terminal"
-	PlatformUpdateRolloutHealthWaitingHeartbeat    = "heartbeat_not_proven"
-	PlatformUpdateRolloutHealthWaitingAgent        = "agent_not_currently_healthy"
-	PlatformUpdateRolloutHealthInterveningHistory  = "intervening_update_history"
-	PlatformUpdateRolloutHealthNodeFailed          = "node_update_failed"
-	PlatformUpdateRolloutHealthOutcomeUnknown      = "node_update_outcome_unknown"
+	PlatformUpdateRolloutHealthWaitingJob         = "job_not_terminal"
+	PlatformUpdateRolloutHealthWaitingHeartbeat   = "heartbeat_not_proven"
+	PlatformUpdateRolloutHealthWaitingAgent       = "agent_not_currently_healthy"
+	PlatformUpdateRolloutHealthInterveningHistory = "intervening_update_history"
+	PlatformUpdateRolloutHealthNodeFailed         = "node_update_failed"
+	PlatformUpdateRolloutHealthOutcomeUnknown     = "node_update_outcome_unknown"
 )
 
 type PlatformUpdateRolloutHealthResult struct {
 	RolloutStatus string
 	EntryStatus   string
 	WaitingReason string
+	ServerID      string
+	JobID         string
 }
 
 // ReconcilePlatformUpdateRolloutHealth converts the one currently updating
@@ -165,11 +167,12 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 	case "pending", "in_progress", "mutation_dispatched":
 		return commitPlatformUpdateRolloutHealthWait(ctx, tx, PlatformUpdateRolloutHealthResult{
 			RolloutStatus: "running", EntryStatus: "updating", WaitingReason: PlatformUpdateRolloutHealthWaitingJob,
+			ServerID: serverID, JobID: jobID,
 		})
 	case "failed":
-		return terminalizePlatformUpdateRolloutHealthTx(ctx, tx, canonicalRolloutID, entryID, "failed", PlatformUpdateRolloutHealthNodeFailed)
+		return terminalizePlatformUpdateRolloutHealthTx(ctx, tx, canonicalRolloutID, entryID, serverID, jobID, "failed", PlatformUpdateRolloutHealthNodeFailed)
 	case "outcome_unknown":
-		return terminalizePlatformUpdateRolloutHealthTx(ctx, tx, canonicalRolloutID, entryID, "outcome_unknown", PlatformUpdateRolloutHealthOutcomeUnknown)
+		return terminalizePlatformUpdateRolloutHealthTx(ctx, tx, canonicalRolloutID, entryID, serverID, jobID, "outcome_unknown", PlatformUpdateRolloutHealthOutcomeUnknown)
 	case "succeeded":
 		if !jobCompletedAt.Valid {
 			return PlatformUpdateRolloutHealthResult{}, fmt.Errorf("succeeded rollout job has no completion timestamp")
@@ -187,7 +190,7 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 		return PlatformUpdateRolloutHealthResult{}, err
 	}
 	if observedUpdateJobCount == nil || currentUpdateJobCount != *observedUpdateJobCount+1 {
-		return terminalizePlatformUpdateRolloutHealthTx(ctx, tx, canonicalRolloutID, entryID, "failed", PlatformUpdateRolloutHealthInterveningHistory)
+		return terminalizePlatformUpdateRolloutHealthTx(ctx, tx, canonicalRolloutID, entryID, serverID, jobID, "failed", PlatformUpdateRolloutHealthInterveningHistory)
 	}
 
 	var unresolved bool
@@ -204,6 +207,7 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 	if unresolved {
 		return commitPlatformUpdateRolloutHealthWait(ctx, tx, PlatformUpdateRolloutHealthResult{
 			RolloutStatus: "running", EntryStatus: "updating", WaitingReason: PlatformUpdateRolloutHealthWaitingJob,
+			ServerID: serverID, JobID: jobID,
 		})
 	}
 
@@ -212,6 +216,7 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 		proofNow.Sub(heartbeatAt.Time) > platformUpdateRolloutHealthFreshness {
 		return commitPlatformUpdateRolloutHealthWait(ctx, tx, PlatformUpdateRolloutHealthResult{
 			RolloutStatus: "running", EntryStatus: "updating", WaitingReason: PlatformUpdateRolloutHealthWaitingHeartbeat,
+			ServerID: serverID, JobID: jobID,
 		})
 	}
 
@@ -225,6 +230,7 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 		(compatibility.Status != CompatibilityCompatible && compatibility.Status != CompatibilityUpgradeRecommended) {
 		return commitPlatformUpdateRolloutHealthWait(ctx, tx, PlatformUpdateRolloutHealthResult{
 			RolloutStatus: "running", EntryStatus: "updating", WaitingReason: PlatformUpdateRolloutHealthWaitingAgent,
+			ServerID: serverID, JobID: jobID,
 		})
 	}
 
@@ -257,7 +263,7 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 	if err := tx.Commit(ctx); err != nil {
 		return PlatformUpdateRolloutHealthResult{}, err
 	}
-	return PlatformUpdateRolloutHealthResult{RolloutStatus: finalRolloutStatus, EntryStatus: "healthy"}, nil
+	return PlatformUpdateRolloutHealthResult{RolloutStatus: finalRolloutStatus, EntryStatus: "healthy", ServerID: serverID, JobID: jobID}, nil
 }
 
 func commitPlatformUpdateRolloutHealthWait(ctx context.Context, tx pgx.Tx, result PlatformUpdateRolloutHealthResult) (PlatformUpdateRolloutHealthResult, error) {
@@ -267,7 +273,7 @@ func commitPlatformUpdateRolloutHealthWait(ctx context.Context, tx pgx.Tx, resul
 	return result, nil
 }
 
-func terminalizePlatformUpdateRolloutHealthTx(ctx context.Context, tx pgx.Tx, rolloutID, entryID, status, errorCode string) (PlatformUpdateRolloutHealthResult, error) {
+func terminalizePlatformUpdateRolloutHealthTx(ctx context.Context, tx pgx.Tx, rolloutID, entryID, serverID, jobID, status, errorCode string) (PlatformUpdateRolloutHealthResult, error) {
 	entryTag, err := tx.Exec(ctx, `
 		UPDATE platform_update_rollout_entries
 		SET status = $2,
@@ -302,7 +308,7 @@ func terminalizePlatformUpdateRolloutHealthTx(ctx context.Context, tx pgx.Tx, ro
 	if err := tx.Commit(ctx); err != nil {
 		return PlatformUpdateRolloutHealthResult{}, err
 	}
-	return PlatformUpdateRolloutHealthResult{RolloutStatus: status, EntryStatus: status}, nil
+	return PlatformUpdateRolloutHealthResult{RolloutStatus: status, EntryStatus: status, ServerID: serverID, JobID: jobID}, nil
 }
 
 func completePlatformUpdateRolloutIfFinishedTx(ctx context.Context, tx pgx.Tx, rolloutID string) error {
