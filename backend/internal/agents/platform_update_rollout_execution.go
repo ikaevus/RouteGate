@@ -23,6 +23,24 @@ var (
 // only the durable rollout identity; server identity and target version are read
 // from the immutable rollout snapshot.
 func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rolloutID string) (PlatformUpdateJob, error) {
+	return r.admitPlatformUpdateRolloutMutation(ctx, rolloutID, nil)
+}
+
+// admitPlatformUpdateRolloutMutationWithDisposition is the E3f-only adapter for
+// the authoritative E3d admission transaction. It does not alter admission
+// semantics; it only reports whether E3d replayed an already-bound durable job
+// instead of creating/binding a new one in this invocation.
+func (r *Repository) admitPlatformUpdateRolloutMutationWithDisposition(ctx context.Context, rolloutID string) (PlatformUpdateJob, bool, error) {
+	var replayed bool
+	job, err := r.admitPlatformUpdateRolloutMutation(ctx, rolloutID, &replayed)
+	return job, replayed, err
+}
+
+func (r *Repository) admitPlatformUpdateRolloutMutation(ctx context.Context, rolloutID string, replayed *bool) (PlatformUpdateJob, error) {
+	if replayed != nil {
+		*replayed = false
+	}
+
 	canonicalRolloutID, err := canonicalPlatformUpdateServerID(rolloutID)
 	if err != nil {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid rollout id: %w", err)
@@ -89,6 +107,9 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err == nil {
 			if err := tx.Commit(ctx); err != nil {
 				return PlatformUpdateJob{}, err
+			}
+			if replayed != nil {
+				*replayed = true
 			}
 			return job, nil
 		}
