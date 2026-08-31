@@ -30,3 +30,40 @@ func TestShouldNormalizePlatformUpdateRolloutAdmissionError(t *testing.T) {
 		})
 	}
 }
+
+func TestPlatformUpdateRolloutStepActionFromHealth(t *testing.T) {
+	tests := []struct {
+		name   string
+		health PlatformUpdateRolloutHealthResult
+		want   PlatformUpdateRolloutStepAction
+	}{
+		{
+			name: "running updating is health wait",
+			health: PlatformUpdateRolloutHealthResult{RolloutStatus: string(PlatformUpdateRolloutRunning), EntryStatus: string(PlatformUpdateRolloutEntryUpdating)},
+			want: PlatformUpdateRolloutStepWaitingHealth,
+		},
+		{
+			name: "running without updating entry is no change",
+			health: PlatformUpdateRolloutHealthResult{RolloutStatus: string(PlatformUpdateRolloutRunning)},
+			want: PlatformUpdateRolloutStepNoChange,
+		},
+		{
+			name: "healthy entry",
+			health: PlatformUpdateRolloutHealthResult{RolloutStatus: string(PlatformUpdateRolloutRunning), EntryStatus: string(PlatformUpdateRolloutEntryHealthy)},
+			want: PlatformUpdateRolloutStepNodeHealthy,
+		},
+		{
+			name: "succeeded rollout",
+			health: PlatformUpdateRolloutHealthResult{RolloutStatus: string(PlatformUpdateRolloutSucceeded)},
+			want: PlatformUpdateRolloutStepSucceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := platformUpdateRolloutStepActionFromHealth(tt.health); got != tt.want {
+				t.Fatalf("platformUpdateRolloutStepActionFromHealth(%+v) = %q, want %q", tt.health, got, tt.want)
+			}
+		})
+	}
+}
