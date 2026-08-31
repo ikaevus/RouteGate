@@ -12,7 +12,10 @@ import (
 
 const platformUpdateRolloutAdmissionRejected = "admission_rejected"
 
-var ErrPlatformUpdateRolloutComplete = errors.New("platform update rollout completed without a mutation")
+var (
+	ErrPlatformUpdateRolloutComplete            = errors.New("platform update rollout completed without a mutation")
+	ErrPlatformUpdateRolloutNotMutationRunnable = errors.New("platform update rollout is not mutation-runnable")
+)
 
 // AdmitPlatformUpdateRolloutMutation starts or resumes a durable rollout and
 // atomically admits at most one single-node platform update. The caller selects
@@ -49,7 +52,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 	}
 
 	if rolloutStatus != "pending" && rolloutStatus != "running" {
-		return PlatformUpdateJob{}, fmt.Errorf("rollout is not mutation-runnable: %s", rolloutStatus)
+		return PlatformUpdateJob{}, fmt.Errorf("%w: %s", ErrPlatformUpdateRolloutNotMutationRunnable, rolloutStatus)
 	}
 
 	// Keep the transaction-local marker as a fail-closed structural policy for
