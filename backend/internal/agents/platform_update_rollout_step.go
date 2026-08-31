@@ -91,11 +91,15 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 		case PlatformUpdateRolloutEntryOutcomeUnknown:
 			result.Action = PlatformUpdateRolloutStepOutcomeUnknown
 			return result, nil
-		default:
-			// A successful E3e waiting result is authoritative. Do not perform
-			// terminal-race normalization here; normalization is reserved for the
-			// explicit E3d domain race outcomes below.
+		case PlatformUpdateRolloutEntryUpdating:
 			result.Action = PlatformUpdateRolloutStepWaitingHealth
+			return result, nil
+		default:
+			// Another invocation may have completed the entry after this call's
+			// initial inspection. E3e then authoritatively observes no updating
+			// entry and returns a running rollout with no entry identity. That is
+			// not a health wait and must not imply that a job still needs proof.
+			result.Action = PlatformUpdateRolloutStepNoChange
 			return result, nil
 		}
 	}
@@ -124,7 +128,8 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 
 func shouldNormalizePlatformUpdateRolloutAdmissionError(err error) bool {
 	return errors.Is(err, ErrPlatformUpdateRolloutComplete) ||
-		errors.Is(err, ErrPlatformUpdateRolloutNotMutationRunnable)
+		errors.Is(err, ErrPlatformUpdateRolloutNotMutationRunnable) ||
+		errors.Is(err, ErrPlatformUpdateRolloutAdmissionFailed)
 }
 
 func (r *Repository) normalizePlatformUpdateRolloutTerminalRace(ctx context.Context, rolloutID string) (PlatformUpdateRolloutStepResult, bool) {
