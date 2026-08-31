@@ -15,6 +15,7 @@ const platformUpdateRolloutAdmissionRejected = "admission_rejected"
 var (
 	ErrPlatformUpdateRolloutComplete            = errors.New("platform update rollout completed without a mutation")
 	ErrPlatformUpdateRolloutNotMutationRunnable = errors.New("platform update rollout is not mutation-runnable")
+	ErrPlatformUpdateRolloutAdmissionFailed     = errors.New("platform update rollout admission durably failed")
 )
 
 // AdmitPlatformUpdateRolloutMutation starts or resumes a durable rollout and
@@ -122,7 +123,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-		return PlatformUpdateJob{}, fmt.Errorf("rollout target no longer matches current Manager version")
+		return PlatformUpdateJob{}, fmt.Errorf("%w: rollout target no longer matches current Manager version", ErrPlatformUpdateRolloutAdmissionFailed)
 	}
 
 	if rolloutStatus == "pending" {
@@ -216,7 +217,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-		return PlatformUpdateJob{}, fmt.Errorf("rollout update history changed after snapshot")
+		return PlatformUpdateJob{}, fmt.Errorf("%w: rollout update history changed after snapshot", ErrPlatformUpdateRolloutAdmissionFailed)
 	}
 
 	// A rejected INSERT can put PostgreSQL's transaction into error state (for
@@ -246,7 +247,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-		return PlatformUpdateJob{}, fmt.Errorf("%w: current single-node admission rejected rollout entry", err)
+		return PlatformUpdateJob{}, fmt.Errorf("%w: current single-node admission rejected rollout entry", ErrPlatformUpdateRolloutAdmissionFailed)
 	}
 	if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT rg96e3d_single_node_admission`); err != nil {
 		return PlatformUpdateJob{}, err
