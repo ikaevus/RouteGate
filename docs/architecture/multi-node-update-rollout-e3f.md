@@ -65,6 +65,14 @@ The controller must not hold a database transaction, rollout row lock, Agent loc
 
 Concurrent controller invocations therefore converge through the existing durable serialization boundaries. Tests must prove that two simultaneous step calls cannot create two jobs, bind two entries, skip a required health proof, or move past a terminal stop.
 
+### Terminal-race normalization
+
+An authoritative E3d/E3e call may race with another controller invocation that commits a terminal rollout first. In that case the losing invocation may receive an ordinary non-runnable/sentinel/error result even though the durable rollout is already terminal.
+
+After an authoritative call returns a non-success outcome, the controller may perform one read-only durable-state normalization step. If that read proves the rollout is now `succeeded`, `failed`, or `outcome_unknown`, the controller returns the corresponding bounded terminal result and performs no further transition. If the rollout is still non-terminal, the original error or waiting result remains authoritative and must be preserved; genuine database, context, transport, or other infrastructure failures must not be converted into success merely because the controller attempted normalization. A failed normalization read must not trigger retry or another mutation attempt.
+
+This normalization is observational only. It must never call E3d/E3e a second time in the same invocation and must never turn a terminal race into next-node admission.
+
 ## Result vocabulary
 
 The internal result should be bounded and operational rather than exposing arbitrary errors or privileged details. A result may report:
@@ -107,6 +115,7 @@ Before E3f implementation is mergeable, tests must prove at least:
 - a subsequent invocation admits only the next persisted position;
 - `failed` and `outcome_unknown` stop without retry or next-node admission;
 - concurrent step calls cannot produce more than one mutation job or more than one `updating` entry;
+- terminal races after E3d/E3e normalize to the durable terminal result without a second authoritative call, while non-terminal infrastructure errors remain errors;
 - restart/replay uses the exact bound job identity;
 - terminal rollouts are idempotent no-ops;
 - no caller-controlled privileged selector is introduced;
