@@ -64,10 +64,21 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 		result := PlatformUpdateRolloutStepResult{
 			RolloutID:     canonicalRolloutID,
 			RolloutStatus: PlatformUpdateRolloutStatus(health.RolloutStatus),
-			ServerID:      state.ServerID,
-			JobID:         state.JobID,
 			WaitingReason: health.WaitingReason,
 		}
+
+		// The pre-E3e inspection is advisory only. Another controller invocation
+		// can advance the rollout before E3e obtains its authoritative locks. Only
+		// report the inspected server/job identity when a post-reconciliation read
+		// proves that the same entry is still the durable updating entry. Otherwise
+		// omit identity rather than attributing E3e's result to a stale bound job.
+		if confirmed, confirmErr := r.inspectPlatformUpdateRolloutStepState(ctx, canonicalRolloutID); confirmErr == nil &&
+			confirmed.RolloutStatus == PlatformUpdateRolloutRunning &&
+			confirmed.ServerID == state.ServerID && confirmed.JobID == state.JobID {
+			result.ServerID = state.ServerID
+			result.JobID = state.JobID
+		}
+
 		switch PlatformUpdateRolloutStatus(health.RolloutStatus) {
 		case PlatformUpdateRolloutSucceeded:
 			result.Action = PlatformUpdateRolloutStepSucceeded
@@ -91,9 +102,9 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 			result.Action = PlatformUpdateRolloutStepOutcomeUnknown
 			return result, nil
 		default:
-			if normalized, ok := r.normalizePlatformUpdateRolloutTerminalRace(ctx, canonicalRolloutID); ok {
-				return normalized, nil
-			}
+			// A successful E3e waiting result is authoritative. Do not perform
+			// terminal-race normalization here; normalization is reserved for the
+			// explicit E3d domain race outcomes below.
 			result.Action = PlatformUpdateRolloutStepWaitingHealth
 			return result, nil
 		}
