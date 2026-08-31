@@ -11,7 +11,6 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/buildinfo"
-	"github.com/jackc/pgx/v5"
 )
 
 func TestPlatformUpdateRolloutExecutionAdmissionIsAtomicAndReplaySafe(t *testing.T) {
@@ -116,8 +115,8 @@ func TestPlatformUpdateRolloutExecutionAdmissionIsAtomicAndReplaySafe(t *testing
 	if _, err := pool.Exec(ctx, `UPDATE servers SET status = 'disabled' WHERE id = $1::uuid`, staleServerID); err != nil {
 		t.Fatalf("disable stale server: %v", err)
 	}
-	if _, err := repo.AdmitPlatformUpdateRolloutMutation(ctx, staleRolloutID); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("stale admission error = %v, want pgx.ErrNoRows wrapping", err)
+	if _, err := repo.AdmitPlatformUpdateRolloutMutation(ctx, staleRolloutID); !errors.Is(err, agents.ErrPlatformUpdateRolloutAdmissionFailed) {
+		t.Fatalf("stale admission error = %v, want ErrPlatformUpdateRolloutAdmissionFailed", err)
 	}
 
 	var staleStatus, staleErrorCode, staleEntryStatus string
