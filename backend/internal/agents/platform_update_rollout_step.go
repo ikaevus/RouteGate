@@ -67,41 +67,9 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 			ServerID:      health.ServerID,
 			JobID:         health.JobID,
 			WaitingReason: health.WaitingReason,
+			Action:        platformUpdateRolloutStepActionFromHealth(health),
 		}
-
-		switch PlatformUpdateRolloutStatus(health.RolloutStatus) {
-		case PlatformUpdateRolloutSucceeded:
-			result.Action = PlatformUpdateRolloutStepSucceeded
-			return result, nil
-		case PlatformUpdateRolloutFailed:
-			result.Action = PlatformUpdateRolloutStepFailed
-			return result, nil
-		case PlatformUpdateRolloutOutcomeUnknown:
-			result.Action = PlatformUpdateRolloutStepOutcomeUnknown
-			return result, nil
-		}
-
-		switch PlatformUpdateRolloutEntryStatus(health.EntryStatus) {
-		case PlatformUpdateRolloutEntryHealthy:
-			result.Action = PlatformUpdateRolloutStepNodeHealthy
-			return result, nil
-		case PlatformUpdateRolloutEntryFailed:
-			result.Action = PlatformUpdateRolloutStepFailed
-			return result, nil
-		case PlatformUpdateRolloutEntryOutcomeUnknown:
-			result.Action = PlatformUpdateRolloutStepOutcomeUnknown
-			return result, nil
-		case PlatformUpdateRolloutEntryUpdating:
-			result.Action = PlatformUpdateRolloutStepWaitingHealth
-			return result, nil
-		default:
-			// Another invocation may have completed the entry after this call's
-			// initial inspection. E3e then authoritatively observes no updating
-			// entry and returns a running rollout with no entry identity. That is
-			// not a health wait and must not imply that a job still needs proof.
-			result.Action = PlatformUpdateRolloutStepNoChange
-			return result, nil
-		}
+		return result, nil
 	}
 
 	job, admissionErr := r.AdmitPlatformUpdateRolloutMutation(ctx, canonicalRolloutID)
@@ -124,6 +92,34 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 		}
 	}
 	return PlatformUpdateRolloutStepResult{}, admissionErr
+}
+
+func platformUpdateRolloutStepActionFromHealth(health PlatformUpdateRolloutHealthResult) PlatformUpdateRolloutStepAction {
+	switch PlatformUpdateRolloutStatus(health.RolloutStatus) {
+	case PlatformUpdateRolloutSucceeded:
+		return PlatformUpdateRolloutStepSucceeded
+	case PlatformUpdateRolloutFailed:
+		return PlatformUpdateRolloutStepFailed
+	case PlatformUpdateRolloutOutcomeUnknown:
+		return PlatformUpdateRolloutStepOutcomeUnknown
+	}
+
+	switch PlatformUpdateRolloutEntryStatus(health.EntryStatus) {
+	case PlatformUpdateRolloutEntryHealthy:
+		return PlatformUpdateRolloutStepNodeHealthy
+	case PlatformUpdateRolloutEntryFailed:
+		return PlatformUpdateRolloutStepFailed
+	case PlatformUpdateRolloutEntryOutcomeUnknown:
+		return PlatformUpdateRolloutStepOutcomeUnknown
+	case PlatformUpdateRolloutEntryUpdating:
+		return PlatformUpdateRolloutStepWaitingHealth
+	default:
+		// Another invocation may have completed the entry after the controller's
+		// initial inspection. E3e then authoritatively observes no updating entry
+		// and returns a running rollout with no entry identity. That is not a
+		// health wait; a later invocation may attempt the next E3d admission.
+		return PlatformUpdateRolloutStepNoChange
+	}
 }
 
 func shouldNormalizePlatformUpdateRolloutAdmissionError(err error) bool {
