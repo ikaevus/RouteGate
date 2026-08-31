@@ -283,6 +283,39 @@ func TestPlatformUpdateRolloutStepBoundary(t *testing.T) {
 		}
 	})
 
+	t.Run("durable admission failure normalizes to failed", func(t *testing.T) {
+		node := createReadyNode("RG-96E3f history drift")
+		rolloutID, err := repo.PersistPlatformUpdateRolloutPlan(ctx, agents.PlatformUpdateRolloutPlan{
+			TargetVersion: "v1.2.3", Entries: []agents.PlatformUpdateRolloutPlanEntry{{ServerID: node.serverID}},
+		})
+		if err != nil {
+			t.Fatalf("persist history-drift rollout: %v", err)
+		}
+
+		directJob, err := repo.CreatePlatformUpdateJob(ctx, agents.CreatePlatformUpdateJobInput{
+			ServerID: node.serverID, TargetVersion: "v1.2.3",
+		})
+		if err != nil {
+			t.Fatalf("create intervening direct job: %v", err)
+		}
+		succeedJob(directJob.ID)
+
+		result, err := repo.AdvancePlatformUpdateRollout(ctx, rolloutID)
+		if err != nil {
+			t.Fatalf("durable E3d domain failure should normalize, got error: %v", err)
+		}
+		if result.Action != agents.PlatformUpdateRolloutStepFailed || result.RolloutStatus != agents.PlatformUpdateRolloutFailed {
+			t.Fatalf("durable failure result = %+v", result)
+		}
+		var status, errorCode string
+		if err := pool.QueryRow(ctx, `SELECT status, COALESCE(error_code, '') FROM platform_update_rollouts WHERE id = $1::uuid`, rolloutID).Scan(&status, &errorCode); err != nil {
+			t.Fatalf("read durable failed rollout: %v", err)
+		}
+		if status != "failed" || errorCode != "admission_rejected" {
+			t.Fatalf("durable failed rollout status=%q error_code=%q", status, errorCode)
+		}
+	})
+
 	t.Run("failed and outcome unknown stop durably", func(t *testing.T) {
 		cases := []struct {
 			name       string
