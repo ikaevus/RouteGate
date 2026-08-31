@@ -1,0 +1,126 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  background: #050b14;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(37, 99, 235, 0.18), transparent 32rem),
+    linear-gradient(180deg, #081321 0%, #050b14 100%);
+  color: #f8fafc;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.maintenance-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.maintenance-card {
+  width: min(680px, 100%);
+  padding: 52px 48px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(15, 29, 49, 0.86), rgba(8, 18, 32, 0.9));
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.36);
+  text-align: center;
+  backdrop-filter: blur(18px);
+}
+
+.maintenance-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 38px;
+  color: #f8fafc;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.maintenance-brand img {
+  width: 42px;
+  height: 42px;
+}
+
+.maintenance-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 18px;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.maintenance-badge::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #60a5fa;
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.9);
+}
+
+.maintenance-card h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(36px, 7vw, 58px);
+  line-height: 1.02;
+  letter-spacing: -0.055em;
+}
+
+.maintenance-card p {
+  max-width: 520px;
+  margin: 22px auto 0;
+  color: #9fb0c5;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.maintenance-divider {
+  width: 72px;
+  height: 1px;
+  margin: 34px auto;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.8), transparent);
+}
+
+.maintenance-ru {
+  color: #cbd5e1 !important;
+  font-size: 15px !important;
+}
+
+@media (max-width: 600px) {
+  .maintenance-page {
+    padding: 20px 14px;
+  }
+
+  .maintenance-card {
+    padding: 40px 24px;
+    border-radius: 22px;
+  }
+
+  .maintenance-brand {
+    margin-bottom: 30px;
+    font-size: 22px;
+  }
+
+  .maintenance-card p {
+    font-size: 15px;
+  }
+}
