@@ -35,6 +35,7 @@ A call such as `AdvancePlatformUpdateRollout(ctx, rolloutID)` determines the cur
    - if proof is incomplete, return waiting without creating any job;
    - if the entry becomes `healthy`, return after that health transaction commits;
    - if it becomes `failed` or `outcome_unknown`, return the durable terminal stop;
+   - if another invocation already completed that entry before E3e acquires the authoritative locks and the rollout remains running, return bounded `no_change` rather than inventing a health wait;
 3. `running` with no `updating` entry:
    - invoke E3d admission for at most the next persisted eligible position;
    - if no mutation remains, allow the existing no-op/finished-rollout completion path;
@@ -67,11 +68,11 @@ Concurrent controller invocations therefore converge through the existing durabl
 
 ### Terminal-race normalization
 
-Only explicit E3d domain race outcomes are eligible for terminal-race normalization. E3d may race with another controller invocation that commits a terminal rollout first and then return either `ErrPlatformUpdateRolloutComplete` or `ErrPlatformUpdateRolloutNotMutationRunnable` even though the durable rollout is already terminal.
+Only explicit E3d domain outcomes are eligible for terminal-race normalization. E3d may race with another controller invocation that commits a terminal rollout first and then return `ErrPlatformUpdateRolloutComplete` or `ErrPlatformUpdateRolloutNotMutationRunnable`. E3d may also itself commit a bounded fail-closed rollout result before returning `ErrPlatformUpdateRolloutAdmissionFailed`, for example after Manager-version drift, immutable history-watermark mismatch, or a classified single-node admission rejection.
 
-After one of those two recognized E3d outcomes, the controller may perform one read-only durable-state normalization step. If that read proves the rollout is now `succeeded`, `failed`, or `outcome_unknown`, the controller returns the corresponding bounded terminal result and performs no further transition. If the rollout is still non-terminal, the original E3d outcome remains authoritative. A failed normalization read must not trigger retry or another mutation attempt.
+After one of those three recognized E3d outcomes, the controller may perform one read-only durable-state normalization step. If that read proves the rollout is now `succeeded`, `failed`, or `outcome_unknown`, the controller returns the corresponding bounded terminal result and performs no further transition. If the rollout is still non-terminal, the original E3d outcome remains authoritative. A failed normalization read must not trigger retry or another mutation attempt.
 
-E3e is stricter: a successful E3e waiting/healthy/terminal result is returned directly, and any E3e database, context, transport, commit, or other infrastructure error remains authoritative and is returned unchanged. E3e outcomes are never replaced by a later observational terminal read. This prevents commit uncertainty or an already-committed waiting result from being hidden by another concurrent invocation.
+E3e is stricter: a successful E3e waiting/healthy/terminal result is returned directly, and any E3e database, context, transport, commit, or other infrastructure error remains authoritative and is returned unchanged. E3e outcomes are never replaced by a later observational terminal read. If overlapping reconciliation means E3e authoritatively finds no `updating` entry while the rollout is still `running`, E3f reports `no_change`; it does not claim that a nonexistent job is waiting for health.
 
 Normalization is observational only. It must never call E3d/E3e a second time in the same invocation and must never turn a terminal race into next-node admission.
 
@@ -117,8 +118,9 @@ Before E3f implementation is mergeable, tests must prove at least:
 - a subsequent invocation admits only the next persisted position;
 - `failed` and `outcome_unknown` stop without retry or next-node admission;
 - concurrent step calls cannot produce more than one mutation job or more than one `updating` entry;
-- recognized E3d terminal races normalize to the durable terminal result without a second authoritative call;
+- recognized E3d completion/non-runnable/durable-failure outcomes normalize to durable terminal state without a second authoritative call;
 - E3e waiting results and infrastructure/commit errors are returned directly rather than terminal-normalized;
+- an overlapping E3e call that authoritatively finds no updating entry returns `no_change`, not a false health wait;
 - restart/replay uses the exact bound job identity returned by the authoritative reconciliation path;
 - terminal rollouts are idempotent no-ops;
 - no caller-controlled privileged selector is introduced;
