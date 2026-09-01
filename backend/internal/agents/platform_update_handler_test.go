@@ -11,6 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const (
+	platformUpdateTestServerID = "550e8400-e29b-41d4-a716-446655440001"
+	platformUpdateTestJobID    = "550e8400-e29b-41d4-a716-446655440000"
+)
+
 type platformUpdateAwareFakeRepository struct {
 	*fakeAgentAPIRepository
 	createInput CreatePlatformUpdateJobInput
@@ -40,12 +45,12 @@ func (f *platformUpdateAwareFakeRepository) GetPlatformUpdateJob(_ context.Conte
 func TestCreatePlatformUpdateAcceptsVersionOnlyRequest(t *testing.T) {
 	repository := newPlatformUpdateAwareFakeRepository()
 	repository.createdJob = PlatformUpdateJob{
-		ID: "550e8400-e29b-41d4-a716-446655440000", ServerID: "server-id",
+		ID: platformUpdateTestJobID, ServerID: platformUpdateTestServerID,
 		TargetVersion: "v1.2.3", Status: AgentOperationJobStatusPending,
 	}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/software-updates", strings.NewReader(`{"targetVersion":"v1.2.3"}`))
-	request.SetPathValue("server_id", "server-id")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/"+platformUpdateTestServerID+"/software-updates", strings.NewReader(`{"targetVersion":"v1.2.3"}`))
+	request.SetPathValue("server_id", platformUpdateTestServerID)
 	response := httptest.NewRecorder()
 
 	handler.CreatePlatformUpdate(response, request)
@@ -53,8 +58,25 @@ func TestCreatePlatformUpdateAcceptsVersionOnlyRequest(t *testing.T) {
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("status=%d want=%d body=%s", response.Code, http.StatusAccepted, response.Body.String())
 	}
-	if repository.createInput != (CreatePlatformUpdateJobInput{ServerID: "server-id", TargetVersion: "v1.2.3"}) {
+	if repository.createInput != (CreatePlatformUpdateJobInput{ServerID: platformUpdateTestServerID, TargetVersion: "v1.2.3"}) {
 		t.Fatalf("unexpected create input: %+v", repository.createInput)
+	}
+}
+
+func TestCreatePlatformUpdateRejectsMalformedServerIDBeforeRepository(t *testing.T) {
+	repository := newPlatformUpdateAwareFakeRepository()
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/not-a-uuid/software-updates", strings.NewReader(`{"targetVersion":"v1.2.3"}`))
+	request.SetPathValue("server_id", "not-a-uuid")
+	response := httptest.NewRecorder()
+
+	handler.CreatePlatformUpdate(response, request)
+
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid_server_id") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if repository.createInput != (CreatePlatformUpdateJobInput{}) {
+		t.Fatalf("malformed server ID reached repository: %+v", repository.createInput)
 	}
 }
 
@@ -68,8 +90,8 @@ func TestCreatePlatformUpdateRejectsPrivilegedSelectorsAndUnknownFields(t *testi
 	} {
 		repository := newPlatformUpdateAwareFakeRepository()
 		handler := testAgentHandler(repository)
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/software-updates", strings.NewReader(body))
-		request.SetPathValue("server_id", "server-id")
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/"+platformUpdateTestServerID+"/software-updates", strings.NewReader(body))
+		request.SetPathValue("server_id", platformUpdateTestServerID)
 		response := httptest.NewRecorder()
 
 		handler.CreatePlatformUpdate(response, request)
@@ -92,8 +114,8 @@ func TestCreatePlatformUpdateRejectsNonCanonicalOrTrailingInput(t *testing.T) {
 	} {
 		repository := newPlatformUpdateAwareFakeRepository()
 		handler := testAgentHandler(repository)
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/software-updates", strings.NewReader(body))
-		request.SetPathValue("server_id", "server-id")
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/"+platformUpdateTestServerID+"/software-updates", strings.NewReader(body))
+		request.SetPathValue("server_id", platformUpdateTestServerID)
 		response := httptest.NewRecorder()
 
 		handler.CreatePlatformUpdate(response, request)
@@ -120,8 +142,8 @@ func TestCreatePlatformUpdateMapsReadinessAndDurableInterlockConflicts(t *testin
 			repository := newPlatformUpdateAwareFakeRepository()
 			repository.createErr = tc.err
 			handler := testAgentHandler(repository)
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/software-updates", strings.NewReader(`{"targetVersion":"v1.2.3"}`))
-			request.SetPathValue("server_id", "server-id")
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/"+platformUpdateTestServerID+"/software-updates", strings.NewReader(`{"targetVersion":"v1.2.3"}`))
+			request.SetPathValue("server_id", platformUpdateTestServerID)
 			response := httptest.NewRecorder()
 
 			handler.CreatePlatformUpdate(response, request)
@@ -136,13 +158,13 @@ func TestCreatePlatformUpdateMapsReadinessAndDurableInterlockConflicts(t *testin
 func TestGetPlatformUpdateIsServerScoped(t *testing.T) {
 	repository := newPlatformUpdateAwareFakeRepository()
 	repository.queriedJob = PlatformUpdateJob{
-		ID: "550e8400-e29b-41d4-a716-446655440000", ServerID: "server-id",
+		ID: platformUpdateTestJobID, ServerID: platformUpdateTestServerID,
 		TargetVersion: "v1.2.3", Status: AgentOperationJobStatusMutationDispatched,
 	}
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/servers/server-id/software-updates/550e8400-e29b-41d4-a716-446655440000", nil)
-	request.SetPathValue("server_id", "server-id")
-	request.SetPathValue("job_id", "550e8400-e29b-41d4-a716-446655440000")
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/servers/"+platformUpdateTestServerID+"/software-updates/"+platformUpdateTestJobID, nil)
+	request.SetPathValue("server_id", platformUpdateTestServerID)
+	request.SetPathValue("job_id", platformUpdateTestJobID)
 	response := httptest.NewRecorder()
 
 	handler.GetPlatformUpdate(response, request)
@@ -150,8 +172,38 @@ func TestGetPlatformUpdateIsServerScoped(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d want=%d body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
-	if repository.queryServer != "server-id" || repository.queryJob != "550e8400-e29b-41d4-a716-446655440000" {
+	if repository.queryServer != platformUpdateTestServerID || repository.queryJob != platformUpdateTestJobID {
 		t.Fatalf("unexpected query scope: server=%q job=%q", repository.queryServer, repository.queryJob)
+	}
+}
+
+func TestGetPlatformUpdateRejectsMalformedPathIDsBeforeRepository(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		serverID string
+		jobID    string
+	}{
+		{name: "server", serverID: "not-a-uuid", jobID: platformUpdateTestJobID},
+		{name: "job", serverID: platformUpdateTestServerID, jobID: "not-a-uuid"},
+		{name: "uppercase", serverID: platformUpdateTestServerID, jobID: "550E8400-E29B-41D4-A716-446655440000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repository := newPlatformUpdateAwareFakeRepository()
+			handler := testAgentHandler(repository)
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/servers/"+tc.serverID+"/software-updates/"+tc.jobID, nil)
+			request.SetPathValue("server_id", tc.serverID)
+			request.SetPathValue("job_id", tc.jobID)
+			response := httptest.NewRecorder()
+
+			handler.GetPlatformUpdate(response, request)
+
+			if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), "update_not_found") {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if repository.queryServer != "" || repository.queryJob != "" {
+				t.Fatalf("malformed path IDs reached repository: server=%q job=%q", repository.queryServer, repository.queryJob)
+			}
+		})
 	}
 }
 
@@ -159,9 +211,9 @@ func TestGetPlatformUpdateMapsMissingJobToNotFound(t *testing.T) {
 	repository := newPlatformUpdateAwareFakeRepository()
 	repository.queryErr = pgx.ErrNoRows
 	handler := testAgentHandler(repository)
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/servers/server-id/software-updates/job-id", nil)
-	request.SetPathValue("server_id", "server-id")
-	request.SetPathValue("job_id", "job-id")
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/servers/"+platformUpdateTestServerID+"/software-updates/"+platformUpdateTestJobID, nil)
+	request.SetPathValue("server_id", platformUpdateTestServerID)
+	request.SetPathValue("job_id", platformUpdateTestJobID)
 	response := httptest.NewRecorder()
 
 	handler.GetPlatformUpdate(response, request)

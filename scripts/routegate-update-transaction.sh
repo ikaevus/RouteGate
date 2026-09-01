@@ -418,6 +418,7 @@ require_role_commands() {
     find \
     flock \
     grep \
+    gzip \
     head \
     install \
     mktemp \
@@ -426,8 +427,10 @@ require_role_commands() {
     sed \
     sha256sum \
     sleep \
+    sort \
     stat \
     tar \
+    tail \
     systemctl \
     uname \
     wc || return 1

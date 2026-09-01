@@ -35,6 +35,12 @@ type CreatePlatformUpdateResponse struct {
 
 func (h *Handler) CreatePlatformUpdate(w http.ResponseWriter, r *http.Request) {
 	serverID := strings.TrimSpace(r.PathValue("server_id"))
+	if !canonicalPlatformUpdateTaskIDPattern.MatchString(serverID) {
+		h.recordPlatformUpdateCreateAudit(r, serverID, "", "", audit.ResultFailure, "invalid_server_id")
+		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_server_id", "server_id must be a canonical RouteGate UUID."))
+		return
+	}
+
 	var request CreatePlatformUpdateRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPlatformUpdateCreateRequestBytes))
 	decoder.DisallowUnknownFields()
@@ -96,6 +102,10 @@ func (h *Handler) GetPlatformUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	serverID := strings.TrimSpace(r.PathValue("server_id"))
 	jobID := strings.TrimSpace(r.PathValue("job_id"))
+	if !canonicalPlatformUpdateTaskIDPattern.MatchString(serverID) || !canonicalPlatformUpdateTaskIDPattern.MatchString(jobID) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("update_not_found", "RouteGate software update job was not found."))
+		return
+	}
 	job, err := repository.GetPlatformUpdateJob(r.Context(), serverID, jobID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("update_not_found", "RouteGate software update job was not found."))
