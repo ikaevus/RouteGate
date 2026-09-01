@@ -12,13 +12,35 @@ import (
 
 const platformUpdateRolloutAdmissionRejected = "admission_rejected"
 
-var ErrPlatformUpdateRolloutComplete = errors.New("platform update rollout completed without a mutation")
+var (
+	ErrPlatformUpdateRolloutComplete            = errors.New("platform update rollout completed without a mutation")
+	ErrPlatformUpdateRolloutNotMutationRunnable = errors.New("platform update rollout is not mutation-runnable")
+	ErrPlatformUpdateRolloutAdmissionFailed     = errors.New("platform update rollout admission durably failed")
+)
 
 // AdmitPlatformUpdateRolloutMutation starts or resumes a durable rollout and
 // atomically admits at most one single-node platform update. The caller selects
 // only the durable rollout identity; server identity and target version are read
 // from the immutable rollout snapshot.
 func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rolloutID string) (PlatformUpdateJob, error) {
+	return r.admitPlatformUpdateRolloutMutation(ctx, rolloutID, nil)
+}
+
+// admitPlatformUpdateRolloutMutationWithDisposition is the E3f-only adapter for
+// the authoritative E3d admission transaction. It does not alter admission
+// semantics; it only reports whether E3d replayed an already-bound durable job
+// instead of creating/binding a new one in this invocation.
+func (r *Repository) admitPlatformUpdateRolloutMutationWithDisposition(ctx context.Context, rolloutID string) (PlatformUpdateJob, bool, error) {
+	var replayed bool
+	job, err := r.admitPlatformUpdateRolloutMutation(ctx, rolloutID, &replayed)
+	return job, replayed, err
+}
+
+func (r *Repository) admitPlatformUpdateRolloutMutation(ctx context.Context, rolloutID string, replayed *bool) (PlatformUpdateJob, error) {
+	if replayed != nil {
+		*replayed = false
+	}
+
 	canonicalRolloutID, err := canonicalPlatformUpdateServerID(rolloutID)
 	if err != nil {
 		return PlatformUpdateJob{}, fmt.Errorf("invalid rollout id: %w", err)
@@ -49,7 +71,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 	}
 
 	if rolloutStatus != "pending" && rolloutStatus != "running" {
-		return PlatformUpdateJob{}, fmt.Errorf("rollout is not mutation-runnable: %s", rolloutStatus)
+		return PlatformUpdateJob{}, fmt.Errorf("%w: %s", ErrPlatformUpdateRolloutNotMutationRunnable, rolloutStatus)
 	}
 
 	// Keep the transaction-local marker as a fail-closed structural policy for
@@ -86,6 +108,9 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 			if err := tx.Commit(ctx); err != nil {
 				return PlatformUpdateJob{}, err
 			}
+			if replayed != nil {
+				*replayed = true
+			}
 			return job, nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -119,7 +144,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-		return PlatformUpdateJob{}, fmt.Errorf("rollout target no longer matches current Manager version")
+		return PlatformUpdateJob{}, fmt.Errorf("%w: rollout target no longer matches current Manager version", ErrPlatformUpdateRolloutAdmissionFailed)
 	}
 
 	if rolloutStatus == "pending" {
@@ -213,7 +238,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-		return PlatformUpdateJob{}, fmt.Errorf("rollout update history changed after snapshot")
+		return PlatformUpdateJob{}, fmt.Errorf("%w: rollout update history changed after snapshot", ErrPlatformUpdateRolloutAdmissionFailed)
 	}
 
 	// A rejected INSERT can put PostgreSQL's transaction into error state (for
@@ -243,7 +268,7 @@ func (r *Repository) AdmitPlatformUpdateRolloutMutation(ctx context.Context, rol
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateJob{}, err
 		}
-		return PlatformUpdateJob{}, fmt.Errorf("%w: current single-node admission rejected rollout entry", err)
+		return PlatformUpdateJob{}, fmt.Errorf("%w: current single-node admission rejected rollout entry", ErrPlatformUpdateRolloutAdmissionFailed)
 	}
 	if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT rg96e3d_single_node_admission`); err != nil {
 		return PlatformUpdateJob{}, err
