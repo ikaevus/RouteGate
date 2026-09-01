@@ -53,10 +53,10 @@ func TestCreatePlatformUpdateRejectsVersionThatExceedsAgentTaskLimit(t *testing.
 	tooLong := maxLengthPlatformUpdateVersion(t) + "a"
 	request := httptest.NewRequest(
 		http.MethodPost,
-		"/api/v1/servers/server-id/software-updates",
+		"/api/v1/servers/"+platformUpdateTestServerID+"/software-updates",
 		strings.NewReader("{\"targetVersion\":\"" + tooLong + "\"}"),
 	)
-	request.SetPathValue("server_id", "server-id")
+	request.SetPathValue("server_id", platformUpdateTestServerID)
 	response := httptest.NewRecorder()
 
 	handler.CreatePlatformUpdate(response, request)

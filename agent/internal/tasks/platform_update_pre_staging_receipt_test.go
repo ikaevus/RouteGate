@@ -7,6 +7,38 @@ import (
 	"testing"
 )
 
+func TestPrepareReceiptPrecedesRuntimeReadinessProbe(t *testing.T) {
+	store := testPlatformUpdateReceiptStore(t)
+	taskID := "550e8400-e29b-41d4-a716-446655440000"
+	request := PlatformUpdateRequest{SchemaVersion: PlatformUpdateSchemaVersion, TargetVersion: "v1.2.3"}
+	probeObservedPrepared := false
+
+	err := preparePlatformUpdateReceiptBeforeReadiness(store, taskID, request, func() bool {
+		receipt, readErr := store.Read(taskID)
+		if readErr != nil {
+			t.Fatalf("prepared receipt was not durable before readiness probe: %v", readErr)
+		}
+		if receipt.Phase != PlatformUpdateReceiptPrepared || receipt.MutationStarted || receipt.TargetVersion != request.TargetVersion {
+			t.Fatalf("unexpected receipt at readiness probe: %+v", receipt)
+		}
+		probeObservedPrepared = true
+		return false
+	})
+	if err == nil {
+		t.Fatal("unsafe runtime readiness unexpectedly succeeded")
+	}
+	if !probeObservedPrepared {
+		t.Fatal("runtime readiness probe ran without a durable prepared receipt")
+	}
+	receipt, readErr := store.Read(taskID)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if receipt.Phase != PlatformUpdateReceiptFailed || receipt.MutationStarted || receipt.Code != "runtime_not_ready" {
+		t.Fatalf("runtime readiness failure was not durably terminalized: %+v", receipt)
+	}
+}
+
 func TestStagePlatformUpdatePersistsPreparedReceiptBeforeStaging(t *testing.T) {
 	store := testPlatformUpdateReceiptStore(t)
 	taskID := "550e8400-e29b-41d4-a716-446655440000"

@@ -27,6 +27,30 @@ func writeExecutable(t *testing.T, path string, mode os.FileMode) {
 	}
 }
 
+func TestFixedPlatformUpdateCommandRuntimeCoversCoreMigrationSelectors(t *testing.T) {
+	required := make(map[string]bool, len(fixedPlatformUpdateRequiredCommands))
+	for _, name := range fixedPlatformUpdateRequiredCommands {
+		required[name] = true
+	}
+	for _, name := range []string{"find", "sed", "sort", "tail"} {
+		if !required[name] {
+			t.Fatalf("fixed updater command runtime does not cover core migration selector %q", name)
+		}
+	}
+}
+
+func TestFixedPlatformUpdateCommandRuntimeCoversTarGzipFilter(t *testing.T) {
+	required := make(map[string]bool, len(fixedPlatformUpdateRequiredCommands))
+	for _, name := range fixedPlatformUpdateRequiredCommands {
+		required[name] = true
+	}
+	for _, name := range []string{"tar", "gzip"} {
+		if !required[name] {
+			t.Fatalf("fixed updater command runtime does not cover compressed archive dependency %q", name)
+		}
+	}
+}
+
 func TestValidatePlatformUpdateCommandRuntimeAcceptsTrustedDirectExecutable(t *testing.T) {
 	root := commandRuntimeFixtureRoot(t)
 	uid := uint32(os.Geteuid())

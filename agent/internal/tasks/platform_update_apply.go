@@ -93,20 +93,37 @@ func RecordPlatformUpdatePreDispatchFailure(taskID, targetVersion, code string) 
 }
 
 type platformUpdateStageFunc func(context.Context, string, PlatformUpdateRequest) (PlatformUpdateStagedCandidate, error)
+type platformUpdateRuntimeReadyFunc func() bool
 
-// stagePlatformUpdateWithPreparedReceipt creates the no-replace durable handoff
-// before the first potentially long-running staging operation. If the Agent is
-// killed or the host reboots while assets are downloading, reconciliation can
-// therefore terminalize the still-prepared receipt without redispatching any
-// mutation. Deterministic staging failures monotonically close that same receipt.
-func stagePlatformUpdateWithPreparedReceipt(ctx context.Context, store platformUpdateReceiptStore, taskID string, request PlatformUpdateRequest, stage platformUpdateStageFunc) (PlatformUpdateStagedCandidate, error) {
+// preparePlatformUpdateReceiptBeforeReadiness closes the crash window between
+// Manager claiming a job and the potentially slow verifier/runtime readiness
+// probe. The no-replace prepared receipt is durable before the probe starts, so
+// an Agent restart can always reconcile an in_progress task without redispatch.
+func preparePlatformUpdateReceiptBeforeReadiness(store platformUpdateReceiptStore, taskID string, request PlatformUpdateRequest, runtimeReady platformUpdateRuntimeReadyFunc) error {
+	if runtimeReady == nil {
+		return fmt.Errorf("platform update runtime readiness probe is unavailable")
+	}
+	if _, err := store.CreatePrepared(taskID, request.TargetVersion); err != nil {
+		return fmt.Errorf("%w: persist prepared receipt before runtime readiness: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	}
+	if runtimeReady() {
+		return nil
+	}
+	if _, err := store.MarkPreDispatchFailed(taskID, "runtime_not_ready"); err != nil {
+		return fmt.Errorf("%w: platform update runtime is not safely ready; persist deterministic failure: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	}
+	return fmt.Errorf("platform update runtime is not safely ready before staging")
+}
+
+// stagePlatformUpdateWithExistingPreparedReceipt performs staging only after a
+// matching durable prepared receipt already exists. Deterministic staging and
+// identity failures monotonically close that same receipt.
+func stagePlatformUpdateWithExistingPreparedReceipt(ctx context.Context, store platformUpdateReceiptStore, taskID string, request PlatformUpdateRequest, stage platformUpdateStageFunc) (PlatformUpdateStagedCandidate, error) {
 	if stage == nil {
 		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update stager is unavailable")
 	}
-	if _, err := store.CreatePrepared(taskID, request.TargetVersion); err != nil {
-		// A concurrent or prior writer may already have durable handoff evidence.
-		// Never reinterpret that state as permission to retry staging or mutation.
-		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: persist prepared receipt before staging: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	if err := acceptPreparedPlatformUpdateReceipt(store, taskID, request.TargetVersion); err != nil {
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: prepared receipt is not runnable before staging: %v", ErrPlatformUpdateDispatchAmbiguous, err)
 	}
 
 	candidate, err := stage(ctx, taskID, request)
@@ -123,6 +140,18 @@ func stagePlatformUpdateWithPreparedReceipt(ctx context.Context, store platformU
 		return PlatformUpdateStagedCandidate{}, fmt.Errorf("platform update staged identity mismatch")
 	}
 	return candidate, nil
+}
+
+// stagePlatformUpdateWithPreparedReceipt remains the focused test/helper entry
+// point for proving that staging never starts before a no-replace receipt. The
+// production dispatch path creates the receipt even earlier, before readiness.
+func stagePlatformUpdateWithPreparedReceipt(ctx context.Context, store platformUpdateReceiptStore, taskID string, request PlatformUpdateRequest, stage platformUpdateStageFunc) (PlatformUpdateStagedCandidate, error) {
+	if _, err := store.CreatePrepared(taskID, request.TargetVersion); err != nil {
+		// A concurrent or prior writer may already have durable handoff evidence.
+		// Never reinterpret that state as permission to retry staging or mutation.
+		return PlatformUpdateStagedCandidate{}, fmt.Errorf("%w: persist prepared receipt before staging: %v", ErrPlatformUpdateDispatchAmbiguous, err)
+	}
+	return stagePlatformUpdateWithExistingPreparedReceipt(ctx, store, taskID, request, stage)
 }
 
 // PrepareAndStartDetachedPlatformUpdate performs the durable handoff required
@@ -143,7 +172,13 @@ func PrepareAndStartDetachedPlatformUpdate(ctx context.Context, taskID string, r
 	}
 
 	store := fixedPlatformUpdateReceiptStore()
-	candidate, err := stagePlatformUpdateWithPreparedReceipt(ctx, store, taskID, request, NewPlatformUpdateStager().Stage)
+	// The receipt must exist before even the runtime readiness probe. That probe
+	// hashes and executes the pinned verifier and can take seconds; a crash there
+	// must still leave deterministic pre-mutation reconciliation evidence.
+	if err := preparePlatformUpdateReceiptBeforeReadiness(store, taskID, request, PlatformUpdateRuntimeReady); err != nil {
+		return PlatformUpdateStagedCandidate{}, err
+	}
+	candidate, err := stagePlatformUpdateWithExistingPreparedReceipt(ctx, store, taskID, request, NewPlatformUpdateStager().Stage)
 	if err != nil {
 		return PlatformUpdateStagedCandidate{}, err
 	}

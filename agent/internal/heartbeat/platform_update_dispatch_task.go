@@ -34,26 +34,10 @@ func (r *Runner) processPlatformUpdateDispatchTask(ctx context.Context, task tas
 		return fmt.Errorf("decode platform update dispatch request: %w", err)
 	}
 
-	// Heartbeat readiness is only discovery evidence and may be stale. Repeat
-	// the fixed executable + full parent-chain validation before staging. If it
-	// fails, persist the deterministic pre-dispatch outcome before attempting to
-	// acknowledge it to Manager so an acknowledgement loss remains reconcilable.
-	if !tasks.PlatformUpdateRuntimeReady() {
-		if receiptErr := tasks.RecordPlatformUpdatePreDispatchFailure(task.ID, request.TargetVersion, "runtime_not_ready"); receiptErr != nil {
-			return fmt.Errorf("platform update runtime is not safely ready; persist bounded failure: %w", receiptErr)
-		}
-		report := map[string]any{
-			"taskId":        task.ID,
-			"targetVersion": request.TargetVersion,
-			"status":        platformUpdateDispatchStatusFailed,
-			"code":          platformUpdateDispatchCodeFailed,
-		}
-		if completeErr := r.client.CompleteTaskFailed(ctx, r.cfg.AgentToken, task.ID, "", report); completeErr != nil {
-			return fmt.Errorf("platform update runtime is not safely ready; report bounded failure: %w", completeErr)
-		}
-		return fmt.Errorf("platform update runtime is not safely ready")
-	}
-
+	// PrepareAndStartDetachedPlatformUpdate persists the no-replace prepared
+	// receipt before its potentially slow runtime-readiness probe, then rechecks
+	// readiness again after staging and inside the detached worker. This keeps an
+	// Agent crash/reboot at every dispatch boundary reconciliation-only.
 	_, err = tasks.PrepareAndStartDetachedPlatformUpdate(ctx, task.ID, request)
 	if err != nil {
 		if errors.Is(err, tasks.ErrPlatformUpdateDispatchAmbiguous) {
