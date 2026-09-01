@@ -1,6 +1,6 @@
 # RG-96E3f: bounded rollout step controller
 
-Status: implementation under validation
+Status: implemented
 
 ## Purpose
 
@@ -109,7 +109,7 @@ Those require separate boundaries after the one-step controller is proven.
 
 ## Validation gate
 
-Before E3f implementation is mergeable, tests must prove at least:
+The E3f validation gate requires tests to prove at least:
 
 - a pending rollout admits at most the first persisted runnable VPN node;
 - an all-skipped pending rollout completes without a mutation;
@@ -126,4 +126,4 @@ Before E3f implementation is mergeable, tests must prove at least:
 - no caller-controlled privileged selector is introduced;
 - direct E2j single-node behavior remains unchanged.
 
-Exact-head CI and a focused security review are required before implementation is marked ready for merge.
+Exact-head CI and a focused security review are required before merge.
