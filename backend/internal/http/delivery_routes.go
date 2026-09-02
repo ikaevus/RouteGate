@@ -60,7 +60,6 @@ func NewRootHandler(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) 
 	mux.Handle("PUT /api/v1/servers/{server_id}/geography", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(serversHandler.UpdateGeography))))
 	mux.Handle("POST /api/v1/servers/{server_id}/software-updates", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(agentsHandler.CreatePlatformUpdate))))
 	mux.Handle("GET /api/v1/servers/{server_id}/software-updates/{job_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(agentsHandler.GetPlatformUpdate))))
-
 	mux.Handle("GET /api/v1/analytics/overview", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(analyticsHandler.Overview))))
 
 	mux.Handle("POST /api/v1/system/update-jobs/preflight", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(updatesHandler.CreatePreflight))))

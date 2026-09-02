@@ -19,6 +19,7 @@ tags:
   - name: Roles
   - name: Node Groups
   - name: VPN Accounts
+  - name: Updates
 
 paths:
   /api/admin/health:
@@ -764,6 +765,86 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AutomaticSelectionApplyResponse" }
         "409": { description: Selection is disabled, blocked by cooldown, or has no eligible target }
+
+  /api/v1/platform-update-rollouts:
+    post:
+      tags: [Updates]
+      summary: Create an immutable ordered VPN-node update rollout
+      description: Requires system:manage. Creation records a rollout snapshot only and does not admit a host mutation.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Canonical UUIDv4 used only to make rollout snapshot creation replay-safe.
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlatformUpdateRolloutRequest" }
+      responses:
+        "201":
+          description: New durable rollout snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlatformUpdateRolloutResponse" }
+        "200":
+          description: Identical replay of an existing rollout snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlatformUpdateRolloutResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: The idempotency key is already bound to a different canonical request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+
+  /api/v1/platform-update-rollouts/{rollout_id}:
+    get:
+      tags: [Updates]
+      summary: Read bounded durable rollout state
+      description: Requires servers:read. Metadata and ordered entries come from one coherent Manager database snapshot.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PlatformUpdateRolloutId"
+      responses:
+        "200":
+          description: Manager-owned rollout state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlatformUpdateRolloutResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+
+  /api/v1/platform-update-rollouts/{rollout_id}/advance:
+    post:
+      tags: [Updates]
+      summary: Advance a rollout by at most one durable step
+      description: Requires system:manage. The request body must be empty; one request invokes the bounded rollout controller exactly once.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PlatformUpdateRolloutId"
+      responses:
+        "200":
+          description: Bounded result of the single explicit advancement
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdvancePlatformUpdateRolloutResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
 components:
   securitySchemes:
     bearerAuth:
@@ -785,6 +866,13 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
 
+    Forbidden:
+      description: Required permission is missing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
     NotFound:
       description: Entity was not found
       content:
@@ -798,6 +886,15 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+
+  parameters:
+    PlatformUpdateRolloutId:
+      in: path
+      name: rollout_id
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     HealthResponse:
@@ -1247,6 +1344,72 @@ components:
             status: { type: string, example: manual }
             channel: { type: string, example: development }
             automaticUpdatesSupported: { type: boolean, example: false }
+
+    CreatePlatformUpdateRolloutRequest:
+      type: object
+      additionalProperties: false
+      required: [targetVersion, serverIds]
+      properties:
+        targetVersion:
+          type: string
+          example: v1.2.3
+        serverIds:
+          type: array
+          minItems: 1
+          maxItems: 1024
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
+    PlatformUpdateRolloutResponse:
+      type: object
+      required: [rollout]
+      properties:
+        rollout: { $ref: "#/components/schemas/PlatformUpdateRollout" }
+
+    PlatformUpdateRollout:
+      type: object
+      required: [id, targetVersion, status, createdAt, entries]
+      properties:
+        id: { type: string, format: uuid }
+        targetVersion: { type: string, example: v1.2.3 }
+        status: { type: string, enum: [pending, running, succeeded, failed, outcome_unknown] }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        errorCode: { type: string, description: Bounded durable Manager-owned terminal reason code. }
+        entries:
+          type: array
+          maxItems: 1024
+          items: { $ref: "#/components/schemas/PlatformUpdateRolloutEntry" }
+
+    PlatformUpdateRolloutEntry:
+      type: object
+      required: [serverId, position, status, planningBlockers]
+      properties:
+        serverId: { type: string, format: uuid }
+        position: { type: integer, minimum: 0 }
+        status: { type: string, enum: [queued, waiting, updating, healthy, failed, outcome_unknown, skipped] }
+        planningBlockers:
+          type: array
+          items: { type: string }
+        jobId: { type: string, format: uuid }
+        completedAt: { type: string, format: date-time, nullable: true }
+        blockerCode: { type: string, description: Bounded durable Manager-owned entry blocker code. }
+
+    AdvancePlatformUpdateRolloutResponse:
+      type: object
+      required: [rolloutId, rolloutStatus, action]
+      properties:
+        rolloutId: { type: string, format: uuid }
+        rolloutStatus: { type: string, enum: [pending, running, succeeded, failed, outcome_unknown] }
+        serverId: { type: string, format: uuid }
+        jobId: { type: string, format: uuid }
+        action:
+          type: string
+          enum: [mutation_admitted, mutation_in_progress, waiting_health, node_healthy, rollout_succeeded, rollout_failed, outcome_unknown, no_change]
+        waitingReason: { type: string }
+        errorCode: { type: string }
+        blockerCode: { type: string }
 
     NodeGroup:
       type: object

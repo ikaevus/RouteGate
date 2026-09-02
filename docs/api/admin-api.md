@@ -244,6 +244,49 @@ node. Management Nodes receive `409 node_role_incompatible`.
 
 `GET /api/v1/system/version` returns Manager, Web UI, database schema, Agent protocol compatibility, and manual-update metadata. It does not perform update network calls.
 
+### Ordered VPN-node update rollouts
+
+The administrator-reachable rolling-update boundary exposes only Manager-owned
+rollout state and composes the existing verified single-node update lifecycle.
+It does not accept Agent identities, release locations, artifacts, commands,
+paths, trust roots, retry settings, rollback settings, or parallelism controls.
+
+```http
+POST /api/v1/platform-update-rollouts                       # system:manage
+GET  /api/v1/platform-update-rollouts/{rollout_id}          # servers:read
+POST /api/v1/platform-update-rollouts/{rollout_id}/advance  # system:manage
+```
+
+Creation requires a canonical UUIDv4 `Idempotency-Key`, a body no larger than
+64 KiB, one canonical target version, and between 1 and 1024 ordered canonical
+server UUIDs:
+
+```json
+{
+  "targetVersion": "v1.2.3",
+  "serverIds": [
+    "550e8400-e29b-41d4-a716-446655440001",
+    "550e8400-e29b-41d4-a716-446655440002"
+  ]
+}
+```
+
+An identical replay with the same key returns the original rollout. Reusing the
+key for a different canonical request returns `409` and creates no rollout.
+Creation records an immutable planning snapshot only; it does not create or
+admit a host-update job.
+
+GET returns at most 1024 ordered entries from one coherent database snapshot,
+including bounded durable `errorCode` and `blockerCode` values. It never returns
+the creation key, credentials, updater output, local paths, commands, or trust
+material.
+
+Advance requires a completely empty request body and invokes the rollout step
+controller exactly once. One request may admit at most one node mutation or
+prove the current node healthy, never both. After `node_healthy`, admitting the
+next node requires a later explicit administrator request. Failed and
+`outcome_unknown` rollouts remain stopped for operator inspection.
+
 Allow-listed node diagnostics are queued through:
 
 ```http

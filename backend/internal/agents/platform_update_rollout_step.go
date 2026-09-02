@@ -26,12 +26,16 @@ type PlatformUpdateRolloutStepResult struct {
 	JobID         string
 	Action        PlatformUpdateRolloutStepAction
 	WaitingReason string
+	ErrorCode     string
+	BlockerCode   string
 }
 
 type platformUpdateRolloutStepState struct {
 	RolloutStatus PlatformUpdateRolloutStatus
 	ServerID      string
 	JobID         string
+	ErrorCode     string
+	BlockerCode   string
 }
 
 // AdvancePlatformUpdateRollout composes the existing E3d admission and E3e
@@ -67,6 +71,8 @@ func (r *Repository) AdvancePlatformUpdateRollout(ctx context.Context, rolloutID
 			ServerID:      health.ServerID,
 			JobID:         health.JobID,
 			WaitingReason: health.WaitingReason,
+			ErrorCode:     health.ErrorCode,
+			BlockerCode:   health.BlockerCode,
 			Action:        platformUpdateRolloutStepActionFromHealth(health),
 		}
 		return result, nil
@@ -145,19 +151,21 @@ func (r *Repository) inspectPlatformUpdateRolloutStepState(ctx context.Context, 
 	var rolloutStatus string
 	if err := r.pool.QueryRow(ctx, `
 		SELECT r.status,
+		       COALESCE(r.error_code, ''),
 		       COALESCE(e.server_id::text, ''),
-		       COALESCE(e.platform_update_job_id::text, '')
+		       COALESCE(e.platform_update_job_id::text, ''),
+		       COALESCE(e.blocker_code, '')
 		FROM platform_update_rollouts r
 		LEFT JOIN LATERAL (
-			SELECT server_id, platform_update_job_id
+			SELECT server_id, platform_update_job_id, blocker_code
 			FROM platform_update_rollout_entries
 			WHERE rollout_id = r.id
-			  AND status = 'updating'
+			  AND status IN ('updating', 'failed', 'outcome_unknown')
 			ORDER BY position
 			LIMIT 1
 		) e ON TRUE
 		WHERE r.id = $1::uuid
-	`, rolloutID).Scan(&rolloutStatus, &state.ServerID, &state.JobID); err != nil {
+	`, rolloutID).Scan(&rolloutStatus, &state.ErrorCode, &state.ServerID, &state.JobID, &state.BlockerCode); err != nil {
 		return platformUpdateRolloutStepState{}, err
 	}
 	state.RolloutStatus = PlatformUpdateRolloutStatus(rolloutStatus)
@@ -170,6 +178,8 @@ func terminalPlatformUpdateRolloutStepResult(rolloutID string, state platformUpd
 		RolloutStatus: state.RolloutStatus,
 		ServerID:      state.ServerID,
 		JobID:         state.JobID,
+		ErrorCode:     state.ErrorCode,
+		BlockerCode:   state.BlockerCode,
 	}
 	switch state.RolloutStatus {
 	case PlatformUpdateRolloutSucceeded:

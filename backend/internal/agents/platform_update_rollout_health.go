@@ -27,6 +27,8 @@ type PlatformUpdateRolloutHealthResult struct {
 	WaitingReason string
 	ServerID      string
 	JobID         string
+	ErrorCode     string
+	BlockerCode   string
 }
 
 // ReconcilePlatformUpdateRolloutHealth converts the one currently updating
@@ -49,21 +51,31 @@ func (r *Repository) ReconcilePlatformUpdateRolloutHealth(ctx context.Context, r
 		return PlatformUpdateRolloutHealthResult{}, err
 	}
 
-	var targetVersion, rolloutStatus string
+	var targetVersion, rolloutStatus, rolloutErrorCode string
 	if err := tx.QueryRow(ctx, `
-		SELECT target_version, status
+		SELECT target_version, status, COALESCE(error_code, '')
 		FROM platform_update_rollouts
 		WHERE id = $1::uuid
 		FOR UPDATE
-	`, canonicalRolloutID).Scan(&targetVersion, &rolloutStatus); err != nil {
+	`, canonicalRolloutID).Scan(&targetVersion, &rolloutStatus, &rolloutErrorCode); err != nil {
 		return PlatformUpdateRolloutHealthResult{}, err
 	}
 
 	if rolloutStatus != "running" {
+		var blockerCode string
+		if err := tx.QueryRow(ctx, `
+			SELECT COALESCE(blocker_code, '')
+			FROM platform_update_rollout_entries
+			WHERE rollout_id = $1::uuid
+			  AND status IN ('failed', 'outcome_unknown')
+			ORDER BY position LIMIT 1
+		`, canonicalRolloutID).Scan(&blockerCode); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return PlatformUpdateRolloutHealthResult{}, err
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return PlatformUpdateRolloutHealthResult{}, err
 		}
-		return PlatformUpdateRolloutHealthResult{RolloutStatus: rolloutStatus}, nil
+		return PlatformUpdateRolloutHealthResult{RolloutStatus: rolloutStatus, ErrorCode: rolloutErrorCode, BlockerCode: blockerCode}, nil
 	}
 	if _, err := tx.Exec(ctx, `SELECT set_config('routegate.platform_update_admission_rollout_id', $1, true)`, canonicalRolloutID); err != nil {
 		return PlatformUpdateRolloutHealthResult{}, err
@@ -308,7 +320,7 @@ func terminalizePlatformUpdateRolloutHealthTx(ctx context.Context, tx pgx.Tx, ro
 	if err := tx.Commit(ctx); err != nil {
 		return PlatformUpdateRolloutHealthResult{}, err
 	}
-	return PlatformUpdateRolloutHealthResult{RolloutStatus: status, EntryStatus: status, ServerID: serverID, JobID: jobID}, nil
+	return PlatformUpdateRolloutHealthResult{RolloutStatus: status, EntryStatus: status, ServerID: serverID, JobID: jobID, ErrorCode: errorCode, BlockerCode: errorCode}, nil
 }
 
 func completePlatformUpdateRolloutIfFinishedTx(ctx context.Context, tx pgx.Tx, rolloutID string) error {
