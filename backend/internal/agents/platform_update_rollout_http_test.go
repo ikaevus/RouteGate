@@ -175,6 +175,39 @@ func TestCreatePlatformUpdateRolloutAuditsPostDecodeRejection(t *testing.T) {
 	}
 }
 
+func TestAdvancePlatformUpdateRolloutAuditsBoundedRejections(t *testing.T) {
+	f := newRolloutHTTPFakeRepository()
+	audits := &rolloutAuditRepository{}
+	h := testAgentHandler(f)
+	h.audit = audit.NewRecorderWithRepository(nil, audits)
+
+	invalidBody := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+	invalidBody.SetPathValue("rollout_id", rolloutHTTPTestID)
+	w := httptest.NewRecorder()
+	h.AdvancePlatformUpdateRollout(w, invalidBody)
+	if w.Code != http.StatusBadRequest || f.advanceCalls != 0 {
+		t.Fatalf("invalid body status=%d calls=%d", w.Code, f.advanceCalls)
+	}
+
+	invalidID := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	invalidID.SetPathValue("rollout_id", "not-a-rollout")
+	w = httptest.NewRecorder()
+	h.AdvancePlatformUpdateRollout(w, invalidID)
+	if w.Code != http.StatusNotFound || f.advanceCalls != 0 {
+		t.Fatalf("invalid id status=%d calls=%d", w.Code, f.advanceCalls)
+	}
+
+	if len(audits.inputs) != 2 {
+		t.Fatalf("rejection audits=%d, want 2", len(audits.inputs))
+	}
+	if audits.inputs[0].Metadata["reason"] != "invalid_request" || audits.inputs[0].ResourceID != rolloutHTTPTestID {
+		t.Fatalf("invalid-body audit=%+v", audits.inputs[0])
+	}
+	if audits.inputs[1].Metadata["reason"] != "rollout_not_found" || audits.inputs[1].ResourceID != "" {
+		t.Fatalf("invalid-id audit=%+v", audits.inputs[1])
+	}
+}
+
 func TestGetPlatformUpdateRolloutExposesBoundedDurableReasonCodes(t *testing.T) {
 	f := newRolloutHTTPFakeRepository()
 	f.view = PlatformUpdateRolloutView{

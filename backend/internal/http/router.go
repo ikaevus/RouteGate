@@ -104,6 +104,13 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/servers/{server_id}/vpn-core/operations/{job_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(agentsHandler.GetVPNCoreOperation))))
 	mux.Handle("POST /api/v1/servers/{server_id}/vpn-core/installations", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(agentsHandler.CreateVPNCoreInstallation))))
 	mux.Handle("GET /api/v1/servers/{server_id}/vpn-core/installations/{job_id}", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(agentsHandler.GetVPNCoreInstallation))))
+	registerPlatformUpdateRolloutRoutes(
+		mux,
+		authn,
+		stdhttp.HandlerFunc(agentsHandler.CreatePlatformUpdateRollout),
+		stdhttp.HandlerFunc(agentsHandler.GetPlatformUpdateRollout),
+		stdhttp.HandlerFunc(agentsHandler.AdvancePlatformUpdateRollout),
+	)
 	mux.Handle("POST /api/v1/servers/{server_id}/config/render", authn(auth.RequirePermission("configs:render")(stdhttp.HandlerFunc(configsHandler.Render))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.List))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/versions/{version_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.Get))))

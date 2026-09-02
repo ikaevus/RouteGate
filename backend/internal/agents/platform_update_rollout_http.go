@@ -150,21 +150,25 @@ func (h *Handler) GetPlatformUpdateRollout(w http.ResponseWriter, r *http.Reques
 func (h *Handler) AdvancePlatformUpdateRollout(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("rollout_id"))
 	if canonical, err := canonicalPlatformUpdateServerID(id); err != nil || canonical != id {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.advanced", "", "", 0, audit.ResultFailure, "rollout_not_found")
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("rollout_not_found", "Platform update rollout was not found."))
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1))
 	if err != nil || len(body) != 0 {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.advanced", id, "", 0, audit.ResultFailure, "invalid_request")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Advance request body must be empty."))
 		return
 	}
 	repository, ok := h.repository.(platformUpdateRolloutRepository)
 	if !ok {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.advanced", id, "", 0, audit.ResultFailure, "update_not_supported")
 		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("update_not_supported", "Platform update rollouts are not supported by this Manager."))
 		return
 	}
 	result, err := repository.AdvancePlatformUpdateRollout(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.advanced", id, "", 0, audit.ResultFailure, "rollout_not_found")
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("rollout_not_found", "Platform update rollout was not found."))
 		return
 	}
