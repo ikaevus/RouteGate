@@ -1,6 +1,6 @@
 # Proof-gated multi-node update advancement
 
-Status: RG-96E3e design boundary
+Status: implemented
 
 ## Purpose
 

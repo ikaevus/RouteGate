@@ -1,6 +1,6 @@
 # Remote VPN-node update dispatch boundary
 
-Status: RG-96E2i design gate
+Status: implemented
 
 ## Purpose
 

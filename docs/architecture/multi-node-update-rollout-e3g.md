@@ -1,6 +1,6 @@
 # RG-96E3g: administrator-reachable rollout API boundary
 
-Status: implementation review
+Status: implemented
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # Durable multi-node update rollout
 
-Status: RG-96E3c snapshot persistence landed; RG-96E3d execution admission foundation in progress
+Status: implemented through RG-96E3g
 
 ## Purpose
 

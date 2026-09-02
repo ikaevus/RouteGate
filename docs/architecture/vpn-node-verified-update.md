@@ -12,7 +12,7 @@ The existing trusted updater installed under `/usr/local/lib/routegate/update/` 
 
 ## Request language
 
-The future Agent task kind is `platform_update`.
+The Agent task kind is `platform_update`.
 
 The Manager may supply only a canonical RouteGate target release version plus the task identity already provided by the task protocol. The version is a selector for an official immutable RouteGate release, not authorization for an arbitrary artifact.
 
