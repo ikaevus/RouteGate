@@ -2,10 +2,13 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ikaevus/routegate/backend/internal/audit"
 )
 
 const rolloutHTTPTestID = "550e8400-e29b-41d4-a716-446655440000"
@@ -17,6 +20,7 @@ type rolloutHTTPFakeRepository struct {
 	plan         PlatformUpdateRolloutPlan
 	view         PlatformUpdateRolloutView
 	result       PlatformUpdateRolloutStepResult
+	persistErr   error
 }
 
 func newRolloutHTTPFakeRepository() *rolloutHTTPFakeRepository {
@@ -25,7 +29,7 @@ func newRolloutHTTPFakeRepository() *rolloutHTTPFakeRepository {
 func (f *rolloutHTTPFakeRepository) PersistPlatformUpdateRolloutPlanIdempotent(_ context.Context, plan PlatformUpdateRolloutPlan, _, _ string) (string, bool, error) {
 	f.persistCalls++
 	f.plan = plan
-	return rolloutHTTPTestID, false, nil
+	return rolloutHTTPTestID, false, f.persistErr
 }
 func (f *rolloutHTTPFakeRepository) GetPlatformUpdateRollout(context.Context, string) (PlatformUpdateRolloutView, error) {
 	return f.view, nil
@@ -96,5 +100,92 @@ func TestAdvancePlatformUpdateRolloutRequiresEmptyBodyAndCallsOnce(t *testing.T)
 	h.AdvancePlatformUpdateRollout(w, good)
 	if w.Code != http.StatusOK || f.advanceCalls != 1 {
 		t.Fatalf("empty status=%d calls=%d", w.Code, f.advanceCalls)
+	}
+}
+
+func TestAdvancePlatformUpdateRolloutUsesBoundedHTTPDTO(t *testing.T) {
+	f := newRolloutHTTPFakeRepository()
+	f.result = PlatformUpdateRolloutStepResult{
+		RolloutID: rolloutHTTPTestID, RolloutStatus: PlatformUpdateRolloutFailed,
+		ServerID: rolloutHTTPTestID, Action: PlatformUpdateRolloutStepFailed,
+		ErrorCode: "node_update_failed", BlockerCode: "node_update_failed",
+	}
+	r := httptest.NewRequest(http.MethodPost, "/", http.NoBody)
+	r.SetPathValue("rollout_id", rolloutHTTPTestID)
+	w := httptest.NewRecorder()
+	testAgentHandler(f).AdvancePlatformUpdateRollout(w, r)
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"rolloutId", "rolloutStatus", "serverId", "action", "errorCode", "blockerCode"} {
+		if _, ok := body[key]; !ok {
+			t.Fatalf("response missing %q: %s", key, w.Body.String())
+		}
+	}
+	if _, ok := body["RolloutID"]; ok {
+		t.Fatalf("internal result field leaked: %s", w.Body.String())
+	}
+}
+
+type rolloutAuditRepository struct{ inputs []audit.EventInput }
+
+func (r *rolloutAuditRepository) Create(_ context.Context, input audit.EventInput) (audit.Event, error) {
+	r.inputs = append(r.inputs, input)
+	return audit.Event{}, nil
+}
+
+func TestCreatePlatformUpdateRolloutAuditsIdempotencyConflictWithoutKey(t *testing.T) {
+	f := newRolloutHTTPFakeRepository()
+	f.persistErr = ErrPlatformUpdateRolloutIdempotencyConflict
+	audits := &rolloutAuditRepository{}
+	h := testAgentHandler(f)
+	h.audit = audit.NewRecorderWithRepository(nil, audits)
+	r := rolloutCreateRequest(`{"targetVersion":"v1.2.3","serverIds":["550e8400-e29b-41d4-a716-446655440001"]}`)
+	w := httptest.NewRecorder()
+	h.CreatePlatformUpdateRollout(w, r)
+	if w.Code != http.StatusConflict || len(audits.inputs) != 1 {
+		t.Fatalf("status=%d audits=%d", w.Code, len(audits.inputs))
+	}
+	event := audits.inputs[0]
+	if event.Result != audit.ResultFailure || event.Metadata["reason"] != "idempotency_conflict" {
+		t.Fatalf("unexpected audit: %+v", event)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), r.Header.Get("Idempotency-Key")) {
+		t.Fatalf("audit leaked idempotency key: %s", encoded)
+	}
+}
+
+func TestCreatePlatformUpdateRolloutAuditsPostDecodeRejection(t *testing.T) {
+	f := newRolloutHTTPFakeRepository()
+	audits := &rolloutAuditRepository{}
+	h := testAgentHandler(f)
+	h.audit = audit.NewRecorderWithRepository(nil, audits)
+	w := httptest.NewRecorder()
+	h.CreatePlatformUpdateRollout(w, rolloutCreateRequest(`{"targetVersion":"v1.2.3","serverIds":[]} trailing`))
+	if w.Code != http.StatusBadRequest || len(audits.inputs) != 1 {
+		t.Fatalf("status=%d audits=%d", w.Code, len(audits.inputs))
+	}
+	if audits.inputs[0].Metadata["reason"] != "invalid_request" {
+		t.Fatalf("unexpected rejection audit: %+v", audits.inputs)
+	}
+}
+
+func TestGetPlatformUpdateRolloutExposesBoundedDurableReasonCodes(t *testing.T) {
+	f := newRolloutHTTPFakeRepository()
+	f.view = PlatformUpdateRolloutView{
+		ID: rolloutHTTPTestID, Status: PlatformUpdateRolloutFailed, ErrorCode: "node_update_failed",
+		Entries: []PlatformUpdateRolloutEntryView{{ServerID: rolloutHTTPTestID, BlockerCode: "node_update_failed"}},
+	}
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	r.SetPathValue("rollout_id", rolloutHTTPTestID)
+	w := httptest.NewRecorder()
+	testAgentHandler(f).GetPlatformUpdateRollout(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"errorCode":"node_update_failed"`) || !strings.Contains(w.Body.String(), `"blockerCode":"node_update_failed"`) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }

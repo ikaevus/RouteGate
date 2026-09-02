@@ -37,6 +37,17 @@ type PlatformUpdateRolloutResponse struct {
 	Rollout PlatformUpdateRolloutView `json:"rollout"`
 }
 
+type AdvancePlatformUpdateRolloutResponse struct {
+	RolloutID     string                          `json:"rolloutId"`
+	RolloutStatus PlatformUpdateRolloutStatus     `json:"rolloutStatus"`
+	ServerID      string                          `json:"serverId,omitempty"`
+	JobID         string                          `json:"jobId,omitempty"`
+	Action        PlatformUpdateRolloutStepAction `json:"action"`
+	WaitingReason string                          `json:"waitingReason,omitempty"`
+	ErrorCode     string                          `json:"errorCode,omitempty"`
+	BlockerCode   string                          `json:"blockerCode,omitempty"`
+}
+
 func (h *Handler) CreatePlatformUpdateRollout(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	if !canonicalUUIDv4Pattern.MatchString(key) {
@@ -54,16 +65,19 @@ func (h *Handler) CreatePlatformUpdateRollout(w http.ResponseWriter, r *http.Req
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", "", 0, audit.ResultFailure, "invalid_request")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "Request body must contain exactly one bounded rollout request."))
 		return
 	}
 	if !validPlatformUpdateTargetVersion(request.TargetVersion) || len(request.ServerIDs) == 0 || len(request.ServerIDs) > maxPlatformUpdateRolloutMembers {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", "", 0, audit.ResultFailure, "invalid_request")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "targetVersion and between 1 and 1024 canonical serverIds are required."))
 		return
 	}
 	candidates := make([]PlatformUpdateRolloutCandidate, len(request.ServerIDs))
 	for i, id := range request.ServerIDs {
 		if canonical, err := canonicalPlatformUpdateServerID(id); err != nil || canonical != id {
+			h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", "", 0, audit.ResultFailure, "invalid_server_id")
 			httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_server_id", "Every serverId must be a canonical RouteGate UUID."))
 			return
 		}
@@ -71,28 +85,33 @@ func (h *Handler) CreatePlatformUpdateRollout(w http.ResponseWriter, r *http.Req
 	}
 	plan, err := PlanPlatformUpdateRollout(buildinfo.Current().Version, request.TargetVersion, candidates)
 	if err != nil {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", "", 0, audit.ResultFailure, "invalid_request")
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_request", "The rollout request contains duplicate or invalid serverIds."))
 		return
 	}
 	hash := rolloutCreationRequestHash(request.TargetVersion, request.ServerIDs)
 	repository, ok := h.repository.(platformUpdateRolloutRepository)
 	if !ok {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", "", 0, audit.ResultFailure, "update_not_supported")
 		httpx.WriteJSON(w, http.StatusNotImplemented, httpx.Error("update_not_supported", "Platform update rollouts are not supported by this Manager."))
 		return
 	}
 	rolloutID, replayed, err := repository.PersistPlatformUpdateRolloutPlanIdempotent(r.Context(), plan, key, hash)
 	if errors.Is(err, ErrPlatformUpdateRolloutIdempotencyConflict) {
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", request.TargetVersion, len(request.ServerIDs), audit.ResultFailure, "idempotency_conflict")
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("idempotency_conflict", "Idempotency-Key was already used for a different rollout request."))
 		return
 	}
 	if err != nil {
 		h.logger.Error("create platform update rollout failed", "error", err)
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", "", request.TargetVersion, len(request.ServerIDs), audit.ResultFailure, "database_error")
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to create platform update rollout."))
 		return
 	}
 	view, err := repository.GetPlatformUpdateRollout(r.Context(), rolloutID)
 	if err != nil {
 		h.logger.Error("read created platform update rollout failed", "error", err, "rollout_id", rolloutID)
+		h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.created", rolloutID, request.TargetVersion, len(request.ServerIDs), audit.ResultFailure, "database_error")
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to read platform update rollout."))
 		return
 	}
@@ -156,7 +175,11 @@ func (h *Handler) AdvancePlatformUpdateRollout(w http.ResponseWriter, r *http.Re
 		return
 	}
 	h.recordPlatformUpdateRolloutAudit(r, "platform_update_rollout.advanced", id, "", 0, audit.ResultSuccess, string(result.Action))
-	httpx.WriteJSON(w, http.StatusOK, result)
+	httpx.WriteJSON(w, http.StatusOK, AdvancePlatformUpdateRolloutResponse{
+		RolloutID: result.RolloutID, RolloutStatus: result.RolloutStatus,
+		ServerID: result.ServerID, JobID: result.JobID, Action: result.Action,
+		WaitingReason: result.WaitingReason, ErrorCode: result.ErrorCode, BlockerCode: result.BlockerCode,
+	})
 }
 
 func rolloutCreationRequestHash(version string, ids []string) string {
