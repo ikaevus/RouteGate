@@ -1,6 +1,6 @@
 # Controlled remote VPN-node update enablement
 
-Status: RG-96E2j design gate
+Status: implemented
 
 ## Purpose
 

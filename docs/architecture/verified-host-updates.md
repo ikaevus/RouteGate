@@ -8,7 +8,7 @@ RouteGate separates three concerns that must not collapse into one process:
 
 1. release production and provenance (`RG-96A`);
 2. privileged host mutation and rollback (`RG-96B`);
-3. future administrator-facing orchestration (`RG-96C` and later).
+3. administrator-facing orchestration (`RG-96C` and later).
 
 A Manager process is not allowed to manufacture trust by choosing an arbitrary archive and supplying a matching digest to a root process. The privileged side must independently establish that a candidate is an official RouteGate release before any host files or database state can change.
 
@@ -223,7 +223,7 @@ CI continues to verify the required `--predicate-type` capability and additional
 
 B2a, B2b, B2c1, B2c2, and B2c3 remain outside Manager and Web UI control.
 
-A future RG-96C orchestration layer may discover releases and stage candidate files, but the privileged boundary must remain narrow:
+The RG-96C orchestration layer discovers releases and stages candidate files, but the privileged boundary remains narrow:
 
 - Manager may request an update operation;
 - Manager may not override trust roots;
@@ -233,7 +233,7 @@ A future RG-96C orchestration layer may discover releases and stage candidate fi
 - privileged code must continue to detect the host role itself;
 - update state, progress, audit, and administrator approval belong above this boundary.
 
-Until that orchestration exists, the Manager continues to report manual update status and `automaticUpdatesSupported: false`.
+The Manager continues to report manual update status and `automaticUpdatesSupported: false` because the implemented orchestration is explicitly administrator-triggered and does not authorize unattended policy.
 
 ## Current RG-96 sequence
 
@@ -245,7 +245,9 @@ Until that orchestration exists, the Manager continues to report manual update s
 - RG-96B2c1 — trusted updater promotion/rollback inside the host transaction: complete.
 - RG-96B2c2 — bootstrap the trusted updater on fresh Clean VPS and VPN Node installations: complete.
 - RG-96B2c3 — pinned RouteGate-owned Artifact Attestation verifier runtime with no `PATH` fallback: complete.
-- RG-96C — durable update jobs, discovery, preflight, progress, result, audit and rollback API: planned.
-- RG-96D — explicit one-click Admin UI workflow: planned.
-- RG-96E — multi-node rolling updates: planned.
+- RG-96C — durable update jobs, discovery, preflight, verified staging, progress, result, audit and rollback API: complete through C3d.
+- RG-96D — explicit one-click Admin UI workflow: implemented through D1.
+- RG-96E1/E2 — rollout readiness and fixed-policy at-most-once VPN-node update lifecycle: complete.
+- RG-96E3 — durable one-at-a-time rollout orchestration and administrator-reachable API: complete through E3g.
+- RG-96E4 — Admin rollout presentation and operator controls over E3: planned.
 - RG-96F — release channels and controlled update policy: planned.

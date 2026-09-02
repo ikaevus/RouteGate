@@ -1,6 +1,6 @@
 # Manager VPN-node update task reconciliation
 
-Status: RG-96E2h contract
+Status: implemented
 
 ## Purpose
 

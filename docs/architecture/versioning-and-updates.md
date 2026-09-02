@@ -1,6 +1,6 @@
 # Updates, Releases, and Versioning
 
-RouteGate separates software delivery from installation updates. CI/CD produces and validates release artifacts; a future self-update subsystem will consume those artifacts through an explicit administrator-approved update job.
+RouteGate separates software delivery from installation updates. CI/CD produces and validates release artifacts; the update subsystem consumes those artifacts only through explicit administrator-approved jobs and the verified host-mutation boundary.
 
 ## Component versioning
 
@@ -12,7 +12,7 @@ RouteGate components remain independently observable even when they are shipped 
 | Web UI | Manager system-version response; release bundles ship the UI built from the same source commit. |
 | Agent | `agent/internal/buildinfo` with linker-overridable `Version`, `GitCommit`, and `BuildDate`. |
 | Agent protocol | Numeric protocol version reported by Agents during registration and heartbeat. |
-| Database schema | Applied migration identifiers in `schema_migrations`; the current canonical migration line reaches `000136_update_job_discovery`. |
+| Database schema | Applied migration identifiers in `schema_migrations`; the current canonical migration line reaches `000144_platform_update_rollout_creation_idempotency`. |
 
 The authenticated system-version endpoint still exposes the numeric expected schema generation for operator compatibility. Release artifacts use the exact migration identifier because it is the stronger deployment contract and naturally includes repair-migration naming.
 
@@ -46,7 +46,7 @@ Each release output contains:
 
 ## Release manifest contract
 
-RG-96A introduces `release-manifest.json` format version 1 as the machine-readable contract between release CI/CD and the future RouteGate update engine.
+RG-96A introduces `release-manifest.json` format version 1 as the machine-readable contract between release CI/CD and the RouteGate update engine.
 
 The manifest records:
 
@@ -68,7 +68,7 @@ Example shape:
   "commit": "<40-character Git SHA>",
   "buildDate": "2026-08-23T12:00:00Z",
   "database": {
-    "expectedMigration": "000136_update_job_discovery"
+    "expectedMigration": "000144_platform_update_rollout_creation_idempotency"
   },
   "artifacts": [
     {
@@ -106,7 +106,7 @@ The attestation step is pinned to an immutable full commit SHA rather than a mut
 
 ### Trust policy
 
-A future RouteGate updater must not treat "has a valid Sigstore signature" as sufficient. Verification must enforce all of these boundaries:
+The RouteGate updater must not treat "has a valid Sigstore signature" as sufficient. Verification enforces all of these boundaries:
 
 1. the artifact or manifest digest matches the attestation subject;
 2. the attestation is associated with `ikaevus/RouteGate`;
@@ -153,11 +153,11 @@ The common core owns bounded platform operations against known RouteGate paths:
 - validate the applied database migration;
 - restore the retained backup, including PostgreSQL when a migration-capable stage may have changed the database.
 
-The common core does **not** download releases, call GitHub, make release-channel decisions, verify Sigstore provenance itself, expose arbitrary shell execution, or decide when an update is allowed. Release discovery and provenance verification remain separate trust gates before any future privileged update transaction.
+The common core does **not** download releases, call GitHub, make release-channel decisions, verify Sigstore provenance itself, expose arbitrary shell execution, or decide when an update is allowed. Release discovery and provenance verification remain separate trust gates before every privileged update transaction.
 
-The production-like deployment wrapper is the first real consumer of the common core. That is intentional: RouteGate CI/CD deployment and future one-click self-update must converge on one host mutation implementation instead of maintaining two subtly different backup/rollback paths.
+The production-like deployment wrapper was the first real consumer of the common core. That is intentional: RouteGate CI/CD deployment and one-click self-update converge on one host mutation implementation instead of maintaining two subtly different backup/rollback paths.
 
-B1 still models the current production-like Hybrid-node platform layout. The later privileged product transaction must become explicitly role-aware so Management, VPN, and Hybrid nodes update only the components they own.
+B1 models the production-like Hybrid-node platform layout. The B2 privileged product transaction is explicitly role-aware so Management, VPN, and Hybrid nodes update only the components they own.
 
 ## Current deployment model
 
@@ -217,11 +217,11 @@ The Manager continues to report:
 - update channel: `development`;
 - `automaticUpdatesSupported: false`.
 
-No one-click or unattended product updater is enabled by RG-96A, RG-96B, RG-96C1, or RG-96C2. C2 adds only an explicit administrator-triggered metadata discovery request.
+The explicit RG-96D1 Admin workflow can drive the verified local Management/Hybrid update pipeline, and RG-96E3g exposes an explicit one-step-at-a-time fleet rollout API over the durable E3 controller. Neither path enables unattended updates: every mutation remains administrator-triggered, while automatic scheduling, release-channel policy, broad fleet concurrency, and automatic retry remain disabled.
 
 Official builds remain builds of the auditable AGPLv3-or-later project. Update behavior must avoid hidden license checks, silent forced updates, opaque telemetry, undocumented outbound update calls, and arbitrary remote shell execution.
 
-## Planned RG-96 continuation
+## RG-96 implementation status and continuation
 
 The intended sequence is:
 
@@ -232,14 +232,15 @@ The intended sequence is:
    - B1 complete: reusable backup/apply/migrate/health/rollback core proven through production-like deployment;
    - B2 complete: narrow, role-aware privileged host-operation transaction suitable for Manager orchestration.
 3. **RG-96C — Update Jobs & API**
-   - C1 complete: durable, auditable Manager-side preflight job foundation;
-   - C2 complete: manual fixed-source release discovery and untrusted platform target selection;
-   - next: artifact staging, execution progress/result state, privileged dispatch, and rollback state.
+   - C1/C2 complete: durable preflight and fixed-source discovery;
+   - C3a-C3d complete: non-mutating verification, bounded staging, privileged dispatch, and durable apply/rollback orchestration.
 4. **RG-96D — One-Click Admin UI**
-   - explicit administrator-approved update workflow with clear risk and progress reporting.
+   - D1 implemented: explicit administrator-approved local update workflow with risk, progress, terminal result, and ambiguous-outcome reporting.
 5. **RG-96E — Multi-Node Rolling Updates**
-   - Management plane first, then compatible Agent rollout with per-node health gates and no all-at-once default.
+   - E1/E2 complete: readiness plus the fixed-policy, at-most-once VPN-node update lifecycle;
+   - E3a-E3g complete: durable ordered snapshots, single-node admission, proof-gated advancement, bounded one-step controller, and the administrator-reachable API;
+   - next: E4 Admin presentation over the existing E3 contract.
 6. **RG-96F — Release Channels & Update Policy**
    - channel selection and controlled policy only after release trust and rollback behavior are proven.
 
-The one-click button is intentionally the final presentation layer over a verified release contract and a recoverable host-update engine, not the starting point of the update architecture.
+The one-click button remains a presentation layer over the verified release contract and recoverable host-update engine, not a separate update implementation.
