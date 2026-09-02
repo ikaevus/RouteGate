@@ -2,8 +2,11 @@ package agents
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 	"github.com/jackc/pgx/v5"
@@ -16,11 +19,25 @@ import (
 // transaction. It does not start the rollout, create update jobs, or dispatch
 // Agent work.
 func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan PlatformUpdateRolloutPlan) (string, error) {
+	id, _, err := r.persistPlatformUpdateRolloutPlan(ctx, plan, "", "")
+	return id, err
+}
+
+var ErrPlatformUpdateRolloutIdempotencyConflict = fmt.Errorf("platform update rollout idempotency conflict")
+
+// PersistPlatformUpdateRolloutPlanIdempotent atomically binds creation evidence
+// to the immutable E3c snapshot. Identical concurrent requests converge through
+// the database uniqueness constraint; conflicting key reuse fails closed.
+func (r *Repository) PersistPlatformUpdateRolloutPlanIdempotent(ctx context.Context, plan PlatformUpdateRolloutPlan, key, requestHash string) (string, bool, error) {
+	return r.persistPlatformUpdateRolloutPlan(ctx, plan, key, requestHash)
+}
+
+func (r *Repository) persistPlatformUpdateRolloutPlan(ctx context.Context, plan PlatformUpdateRolloutPlan, key, requestHash string) (string, bool, error) {
 	if !validPlatformUpdateTargetVersion(plan.TargetVersion) {
-		return "", fmt.Errorf("invalid target version")
+		return "", false, fmt.Errorf("invalid target version")
 	}
 	if len(plan.Entries) == 0 {
-		return "", fmt.Errorf("at least one rollout plan entry is required")
+		return "", false, fmt.Errorf("at least one rollout plan entry is required")
 	}
 
 	seen := make(map[string]struct{}, len(plan.Entries))
@@ -28,10 +45,10 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 	for _, entry := range plan.Entries {
 		serverID, err := canonicalPlatformUpdateServerID(entry.ServerID)
 		if err != nil || serverID != entry.ServerID {
-			return "", fmt.Errorf("rollout plan contains non-canonical server id")
+			return "", false, fmt.Errorf("rollout plan contains non-canonical server id")
 		}
 		if _, ok := seen[serverID]; ok {
-			return "", fmt.Errorf("duplicate rollout plan server id %q", serverID)
+			return "", false, fmt.Errorf("duplicate rollout plan server id %q", serverID)
 		}
 		seen[serverID] = struct{}{}
 		serverIDs = append(serverIDs, serverID)
@@ -39,7 +56,7 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -50,7 +67,7 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 	sort.Strings(lockIDs)
 	for _, serverID := range lockIDs {
 		if err := lockPlatformUpdateServer(ctx, tx, serverID); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 
@@ -58,18 +75,32 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 	for _, serverID := range serverIDs {
 		entry, err := revalidatePlatformUpdateRolloutEntry(ctx, tx, serverID, plan.TargetVersion)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 		entries = append(entries, entry)
 	}
 
 	var rolloutID string
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO platform_update_rollouts (target_version)
-		VALUES ($1)
-		RETURNING id::text
-	`, plan.TargetVersion).Scan(&rolloutID); err != nil {
-		return "", err
+	insertSQL := `INSERT INTO platform_update_rollouts (target_version) VALUES ($1) RETURNING id::text`
+	args := []any{plan.TargetVersion}
+	if key != "" {
+		insertSQL = `INSERT INTO platform_update_rollouts (target_version, creation_idempotency_key, creation_request_hash) VALUES ($1, $2::uuid, $3) RETURNING id::text`
+		args = append(args, key, requestHash)
+	}
+	if err := tx.QueryRow(ctx, insertSQL, args...).Scan(&rolloutID); err != nil {
+		var pgErr *pgconn.PgError
+		if key != "" && errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "platform_update_rollouts_creation_idempotency_key_key" {
+			_ = tx.Rollback(ctx)
+			var existingID, existingHash string
+			if readErr := r.pool.QueryRow(ctx, `SELECT id::text, creation_request_hash FROM platform_update_rollouts WHERE creation_idempotency_key = $1::uuid`, key).Scan(&existingID, &existingHash); readErr != nil {
+				return "", false, readErr
+			}
+			if existingHash != requestHash {
+				return "", false, ErrPlatformUpdateRolloutIdempotencyConflict
+			}
+			return existingID, true, nil
+		}
+		return "", false, err
 	}
 
 	// Migration 142 enforces canonical server lock ordering for every rollout-entry
@@ -111,14 +142,14 @@ func (r *Repository) PersistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 			`, rolloutID, entry.ServerID, plan.TargetVersion, position, status, blockers, entry.observedUpdateJobCount)
 		}
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return rolloutID, nil
+	return rolloutID, false, nil
 }
 
 func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, serverID, targetVersion string) (PlatformUpdateRolloutPlanEntry, error) {
