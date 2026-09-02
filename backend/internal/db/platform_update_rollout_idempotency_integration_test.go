@@ -59,9 +59,30 @@ func TestPlatformUpdateRolloutCreationIdempotency(t *testing.T) {
 	if err != nil || replayed {
 		t.Fatalf("first create id=%q replayed=%t err=%v", rolloutID, replayed, err)
 	}
-	replayedID, replayed, err := repo.PersistPlatformUpdateRolloutPlanIdempotent(ctx, plan, key, requestHash)
+	lockTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin server-lock fixture: %v", err)
+	}
+	if _, err := lockTx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, serverID); err != nil {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("hold server admission lock: %v", err)
+	}
+	replayCtx, cancelReplay := context.WithTimeout(ctx, 2*time.Second)
+	replayedID, replayed, err := repo.PersistPlatformUpdateRolloutPlanIdempotent(replayCtx, plan, key, requestHash)
+	cancelReplay()
 	if err != nil || !replayed || replayedID != rolloutID {
+		_ = lockTx.Rollback(ctx)
 		t.Fatalf("identical replay id=%q replayed=%t err=%v, want id=%q", replayedID, replayed, err, rolloutID)
+	}
+	conflictCtx, cancelConflict := context.WithTimeout(ctx, 2*time.Second)
+	_, _, conflictErr := repo.PersistPlatformUpdateRolloutPlanIdempotent(conflictCtx, plan, key, strings.Repeat("b", 64))
+	cancelConflict()
+	if !errors.Is(conflictErr, agents.ErrPlatformUpdateRolloutIdempotencyConflict) {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("conflicting replay error=%v, want idempotency conflict", conflictErr)
+	}
+	if err := lockTx.Rollback(ctx); err != nil {
+		t.Fatalf("release server admission lock: %v", err)
 	}
 	if _, _, err := repo.PersistPlatformUpdateRolloutPlanIdempotent(ctx, plan, key, strings.Repeat("b", 64)); !errors.Is(err, agents.ErrPlatformUpdateRolloutIdempotencyConflict) {
 		t.Fatalf("conflicting replay error=%v, want idempotency conflict", err)

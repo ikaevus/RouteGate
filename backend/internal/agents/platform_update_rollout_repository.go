@@ -53,6 +53,18 @@ func (r *Repository) persistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		seen[serverID] = struct{}{}
 		serverIDs = append(serverIDs, serverID)
 	}
+	if key != "" {
+		existingID, existingHash, err := r.lookupPlatformUpdateRolloutCreation(ctx, key)
+		if err == nil {
+			if existingHash != requestHash {
+				return "", false, ErrPlatformUpdateRolloutIdempotencyConflict
+			}
+			return existingID, true, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", false, err
+		}
+	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -91,8 +103,8 @@ func (r *Repository) persistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		var pgErr *pgconn.PgError
 		if key != "" && errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "platform_update_rollouts_creation_idempotency_key_key" {
 			_ = tx.Rollback(ctx)
-			var existingID, existingHash string
-			if readErr := r.pool.QueryRow(ctx, `SELECT id::text, creation_request_hash FROM platform_update_rollouts WHERE creation_idempotency_key = $1::uuid`, key).Scan(&existingID, &existingHash); readErr != nil {
+			existingID, existingHash, readErr := r.lookupPlatformUpdateRolloutCreation(ctx, key)
+			if readErr != nil {
 				return "", false, readErr
 			}
 			if existingHash != requestHash {
@@ -150,6 +162,16 @@ func (r *Repository) persistPlatformUpdateRolloutPlan(ctx context.Context, plan 
 		return "", false, err
 	}
 	return rolloutID, false, nil
+}
+
+func (r *Repository) lookupPlatformUpdateRolloutCreation(ctx context.Context, key string) (string, string, error) {
+	var rolloutID, requestHash string
+	err := r.pool.QueryRow(ctx, `
+		SELECT id::text, creation_request_hash
+		FROM platform_update_rollouts
+		WHERE creation_idempotency_key = $1::uuid
+	`, key).Scan(&rolloutID, &requestHash)
+	return rolloutID, requestHash, err
 }
 
 func revalidatePlatformUpdateRolloutEntry(ctx context.Context, tx pgx.Tx, serverID, targetVersion string) (PlatformUpdateRolloutPlanEntry, error) {
