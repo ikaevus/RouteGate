@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/auth"
 )
 
 const rolloutHTTPTestID = "550e8400-e29b-41d4-a716-446655440000"
+const rolloutHTTPTestUserID = "550e8400-e29b-41d4-a716-446655440099"
 
 type rolloutHTTPFakeRepository struct {
 	*fakeAgentAPIRepository
@@ -142,6 +144,7 @@ func TestCreatePlatformUpdateRolloutAuditsIdempotencyConflictWithoutKey(t *testi
 	h := testAgentHandler(f)
 	h.audit = audit.NewRecorderWithRepository(nil, audits)
 	r := rolloutCreateRequest(`{"targetVersion":"v1.2.3","serverIds":["550e8400-e29b-41d4-a716-446655440001"]}`)
+	r = r.WithContext(auth.ContextWithUser(r.Context(), auth.AuthenticatedUser{UserProfile: auth.UserProfile{ID: rolloutHTTPTestUserID}}))
 	w := httptest.NewRecorder()
 	h.CreatePlatformUpdateRollout(w, r)
 	if w.Code != http.StatusConflict || len(audits.inputs) != 1 {
@@ -150,6 +153,9 @@ func TestCreatePlatformUpdateRolloutAuditsIdempotencyConflictWithoutKey(t *testi
 	event := audits.inputs[0]
 	if event.Result != audit.ResultFailure || event.Metadata["reason"] != "idempotency_conflict" {
 		t.Fatalf("unexpected audit: %+v", event)
+	}
+	if event.ActorUserID != rolloutHTTPTestUserID {
+		t.Fatalf("audit actor=%q, want %q", event.ActorUserID, rolloutHTTPTestUserID)
 	}
 	encoded, err := json.Marshal(event)
 	if err != nil {

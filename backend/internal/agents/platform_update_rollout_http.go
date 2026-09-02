@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
@@ -205,5 +206,9 @@ func (h *Handler) recordPlatformUpdateRolloutAudit(r *http.Request, action, id, 
 	if reason != "" {
 		metadata["reason"] = reason
 	}
-	h.recordAudit(r.Context(), audit.EventInput{ActorType: audit.ActorTypeUser, Action: action, ResourceType: "platform_update_rollout", ResourceID: id, Result: result, Metadata: metadata})
+	input := audit.EventInput{ActorType: audit.ActorTypeUser, Action: action, ResourceType: "platform_update_rollout", ResourceID: id, Result: result, Metadata: metadata}
+	if user, ok := auth.UserFromContext(r.Context()); ok {
+		input.ActorUserID = user.ID
+	}
+	h.recordAudit(r.Context(), input)
 }
