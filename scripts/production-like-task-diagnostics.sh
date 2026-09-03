@@ -18,11 +18,14 @@ count_matches() {
 }
 
 classify_journals() {
-  local agent_journal manager_journal
-  agent_journal=$(journalctl -u routegate-agent.service --since '-30 minutes' -n 600 --no-pager -o cat 2>/dev/null || true)
-  manager_journal=$(journalctl -u routegate-manager.service --since '-30 minutes' -n 600 --no-pager -o cat 2>/dev/null || true)
+  local agent_journal manager_journal agent_processes agent_pid agent_restarts
+  agent_journal=$(journalctl -u routegate-agent.service --since '-90 minutes' -n 1800 --no-pager -o cat 2>/dev/null || true)
+  manager_journal=$(journalctl -u routegate-manager.service --since '-90 minutes' -n 1800 --no-pager -o cat 2>/dev/null || true)
+  agent_processes=$(pgrep -xc routegate-agent 2>/dev/null || true)
+  agent_pid=$(systemctl show routegate-agent.service --property=MainPID --value 2>/dev/null || true)
+  agent_restarts=$(systemctl show routegate-agent.service --property=NRestarts --value 2>/dev/null || true)
 
-  log "agent process-task-failed=$(count_matches "$agent_journal" 'process agent task failed') completion-retry-exhausted=$(count_matches "$agent_journal" 'complete agent task after [0-9]+ attempts') http-404=$(count_matches "$agent_journal" 'status 404') http-4xx=$(count_matches "$agent_journal" 'status 4[0-9][0-9]') http-5xx=$(count_matches "$agent_journal" 'status 5[0-9][0-9]') context-timeout=$(count_matches "$agent_journal" 'context deadline exceeded|context canceled') connection-failure=$(count_matches "$agent_journal" 'connection refused|connection reset|broken pipe|no route to host')"
+  log "agent process-count=${agent_processes:-unknown} main-pid-present=$([[ ${agent_pid:-0} =~ ^[1-9][0-9]*$ ]] && printf true || printf false) restarts=${agent_restarts:-unknown} heartbeats=$(count_matches "$agent_journal" 'heartbeat accepted') process-task-failed=$(count_matches "$agent_journal" 'process agent task failed') completion-retry-exhausted=$(count_matches "$agent_journal" 'complete agent task after [0-9]+ attempts') http-404=$(count_matches "$agent_journal" 'status 404') http-4xx=$(count_matches "$agent_journal" 'status 4[0-9][0-9]') http-5xx=$(count_matches "$agent_journal" 'status 5[0-9][0-9]') context-timeout=$(count_matches "$agent_journal" 'context deadline exceeded|context canceled') connection-failure=$(count_matches "$agent_journal" 'connection refused|connection reset|broken pipe|no route to host')"
   log "manager complete-config-failed=$(count_matches "$manager_journal" 'complete agent config task failed') complete-operation-failed=$(count_matches "$manager_journal" 'complete agent operation task failed') database-error=$(count_matches "$manager_journal" 'database_error|database error') task-not-found=$(count_matches "$manager_journal" 'task_not_found|task not found')"
 }
 
@@ -47,6 +50,7 @@ database_diagnostics() {
     SELECT
       status,
       COALESCE(floor(extract(epoch FROM (completed_at - started_at)))::bigint, -1),
+      COALESCE(floor(extract(epoch FROM (now() - created_at)))::bigint, -1),
       COALESCE(jsonb_array_length(COALESCE(result_payload->'components', '[]'::jsonb)), 0),
       length(COALESCE(result_payload::text, '')),
       CASE
@@ -62,9 +66,9 @@ database_diagnostics() {
     LIMIT 1
   " 2>/dev/null || true)
   if [[ -n "$latest" ]]; then
-    local status duration components payload_size error_class
-    IFS='|' read -r status duration components payload_size error_class <<<"$latest"
-    log "latest-config-job status=${status:-unknown} duration-seconds=${duration:--1} result-components=${components:-0} result-payload-bytes=${payload_size:-0} error-class=${error_class:-unknown}"
+    local status duration age components payload_size error_class
+    IFS='|' read -r status duration age components payload_size error_class <<<"$latest"
+    log "latest-config-job status=${status:-unknown} duration-seconds=${duration:--1} age-seconds=${age:--1} result-components=${components:-0} result-payload-bytes=${payload_size:-0} error-class=${error_class:-unknown}"
   else
     log 'latest-config-job=none'
   fi
@@ -75,7 +79,7 @@ database_diagnostics() {
       count(*)
     FROM audit_events
     WHERE action = 'agent.task.completion_rejected'
-      AND created_at > now() - interval '30 minutes'
+      AND created_at > now() - interval '90 minutes'
     GROUP BY COALESCE(metadata->>'reason', 'unknown')
     ORDER BY 1
   " 2>/dev/null || true)
@@ -93,7 +97,7 @@ database_diagnostics() {
     SELECT count(*)
     FROM audit_events
     WHERE action = 'agent.task.completed'
-      AND created_at > now() - interval '30 minutes'
+      AND created_at > now() - interval '90 minutes'
   " 2>/dev/null || true)
   log "completion-audit-success=${completed_count:-unknown}"
 }
