@@ -56,7 +56,9 @@ jobs:
           ./scripts/build-release-bundle.sh
           bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
           test -s "$bundle"
-          tar -tzf "$bundle" | grep -qx './metadata/manifest.env'
+          listing="${RUNNER_TEMP}/routegate-observability-bundle.files"
+          tar -tzf "$bundle" > "$listing"
+          grep -Fxq './metadata/manifest.env' "$listing"
 
       - name: Validate production-like scripts locally
         shell: bash
