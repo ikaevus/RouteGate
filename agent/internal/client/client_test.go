@@ -104,6 +104,47 @@ func TestAdvertisedCapabilitiesIncludeManagerCertificateDiagnostic(t *testing.T)
 	}
 }
 
+func TestNextTaskDecodesRenderedConfigLargerThanErrorBodyLimit(t *testing.T) {
+	padding := strings.Repeat("x", errorResponseBodyLimit*2)
+	renderedConfig := json.RawMessage(`{"metadata":{"vpnCores":[{"core":"sing-box","protocol":"vless","transport":"tcp","security":"reality"}]},"singBox":{"inbounds":[{"type":"vless","padding":"` + padding + `"}]}}`)
+	if len(renderedConfig) <= errorResponseBodyLimit {
+		t.Fatalf("test rendered config is too small: %d", len(renderedConfig))
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/agent/tasks/next" {
+			t.Fatalf("unexpected next-task request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"task": map[string]any{
+				"id":              "job-1",
+				"kind":            "config_apply",
+				"serverId":        "server-1",
+				"agentId":         "agent-1",
+				"configVersionId": "version-1",
+				"status":          "in_progress",
+				"renderedConfig":  renderedConfig,
+			},
+		}); err != nil {
+			t.Fatalf("encode next task response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	task, err := client.NextTask(context.Background(), "agent-token")
+	if err != nil {
+		t.Fatalf("next task: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected task")
+	}
+	if len(task.RenderedConfig) != len(renderedConfig) {
+		t.Fatalf("rendered config length = %d, want %d", len(task.RenderedConfig), len(renderedConfig))
+	}
+}
+
 func TestCompleteTaskRetriesTransientManagerFailure(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
