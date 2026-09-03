@@ -30,6 +30,14 @@ const knownStates = new Set<VPNCoreState>([
   'unknown',
 ]);
 
+const protocolRuntimeTypes: Record<string, string> = {
+  vless: 'sing-box',
+  shadowsocks: 'sing-box',
+  wireguard: 'wireguard',
+  hysteria2: 'hysteria',
+  mtproto: 'mtg',
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -45,20 +53,33 @@ function readState(value: unknown): VPNCoreState {
     : 'unknown';
 }
 
+export function resolveVPNCoreType(value?: string | null): string | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return null;
+  return protocolRuntimeTypes[normalized] ?? normalized;
+}
+
 export function parseVPNCoreStatus(
   capabilities?: Record<string, unknown> | null,
-	desiredType?: string | null,
+  desiredType?: string | null,
 ): VPNCoreStatus | null {
-	if (!capabilities) {
-		return null;
+  if (!capabilities) {
+    return null;
   }
-	const normalizedType = desiredType?.trim().toLowerCase();
-	const cores = Array.isArray(capabilities.vpnCores) ? capabilities.vpnCores.filter(isRecord) : [];
-	const selected = normalizedType
-		? cores.find((candidate) => readString(candidate.type)?.toLowerCase() === normalizedType)
-		: undefined;
-	const raw = selected ?? (isRecord(capabilities.vpnCore) ? capabilities.vpnCore : undefined);
-	if (!raw) return null;
+
+  const runtimeType = resolveVPNCoreType(desiredType);
+  const cores = Array.isArray(capabilities.vpnCores) ? capabilities.vpnCores.filter(isRecord) : [];
+  const selected = runtimeType
+    ? cores.find((candidate) => readString(candidate.type)?.toLowerCase() === runtimeType)
+    : undefined;
+  const legacy = isRecord(capabilities.vpnCore) ? capabilities.vpnCore : undefined;
+
+  // Legacy Agents reported only the original sing-box vpnCore object. Reusing
+  // that object for a different requested runtime makes a healthy sing-box look
+  // like healthy WireGuard/Hysteria/MTG and breaks multi-protocol onboarding.
+  const raw = selected ?? (!runtimeType || runtimeType === 'sing-box' ? legacy : undefined);
+  if (!raw) return null;
+
   const installed = raw.installed === true;
   const reportedState = readState(raw.state);
   const state = !installed && reportedState !== 'unknown'
@@ -66,7 +87,7 @@ export function parseVPNCoreStatus(
     : reportedState;
 
   return {
-		type: readString(raw.type) ?? normalizedType ?? 'sing-box',
+    type: readString(raw.type) ?? runtimeType ?? 'sing-box',
     installed,
     state,
     version: readString(raw.version),
