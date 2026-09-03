@@ -5,6 +5,7 @@ import { getSystemVersion } from '../../entities/system/api/systemApi';
 import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { DeliverySettingsPanel } from './DeliverySettingsPanel';
+import { FleetUpdateRolloutPanel } from './FleetUpdateRolloutPanel';
 import { TelegramRecipientsPanel } from './TelegramRecipientsPanel';
 import { UpdateWorkflowPanel } from './UpdateWorkflowPanel';
 import './SettingsPage.css';
@@ -200,6 +201,8 @@ export function SettingsPage() {
                 </div>
               )}
             </section>
+
+            <FleetUpdateRolloutPanel managerVersion={system.manager.version} />
           </div>
 
           <aside className="panel settings-panel settings-update-panel">

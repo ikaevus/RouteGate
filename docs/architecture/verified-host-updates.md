@@ -249,5 +249,5 @@ The Manager continues to report manual update status and `automaticUpdatesSuppor
 - RG-96D — explicit one-click Admin UI workflow: implemented through D1.
 - RG-96E1/E2 — rollout readiness and fixed-policy at-most-once VPN-node update lifecycle: complete.
 - RG-96E3 — durable one-at-a-time rollout orchestration and administrator-reachable API: complete through E3g.
-- RG-96E4 — Admin rollout presentation and operator controls over E3: planned.
-- RG-96F — release channels and controlled update policy: planned.
+- RG-96E4 — Admin rollout presentation and explicit operator controls over E3: implemented.
+- RG-96F — release channels and controlled update policy: separate future evolution.
