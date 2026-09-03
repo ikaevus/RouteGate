@@ -1,26 +1,28 @@
-/* RG-114 visual trial: Realtime Colors inspired light theme.
- * Source palette: text #050316, background #fbfbfe, primary #2f27ce,
- * secondary #dddbff, accent #443dff. Dark theme is intentionally untouched.
+/* RG-114 visual trial v2: neutral RouteGate Light.
+ * The Realtime Colors experiment validated the near-white direction, but the
+ * indigo/lavender family was too dominant in the real admin UI. This pass keeps
+ * the light hierarchy while returning RouteGate to a neutral slate + blue
+ * product palette. Dark theme is intentionally untouched.
  */
 :root[data-theme='light'] {
-  --rg-light-canvas: #fbfbfe;
-  --rg-light-chrome: #f8f8fd;
-  --rg-light-sidebar: #f6f5ff;
+  --rg-light-canvas: #f5f7fb;
+  --rg-light-chrome: #ffffff;
+  --rg-light-sidebar: #f8fafd;
   --rg-light-surface: #ffffff;
-  --rg-light-surface-raised: #f8f8ff;
-  --rg-light-line: #e2e1ee;
-  --rg-light-line-strong: #ceccdf;
-  --rg-light-blue-tint: #eeedff;
-  --rg-light-text: #050316;
-  --rg-light-muted: #66647a;
-  --rg-light-text-strong: #050316;
-  --rg-light-text-muted: #66647a;
-  --rg-light-code: #f0efff;
-  --rg-light-code-line: #c9c6ff;
+  --rg-light-surface-raised: #f8fafc;
+  --rg-light-line: #d8e0ea;
+  --rg-light-line-strong: #c5d0dc;
+  --rg-light-blue-tint: #eaf2ff;
+  --rg-light-text: #0f172a;
+  --rg-light-muted: #64748b;
+  --rg-light-text-strong: #0f172a;
+  --rg-light-text-muted: #64748b;
+  --rg-light-code: #f1f5f9;
+  --rg-light-code-line: #cbd5e1;
 
-  --rg-primary: #2f27ce;
-  --rg-primary-hover: #251eb3;
-  --rg-accent-cyan: #443dff;
+  --rg-primary: #2563eb;
+  --rg-primary-hover: #1d4ed8;
+  --rg-accent-cyan: #0ea5e9;
   --rg-bg-deep: var(--rg-light-canvas);
   --rg-bg-main: var(--rg-light-chrome);
   --rg-bg-muted: var(--rg-light-sidebar);
@@ -33,7 +35,7 @@
 
 /* Light-theme icon contrast. */
 :root[data-theme='light'] .nav-icon {
-  color: #77748c;
+  color: #718096;
 }
 
 :root[data-theme='light'] .nav-link-active .nav-icon,
@@ -41,11 +43,11 @@
   color: var(--rg-primary);
 }
 
-/* Audit actor initials need a clear anchor without bringing back the old blue canvas. */
+/* Audit actor initials use the RouteGate blue tint instead of lavender. */
 :root[data-theme='light'] .audit-avatar {
-  background: #eeedff;
-  border-color: #c9c6ff;
-  color: #2f27ce;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
   font-weight: 800;
 }
 
@@ -53,8 +55,8 @@
  * RouteGate Light — feature-screen completion
  *
  * Older screens were authored dark-first with literal rgba/#hex values. The
- * rules below map those shared surfaces onto the new near-white semantic
- * hierarchy so feature pages inherit the same visual language as Dashboard.
+ * rules below map those shared surfaces onto the neutral light hierarchy so
+ * feature pages inherit the same visual language as Dashboard.
  * -------------------------------------------------------------------------- */
 
 /* Page-level hierarchy. */
@@ -66,7 +68,7 @@
 :root[data-theme='light'] .portal-page .page-header {
   background: var(--rg-light-chrome);
   border-color: var(--rg-light-line-strong);
-  box-shadow: 0 8px 22px rgba(5, 3, 22, 0.05);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
 }
 
 :root[data-theme='light'] .feature-list-panel,
@@ -82,7 +84,7 @@
 :root[data-theme='light'] .credentials-panel {
   background: var(--rg-light-surface);
   border-color: var(--rg-light-line);
-  box-shadow: 0 8px 22px rgba(5, 3, 22, 0.045);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
 /* Titles and secondary copy: remove dark-theme white/gray literals. */
@@ -172,14 +174,14 @@
 :root[data-theme='light'] .field input:hover,
 :root[data-theme='light'] .field select:hover,
 :root[data-theme='light'] .field textarea:hover {
-  background-color: #f6f5ff;
-  border-color: #9f9aff;
+  background-color: #f8fafc;
+  border-color: #93c5fd;
 }
 
 :root[data-theme='light'] .vpn-account-management-toolbar input::placeholder,
 :root[data-theme='light'] .field input::placeholder,
 :root[data-theme='light'] .field textarea::placeholder {
-  color: #85829a;
+  color: #94a3b8;
 }
 
 :root[data-theme='light'] .vpn-account-management-toolbar select option,
@@ -200,8 +202,8 @@
 :root[data-theme='light'] .vpn-account-management-head,
 :root[data-theme='light'] .admin-table-head,
 :root[data-theme='light'] .table-head {
-  background: #f3f2ff;
-  color: #5d5974;
+  background: #f1f5f9;
+  color: #475569;
   border-color: var(--rg-light-line-strong);
 }
 
@@ -218,14 +220,14 @@
 :root[data-theme='light'] .vpn-account-row-selected,
 :root[data-theme='light'] .admin-table-row:hover,
 :root[data-theme='light'] .table-row:hover {
-  background: #eeedff;
-  border-color: #b8b4ff;
+  background: #eaf2ff;
+  border-color: #93c5fd;
 }
 
 /* Protocol setup states should remain semantic, but readable in Light. */
 :root[data-theme='light'] .protocol-recommended-setup {
-  background: #f1f0ff;
-  border-color: #c4c1ff;
+  background: #eff6ff;
+  border-color: #bfdbfe;
 }
 
 :root[data-theme='light'] .protocol-recommended-setup-ready {
@@ -247,7 +249,7 @@
   color: #74430a;
 }
 
-/* Code and immutable-value surfaces use the secondary tint rather than a dark block. */
+/* Code and immutable-value surfaces stay neutral and readable. */
 :root[data-theme='light'] .credentials-detail-list code,
 :root[data-theme='light'] .subscription-url-value,
 :root[data-theme='light'] .subscription-url-code,
@@ -257,13 +259,13 @@
 :root[data-theme='light'] .vpn-accounts-page .copyable-value code {
   background: var(--rg-light-code);
   border-color: var(--rg-light-code-line);
-  color: #211b57;
+  color: #334155;
 }
 
 /* Traffic cards and limit controls. */
 :root[data-theme='light'] .traffic-progress-track {
-  background: #e7e5f5;
-  border-color: #ceccdf;
+  background: #e2e8f0;
+  border-color: #cbd5e1;
 }
 
 :root[data-theme='light'] .traffic-checkbox-field {
@@ -274,7 +276,7 @@
 :root[data-theme='light'] .subscription-qr-modal {
   background: var(--rg-light-surface);
   border-color: var(--rg-light-line-strong);
-  box-shadow: 0 24px 60px rgba(5, 3, 22, 0.14);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
 }
 
 :root[data-theme='light'] .subscription-qr-empty-state {
@@ -300,7 +302,7 @@
   color: var(--rg-light-text-muted);
 }
 
-/* Links use the selected primary directly. */
+/* Links use RouteGate blue. */
 :root[data-theme='light'] .text-button,
 :root[data-theme='light'] .text-link,
 :root[data-theme='light'] .widget-link {

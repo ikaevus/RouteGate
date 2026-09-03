@@ -3,62 +3,67 @@
  * migrated to semantic theme tokens.
  */
 
-/* Readability baseline for the near-white Realtime Colors direction. */
+/* Readability baseline for the neutral RouteGate Light direction. */
 :root[data-theme='light'] {
-  --rg-light-muted: #66647a;
-  --rg-light-text-muted: #66647a;
-  --rg-light-line: #e2e1ee;
-  --rg-light-line-strong: #ceccdf;
+  --rg-light-muted: #64748b;
+  --rg-light-text-muted: #64748b;
+  --rg-light-line: #d8e0ea;
+  --rg-light-line-strong: #c5d0dc;
 }
 
-/* Navigation and shared controls should use the selected indigo family rather
- * than the old RouteGate Light blue literals. */
+/* Navigation and shared controls use the RouteGate blue family without tinting
+ * the surrounding chrome. */
 :root[data-theme='light'] .nav a,
 :root[data-theme='light'] .nav-link {
-  color: #4c495e;
+  color: #475569;
 }
 
 :root[data-theme='light'] .nav a:hover,
 :root[data-theme='light'] .nav-link:hover {
-  background: #f3f2ff;
-  border-color: #d4d1ff;
-  color: #050316;
+  background: #eff6ff;
+  border-color: #dbeafe;
+  color: #0f172a;
 }
 
 :root[data-theme='light'] .nav-link-active,
 :root[data-theme='light'] .nav a.nav-link-active {
-  background: #eeedff;
-  border-color: #b8b4ff;
-  color: #050316;
+  background: #eaf2ff;
+  border-color: #93c5fd;
+  color: #0f172a;
   box-shadow: inset 3px 0 0 var(--rg-primary);
 }
 
 :root[data-theme='light'] .small-button {
-  background: #eeedff;
-  border-color: #c8c5ff;
-  color: #2f27ce;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 :root[data-theme='light'] .small-button:hover:not(:disabled) {
-  background: #e6e4ff;
-  border-color: #aaa5ff;
+  background: #dbeafe;
+  border-color: #93c5fd;
 }
 
 :root[data-theme='light'] .admin-profile-chip:hover,
 :root[data-theme='light'] .admin-profile-chip:focus-visible,
 :root[data-theme='light'] .admin-profile-chip[aria-expanded='true'] {
-  background: #f3f2ff;
-  border-color: #c8c5ff;
+  background: #f8fafc;
+  border-color: #bfdbfe;
+}
+
+:root[data-theme='light'] .admin-profile-chip > span {
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 :root[data-theme='light'] .sidebar-theme-control[aria-pressed='true'] i {
   background: var(--rg-primary);
-  border-color: #443dff;
+  border-color: #60a5fa;
 }
 
 :root[data-theme='light'] .quick-action-list a:hover {
-  background: #f3f2ff;
-  color: #050316;
+  background: #eff6ff;
+  color: #0f172a;
 }
 
 :root[data-theme='light'] .quick-action-list a strong,
@@ -69,8 +74,8 @@
 :root[data-theme='light'] .badge-disabled,
 :root[data-theme='light'] .badge-unassigned,
 :root[data-theme='light'] .badge-custom {
-  background: #f1f0f6;
-  color: #5d5974 !important;
+  background: #f1f5f9;
+  color: #475569 !important;
 }
 
 :root[data-theme='light'] .badge-direct,
@@ -79,15 +84,15 @@
 :root[data-theme='light'] .badge-staged,
 :root[data-theme='light'] .badge-pending,
 :root[data-theme='light'] .audit-area-badge {
-  background: #eeedff;
-  color: #2f27ce !important;
+  background: #eff6ff;
+  color: #1d4ed8 !important;
 }
 
 /* Table headings and metadata. */
 :root[data-theme='light'] .admin-table-head > span,
 :root[data-theme='light'] .table-head > span,
 :root[data-theme='light'] .vpn-account-management-head > span {
-  color: #5d5974 !important;
+  color: #475569 !important;
 }
 
 :root[data-theme='light'] .admin-table-row > span:not(.badge),
@@ -103,7 +108,7 @@
 :root[data-theme='light'] .table-row > code,
 :root[data-theme='light'] .config-versions-table-row code,
 :root[data-theme='light'] .apply-jobs-table-row code {
-  color: #403d58 !important;
+  color: #334155 !important;
 }
 
 :root[data-theme='light'] .timestamp-stack > strong,
@@ -135,26 +140,26 @@
 :root[data-theme='light'] .admin-main .field > span,
 :root[data-theme='light'] .admin-main .traffic-checkbox-field > label,
 :root[data-theme='light'] .admin-main .traffic-checkbox-field > p {
-  color: #3f3c52 !important;
+  color: #334155 !important;
 }
 
 /* Config Deploy stage summaries. */
 :root[data-theme='light'] .stage-pill {
-  background: #f1f0ff;
-  border-color: #c8c5ff;
+  background: #eff6ff;
+  border-color: #bfdbfe;
 }
 
 :root[data-theme='light'] .stage-pill > span {
-  color: #5d5974 !important;
+  color: #475569 !important;
 }
 
 :root[data-theme='light'] .stage-pill > strong {
-  color: #050316 !important;
+  color: #0f172a !important;
 }
 
 /* Protocol Settings server metadata. */
 :root[data-theme='light'] .protocol-server-table-row > span:not(.badge) {
-  color: #5d5974 !important;
+  color: #475569 !important;
 }
 
 /* Server descriptions are useful identity metadata. Let them wrap and keep
@@ -176,11 +181,11 @@
   padding-right: 18px !important;
 }
 
-/* The default routing-profile badge belongs to the secondary-tint family. */
+/* The default routing-profile badge belongs to the blue-tint family. */
 :root[data-theme='light'] .badge-default {
-  background: #eeedff !important;
-  border: 1px solid #c8c5ff;
-  color: #2f27ce !important;
+  background: #eff6ff !important;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8 !important;
 }
 
 /* User Portal instructions are ordinary content, never a dark console in Light. */
@@ -206,7 +211,7 @@
 :root[data-theme='light'] .portal-instruction-button:hover,
 :root[data-theme='light'] .portal-instruction-button-selected {
   background: var(--rg-light-blue-tint) !important;
-  border-color: #b8b4ff !important;
+  border-color: #93c5fd !important;
 }
 
 :root[data-theme='light'] .portal-instruction-button-selected {
@@ -240,7 +245,7 @@
   padding-right: 12px;
 }
 
-/* Portal chrome also needs crisp foregrounds on the near-white surface. */
+/* Portal chrome also needs crisp foregrounds on the neutral surface. */
 :root[data-theme='light'] .portal-app-shell .brand-title,
 :root[data-theme='light'] .portal-app-shell .portal-topnav a {
   color: var(--rg-light-text-strong) !important;
@@ -262,13 +267,13 @@
 
 /* VPN client runtime facts are normal Light-theme information cards. */
 :root[data-theme='light'] .vpn-client-runtime-grid > div {
-  background: #f8f8ff !important;
+  background: #f8fafc !important;
   border-color: var(--rg-light-line-strong) !important;
   box-shadow: none !important;
 }
 
 :root[data-theme='light'] .vpn-client-runtime-grid span {
-  color: #5d5974 !important;
+  color: #475569 !important;
 }
 
 :root[data-theme='light'] .vpn-client-runtime-grid strong {

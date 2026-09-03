@@ -43,26 +43,26 @@
   color: #dbeafe;
 }
 
-/* Light theme: the locale control follows the near-white raised topbar surface. */
+/* Light theme: neutral topbar surface with RouteGate blue selection. */
 :root[data-theme='light'] .rg-locale-switcher {
   background: #ffffff;
-  border-color: #ceccdf;
+  border-color: #c5d0dc;
   box-shadow: none;
 }
 
 :root[data-theme='light'] .rg-locale-option {
-  color: #66647a;
+  color: #64748b;
 }
 
 :root[data-theme='light'] .rg-locale-option:hover {
-  background: #f3f2ff;
-  color: #050316;
+  background: #eff6ff;
+  color: #0f172a;
 }
 
 :root[data-theme='light'] .rg-locale-option-active {
-  background: #eeedff;
-  border-color: #c8c5ff;
-  color: #2f27ce;
+  background: #eaf2ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
 }
 
 .portal-topbar-actions,
