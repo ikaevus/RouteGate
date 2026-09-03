@@ -83,11 +83,77 @@
   border-radius: 12px;
 }
 
+.vpn-protocol-access-card-pending {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.vpn-protocol-access-card-retiring {
+  border-color: rgba(96, 165, 250, 0.32);
+  background: rgba(59, 130, 246, 0.04);
+}
+
 .vpn-protocol-access-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.vpn-protocol-access-card-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.vpn-protocol-access-state {
+  font-weight: 700;
+}
+
+.vpn-protocol-access-state-active {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.11);
+  color: #86efac;
+}
+
+.vpn-protocol-access-state-pending {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.11);
+  color: #fde68a;
+}
+
+.vpn-protocol-access-state-retiring {
+  border-color: rgba(96, 165, 250, 0.34);
+  background: rgba(59, 130, 246, 0.11);
+  color: #bfdbfe;
+}
+
+.vpn-protocol-access-pending {
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  align-content: center;
+  padding: 14px;
+  border: 1px dashed rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.25);
+}
+
+.vpn-protocol-access-pending strong {
+  color: var(--rg-text-primary, #e5e7eb);
+  font-size: 13px;
+}
+
+.vpn-protocol-access-pending span,
+.vpn-protocol-access-retiring-note {
+  color: var(--rg-text-secondary, #94a3b8);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.vpn-protocol-access-retiring-note {
+  padding-top: 2px;
 }
 
 .vpn-protocol-access-meta {
@@ -110,10 +176,6 @@
   line-height: 1.45;
 }
 
-.vpn-multi-protocol-access-panel > .form-message-warning {
-  display: none;
-}
-
 .traffic-limit-form-grid .field input[type='number'] {
   box-sizing: border-box;
   min-height: 44px;
@@ -127,5 +189,14 @@
   .vpn-protocol-choice-grid,
   .vpn-protocol-access-grid {
     grid-template-columns: 1fr;
+  }
+
+  .vpn-protocol-access-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vpn-protocol-access-card-statuses {
+    justify-content: flex-start;
   }
 }
