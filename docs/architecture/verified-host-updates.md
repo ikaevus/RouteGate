@@ -1,5 +1,7 @@
 # Verified Host Update Trust Boundary
 
+Status: complete through the RG-96A-E boundary. See the [RG-96 closeout record](rg-96-closeout.md).
+
 This document records the RG-96B host-update security boundary that sits between RouteGate release artifacts and privileged host mutation.
 
 ## Purpose

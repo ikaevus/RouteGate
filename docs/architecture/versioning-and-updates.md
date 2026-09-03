@@ -1,5 +1,7 @@
 # Updates, Releases, and Versioning
 
+Status: closed through RG-96E. See the [RG-96 closeout record](rg-96-closeout.md). RG-96F remains a separate future evolution.
+
 RouteGate separates software delivery from installation updates. CI/CD produces and validates release artifacts; the update subsystem consumes those artifacts only through explicit administrator-approved jobs and the verified host-mutation boundary.
 
 ## Component versioning
@@ -222,6 +224,8 @@ The explicit RG-96D1 Admin workflow can drive the verified local Management/Hybr
 Official builds remain builds of the auditable AGPLv3-or-later project. Update behavior must avoid hidden license checks, silent forced updates, opaque telemetry, undocumented outbound update calls, and arbitrary remote shell execution.
 
 ## RG-96 implementation status and continuation
+
+RG-96A-E are closed under the explicit administrator-driven update contract recorded in the [RG-96 closeout](rg-96-closeout.md). The sequence below remains the implementation map; RG-96F is deliberately deferred rather than required for closure.
 
 The intended sequence is:
 
