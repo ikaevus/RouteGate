@@ -60,8 +60,10 @@ jobs:
           ./scripts/build-release-bundle.sh
           bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
           test -s "$bundle"
-          tar -tzf "$bundle" | grep -qx './metadata/manifest.env'
-          tar -tzf "$bundle" | grep -qx './tools/routegate-update-core.sh'
+          listing="${RUNNER_TEMP}/routegate-production-like-bundle.files"
+          tar -tzf "$bundle" > "$listing"
+          grep -Fxq './metadata/manifest.env' "$listing"
+          grep -Fxq './tools/routegate-update-core.sh' "$listing"
 
       - name: Validate deploy scripts locally
         shell: bash
