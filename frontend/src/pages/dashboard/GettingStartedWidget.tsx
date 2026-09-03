@@ -10,7 +10,6 @@ import {
   getServers,
   renderConfig,
   validateConfigVersion,
-  type ConfigVersion,
   type ProtocolSettingsResponse,
 } from '../../entities/server/api/serverApi';
 import {
@@ -77,18 +76,6 @@ function supportsInstallation(capabilities?: Record<string, unknown>): boolean {
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
-}
-
-function timestamp(value?: string | null): number {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function latestAppliedVersion(versions: ConfigVersion[]): ConfigVersion | null {
-  return [...versions]
-    .filter((version) => Boolean(version.appliedAt) || version.status.trim().toLowerCase() === 'applied')
-    .sort((left, right) => timestamp(right.appliedAt ?? right.createdAt) - timestamp(left.appliedAt ?? left.createdAt))[0] ?? null;
 }
 
 function getCopy() {
@@ -317,20 +304,12 @@ export function GettingStartedWidget() {
     refetchInterval: deployJobId ? 2_000 : 10_000,
   });
 
-  const latestApplied = latestAppliedVersion(configVersionsQuery.data?.items ?? []);
-  const sourceUpdatedAt = Math.max(
-    timestamp(protocolQuery.data?.updatedAt),
-    timestamp(firstReadyAccount?.updatedAt),
-  );
-  const appliedConfigIsCurrent = Boolean(
-    latestApplied
-      && timestamp(latestApplied.createdAt) >= sourceUpdatedAt
-      && sourceUpdatedAt > 0,
-  );
-  // Getting Started is a first-run workflow, not a long-lived runtime monitor.
-  // Once a current configuration has been successfully applied for the first
-  // active account, later runtime health belongs to the normal monitoring UI.
-  const onboardingReady = Boolean(accountReady && appliedConfigIsCurrent);
+  const activeConfigVersionId = configVersionsQuery.data?.currentConfigVersionId?.trim() ?? '';
+  // Getting Started is a first-run workflow. The Manager's active config version
+  // is set only after an Agent-confirmed successful apply, so it is the durable
+  // completion signal. Source timestamps are intentionally not used here because
+  // safe protocol activation can update account metadata after that successful apply.
+  const onboardingReady = Boolean(accountReady && activeConfigVersionId);
 
   const installationMutation = useMutation({
     mutationFn: () => createVPNCoreInstallation(primaryServer?.id ?? ''),
