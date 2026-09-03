@@ -217,7 +217,7 @@ The Manager continues to report:
 - update channel: `development`;
 - `automaticUpdatesSupported: false`.
 
-The explicit RG-96D1 Admin workflow can drive the verified local Management/Hybrid update pipeline, and RG-96E3g exposes an explicit one-step-at-a-time fleet rollout API over the durable E3 controller. Neither path enables unattended updates: every mutation remains administrator-triggered, while automatic scheduling, release-channel policy, broad fleet concurrency, and automatic retry remain disabled.
+The explicit RG-96D1 Admin workflow can drive the verified local Management/Hybrid update pipeline, while RG-96E3g/E4 expose the durable VPN-node rollout through ordered selection, progress, recovery, and explicit one-step-at-a-time controls. Neither path enables unattended updates: every mutation remains administrator-triggered, while automatic scheduling, release-channel policy, broad fleet concurrency, and automatic retry remain disabled.
 
 Official builds remain builds of the auditable AGPLv3-or-later project. Update behavior must avoid hidden license checks, silent forced updates, opaque telemetry, undocumented outbound update calls, and arbitrary remote shell execution.
 
@@ -239,8 +239,8 @@ The intended sequence is:
 5. **RG-96E — Multi-Node Rolling Updates**
    - E1/E2 complete: readiness plus the fixed-policy, at-most-once VPN-node update lifecycle;
    - E3a-E3g complete: durable ordered snapshots, single-node admission, proof-gated advancement, bounded one-step controller, and the administrator-reachable API;
-   - next: E4 Admin presentation over the existing E3 contract.
+   - E4 complete: Admin presentation, idempotent creation recovery, durable status, and explicit one-step controls over the existing E3 contract.
 6. **RG-96F — Release Channels & Update Policy**
-   - channel selection and controlled policy only after release trust and rollback behavior are proven.
+   - separate future evolution for channel selection and controlled policy; it is not required to close the explicit administrator-driven update path.
 
 The one-click button remains a presentation layer over the verified release contract and recoverable host-update engine, not a separate update implementation.

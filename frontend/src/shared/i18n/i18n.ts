@@ -15,6 +15,7 @@ import {
 } from './telegramPairingTranslations';
 import { portalV2En, portalV2Ru, type PortalV2TranslationKey } from './portalV2Translations';
 import { nodeGroupsEn, nodeGroupsRu, type NodeGroupTranslationKey } from './nodeGroupTranslations';
+import { rolloutEn, rolloutRu, type RolloutTranslationKey } from './rolloutTranslations';
 
 export type Locale = 'en' | 'ru';
 export type TranslationKey =
@@ -25,7 +26,8 @@ export type TranslationKey =
   | DeploymentHistoryTranslationKey
   | TelegramPairingTranslationKey
   | PortalV2TranslationKey
-  | NodeGroupTranslationKey;
+  | NodeGroupTranslationKey
+  | RolloutTranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
@@ -38,6 +40,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...telegramPairingEn,
     ...portalV2En,
     ...nodeGroupsEn,
+    ...rolloutEn,
     // Server Details decides the next action from the deployment role.
     // Keep the generic creation banner true for Management, VPN, and Hybrid nodes.
     'servers.createSuccess': 'Server created successfully.',
@@ -51,6 +54,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...telegramPairingRu,
     ...portalV2Ru,
     ...nodeGroupsRu,
+    ...rolloutRu,
     'servers.createSuccess': 'Сервер успешно создан.',
   },
 };

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-RG-96E extends the completed local Management/Hybrid update pipeline into a safe multi-node rollout model. E1 established the read-only readiness boundary; E2 added the fixed-policy remote VPN-node lifecycle; E3 now provides durable ordered orchestration and an administrator-reachable one-step API.
+RG-96E extends the completed local Management/Hybrid update pipeline into a safe multi-node rollout model. E1 established the read-only readiness boundary; E2 added the fixed-policy remote VPN-node lifecycle; E3 provides durable ordered orchestration and an administrator-reachable one-step API; E4 completes the explicit Admin presentation over that contract.
 
 ## Canonical order
 
@@ -70,6 +70,6 @@ The Manager stops rollout progression on failed or unknown outcomes and must not
 - **E1 — Readiness / planning (complete):** read-only inventory and eligibility classification. No remote mutation.
 - **E2 — VPN-node verified update lifecycle (complete):** narrow Agent-side verification, recoverable host transaction, at-most-once dispatch, reconciliation, and explicit single-node enablement.
 - **E3 — Durable rolling orchestration (complete through E3g):** ordered immutable snapshots, one-at-a-time attempts, per-node proof gates, stop/unknown-outcome semantics, bounded controller, and Admin API.
-- **E4 — Admin presentation (next):** rollout progress and operator controls over the durable E3 contract.
+- **E4 — Admin presentation (complete):** ordered selection, idempotent creation recovery, durable progress, terminal diagnostics, and explicit one-step operator controls over E3.
 
 Release channels, automatic scheduling, unattended policy, and broad fleet concurrency remain RG-96F or later concerns.

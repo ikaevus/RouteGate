@@ -246,6 +246,9 @@ jobs:
       - name: Check localization
         run: npm run i18n:check
 
+      - name: Test rollout UI safety model
+        run: npm run test:rollout
+
       - name: Build frontend
         run: npm run build
 
