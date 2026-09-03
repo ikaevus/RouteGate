@@ -49,6 +49,26 @@ classify_journals() {
   log "manager complete-config-failed=$(count_matches "$manager_journal" 'complete agent config task failed') complete-operation-failed=$(count_matches "$manager_journal" 'complete agent operation task failed') database-error=$(count_matches "$manager_journal" 'database_error|database error') task-not-found=$(count_matches "$manager_journal" 'task_not_found|task not found')"
 }
 
+sing_box_config_diagnostics() {
+  local config=/etc/sing-box/config.json
+  if [[ ! -r "$config" ]]; then
+    log 'active-sing-box-config=unavailable'
+    return 0
+  fi
+
+  local vless_count shadowsocks_count mtime now age
+  vless_count=$(grep -Eoc '"type"[[:space:]]*:[[:space:]]*"vless"' "$config" 2>/dev/null || true)
+  shadowsocks_count=$(grep -Eoc '"type"[[:space:]]*:[[:space:]]*"shadowsocks"' "$config" 2>/dev/null || true)
+  mtime=$(stat -c %Y "$config" 2>/dev/null || true)
+  now=$(date +%s)
+  age=-1
+  if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now >= mtime )); then
+    age=$((now - mtime))
+  fi
+
+  log "active-sing-box-config vless=${vless_count:-0} shadowsocks=${shadowsocks_count:-0} mtime-age-seconds=${age}"
+}
+
 load_manager_database() {
   [[ -r /etc/routegate/manager.env ]] || return 1
   command -v psql >/dev/null 2>&1 || return 1
@@ -125,6 +145,7 @@ database_diagnostics() {
 main() {
   require_root
   classify_journals
+  sing_box_config_diagnostics
   database_diagnostics
 }
 
