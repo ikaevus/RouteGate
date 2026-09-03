@@ -238,8 +238,8 @@
 }
 
 /* Give portal table cells breathing room instead of pinning profile text to the
- * table boundary. Apply the same inset to the header to keep columns aligned. */
-:root[data-theme='light'] .portal-profiles-table-row {
+ * selected-row boundary. Apply it in both themes and to the header for alignment. */
+.portal-profiles-table-row {
   box-sizing: border-box;
   padding-left: 12px;
   padding-right: 12px;
