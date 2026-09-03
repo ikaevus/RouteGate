@@ -225,14 +225,10 @@ func (c *Client) ReportTrafficUsage(ctx context.Context, agentToken string, even
 		return ReportTrafficUsageResponse{OK: true, Accepted: 0}, nil
 	}
 	var res ReportTrafficUsageResponse
-	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/traffic-usage", agentToken, reqReportTrafficUsage(events), &res); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/traffic-usage", agentToken, reportTrafficUsageRequest{Events: events}, &res); err != nil {
 		return ReportTrafficUsageResponse{}, err
 	}
 	return res, nil
-}
-
-func reqReportTrafficUsage(events []traffic.UsageEvent) reportTrafficUsageRequest {
-	return reportTrafficUsageRequest{Events: events}
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body any, out any) error {
