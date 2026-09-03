@@ -37,6 +37,11 @@
   padding-right: 14px;
 }
 
+/* Preserve the config-version subgrid while giving its leading column room. */
+.config-versions-table-row > :first-child {
+  padding-left: 14px;
+}
+
 @media (max-width: 980px) {
   .servers-table-row {
     grid-template-columns: 1fr;
