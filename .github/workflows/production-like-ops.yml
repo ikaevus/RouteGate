@@ -13,6 +13,7 @@ on:
         options:
           - diagnose
           - diagnose-sing-box
+          - diagnose-agent-task
           - validate
           - restart-control-plane
           - restart-sing-box
@@ -63,6 +64,7 @@ jobs:
             case "$REQUEST_BODY" in
               'operation=diagnose') operation=diagnose ;;
               'operation=diagnose-sing-box') operation=diagnose-sing-box ;;
+              'operation=diagnose-agent-task') operation=diagnose-agent-task ;;
               'operation=validate') operation=validate ;;
               'operation=restart-control-plane') operation=restart-control-plane ;;
               'operation=restart-sing-box') operation=restart-sing-box ;;
@@ -79,18 +81,20 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|diagnose-sing-box|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate) ;;
+            diagnose|diagnose-sing-box|diagnose-agent-task|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate) ;;
             *) exit 2 ;;
           esac
           printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
 
-      - name: Validate ops script locally
+      - name: Validate ops scripts locally
         shell: bash
         run: |
           set -euo pipefail
           bash -n scripts/production-like-ops.sh
+          bash -n scripts/production-like-task-diagnostics.sh
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck scripts/production-like-ops.sh
+            shellcheck scripts/production-like-task-diagnostics.sh
           fi
 
       - name: Configure SSH
@@ -120,9 +124,21 @@ jobs:
           remote_script="/tmp/routegate-ops-${GITHUB_RUN_ID}.sh"
           output_file="${RUNNER_TEMP}/routegate-ops-output.txt"
 
-          "${SCP[@]}" scripts/production-like-ops.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
+          if [[ "$OPERATION" == "diagnose-agent-task" ]]; then
+            local_script="scripts/production-like-task-diagnostics.sh"
+            remote_operation=""
+          else
+            local_script="scripts/production-like-ops.sh"
+            remote_operation="$OPERATION"
+          fi
+
+          "${SCP[@]}" "$local_script" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
           set +e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script' '$OPERATION'" >"$output_file" 2>&1
+          if [[ -n "$remote_operation" ]]; then
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script' '$remote_operation'" >"$output_file" 2>&1
+          else
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script'" >"$output_file" 2>&1
+          fi
           rc=$?
           set -e
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true
