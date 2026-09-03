@@ -11,6 +11,78 @@
   --rg-light-line-strong: #ceccdf;
 }
 
+/* Navigation and shared controls should use the selected indigo family rather
+ * than the old RouteGate Light blue literals. */
+:root[data-theme='light'] .nav a,
+:root[data-theme='light'] .nav-link {
+  color: #4c495e;
+}
+
+:root[data-theme='light'] .nav a:hover,
+:root[data-theme='light'] .nav-link:hover {
+  background: #f3f2ff;
+  border-color: #d4d1ff;
+  color: #050316;
+}
+
+:root[data-theme='light'] .nav-link-active,
+:root[data-theme='light'] .nav a.nav-link-active {
+  background: #eeedff;
+  border-color: #b8b4ff;
+  color: #050316;
+  box-shadow: inset 3px 0 0 var(--rg-primary);
+}
+
+:root[data-theme='light'] .small-button {
+  background: #eeedff;
+  border-color: #c8c5ff;
+  color: #2f27ce;
+}
+
+:root[data-theme='light'] .small-button:hover:not(:disabled) {
+  background: #e6e4ff;
+  border-color: #aaa5ff;
+}
+
+:root[data-theme='light'] .admin-profile-chip:hover,
+:root[data-theme='light'] .admin-profile-chip:focus-visible,
+:root[data-theme='light'] .admin-profile-chip[aria-expanded='true'] {
+  background: #f3f2ff;
+  border-color: #c8c5ff;
+}
+
+:root[data-theme='light'] .sidebar-theme-control[aria-pressed='true'] i {
+  background: var(--rg-primary);
+  border-color: #443dff;
+}
+
+:root[data-theme='light'] .quick-action-list a:hover {
+  background: #f3f2ff;
+  color: #050316;
+}
+
+:root[data-theme='light'] .quick-action-list a strong,
+:root[data-theme='light'] .widget-link {
+  color: var(--rg-primary);
+}
+
+:root[data-theme='light'] .badge-disabled,
+:root[data-theme='light'] .badge-unassigned,
+:root[data-theme='light'] .badge-custom {
+  background: #f1f0f6;
+  color: #5d5974 !important;
+}
+
+:root[data-theme='light'] .badge-direct,
+:root[data-theme='light'] .badge-vpn,
+:root[data-theme='light'] .badge-rendered,
+:root[data-theme='light'] .badge-staged,
+:root[data-theme='light'] .badge-pending,
+:root[data-theme='light'] .audit-area-badge {
+  background: #eeedff;
+  color: #2f27ce !important;
+}
+
 /* Table headings and metadata. */
 :root[data-theme='light'] .admin-table-head > span,
 :root[data-theme='light'] .table-head > span,
