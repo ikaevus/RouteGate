@@ -57,6 +57,45 @@ log_runtime_diagnostics() {
   fi
 }
 
+wait_for_active_agent_jobs() {
+  local db_url=$1
+  local timeout_seconds=${2:-360}
+  local poll_seconds=${3:-2}
+  local deadline=$((SECONDS + timeout_seconds))
+  local active_jobs
+  local quiet_polls=0
+
+  while :; do
+    active_jobs=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "
+SELECT
+  (SELECT count(*) FROM config_apply_jobs WHERE status IN ('pending', 'in_progress')) +
+  (SELECT count(*) FROM agent_operation_jobs WHERE status IN ('pending', 'in_progress'));
+") || return 1
+
+    if [[ ! "$active_jobs" =~ ^[0-9]+$ ]]; then
+      printf '[production-like] invalid active Agent job count: %s\n' "$active_jobs" >&2
+      return 1
+    fi
+
+    if ((active_jobs == 0)); then
+      quiet_polls=$((quiet_polls + 1))
+      if ((quiet_polls >= 2)); then
+        log "active Agent job drain complete"
+        return 0
+      fi
+    else
+      quiet_polls=0
+      log "waiting for ${active_jobs} active Agent job(s) before platform deploy"
+    fi
+
+    if ((SECONDS >= deadline)); then
+      printf '[production-like] timed out waiting for active Agent jobs to finish.\n' >&2
+      return 1
+    fi
+    sleep "$poll_seconds"
+  done
+}
+
 cleanup() {
   rm -rf "$WORK_DIR"
   rm -f "$BUNDLE_FILE" "$VALIDATION_SCRIPT" "$UPDATE_CORE"
@@ -117,6 +156,13 @@ DB_URL=${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}
 STAGE=backup
 BACKUP_DIR="/root/routegate-backups/rg96-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
 rg_update_create_backup "$BACKUP_DIR" "$DB_URL"
+
+# The production-like deploy replaces and restarts Manager and Agent binaries.
+# Do not interrupt a protocol activation or runtime operation that is already
+# being processed. Two consecutive idle polls also narrow the race with an
+# operation that was queued while the backup was being created.
+STAGE=drain_agent_jobs
+wait_for_active_agent_jobs "$DB_URL" 360 2
 
 STAGE=deploy_files
 MUTATED=1
