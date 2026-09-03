@@ -22,6 +22,7 @@ const (
 	timeout                   = 10 * time.Second
 	completeTaskMaxAttempts   = 4
 	completeTaskRetryBaseWait = 500 * time.Millisecond
+	errorResponseBodyLimit    = 4096
 )
 
 type Client struct {
@@ -255,8 +256,12 @@ func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body a
 		return err
 	}
 	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Error text is diagnostic only, so keep it bounded. Successful Manager
+		// responses can contain rendered VPN configs that legitimately exceed
+		// this size and must never be truncated before JSON decoding.
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, errorResponseBodyLimit))
 		return &httpStatusError{
 			method:     method,
 			path:       path,
@@ -264,10 +269,12 @@ func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body a
 			body:       strings.TrimSpace(string(respBody)),
 		}
 	}
-	if out != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, out); err != nil {
-			return err
-		}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return err
 	}
 	return nil
 }
