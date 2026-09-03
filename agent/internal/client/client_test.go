@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +101,68 @@ func TestAdvertisedCapabilitiesIncludeManagerCertificateDiagnostic(t *testing.T)
 	}
 	if !found {
 		t.Fatalf("manager certificate diagnostic is not advertised: %+v", profiles)
+	}
+}
+
+func TestCompleteTaskRetriesTransientManagerFailure(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/agent/tasks/job-1/result" {
+			t.Fatalf("unexpected completion request: %s %s", r.Method, r.URL.Path)
+		}
+		if attempts == 1 {
+			http.Error(w, "temporary manager failure", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	if err := client.CompleteTaskSucceeded(context.Background(), "agent-token", "job-1", map[string]any{"stage": "succeeded"}); err != nil {
+		t.Fatalf("complete task: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("completion attempts = %d, want 2", attempts)
+	}
+}
+
+func TestCompleteTaskTreatsNotFoundAfterUncertainAttemptAsAcknowledged(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			http.Error(w, "gateway lost the acknowledgement", http.StatusBadGateway)
+			return
+		}
+		http.Error(w, "task not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	if err := client.CompleteTaskSucceeded(context.Background(), "agent-token", "job-2", nil); err != nil {
+		t.Fatalf("complete task after uncertain acknowledgement: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("completion attempts = %d, want 2", attempts)
+	}
+}
+
+func TestCompleteTaskRejectsInitialNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "task not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := New(server.URL)
+	err := client.CompleteTaskSucceeded(context.Background(), "agent-token", "missing-job", nil)
+	if err == nil {
+		t.Fatal("expected initial 404 completion to fail")
+	}
+	if !strings.Contains(err.Error(), "status 404") {
+		t.Fatalf("unexpected completion error: %v", err)
 	}
 }
 
