@@ -1,4 +1,6 @@
 .portal-app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   background:
     radial-gradient(circle at top left, rgba(6, 182, 212, 0.16), transparent 30rem),
@@ -61,7 +63,12 @@
 }
 
 .portal-main {
+  flex: 1 0 auto;
   padding: 32px;
+}
+
+.portal-statusbar {
+  flex: 0 0 auto;
 }
 
 .portal-page {
