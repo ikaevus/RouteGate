@@ -69,6 +69,33 @@ sing_box_config_diagnostics() {
   log "active-sing-box-config vless=${vless_count:-0} shadowsocks=${shadowsocks_count:-0} mtime-age-seconds=${age}"
 }
 
+staged_sing_box_diagnostics() {
+  local config_version_id=${1:-}
+  local staging_dir=/var/lib/routegate-agent/configs
+  if [[ -z "$config_version_id" ]]; then
+    log 'failed-job-staged-config=unknown reason=no-config-version'
+    return 0
+  fi
+
+  local staged_path="${staging_dir}/${config_version_id}.json"
+  if [[ ! -r "$staged_path" ]]; then
+    log 'failed-job-staged-config=absent'
+    return 0
+  fi
+
+  local vless_count shadowsocks_count mtime now age
+  vless_count=$(grep -Eoc '"type"[[:space:]]*:[[:space:]]*"vless"' "$staged_path" 2>/dev/null || true)
+  shadowsocks_count=$(grep -Eoc '"type"[[:space:]]*:[[:space:]]*"shadowsocks"' "$staged_path" 2>/dev/null || true)
+  mtime=$(stat -c %Y "$staged_path" 2>/dev/null || true)
+  now=$(date +%s)
+  age=-1
+  if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now >= mtime )); then
+    age=$((now - mtime))
+  fi
+
+  log "failed-job-staged-config=present vless=${vless_count:-0} shadowsocks=${shadowsocks_count:-0} mtime-age-seconds=${age}"
+}
+
 load_manager_database() {
   [[ -r /etc/routegate/manager.env ]] || return 1
   command -v psql >/dev/null 2>&1 || return 1
@@ -100,15 +127,17 @@ database_diagnostics() {
         WHEN COALESCE(error_message, '') ILIKE '%timeout%' THEN 'timeout'
         WHEN COALESCE(error_message, '') = '' THEN 'none'
         ELSE 'other'
-      END
+      END,
+      config_version_id::text
     FROM config_apply_jobs
     ORDER BY created_at DESC
     LIMIT 1
   " 2>/dev/null || true)
   if [[ -n "$latest" ]]; then
-    local status duration age components payload_size error_class
-    IFS='|' read -r status duration age components payload_size error_class <<<"$latest"
+    local status duration age components payload_size error_class config_version_id
+    IFS='|' read -r status duration age components payload_size error_class config_version_id <<<"$latest"
     log "latest-config-job status=${status:-unknown} duration-seconds=${duration:--1} age-seconds=${age:--1} result-components=${components:-0} result-payload-bytes=${payload_size:-0} error-class=${error_class:-unknown}"
+    staged_sing_box_diagnostics "$config_version_id"
   else
     log 'latest-config-job=none'
   fi
