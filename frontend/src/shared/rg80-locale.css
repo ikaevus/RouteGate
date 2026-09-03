@@ -43,27 +43,26 @@
   color: #dbeafe;
 }
 
-/* Light theme: the locale control belongs to the same raised topbar surface as
- * the notification/help/theme controls instead of keeping its dark-theme shell. */
+/* Light theme: the locale control follows the near-white raised topbar surface. */
 :root[data-theme='light'] .rg-locale-switcher {
-  background: #9db9e2;
-  border-color: #3f6fa6;
+  background: #ffffff;
+  border-color: #ceccdf;
   box-shadow: none;
 }
 
 :root[data-theme='light'] .rg-locale-option {
-  color: #14365b;
+  color: #66647a;
 }
 
 :root[data-theme='light'] .rg-locale-option:hover {
-  background: #8eafe0;
-  color: #071b35;
+  background: #f3f2ff;
+  color: #050316;
 }
 
 :root[data-theme='light'] .rg-locale-option-active {
-  background: #7fa6da;
-  border-color: #456f9f;
-  color: #071b35;
+  background: #eeedff;
+  border-color: #c8c5ff;
+  color: #2f27ce;
 }
 
 .portal-topbar-actions,

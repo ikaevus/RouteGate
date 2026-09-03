@@ -1,53 +1,51 @@
-/* RG-111 visual trial: layered light-blue theme derived from the canonical RouteGate dark background. */
+/* RG-114 visual trial: Realtime Colors inspired light theme.
+ * Source palette: text #050316, background #fbfbfe, primary #2f27ce,
+ * secondary #dddbff, accent #443dff. Dark theme is intentionally untouched.
+ */
 :root[data-theme='light'] {
-  --rg-light-canvas: #78a3e0;
-  --rg-light-chrome: #6e9cdc;
-  --rg-light-sidebar: #6897d7;
-  --rg-light-surface: #8eafe0;
-  --rg-light-surface-raised: #9db9e2;
-  --rg-light-line: #6288bb;
-  --rg-light-line-strong: #5278aa;
-  --rg-light-blue-tint: #a9c5ee;
-  --rg-light-text-strong: #071b35;
-  --rg-light-text-muted: #355a80;
-  --rg-light-code: #587ba8;
-  --rg-light-code-line: #456b9a;
+  --rg-light-canvas: #fbfbfe;
+  --rg-light-chrome: #f8f8fd;
+  --rg-light-sidebar: #f6f5ff;
+  --rg-light-surface: #ffffff;
+  --rg-light-surface-raised: #f8f8ff;
+  --rg-light-line: #e2e1ee;
+  --rg-light-line-strong: #ceccdf;
+  --rg-light-blue-tint: #eeedff;
+  --rg-light-text: #050316;
+  --rg-light-muted: #66647a;
+  --rg-light-text-strong: #050316;
+  --rg-light-text-muted: #66647a;
+  --rg-light-code: #f0efff;
+  --rg-light-code-line: #c9c6ff;
+
+  --rg-primary: #2f27ce;
+  --rg-primary-hover: #251eb3;
+  --rg-accent-cyan: #443dff;
+  --rg-bg-deep: var(--rg-light-canvas);
+  --rg-bg-main: var(--rg-light-chrome);
+  --rg-bg-muted: var(--rg-light-sidebar);
+  --rg-surface-main: var(--rg-light-surface);
+  --rg-surface-raised: var(--rg-light-surface-raised);
+  --rg-text-primary: var(--rg-light-text);
+  --rg-text-secondary: var(--rg-light-muted);
+  --rg-border: var(--rg-light-line);
 }
 
-/* Keep the world map in the same RouteGate Light blue family instead of a dark inset block. */
-:root[data-theme='light'] .node-distribution-map {
-  background-color: #82a9de;
-  background-image: url('./assets/world-map.svg');
-  background-blend-mode: screen;
-  border-color: #5b83b8;
-  box-shadow: inset 0 0 24px rgba(42, 79, 126, 0.16);
-}
-
-:root[data-theme='light'] .node-country-marker {
-  background: #4f7fbe;
-  border-color: rgba(216, 231, 250, 0.72);
-  box-shadow: 0 5px 14px rgba(42, 79, 126, 0.22);
-}
-
-:root[data-theme='light'] .node-country-marker strong {
-  color: #f8fafc;
-}
-
-/* Light-theme icon contrast: dark-theme secondary foregrounds become too faint on blue chrome. */
+/* Light-theme icon contrast. */
 :root[data-theme='light'] .nav-icon {
-  color: #315d8c;
+  color: #77748c;
 }
 
 :root[data-theme='light'] .nav-link-active .nav-icon,
 :root[data-theme='light'] .nav-link:hover .nav-icon {
-  color: #1d4ed8;
+  color: var(--rg-primary);
 }
 
-/* Audit actor initials need a real visual anchor on the light-blue surface. */
+/* Audit actor initials need a clear anchor without bringing back the old blue canvas. */
 :root[data-theme='light'] .audit-avatar {
-  background: rgba(169, 197, 238, 0.72);
-  border-color: rgba(49, 93, 140, 0.62);
-  color: #163b67;
+  background: #eeedff;
+  border-color: #c9c6ff;
+  color: #2f27ce;
   font-weight: 800;
 }
 
@@ -55,8 +53,8 @@
  * RouteGate Light — feature-screen completion
  *
  * Older screens were authored dark-first with literal rgba/#hex values. The
- * rules below map those shared surfaces back onto the Light token hierarchy so
- * feature pages inherit the same visual language as the Dashboard.
+ * rules below map those shared surfaces onto the new near-white semantic
+ * hierarchy so feature pages inherit the same visual language as Dashboard.
  * -------------------------------------------------------------------------- */
 
 /* Page-level hierarchy. */
@@ -68,7 +66,7 @@
 :root[data-theme='light'] .portal-page .page-header {
   background: var(--rg-light-chrome);
   border-color: var(--rg-light-line-strong);
-  box-shadow: 0 8px 22px rgba(31, 68, 111, 0.12);
+  box-shadow: 0 8px 22px rgba(5, 3, 22, 0.05);
 }
 
 :root[data-theme='light'] .feature-list-panel,
@@ -84,7 +82,7 @@
 :root[data-theme='light'] .credentials-panel {
   background: var(--rg-light-surface);
   border-color: var(--rg-light-line);
-  box-shadow: 0 8px 22px rgba(31, 68, 111, 0.1);
+  box-shadow: 0 8px 22px rgba(5, 3, 22, 0.045);
 }
 
 /* Titles and secondary copy: remove dark-theme white/gray literals. */
@@ -150,7 +148,7 @@
 :root[data-theme='light'] .traffic-limit-form,
 :root[data-theme='light'] .protocol-advanced-settings,
 :root[data-theme='light'] .registration-token-config-example {
-  border-color: rgba(82, 120, 170, 0.56);
+  border-color: var(--rg-light-line);
 }
 
 /* Inputs and selectors, including the VPN-account toolbar that has its own CSS. */
@@ -161,7 +159,7 @@
 :root[data-theme='light'] .vpn-account-management-toolbar select,
 :root[data-theme='light'] .vpn-account-bulk-assign select,
 :root[data-theme='light'] .vpn-account-page-size select {
-  background-color: var(--rg-light-surface-raised);
+  background-color: #ffffff;
   border-color: var(--rg-light-line-strong);
   color: var(--rg-light-text-strong);
   color-scheme: light;
@@ -174,21 +172,21 @@
 :root[data-theme='light'] .field input:hover,
 :root[data-theme='light'] .field select:hover,
 :root[data-theme='light'] .field textarea:hover {
-  background-color: #a8c2e5;
-  border-color: #456f9f;
+  background-color: #f6f5ff;
+  border-color: #9f9aff;
 }
 
 :root[data-theme='light'] .vpn-account-management-toolbar input::placeholder,
 :root[data-theme='light'] .field input::placeholder,
 :root[data-theme='light'] .field textarea::placeholder {
-  color: #55779d;
+  color: #85829a;
 }
 
 :root[data-theme='light'] .vpn-account-management-toolbar select option,
 :root[data-theme='light'] .vpn-account-bulk-assign select option,
 :root[data-theme='light'] .vpn-account-page-size select option,
 :root[data-theme='light'] .field select option {
-  background: #a9c2e4;
+  background: #ffffff;
   color: var(--rg-light-text-strong);
 }
 
@@ -202,15 +200,15 @@
 :root[data-theme='light'] .vpn-account-management-head,
 :root[data-theme='light'] .admin-table-head,
 :root[data-theme='light'] .table-head {
-  background: #779fd5;
-  color: #244c77;
+  background: #f3f2ff;
+  color: #5d5974;
   border-color: var(--rg-light-line-strong);
 }
 
 :root[data-theme='light'] .vpn-account-management-row,
 :root[data-theme='light'] .admin-table-row,
 :root[data-theme='light'] .table-row {
-  border-color: rgba(82, 120, 170, 0.48);
+  border-color: var(--rg-light-line);
   color: var(--rg-light-text-strong);
 }
 
@@ -220,36 +218,36 @@
 :root[data-theme='light'] .vpn-account-row-selected,
 :root[data-theme='light'] .admin-table-row:hover,
 :root[data-theme='light'] .table-row:hover {
-  background: rgba(169, 197, 238, 0.52);
-  border-color: #4773a7;
+  background: #eeedff;
+  border-color: #b8b4ff;
 }
 
 /* Protocol setup states should remain semantic, but readable in Light. */
 :root[data-theme='light'] .protocol-recommended-setup {
-  background: rgba(169, 197, 238, 0.64);
-  border-color: #5684bd;
+  background: #f1f0ff;
+  border-color: #c4c1ff;
 }
 
 :root[data-theme='light'] .protocol-recommended-setup-ready {
-  background: rgba(118, 195, 170, 0.28);
-  border-color: rgba(31, 133, 93, 0.46);
+  background: rgba(34, 197, 94, 0.09);
+  border-color: rgba(21, 128, 61, 0.28);
 }
 
 :root[data-theme='light'] .protocol-recommended-eyebrow {
-  color: #154f9b;
+  color: var(--rg-primary);
 }
 
 :root[data-theme='light'] .protocol-recommended-setup-ready .protocol-recommended-eyebrow {
-  color: #086746;
+  color: #087443;
 }
 
 :root[data-theme='light'] .protocol-port-warning {
-  background: rgba(251, 191, 36, 0.18);
-  border-color: rgba(161, 98, 7, 0.4);
+  background: rgba(245, 158, 11, 0.11);
+  border-color: rgba(161, 98, 7, 0.3);
   color: #74430a;
 }
 
-/* Code and immutable-value surfaces stay slightly denser, but are no longer black. */
+/* Code and immutable-value surfaces use the secondary tint rather than a dark block. */
 :root[data-theme='light'] .credentials-detail-list code,
 :root[data-theme='light'] .subscription-url-value,
 :root[data-theme='light'] .subscription-url-code,
@@ -259,13 +257,13 @@
 :root[data-theme='light'] .vpn-accounts-page .copyable-value code {
   background: var(--rg-light-code);
   border-color: var(--rg-light-code-line);
-  color: #f8fafc;
+  color: #211b57;
 }
 
 /* Traffic cards and limit controls. */
 :root[data-theme='light'] .traffic-progress-track {
-  background: #6f98ce;
-  border-color: #5278aa;
+  background: #e7e5f5;
+  border-color: #ceccdf;
 }
 
 :root[data-theme='light'] .traffic-checkbox-field {
@@ -276,7 +274,7 @@
 :root[data-theme='light'] .subscription-qr-modal {
   background: var(--rg-light-surface);
   border-color: var(--rg-light-line-strong);
-  box-shadow: 0 24px 60px rgba(31, 68, 111, 0.24);
+  box-shadow: 0 24px 60px rgba(5, 3, 22, 0.14);
 }
 
 :root[data-theme='light'] .subscription-qr-empty-state {
@@ -285,13 +283,13 @@
 
 /* Danger controls keep their semantic hue without carrying the dark-theme maroon panel. */
 :root[data-theme='light'] .vpn-account-danger-zone {
-  background: rgba(248, 113, 113, 0.13);
-  border-color: rgba(153, 27, 27, 0.42);
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(153, 27, 27, 0.28);
 }
 
 :root[data-theme='light'] .danger-button {
-  background: rgba(185, 28, 28, 0.76);
-  border-color: rgba(127, 29, 29, 0.72);
+  background: #b91c1c;
+  border-color: #991b1b;
   color: #fff7f7;
 }
 
@@ -302,15 +300,15 @@
   color: var(--rg-light-text-muted);
 }
 
-/* Links should remain visibly interactive against blue surfaces. */
+/* Links use the selected primary directly. */
 :root[data-theme='light'] .text-button,
 :root[data-theme='light'] .text-link,
 :root[data-theme='light'] .widget-link {
-  color: #0b4ea2;
+  color: var(--rg-primary);
 }
 
 :root[data-theme='light'] .text-button:hover,
 :root[data-theme='light'] .text-link:hover,
 :root[data-theme='light'] .widget-link:hover {
-  color: #073b7d;
+  color: var(--rg-primary-hover);
 }
