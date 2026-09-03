@@ -6,7 +6,7 @@
 :root[data-theme='light'] {
   --rg-light-canvas: #ffffff;
   --rg-light-chrome: #ffffff;
-  --rg-light-sidebar: #f8fafc;
+  --rg-light-sidebar: #ffffff;
   --rg-light-surface: #ffffff;
   --rg-light-surface-raised: #ffffff;
   --rg-light-line: #d8e0ea;
@@ -32,9 +32,10 @@
   --rg-border: var(--rg-light-line);
 }
 
-/* The dark-theme logo glow reads as a dirty halo on the white sidebar. */
+/* Preserve the complete mark: its white strokes require the brand gradient.
+ * Only the dark-theme shadows are inappropriate on the white sidebar. */
 :root[data-theme='light'] .brand-mark {
-  background: transparent;
+  background: linear-gradient(135deg, var(--rg-primary), var(--rg-accent-cyan));
   box-shadow: none;
   filter: none;
 }
