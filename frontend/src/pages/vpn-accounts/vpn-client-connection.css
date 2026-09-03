@@ -2,6 +2,10 @@
   grid-column: 1 / -1;
 }
 
+.vpn-client-connection-panel .subscription-self-service-card > .form-message-warning {
+  margin: 10px 0 16px;
+}
+
 .vpn-client-empty-state {
   border: 1px dashed rgba(96, 165, 250, 0.34);
   border-radius: 16px;

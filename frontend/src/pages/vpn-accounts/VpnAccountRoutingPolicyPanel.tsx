@@ -246,7 +246,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
                 {t('automaticSelection.refresh')}
               </button>
             </div>
-            {!policy.nodeGroup && <div className="form-message form-message-warning">{t('automaticSelection.nodeGroupRequired')}</div>}
+            {!policy.nodeGroup && !nodeGroupDirty && <div className="form-message form-message-warning">{t('automaticSelection.nodeGroupRequired')}</div>}
             {nodeGroupDirty && <div className="form-message form-message-warning">{copy.saveNodeGroupFirst}</div>}
             {!nodeGroupDirty && selectionPolicyDirty && <div className="form-message form-message-warning">{copy.savePolicyFirst}</div>}
             {!automaticSelectionDirty && selectionPreviewQuery.isError && <div className="form-message form-message-error">{t('automaticSelection.previewError')}</div>}

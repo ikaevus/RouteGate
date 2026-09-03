@@ -7,6 +7,14 @@
   margin-top: 12px;
 }
 
+.vpn-account-protocol-preference-panel > .vpn-account-create-grid + .form-message {
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  color: var(--rg-text-secondary, #94a3b8);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .vpn-account-protocol-preference-panel > .form-actions {
   margin-top: 16px;
 }
@@ -100,6 +108,10 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.vpn-multi-protocol-access-panel > .form-message-warning {
+  display: none;
 }
 
 .traffic-limit-form-grid .field input[type='number'] {
