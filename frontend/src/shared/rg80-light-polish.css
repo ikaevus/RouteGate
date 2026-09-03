@@ -267,7 +267,7 @@
 
 /* VPN client runtime facts are normal Light-theme information cards. */
 :root[data-theme='light'] .vpn-client-runtime-grid > div {
-  background: #f8fafc !important;
+  background: var(--rg-light-surface-raised) !important;
   border-color: var(--rg-light-line-strong) !important;
   box-shadow: none !important;
 }

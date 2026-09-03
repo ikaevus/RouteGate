@@ -1,13 +1,13 @@
-/* RG-114 visual trial v3: neutral RouteGate Light with inverted surfaces.
- * The page canvas is now pure white while primary cards/panels use a soft slate
- * surface. Nested controls return to white to preserve depth and hierarchy.
+/* RG-114 visual trial v4: pure-white RouteGate Light surfaces.
+ * The page canvas, primary cards/panels and nested controls now share a clean
+ * white background. Borders, spacing and semantic states preserve hierarchy.
  * Dark theme is intentionally untouched.
  */
 :root[data-theme='light'] {
   --rg-light-canvas: #ffffff;
   --rg-light-chrome: #ffffff;
   --rg-light-sidebar: #f8fafc;
-  --rg-light-surface: #f5f7fb;
+  --rg-light-surface: #ffffff;
   --rg-light-surface-raised: #ffffff;
   --rg-light-line: #d8e0ea;
   --rg-light-line-strong: #c5d0dc;
@@ -67,7 +67,7 @@
 :root[data-theme='light'] .portal-page .page-header {
   background: var(--rg-light-surface);
   border-color: var(--rg-light-line-strong);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
+  box-shadow: none;
 }
 
 :root[data-theme='light'] .feature-list-panel,
@@ -83,7 +83,15 @@
 :root[data-theme='light'] .credentials-panel {
   background: var(--rg-light-surface);
   border-color: var(--rg-light-line);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  box-shadow: none;
+}
+
+/* Dashboard cards are ordinary in-flow surfaces, not floating objects. */
+:root[data-theme='light'] .dashboard-widget {
+  background: var(--rg-light-surface);
+  background-image: none;
+  border-color: var(--rg-light-line);
+  box-shadow: none;
 }
 
 /* Titles and secondary copy: remove dark-theme white/gray literals. */
