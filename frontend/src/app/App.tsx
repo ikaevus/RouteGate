@@ -155,6 +155,12 @@ function PortalShell() {
           <Route path="*" element={<Navigate to="/portal" replace />} />
         </Routes>
       </main>
+
+      <footer className="admin-statusbar portal-statusbar">
+        <span>{t('app.footerProduct')}</span>
+        <span>{t('app.version')}</span>
+        <strong><span className="status-dot status-dot-ok" /> {t('dashboard.systemsOperational')}</strong>
+      </footer>
     </div>
   );
 }
