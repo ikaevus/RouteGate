@@ -32,6 +32,13 @@
   --rg-border: var(--rg-light-line);
 }
 
+/* The dark-theme logo glow reads as a dirty halo on the white sidebar. */
+:root[data-theme='light'] .brand-mark {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
 /* Light-theme icon contrast. */
 :root[data-theme='light'] .nav-icon {
   color: #718096;

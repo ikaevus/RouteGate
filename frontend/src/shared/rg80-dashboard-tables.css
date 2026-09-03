@@ -213,6 +213,14 @@
   grid-template-columns: minmax(128px, 1.25fr) minmax(96px, 1fr) minmax(104px, 0.88fr) 0.65fr 0.7fr;
 }
 
+.deployments-table .dashboard-table-row:not(.dashboard-table-head) {
+  min-height: 42px;
+}
+
+.deployments-table .dashboard-table-row .badge {
+  align-self: center;
+}
+
 .server-online-dot,
 .server-offline-dot {
   border-radius: 999px;
