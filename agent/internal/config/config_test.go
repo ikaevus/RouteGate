@@ -37,6 +37,15 @@ func TestLoadTrafficCollectionDefaults(t *testing.T) {
 	if cfg.TrafficUsageFilePath != DefaultTrafficUsageFilePath {
 		t.Fatalf("expected default traffic file path %q, got %q", DefaultTrafficUsageFilePath, cfg.TrafficUsageFilePath)
 	}
+	if !cfg.ClientPresenceEnabled {
+		t.Fatal("client presence should be enabled by default")
+	}
+	if cfg.ClientPresenceInterval() != time.Duration(DefaultClientPresenceIntervalSeconds)*time.Second {
+		t.Fatalf("unexpected client presence interval: %s", cfg.ClientPresenceInterval())
+	}
+	if cfg.ClientPresenceFilePath != DefaultClientPresenceFilePath {
+		t.Fatalf("expected default presence file path %q, got %q", DefaultClientPresenceFilePath, cfg.ClientPresenceFilePath)
+	}
 	if cfg.Hysteria2ActiveConfigPath != DefaultHysteria2ActiveConfigPath || cfg.Hysteria2Path != DefaultHysteria2Path || cfg.Hysteria2ServiceName != DefaultHysteria2ServiceName {
 		t.Fatalf("unexpected Hysteria2 defaults: %+v", cfg)
 	}
@@ -50,6 +59,9 @@ func TestLoadTrafficCollectionSettings(t *testing.T) {
 traffic_collection_enabled: true
 traffic_collection_interval_seconds: 120
 traffic_usage_file_path: "/tmp/routegate-traffic.json"
+client_presence_enabled: false
+client_presence_interval_seconds: 45
+client_presence_file_path: "/tmp/routegate-presence.json"
 `)
 
 	cfg, err := Load(path)
@@ -65,6 +77,9 @@ traffic_usage_file_path: "/tmp/routegate-traffic.json"
 	}
 	if cfg.TrafficUsageFilePath != "/tmp/routegate-traffic.json" {
 		t.Fatalf("unexpected traffic file path: %q", cfg.TrafficUsageFilePath)
+	}
+	if cfg.ClientPresenceEnabled || cfg.ClientPresenceIntervalSeconds != 45 || cfg.ClientPresenceFilePath != "/tmp/routegate-presence.json" {
+		t.Fatalf("unexpected presence settings: %+v", cfg)
 	}
 }
 

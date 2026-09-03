@@ -10,6 +10,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
 	"github.com/ikaevus/routegate/backend/internal/configs"
+	"github.com/ikaevus/routegate/backend/internal/connections"
 	"github.com/ikaevus/routegate/backend/internal/dashboard"
 	"github.com/ikaevus/routegate/backend/internal/geoip"
 	"github.com/ikaevus/routegate/backend/internal/health"
@@ -43,6 +44,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
 	vpnAccountNotesHandler := vpnaccounts.NewNotesHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
+	connectionsHandler := connections.NewHandler(logger, pool)
 	routingProfilesHandler := routingprofiles.NewHandler(logger, pool)
 	nodeGroupsHandler := nodegroups.NewHandler(logger, pool)
 	portalHandler := portal.NewHandler(logger, pool)
@@ -146,6 +148,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/dashboard/activity", adminAuth(dashboardHandler.Activity))
 	mux.Handle("GET /api/v1/dashboard/traffic", adminAuth(dashboardHandler.Traffic))
 	mux.Handle("GET /api/v1/dashboard/nodes", adminAuth(dashboardHandler.Nodes))
+	mux.Handle("GET /api/v1/connections", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(connectionsHandler.List))))
 
 	mux.Handle("GET /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.List))))
 	mux.Handle("POST /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:create")(stdhttp.HandlerFunc(vpnAccountsHandler.Create))))
@@ -193,6 +196,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result", agentsHandler.CompleteTask)
 	mux.HandleFunc("POST /api/v1/agent/traffic-usage", trafficHandler.ReportUsage)
 	mux.HandleFunc("POST /api/v1/agent/traffic-reports", trafficHandler.ReportUsage)
+	mux.HandleFunc("POST /api/v1/agent/client-presence", connectionsHandler.ReportSnapshot)
 
 	return chain(
 		mux,

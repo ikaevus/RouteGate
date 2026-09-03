@@ -10,6 +10,7 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/client"
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
+	"github.com/ikaevus/routegate/agent/internal/presence"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
@@ -22,6 +23,8 @@ type Runner struct {
 	trafficCollector   traffic.Collector
 	trafficTracker     *traffic.DeltaTracker
 	lastTrafficReport  time.Time
+	presenceCollector  presence.Collector
+	lastPresenceReport time.Time
 	vpnCoreAdapter     tasks.VPNCoreAdapter
 	wireGuardAdapter   tasks.VPNCoreAdapter
 	hysteria2Adapter   tasks.VPNCoreAdapter
@@ -37,6 +40,7 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 		logger:           logger,
 		trafficCollector: traffic.NoopCollector{},
 		trafficTracker:   traffic.NewDeltaTracker(),
+		presenceCollector: presence.NoopCollector{},
 		vpnCoreAdapter: tasks.NewSingBoxVLESSAdapter(
 			cfg.ConfigStagingDir,
 			cfg.SingBoxPath,
@@ -69,6 +73,7 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 	if cfg.TrafficCollectionEnabled {
 		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
 	}
+	if cfg.ClientPresenceEnabled { runner.presenceCollector = presence.NewFileCollector(cfg.ClientPresenceFilePath) }
 	return runner
 }
 
@@ -86,6 +91,7 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 		if err := r.reportTrafficUsage(ctx); err != nil {
 			r.logger.Warn("report traffic usage failed", "error", err)
 		}
+		if err := r.reportClientPresence(ctx); err != nil { r.logger.Warn("report client presence failed", "error", err) }
 		return nil
 	}
 	if err := r.sendHeartbeat(ctx); err != nil {
@@ -97,6 +103,7 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 	if err := r.reportTrafficUsage(ctx); err != nil {
 		r.logger.Warn("report traffic usage failed", "error", err)
 	}
+	if err := r.reportClientPresence(ctx); err != nil { r.logger.Warn("report client presence failed", "error", err) }
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval())
 	defer ticker.Stop()
 	for {
@@ -113,8 +120,22 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 			if err := r.reportTrafficUsage(ctx); err != nil {
 				r.logger.Warn("report traffic usage failed", "error", err)
 			}
+			if err := r.reportClientPresence(ctx); err != nil { r.logger.Warn("report client presence failed", "error", err) }
 		}
 	}
+}
+
+func (r *Runner) reportClientPresence(ctx context.Context) error {
+	if !r.cfg.ClientPresenceEnabled { return nil }
+	now := time.Now().UTC()
+	if !r.lastPresenceReport.IsZero() && now.Sub(r.lastPresenceReport) < r.cfg.ClientPresenceInterval() { return nil }
+	snapshot, err := r.presenceCollector.Collect(ctx)
+	if err != nil { return err }
+	res, err := r.client.ReportClientPresence(ctx, r.cfg.AgentToken, snapshot)
+	if err != nil { return err }
+	r.lastPresenceReport = now
+	r.logger.Info("client presence report accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "accepted", res.Accepted)
+	return nil
 }
 
 func (r *Runner) ensureRegistered(ctx context.Context) error {

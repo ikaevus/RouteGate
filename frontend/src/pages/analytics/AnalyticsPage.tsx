@@ -12,6 +12,7 @@ import {
   type HealthState,
   type ServerGeographyInput,
 } from '../../entities/analytics/api/analyticsApi';
+import { getClientConnections, type ClientConnection } from '../../entities/connection/api/connectionApi';
 import { getCurrentLocale, t, type TranslationKey } from '../../shared/i18n/i18n';
 import { AnalyticsWorldMap } from './AnalyticsWorldMap';
 import './AnalyticsPage.css';
@@ -151,6 +152,16 @@ function HealthPill({ state }: { state: HealthState }) {
     <span className={`analytics-health-pill analytics-health-pill--${state}`}>
       <i aria-hidden="true" />
       {healthLabel(state)}
+    </span>
+  );
+}
+
+function ConnectionStatePill({ connection }: { connection: ClientConnection }) {
+  const exact = connection.state === 'online' && connection.confidence === 'exact';
+  return (
+    <span className={`analytics-connection-state analytics-connection-state--${exact ? 'online' : 'recent'}`}>
+      <i aria-hidden="true" />
+      {exact ? t('analytics.connectionsOnline') : t('analytics.connectionsRecent')}
     </span>
   );
 }
@@ -367,6 +378,12 @@ export function AnalyticsPage() {
     refetchInterval: 10_000,
     staleTime: 5_000,
   });
+
+  const connectionsQuery = useQuery({
+    queryKey: ['client-connections', 'analytics'],
+    queryFn: () => getClientConnections(500),
+    refetchInterval: 10_000,
+  });
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const [mapInspectorCollapsed, setMapInspectorCollapsed] = useState(false);
 
@@ -512,6 +529,53 @@ export function AnalyticsPage() {
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section className="panel analytics-connections-section">
+            <div className="analytics-section-heading analytics-connections-heading">
+              <div>
+                <h2>{t('analytics.connectionsTitle')}</h2>
+                <p>{t('analytics.connectionsSubtitle')}</p>
+              </div>
+              <div className="analytics-connections-summary">
+                <strong>{connectionsQuery.data?.summary.onlineUsers ?? 0}</strong>
+                <span>{t('analytics.connectionsOnlineNow')}</span>
+              </div>
+            </div>
+            {connectionsQuery.isError ? (
+              <div className="empty-state">{t('analytics.connectionsError')}</div>
+            ) : connectionsQuery.data?.items.length ? (
+              <div className="analytics-node-table-wrap">
+                <table className="analytics-node-table analytics-connections-table">
+                  <thead>
+                    <tr>
+                      <th>{t('analytics.connectionsUser')}</th>
+                      <th>{t('analytics.connectionsState')}</th>
+                      <th>{t('analytics.connectionsServer')}</th>
+                      <th>{t('analytics.connectionsAgent')}</th>
+                      <th>{t('analytics.connectionsProtocol')}</th>
+                      <th>{t('analytics.connectionsCount')}</th>
+                      <th>{t('analytics.connectionsSeen')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {connectionsQuery.data.items.map((connection) => (
+                      <tr key={`${connection.vpnAccountId}-${connection.agentId}-${connection.protocol}`}>
+                        <td><strong className="analytics-connection-user">{connection.accountName}</strong>{connection.email && <small>{connection.email}</small>}</td>
+                        <td><ConnectionStatePill connection={connection} /></td>
+                        <td>{connection.serverName}</td>
+                        <td>{connection.agentName || '—'}</td>
+                        <td>{connection.protocol}</td>
+                        <td>{connection.connectionCount}</td>
+                        <td>{formatDateTime(connection.lastActivityAt ?? connection.observedAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="empty-state analytics-connections-empty">{t('analytics.connectionsEmpty')}</div>
+            )}
           </section>
 
           <section className="panel analytics-alerts-section">

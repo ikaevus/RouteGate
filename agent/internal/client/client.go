@@ -14,6 +14,7 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/diagnostics"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
+	"github.com/ikaevus/routegate/agent/internal/presence"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
@@ -94,6 +95,13 @@ type ReportTrafficUsageResponse struct {
 	AgentID  string `json:"agentId"`
 	ServerID string `json:"serverId"`
 	Accepted int    `json:"accepted"`
+}
+
+type ReportPresenceResponse struct {
+	OK bool `json:"ok"`
+	AgentID string `json:"agentId"`
+	ServerID string `json:"serverId"`
+	Accepted int `json:"accepted"`
 }
 
 func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminfo.Info) (RegisterResponse, error) {
@@ -228,6 +236,14 @@ func (c *Client) ReportTrafficUsage(ctx context.Context, agentToken string, even
 	var res ReportTrafficUsageResponse
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/traffic-usage", agentToken, reportTrafficUsageRequest{Events: events}, &res); err != nil {
 		return ReportTrafficUsageResponse{}, err
+	}
+	return res, nil
+}
+
+func (c *Client) ReportClientPresence(ctx context.Context, agentToken string, snapshot presence.Snapshot) (ReportPresenceResponse, error) {
+	var res ReportPresenceResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/client-presence", agentToken, snapshot, &res); err != nil {
+		return ReportPresenceResponse{}, err
 	}
 	return res, nil
 }
