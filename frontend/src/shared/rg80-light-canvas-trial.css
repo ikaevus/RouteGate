@@ -1,15 +1,14 @@
-/* RG-114 visual trial v2: neutral RouteGate Light.
- * The Realtime Colors experiment validated the near-white direction, but the
- * indigo/lavender family was too dominant in the real admin UI. This pass keeps
- * the light hierarchy while returning RouteGate to a neutral slate + blue
- * product palette. Dark theme is intentionally untouched.
+/* RG-114 visual trial v3: neutral RouteGate Light with inverted surfaces.
+ * The page canvas is now pure white while primary cards/panels use a soft slate
+ * surface. Nested controls return to white to preserve depth and hierarchy.
+ * Dark theme is intentionally untouched.
  */
 :root[data-theme='light'] {
-  --rg-light-canvas: #f5f7fb;
+  --rg-light-canvas: #ffffff;
   --rg-light-chrome: #ffffff;
-  --rg-light-sidebar: #f8fafd;
-  --rg-light-surface: #ffffff;
-  --rg-light-surface-raised: #f8fafc;
+  --rg-light-sidebar: #f8fafc;
+  --rg-light-surface: #f5f7fb;
+  --rg-light-surface-raised: #ffffff;
   --rg-light-line: #d8e0ea;
   --rg-light-line-strong: #c5d0dc;
   --rg-light-blue-tint: #eaf2ff;
@@ -66,7 +65,7 @@
 :root[data-theme='light'] .protocol-settings-page .page-header,
 :root[data-theme='light'] .vpn-accounts-page .page-header,
 :root[data-theme='light'] .portal-page .page-header {
-  background: var(--rg-light-chrome);
+  background: var(--rg-light-surface);
   border-color: var(--rg-light-line-strong);
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
 }
@@ -222,6 +221,13 @@
 :root[data-theme='light'] .table-row:hover {
   background: #eaf2ff;
   border-color: #93c5fd;
+}
+
+/* Generic Light warning messages need dark semantic text on pale amber. */
+:root[data-theme='light'] .form-message-warning {
+  background: #fffbeb;
+  border-color: #fbbf24;
+  color: #92400e;
 }
 
 /* Protocol setup states should remain semantic, but readable in Light. */
