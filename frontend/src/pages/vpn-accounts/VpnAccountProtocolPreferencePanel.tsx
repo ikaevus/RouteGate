@@ -341,7 +341,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
               disabled={(!changed && !activationPending) || saveMutation.isPending || Boolean(validationMessage) || !assignedServer}
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending ? copy.saving : canRetry ? copy.retry : copy.save}
+              {saveMutation.isPending ? stageText ?? copy.saving : canRetry ? copy.retry : copy.save}
             </button>
           </div>
         </>
