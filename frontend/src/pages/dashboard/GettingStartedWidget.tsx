@@ -17,10 +17,7 @@ import {
   createVPNCoreInstallation,
   getVPNCoreInstallation,
 } from '../../entities/server/api/vpnCoreApi';
-import {
-  isVPNCoreOperational,
-  parseVPNCoreStatus,
-} from '../../entities/server/model/vpnCoreStatus';
+import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
 import { getVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import './getting-started.css';
@@ -47,22 +44,22 @@ function textPresent(value?: string | null): boolean {
 
 function protocolConfigured(settings?: ProtocolSettingsResponse): boolean {
   if (!settings) return false;
-	if (settings.protocol.trim().toLowerCase() === 'wireguard') {
-		return settings.wireGuard.ready
-			&& settings.wireGuard.port >= 1
-			&& settings.wireGuard.port <= 65535
-			&& textPresent(settings.wireGuard.address)
-			&& textPresent(settings.wireGuard.publicKey);
-	}
-	if (settings.protocol.trim().toLowerCase() === 'hysteria2') {
-		return settings.hysteria2.ready && settings.hysteria2.port >= 1 && settings.hysteria2.port <= 65535;
-	}
-	if (settings.protocol.trim().toLowerCase() === 'shadowsocks') {
-		return settings.shadowsocks.ready && settings.shadowsocks.port >= 1 && settings.shadowsocks.port <= 65535;
-	}
-	if (settings.protocol.trim().toLowerCase() === 'mtproto') {
-		return settings.mtproto.ready && settings.mtproto.port >= 1 && settings.mtproto.port <= 65535;
-	}
+  if (settings.protocol.trim().toLowerCase() === 'wireguard') {
+    return settings.wireGuard.ready
+      && settings.wireGuard.port >= 1
+      && settings.wireGuard.port <= 65535
+      && textPresent(settings.wireGuard.address)
+      && textPresent(settings.wireGuard.publicKey);
+  }
+  if (settings.protocol.trim().toLowerCase() === 'hysteria2') {
+    return settings.hysteria2.ready && settings.hysteria2.port >= 1 && settings.hysteria2.port <= 65535;
+  }
+  if (settings.protocol.trim().toLowerCase() === 'shadowsocks') {
+    return settings.shadowsocks.ready && settings.shadowsocks.port >= 1 && settings.shadowsocks.port <= 65535;
+  }
+  if (settings.protocol.trim().toLowerCase() === 'mtproto') {
+    return settings.mtproto.ready && settings.mtproto.port >= 1 && settings.mtproto.port <= 65535;
+  }
 
   return settings.protocol.trim().toLowerCase() === 'vless'
     && settings.vless.port >= 1
@@ -121,23 +118,23 @@ function getCopy() {
         pending: { label: 'Подключить сервер', description: 'Этот шаг станет доступен после проверки RouteGate.' },
       },
       core: {
-		complete: { label: 'VPN Core установлен', description: 'Выбранный VPN Core установлен и готов к конфигурации.' },
-		current: { label: 'Установить VPN Core', description: 'Подготовьте runtime для выбранного VPN-протокола.' },
+        complete: { label: 'VPN Core установлен', description: 'Выбранный VPN Core установлен и готов к конфигурации.' },
+        current: { label: 'Установить VPN Core', description: 'Подготовьте runtime для выбранного VPN-протокола.' },
         pending: { label: 'Установить VPN Core', description: 'Этот шаг станет доступен после подключения сервера.' },
       },
       protocol: {
-		complete: { label: 'VPN-протокол настроен', description: 'Параметры и ключи выбранного протокола готовы.' },
-		current: { label: 'Настроить VPN-протокол', description: 'Выберите VLESS / Reality или WireGuard и примените рекомендуемые параметры.' },
-		pending: { label: 'Настроить VPN-протокол', description: 'Этот шаг станет доступен после установки VPN Core.' },
+        complete: { label: 'VPN-протокол настроен', description: 'Параметры и ключи выбранного протокола готовы.' },
+        current: { label: 'Настроить VPN-протокол', description: 'Выберите поддерживаемый VPN-протокол и примените рекомендуемые параметры.' },
+        pending: { label: 'Настроить VPN-протокол', description: 'Этот шаг станет доступен после установки VPN Core.' },
       },
       final: {
-		complete: { label: 'VPN готов', description: 'Аккаунт создан, конфигурация применена, выбранный VPN Core работает.' },
+        complete: { label: 'VPN готов', description: 'Аккаунт создан, конфигурация успешно применена и доступ готов к использованию.' },
         current: { label: 'Создать VPN-аккаунт', description: 'Создайте первый активный аккаунт и привяжите его к этому серверу.' },
-		pending: { label: 'Создать VPN-аккаунт', description: 'Этот шаг станет доступен после настройки VPN-протокола.' },
+        pending: { label: 'Создать VPN-аккаунт', description: 'Этот шаг станет доступен после настройки VPN-протокола.' },
       },
       deployCurrent: {
         label: 'Развернуть VPN-конфигурацию',
-		description: 'RouteGate отрендерит, проверит и применит конфигурацию, затем запустит выбранный VPN Core.',
+        description: 'RouteGate отрендерит, проверит и применит конфигурацию через Agent.',
       },
       systemActionTitle: 'Проверить RouteGate',
       systemActionDescription: 'Manager пока не подтвердил готовность. Повторим проверку состояния.',
@@ -152,22 +149,22 @@ function getCopy() {
       installCoreFailed: 'Не удалось установить VPN Core. Можно повторить попытку или открыть сервер для подробностей.',
       installCoreConfirm: (server: string) => `Установить VPN Core на ${server}?\n\nRouteGate установит sing-box. Сервис будет запущен позже, после создания и применения рабочего VPN-конфига.`,
       openCoreAction: 'Открыть VPN Core',
-		protocolTitle: 'Настроить VPN-протокол',
-		protocolDescription: 'Выберите VLESS / Reality или WireGuard и настройте протокол для этого сервера.',
+      protocolTitle: 'Настроить VPN-протокол',
+      protocolDescription: 'Выберите поддерживаемый VPN-протокол и настройте его для этого сервера.',
       protocolAction: 'Настроить протокол',
       accountTitle: 'Создать первый VPN-аккаунт',
       accountDescription: 'Создайте активный аккаунт и привяжите его к этому серверу.',
       accountAction: 'Создать VPN-аккаунт',
       deployTitle: 'Развернуть VPN-конфигурацию',
-		deployDescription: 'RouteGate автоматически отрендерит, проверит и применит конфигурацию. Agent перезапустит выбранный VPN Core и проверит его состояние.',
+      deployDescription: 'RouteGate автоматически отрендерит, проверит и применит конфигурацию. Agent выполнит необходимые перезапуски и healthcheck.',
       deployAction: 'Развернуть VPN',
       deployPending: 'Развёртываем…',
       deployQueued: 'Конфигурация применяется через RouteGate Agent. Состояние обновится автоматически.',
       deployFailed: 'Не удалось развернуть VPN-конфигурацию. Можно повторить попытку или открыть сервер для подробностей.',
       deployValidationFailed: 'Сгенерированная VPN-конфигурация не прошла проверку.',
-		deployConfirm: (server: string) => `Развернуть VPN-конфигурацию на ${server}?\n\nRouteGate отрендерит, проверит и применит конфиг. После применения Agent запустит или перезапустит выбранный VPN Core и выполнит healthcheck.`,
+      deployConfirm: (server: string) => `Развернуть VPN-конфигурацию на ${server}?\n\nRouteGate отрендерит, проверит и применит конфиг. После применения Agent выполнит необходимые перезапуски и healthcheck.`,
       readyTitle: 'RouteGate готов',
-		readyDescription: 'VPN Core работает, VPN-протокол настроен и первый VPN-аккаунт готов к подключению.',
+      readyDescription: 'VPN-протокол настроен, конфигурация применена и первый VPN-аккаунт готов к подключению.',
       readyAction: 'Открыть аккаунт и QR',
       dismiss: 'Скрыть',
       readyServer: (server: string) => `Рабочий сервер: ${server}`,
@@ -199,23 +196,23 @@ function getCopy() {
       pending: { label: 'Connect the server', description: 'This step becomes available after RouteGate is ready.' },
     },
     core: {
-		complete: { label: 'VPN Core installed', description: 'The selected VPN Core is installed and ready for configuration.' },
-		current: { label: 'Install VPN Core', description: 'Prepare the runtime for the selected VPN protocol.' },
+      complete: { label: 'VPN Core installed', description: 'The selected VPN Core is installed and ready for configuration.' },
+      current: { label: 'Install VPN Core', description: 'Prepare the runtime for the selected VPN protocol.' },
       pending: { label: 'Install VPN Core', description: 'This step becomes available after the server is connected.' },
     },
     protocol: {
-		complete: { label: 'VPN protocol configured', description: 'The selected protocol settings and keys are ready.' },
-		current: { label: 'Configure VPN protocol', description: 'Choose VLESS / Reality or WireGuard and apply the recommended settings.' },
-		pending: { label: 'Configure VPN protocol', description: 'This step becomes available after VPN Core is installed.' },
+      complete: { label: 'VPN protocol configured', description: 'The selected protocol settings and keys are ready.' },
+      current: { label: 'Configure VPN protocol', description: 'Choose a supported VPN protocol and apply the recommended settings.' },
+      pending: { label: 'Configure VPN protocol', description: 'This step becomes available after VPN Core is installed.' },
     },
     final: {
-		complete: { label: 'VPN ready', description: 'Account created, configuration applied, and the selected VPN Core is running.' },
+      complete: { label: 'VPN ready', description: 'Account created, configuration successfully applied, and access is ready to use.' },
       current: { label: 'Create VPN account', description: 'Create the first active account and assign it to this server.' },
-		pending: { label: 'Create VPN account', description: 'This step becomes available after the VPN protocol is configured.' },
+      pending: { label: 'Create VPN account', description: 'This step becomes available after the VPN protocol is configured.' },
     },
     deployCurrent: {
       label: 'Deploy VPN configuration',
-		description: 'RouteGate will render, validate, and apply the configuration, then start the selected VPN Core.',
+      description: 'RouteGate will render, validate, and apply the configuration through Agent.',
     },
     systemActionTitle: 'Check RouteGate',
     systemActionDescription: 'Manager has not confirmed readiness yet. Check the setup state again.',
@@ -230,22 +227,22 @@ function getCopy() {
     installCoreFailed: 'VPN Core installation failed. You can retry or open the server for details.',
     installCoreConfirm: (server: string) => `Install VPN Core on ${server}?\n\nRouteGate will install sing-box. The service will be started later, after a working VPN configuration is created and applied.`,
     openCoreAction: 'Open VPN Core',
-	protocolTitle: 'Configure VPN protocol',
-	protocolDescription: 'Choose VLESS / Reality or WireGuard and configure the selected protocol for this server.',
+    protocolTitle: 'Configure VPN protocol',
+    protocolDescription: 'Choose a supported VPN protocol and configure it for this server.',
     protocolAction: 'Configure protocol',
     accountTitle: 'Create your first VPN account',
     accountDescription: 'Create an active account and assign it to this server.',
     accountAction: 'Create VPN account',
     deployTitle: 'Deploy VPN configuration',
-	deployDescription: 'RouteGate will automatically render, validate, and apply the configuration. Agent will restart the selected VPN Core and verify its health.',
+    deployDescription: 'RouteGate will automatically render, validate, and apply the configuration. Agent will perform the required restarts and healthcheck.',
     deployAction: 'Deploy VPN',
     deployPending: 'Deploying…',
     deployQueued: 'Configuration is being applied through RouteGate Agent. This state will update automatically.',
     deployFailed: 'VPN configuration deployment failed. You can retry or open the server for details.',
     deployValidationFailed: 'The generated VPN configuration did not pass validation.',
-	deployConfirm: (server: string) => `Deploy VPN configuration to ${server}?\n\nRouteGate will render, validate, and apply the config. After applying it, Agent will start or restart the selected VPN Core and run a healthcheck.`,
+    deployConfirm: (server: string) => `Deploy VPN configuration to ${server}?\n\nRouteGate will render, validate, and apply the config. After applying it, Agent will perform the required restarts and healthcheck.`,
     readyTitle: 'RouteGate is ready',
-	readyDescription: 'VPN Core is running, the VPN protocol is configured, and the first VPN account is ready to connect.',
+    readyDescription: 'The VPN protocol is configured, the configuration is applied, and the first VPN account is ready to connect.',
     readyAction: 'Open account and QR',
     dismiss: 'Hide',
     readyServer: (server: string) => `Working server: ${server}`,
@@ -291,14 +288,13 @@ export function GettingStartedWidget() {
   const protocolQuery = useQuery({
     queryKey: ['server-protocol-settings', primaryServer?.id],
     queryFn: () => getProtocolSettings(primaryServer?.id ?? ''),
-		enabled: Boolean(primaryServer?.id && serverConnected),
+    enabled: Boolean(primaryServer?.id && serverConnected),
     retry: false,
     refetchInterval: 10_000,
   });
-	const vpnCoreStatus = parseVPNCoreStatus(primaryServer?.agent?.capabilities, protocolQuery.data?.protocol);
-	const vpnCoreInstalled = Boolean(serverConnected && vpnCoreStatus?.installed);
-	const vpnCoreReady = Boolean(serverConnected && isVPNCoreOperational(vpnCoreStatus));
-	const installationSupported = supportsInstallation(primaryServer?.agent?.capabilities);
+  const vpnCoreStatus = parseVPNCoreStatus(primaryServer?.agent?.capabilities, protocolQuery.data?.protocol);
+  const vpnCoreInstalled = Boolean(serverConnected && vpnCoreStatus?.installed);
+  const installationSupported = supportsInstallation(primaryServer?.agent?.capabilities);
 
   const managerReady = managerHealthQuery.isSuccess;
   const protocolReady = vpnCoreInstalled && protocolConfigured(protocolQuery.data);
@@ -331,7 +327,10 @@ export function GettingStartedWidget() {
       && timestamp(latestApplied.createdAt) >= sourceUpdatedAt
       && sourceUpdatedAt > 0,
   );
-  const runtimeReady = Boolean(accountReady && appliedConfigIsCurrent && vpnCoreReady);
+  // Getting Started is a first-run workflow, not a long-lived runtime monitor.
+  // Once a current configuration has been successfully applied for the first
+  // active account, later runtime health belongs to the normal monitoring UI.
+  const onboardingReady = Boolean(accountReady && appliedConfigIsCurrent);
 
   const installationMutation = useMutation({
     mutationFn: () => createVPNCoreInstallation(primaryServer?.id ?? ''),
@@ -416,13 +415,15 @@ export function GettingStartedWidget() {
     }
 
     if (activeDeployJob.status === 'succeeded') {
+      // A terminal Agent result must always release the action immediately.
+      // Subsequent refetches determine whether the onboarding step is complete;
+      // they must not keep the UI stuck in a synthetic "Deploying" state.
+      setDeployJobId(null);
       void configVersionsQuery.refetch();
+      void applyJobsQuery.refetch();
       void serversQuery.refetch();
-      if (runtimeReady) {
-        setDeployJobId(null);
-      }
     }
-  }, [activeDeployJob, deployJobId, runtimeReady]);
+  }, [activeDeployJob, deployJobId]);
 
   const installationBusy = installationMutation.isPending || installationJobId !== null;
   const deploymentBusy = deploymentMutation.isPending || deployJobId !== null;
@@ -454,7 +455,7 @@ export function GettingStartedWidget() {
     deploymentMutation.mutate();
   };
 
-  const finalCopy = accountReady && !runtimeReady
+  const finalCopy = accountReady && !onboardingReady
     ? { ...copy.final, current: copy.deployCurrent }
     : copy.final;
 
@@ -481,8 +482,8 @@ export function GettingStartedWidget() {
     {
       key: 'final',
       copy: finalCopy,
-      complete: managerReady && serverConnected && vpnCoreInstalled && protocolReady && runtimeReady,
-      to: runtimeReady && firstReadyAccount
+      complete: managerReady && serverConnected && vpnCoreInstalled && protocolReady && onboardingReady,
+      to: onboardingReady && firstReadyAccount
         ? `/vpn-accounts/${firstReadyAccount.id}`
         : accountReady && primaryServer
           ? `/servers/${primaryServer.id}`
@@ -601,7 +602,7 @@ export function GettingStartedWidget() {
     actionDescription = copy.accountDescription;
     actionLabel = copy.accountAction;
     actionTo = '/vpn-accounts?create=1';
-  } else if (accountReady && !runtimeReady && primaryServer) {
+  } else if (accountReady && !onboardingReady && primaryServer) {
     actionTitle = copy.deployTitle;
     actionDescription = copy.deployDescription;
     actionLabel = deploymentBusy ? copy.deployPending : copy.deployAction;
