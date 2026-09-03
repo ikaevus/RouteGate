@@ -135,8 +135,11 @@ function healthSummaryLabel(reasonCode?: string, fallback?: string): string {
 }
 
 function SummaryCard({ label, value, state }: { label: string; value: number; state?: HealthState | 'critical' }) {
+  const neutralWhenEmpty = state === 'degraded' || state === 'unhealthy' || state === 'critical';
+  const emphasizedState = state && (!neutralWhenEmpty || value > 0) ? state : undefined;
+
   return (
-    <article className={`analytics-summary-card${state ? ` analytics-summary-card--${state}` : ''}`}>
+    <article className={`analytics-summary-card${emphasizedState ? ` analytics-summary-card--${emphasizedState}` : ''}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
