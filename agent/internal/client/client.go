@@ -18,11 +18,26 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
 
-const timeout = 10 * time.Second
+const (
+	timeout                   = 10 * time.Second
+	completeTaskMaxAttempts   = 4
+	completeTaskRetryBaseWait = 500 * time.Millisecond
+)
 
 type Client struct {
 	managerURL string
 	httpClient *http.Client
+}
+
+type httpStatusError struct {
+	method     string
+	path       string
+	statusCode int
+	body       string
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("%s %s failed with status %d: %s", e.method, e.path, e.statusCode, e.body)
 }
 
 func New(managerURL string) *Client {
@@ -153,7 +168,48 @@ func (c *Client) CompleteTask(ctx context.Context, agentToken, jobID string, req
 		return fmt.Errorf("job id is required")
 	}
 	path := "/api/v1/agent/tasks/" + url.PathEscape(jobID) + "/result"
-	return c.doJSON(ctx, http.MethodPost, path, agentToken, req, nil)
+
+	var lastErr error
+	hadUncertainAttempt := false
+	for attempt := 1; attempt <= completeTaskMaxAttempts; attempt++ {
+		err := c.doJSON(ctx, http.MethodPost, path, agentToken, req, nil)
+		if err == nil {
+			return nil
+		}
+
+		if statusErr, ok := err.(*httpStatusError); ok {
+			// A retry can race with a previously committed completion whose HTTP
+			// acknowledgement was lost. The Agent owns a task ID only after Manager
+			// handed it out, so a 404 after an uncertain prior completion attempt is
+			// safe to treat as an idempotent acknowledgement rather than abandoning
+			// the already-applied runtime state.
+			if statusErr.statusCode == http.StatusNotFound && hadUncertainAttempt {
+				return nil
+			}
+			if statusErr.statusCode != http.StatusRequestTimeout &&
+				statusErr.statusCode != http.StatusTooManyRequests &&
+				statusErr.statusCode < http.StatusInternalServerError {
+				return err
+			}
+		}
+
+		lastErr = err
+		hadUncertainAttempt = true
+		if attempt == completeTaskMaxAttempts {
+			break
+		}
+
+		wait := completeTaskRetryBaseWait * time.Duration(1<<(attempt-1))
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return fmt.Errorf("complete agent task after %d attempts: %w", completeTaskMaxAttempts, lastErr)
 }
 
 func (c *Client) CompleteTaskSucceeded(ctx context.Context, agentToken, jobID string, result map[string]any) error {
@@ -201,7 +257,12 @@ func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body a
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("%s %s failed with status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return &httpStatusError{
+			method:     method,
+			path:       path,
+			statusCode: resp.StatusCode,
+			body:       strings.TrimSpace(string(respBody)),
+		}
 	}
 	if out != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, out); err != nil {
