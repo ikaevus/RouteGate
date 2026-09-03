@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { getServers, type Server } from '../../entities/server/api/serverApi';
 import {
   advancePlatformUpdateRollout,
@@ -110,6 +110,8 @@ export function FleetUpdateRolloutPanel({ managerVersion }: { managerVersion: st
   const [storageError, setStorageError] = useState(false);
   const [advanceRecoveryRequired, setAdvanceRecoveryRequired] = useState(false);
   const [lastStep, setLastStep] = useState<AdvancePlatformUpdateRolloutResponse | null>(null);
+  const createRequestInFlight = useRef(false);
+  const advanceRequestInFlight = useRef(false);
 
   const serversQuery = useQuery({
     queryKey: ['servers'],
@@ -172,6 +174,9 @@ export function FleetUpdateRolloutPanel({ managerVersion }: { managerVersion: st
       setLastStep(null);
       setAdvanceRecoveryRequired(false);
     },
+    onSettled: () => {
+      createRequestInFlight.current = false;
+    },
   });
 
   const advanceMutation = useMutation({
@@ -187,6 +192,9 @@ export function FleetUpdateRolloutPanel({ managerVersion }: { managerVersion: st
         setAdvanceRecoveryRequired(true);
       }
     },
+    onSettled: () => {
+      advanceRequestInFlight.current = false;
+    },
   });
 
   function addServer(serverId: string): void {
@@ -197,28 +205,43 @@ export function FleetUpdateRolloutPanel({ managerVersion }: { managerVersion: st
   }
 
   function startCreate(): void {
+    if (createRequestInFlight.current) {
+      return;
+    }
     setStorageError(false);
     createMutation.reset();
     if (storedAttempt) {
+      createRequestInFlight.current = true;
       createMutation.mutate(storedAttempt);
       return;
     }
     if (!targetValid || selectedServerIds.length === 0) {
       return;
     }
-    const attempt: StoredRolloutCreateAttempt = {
-      idempotencyKey: crypto.randomUUID(),
-      targetVersion,
-      serverIds: [...selectedServerIds],
-    };
+    let attempt: StoredRolloutCreateAttempt;
     try {
+      attempt = {
+        idempotencyKey: crypto.randomUUID(),
+        targetVersion,
+        serverIds: [...selectedServerIds],
+      };
       window.localStorage.setItem(createAttemptStorageKey, JSON.stringify(attempt));
     } catch {
       setStorageError(true);
       return;
     }
     setStoredAttempt(attempt);
+    createRequestInFlight.current = true;
     createMutation.mutate(attempt);
+  }
+
+  function advanceOneStep(): void {
+    if (advanceRequestInFlight.current || advanceRecoveryRequired) {
+      return;
+    }
+    advanceRequestInFlight.current = true;
+    advanceMutation.reset();
+    advanceMutation.mutate();
   }
 
   function resumeRollout(): void {
@@ -470,7 +493,7 @@ export function FleetUpdateRolloutPanel({ managerVersion }: { managerVersion: st
               ) : nextAction && (
                 <div className="rollout-advance">
                   <p>{t('rollout.advanceHint')}</p>
-                  <button className="button button-primary" disabled={advanceMutation.isPending || rolloutQuery.isFetching} onClick={() => { advanceMutation.reset(); advanceMutation.mutate(); }} type="button">
+                  <button className="button button-primary" disabled={advanceMutation.isPending || rolloutQuery.isFetching} onClick={advanceOneStep} type="button">
                     {advanceMutation.isPending
                       ? t('rollout.advancing')
                       : t(nextAction === 'start' ? 'rollout.advanceStart' : nextAction === 'check' ? 'rollout.advanceCheck' : 'rollout.advanceContinue')}

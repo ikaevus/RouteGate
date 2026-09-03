@@ -35,7 +35,7 @@ The active view renders Manager-owned rollout and ordered entry state, including
 Progression follows these rules:
 
 1. one button activation sends one `POST .../advance` request;
-2. the client library and mutation layer disable automatic retry;
+2. synchronous in-flight guards suppress rapid duplicate create/advance events, and the client library and mutation layer disable automatic retry;
 3. a successful response is followed by a GET of durable state;
 4. a transport or server failure is treated as ambiguous and disables further advance actions;
 5. the administrator must complete a successful GET refresh before another explicit step becomes available;
