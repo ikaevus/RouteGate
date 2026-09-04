@@ -45,7 +45,9 @@ func (singBoxVLESSAdapter) Render(config *RenderedConfig, info ServerConfigInfo)
 
 			user := map[string]any{
 				"uuid": account.VLESSUUID,
-				"name": accountDisplayName(account),
+				// Keep the runtime authentication identity stable and unique.
+				// Human-readable names remain in the RouteGate envelope and UI.
+				"name": account.ID,
 			}
 			if flow := strings.TrimSpace(account.VLESSFlow); flow != "" {
 				user["flow"] = flow
