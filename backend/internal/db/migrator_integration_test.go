@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000144_platform_update_rollout_creation_idempotency" {
-		t.Fatalf("applied schema version = %q, want 000144_platform_update_rollout_creation_idempotency", version)
+	if version != "000145_vpn_account_presence" {
+		t.Fatalf("applied schema version = %q, want 000145_vpn_account_presence", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -397,8 +397,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000144_platform_update_rollout_creation_idempotency" {
-		t.Fatalf("applied schema version = %q, want 000144_platform_update_rollout_creation_idempotency", version)
+	if version != "000145_vpn_account_presence" {
+		t.Fatalf("applied schema version = %q, want 000145_vpn_account_presence", version)
 	}
 }
 
