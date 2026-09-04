@@ -78,6 +78,7 @@ func (r *Repository) List(ctx context.Context, now time.Time, limit int) (ListRe
 			SELECT DISTINCT e.vpn_account_id
 			FROM traffic_usage_events e
 			WHERE e.observed_at > $1 - make_interval(secs => $2)
+			  AND e.observed_at <= $1
 			  AND NOT EXISTS (SELECT 1 FROM live l WHERE l.vpn_account_id=e.vpn_account_id)
 		)
 		SELECT
@@ -107,6 +108,7 @@ func (r *Repository) List(ctx context.Context, now time.Time, limit int) (ListRe
 			FROM traffic_usage_events e
 			JOIN vpn_accounts a ON a.id=e.vpn_account_id
 			WHERE e.observed_at > $1 - make_interval(secs => $2)
+			  AND e.observed_at <= $1
 			  AND NOT EXISTS (SELECT 1 FROM live l WHERE l.vpn_account_id=e.vpn_account_id)
 			ORDER BY e.vpn_account_id, e.observed_at DESC
 		), combined AS (
