@@ -377,6 +377,9 @@ service_control_enabled: true
 traffic_collection_enabled: false
 traffic_collection_interval_seconds: 60
 traffic_usage_file_path: "/var/lib/routegate-agent/traffic-usage.json"
+client_presence_enabled: true
+client_presence_interval_seconds: 30
+client_presence_file_path: "/var/lib/routegate-agent/client-presence.json"
 EOF_CONFIG
   chmod 0600 "$path"
 }

@@ -108,6 +108,7 @@
 
 .analytics-map-section,
 .analytics-nodes-section,
+.analytics-connections-section,
 .analytics-alerts-section {
   background: var(--analytics-panel);
   border: 1px solid var(--analytics-border);
@@ -116,6 +117,20 @@
   overflow: hidden;
   padding: 0;
 }
+
+.analytics-connections-heading { align-items: center; }
+.analytics-connections-summary { align-items: baseline; display: flex; gap: 8px; }
+.analytics-connections-summary strong { color: var(--analytics-text); font-size: 24px; }
+.analytics-connections-summary span { color: var(--analytics-muted); font-size: 11px; }
+.analytics-connections-table td:first-child { display: grid; gap: 3px; }
+.analytics-connection-user { color: var(--analytics-text); font-size: 12px; }
+.analytics-connections-table td small { color: var(--analytics-muted); font-size: 9px; }
+.analytics-connections-table tbody tr { cursor: default; }
+.analytics-connection-state { align-items: center; border: 1px solid currentColor; border-radius: 999px; display: inline-flex; font-size: 10px; font-weight: 800; gap: 6px; padding: 5px 8px; white-space: nowrap; }
+.analytics-connection-state i { background: currentColor; border-radius: 50%; height: 6px; width: 6px; }
+.analytics-connection-state--online { color: var(--analytics-healthy); }
+.analytics-connection-state--recent { color: var(--analytics-degraded); }
+.analytics-connections-empty { margin: 0; padding: 28px; }
 
 .analytics-section-heading {
   align-items: center;

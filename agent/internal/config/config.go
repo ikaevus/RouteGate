@@ -20,6 +20,8 @@ const DefaultSingBoxServiceName = "sing-box"
 const DefaultServiceControlEnabled = true
 const DefaultTrafficCollectionIntervalSeconds = 60
 const DefaultTrafficUsageFilePath = "/var/lib/routegate-agent/traffic-usage.json"
+const DefaultClientPresenceIntervalSeconds = 30
+const DefaultClientPresenceFilePath = "/var/lib/routegate-agent/client-presence.json"
 const DefaultWireGuardStagingDir = "/var/lib/routegate-agent/wireguard-configs"
 const DefaultWireGuardActiveConfigPath = "/etc/wireguard/routegate-wg0.conf"
 const DefaultWireGuardBackupDir = "/var/lib/routegate-agent/wireguard-backups"
@@ -55,6 +57,9 @@ type Config struct {
 	TrafficCollectionEnabled         bool
 	TrafficCollectionIntervalSeconds int
 	TrafficUsageFilePath             string
+	ClientPresenceEnabled            bool
+	ClientPresenceIntervalSeconds    int
+	ClientPresenceFilePath           string
 	WireGuardStagingDir              string
 	WireGuardActiveConfigPath        string
 	WireGuardBackupDir               string
@@ -81,7 +86,7 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 	defer file.Close()
-	cfg := Config{ServiceControlEnabled: DefaultServiceControlEnabled}
+	cfg := Config{ServiceControlEnabled: DefaultServiceControlEnabled, ClientPresenceEnabled: true}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := stripComment(scanner.Text())
@@ -153,6 +158,18 @@ func Load(path string) (Config, error) {
 			cfg.TrafficCollectionIntervalSeconds = parsed
 		case "traffic_usage_file_path":
 			cfg.TrafficUsageFilePath = value
+		case "client_presence_enabled":
+			if value == "" { continue }
+			parsed, err := strconv.ParseBool(value)
+			if err != nil { return Config{}, fmt.Errorf("parse client_presence_enabled: %w", err) }
+			cfg.ClientPresenceEnabled = parsed
+		case "client_presence_interval_seconds":
+			if value == "" { continue }
+			parsed, err := strconv.Atoi(value)
+			if err != nil { return Config{}, fmt.Errorf("parse client_presence_interval_seconds: %w", err) }
+			cfg.ClientPresenceIntervalSeconds = parsed
+		case "client_presence_file_path":
+			cfg.ClientPresenceFilePath = value
 		case "wireguard_staging_dir":
 			cfg.WireGuardStagingDir = value
 		case "wireguard_active_config_path":
@@ -205,6 +222,7 @@ func Load(path string) (Config, error) {
 	cfg.SingBoxPath = strings.TrimSpace(cfg.SingBoxPath)
 	cfg.SingBoxServiceName = strings.TrimSpace(cfg.SingBoxServiceName)
 	cfg.TrafficUsageFilePath = strings.TrimSpace(cfg.TrafficUsageFilePath)
+	cfg.ClientPresenceFilePath = strings.TrimSpace(cfg.ClientPresenceFilePath)
 	cfg.WireGuardStagingDir = strings.TrimSpace(cfg.WireGuardStagingDir)
 	cfg.WireGuardActiveConfigPath = strings.TrimSpace(cfg.WireGuardActiveConfigPath)
 	cfg.WireGuardBackupDir = strings.TrimSpace(cfg.WireGuardBackupDir)
@@ -247,6 +265,8 @@ func Load(path string) (Config, error) {
 	if cfg.TrafficUsageFilePath == "" {
 		cfg.TrafficUsageFilePath = DefaultTrafficUsageFilePath
 	}
+	if cfg.ClientPresenceIntervalSeconds <= 0 { cfg.ClientPresenceIntervalSeconds = DefaultClientPresenceIntervalSeconds }
+	if cfg.ClientPresenceFilePath == "" { cfg.ClientPresenceFilePath = DefaultClientPresenceFilePath }
 	if cfg.WireGuardStagingDir == "" { cfg.WireGuardStagingDir = DefaultWireGuardStagingDir }
 	if cfg.WireGuardActiveConfigPath == "" { cfg.WireGuardActiveConfigPath = DefaultWireGuardActiveConfigPath }
 	if cfg.WireGuardBackupDir == "" { cfg.WireGuardBackupDir = DefaultWireGuardBackupDir }
@@ -277,6 +297,10 @@ func (c Config) HeartbeatInterval() time.Duration {
 
 func (c Config) TrafficCollectionInterval() time.Duration {
 	return time.Duration(c.TrafficCollectionIntervalSeconds) * time.Second
+}
+
+func (c Config) ClientPresenceInterval() time.Duration {
+	return time.Duration(c.ClientPresenceIntervalSeconds) * time.Second
 }
 
 func (c Config) Save(path string) error {
@@ -312,6 +336,9 @@ func (c Config) Save(path string) error {
 	if trafficUsageFilePath == "" {
 		trafficUsageFilePath = DefaultTrafficUsageFilePath
 	}
+	presenceInterval := c.ClientPresenceIntervalSeconds
+	if presenceInterval <= 0 { presenceInterval = DefaultClientPresenceIntervalSeconds }
+	presenceFilePath := defaultString(c.ClientPresenceFilePath, DefaultClientPresenceFilePath)
 	wireGuardStagingDir := defaultString(c.WireGuardStagingDir, DefaultWireGuardStagingDir)
 	wireGuardActiveConfigPath := defaultString(c.WireGuardActiveConfigPath, DefaultWireGuardActiveConfigPath)
 	wireGuardBackupDir := defaultString(c.WireGuardBackupDir, DefaultWireGuardBackupDir)
@@ -347,6 +374,7 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&output, "mtproto_staging_dir: %q\nmtproto_active_config_path: %q\nmtproto_backup_dir: %q\n", mtprotoStagingDir, mtprotoActiveConfigPath, mtprotoBackupDir)
 	fmt.Fprintf(&output, "mtg_path: %q\nmtproto_service_name: %q\n", mtgPath, mtprotoServiceName)
 	fmt.Fprintf(&output, "service_control_enabled: %t\ntraffic_collection_enabled: %t\ntraffic_collection_interval_seconds: %d\ntraffic_usage_file_path: %q\n", serviceControlEnabled, c.TrafficCollectionEnabled, trafficInterval, trafficUsageFilePath)
+	fmt.Fprintf(&output, "client_presence_enabled: %t\nclient_presence_interval_seconds: %d\nclient_presence_file_path: %q\n", c.ClientPresenceEnabled, presenceInterval, presenceFilePath)
 	data := output.String()
 
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {

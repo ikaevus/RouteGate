@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
 import { getAgents } from '../../entities/agent/api/agentApi';
+import { getClientConnections, type ClientConnection } from '../../entities/connection/api/connectionApi';
 import {
   getDashboardActivity,
   getDashboardNodes,
@@ -311,6 +312,38 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
   );
 }
 
+function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; available: boolean }) {
+  const onlineItems = items.filter((item) => item.state === 'online' && item.confidence === 'exact').slice(0, 5);
+  return (
+    <WidgetPanel
+      title={t('dashboard.onlineVpnUsers')}
+      subtitle={t('dashboard.onlineVpnUsersSubtitle')}
+      className="online-users-widget dashboard-table-widget"
+      action={<Link className="widget-link online-users-all-link" to="/analytics">{t('dashboard.allConnections')} →</Link>}
+    >
+      {!available ? (
+        <p className="empty-state">{t('common.notAvailable')}</p>
+      ) : onlineItems.length === 0 ? (
+        <p className="empty-state">{t('dashboard.noOnlineVpnUsers')}</p>
+      ) : (
+        <div className="dashboard-table online-users-table">
+          <div className="dashboard-table-row dashboard-table-head">
+            <span>{t('dashboard.user')}</span><span>{t('dashboard.server')}</span><span>{t('dashboard.agentNode')}</span><span>{t('dashboard.connections')}</span>
+          </div>
+          {onlineItems.map((item) => (
+            <div className="dashboard-table-row" key={`${item.vpnAccountId}-${item.agentId}-${item.protocol}`}>
+              <strong title={item.email || item.accountName}>{item.accountName}</strong>
+              <span title={item.serverName}>{item.serverName}</span>
+              <span title={item.agentName}>{item.agentName || '—'}</span>
+              <span className="online-user-count"><i aria-hidden="true" />{item.connectionCount}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </WidgetPanel>
+  );
+}
+
 function RecentDeploymentsWidget({ deployments, available }: { deployments: DashboardRecentDeployment[]; available: boolean }) {
   return (
     <WidgetPanel title={t('dashboard.recentDeployments')} className="deployments-widget dashboard-table-widget">
@@ -411,6 +444,12 @@ export function DashboardPage() {
     refetchInterval: 10_000,
   });
 
+  const clientConnectionsQuery = useQuery({
+    queryKey: ['client-connections', 'dashboard'],
+    queryFn: () => getClientConnections(20),
+    refetchInterval: 10_000,
+  });
+
   const activeVpnAccountsCountQuery = useQuery({
     queryKey: ['vpn-accounts', 'dashboard-count', 'active'],
     queryFn: () => getPagedVpnAccounts({ status: 'active', page: 1, pageSize: 1 }),
@@ -436,7 +475,8 @@ export function DashboardPage() {
   const onlineAgentsCount = agents.filter((agent) => agent.status === 'online').length;
   const offlineAgentsCount = Math.max(agentsCount - onlineAgentsCount, 0);
 
-  const activeVpnUsers = activeVpnAccountsCountQuery.data?.total ?? 0;
+  const activeVpnAccounts = activeVpnAccountsCountQuery.data?.total ?? 0;
+  const onlineVpnUsers = clientConnectionsQuery.data?.summary.onlineUsers ?? 0;
   const vpnAccountsCount = vpnAccountsCountQuery.data?.total ?? 0;
   const trafficApiAvailable = dashboardTrafficQuery.isSuccess;
   const monthlyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.monthlyAvailable === true;
@@ -477,9 +517,9 @@ export function DashboardPage() {
           icon="⌘"
         />
         <KpiWidget
-          title={t('dashboard.activeVpnUsers')}
-          value={String(activeVpnUsers)}
-          meta={t('vpnAccounts.accountCount', { count: vpnAccountsCount })}
+          title={t('dashboard.onlineVpnUsers')}
+          value={clientConnectionsQuery.isSuccess ? String(onlineVpnUsers) : 'N/A'}
+          meta={t('dashboard.activeAccountsMeta', { active: activeVpnAccounts, total: vpnAccountsCount })}
           tone="purple"
           icon="◉"
         />
@@ -504,6 +544,7 @@ export function DashboardPage() {
         <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={dailyTrafficAvailable} />
         <QuickActionsWidget />
         <ServersSummaryWidget servers={displayServers} />
+        <OnlineUsersWidget items={clientConnectionsQuery.data?.items ?? []} available={clientConnectionsQuery.isSuccess} />
         <RecentDeploymentsWidget
           deployments={dashboardActivityQuery.data?.recentDeployments ?? []}
           available={dashboardActivityQuery.isSuccess}
