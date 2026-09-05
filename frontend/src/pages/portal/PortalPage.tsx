@@ -467,17 +467,24 @@ export function PortalPage() {
                           >
                             {copiedTarget === 'portal-subscription-url' ? t('portal.copied') : t('portal.copy')}
                           </button>
-                          <button
-                            className="small-button"
-                            type="button"
-                            onClick={() => setIsQrOpen(true)}
-                            disabled={!qr?.available || !qr.qrText}
-                          >
-                            {t('portal.showQr')}
-                          </button>
                         </div>
                       </div>
                       <code className="subscription-url-value">{subscription.subscriptionUrl}</code>
+                    </div>
+
+                    <div className="subscription-url-header">
+                      <div className="subscription-url-meta">
+                        <div className="subscription-url-label">{t('portal.directQrCode')}</div>
+                        <p className="subscription-url-helper">{qr?.message ?? t('portal.directQrHelper')}</p>
+                      </div>
+                      <button
+                        className="small-button"
+                        type="button"
+                        onClick={() => setIsQrOpen(true)}
+                        disabled={!qr?.available || !qr.qrText}
+                      >
+                        {t('portal.showDirectQr')}
+                      </button>
                     </div>
 
                     <div className="subscription-secondary-meta">
@@ -504,15 +511,13 @@ export function PortalPage() {
 
               <SubscriptionQrDialog
                 isOpen={isQrOpen}
-                title={t('portal.subscriptionQrCode')}
+                title={t('portal.directQrCode')}
                 onClose={() => setIsQrOpen(false)}
                 qrText={qr?.qrText}
-                qrTitle={t('portal.subscriptionQrCode')}
+                qrTitle={t('portal.directQrCode')}
                 qrSubtitle={t('portal.formatValue', { format: formatValue(qr?.format) })}
-                url={subscription?.subscriptionUrl}
-                urlLabel={t('portal.subscriptionUrl')}
                 onCopyQrText={() => void copyToClipboard('portal-qr-text', qr?.qrText ?? '')}
-                copyQrLabel={t('portal.copyQrText')}
+                copyQrLabel={t('portal.copyDirectQrText')}
                 copyCopiedLabel={t('portal.copied')}
                 copied={copiedTarget === 'portal-qr-text'}
                 closeLabel={t('common.close')}
