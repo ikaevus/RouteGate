@@ -532,7 +532,7 @@ func (h *Handler) subscriptionURL(r *http.Request, token string) string {
 	return (&url.URL{
 		Scheme: subscriptionScheme(r),
 		Host:   subscriptionHost(r),
-		Path:   "/api/v1/subscriptions/" + token,
+		Path:   "/sub/" + token,
 	}).String()
 }
 

@@ -213,7 +213,7 @@ func TestGenerateSubscriptionAccessReturnsURLAndQRForOwnedActiveProfile(t *testi
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	expectedURL := "https://routegate.example/api/v1/subscriptions/fixed-token"
+	expectedURL := "https://routegate.example/sub/fixed-token"
 	if !body.Subscription.Available || body.Subscription.SubscriptionURL != expectedURL {
 		t.Fatalf("unexpected subscription response: %+v", body.Subscription)
 	}

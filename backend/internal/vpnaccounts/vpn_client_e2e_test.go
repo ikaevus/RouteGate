@@ -240,7 +240,7 @@ func TestVPNClientSubscriptionE2EFlow(t *testing.T) {
 
 	var tokenPayload SubscriptionTokenResponse
 	decodeJSON(t, tokenResponse, &tokenPayload)
-	expectedSubscriptionURL := "https://client.routegate.example/api/v1/subscriptions/" + vpnClientE2EToken
+	expectedSubscriptionURL := "https://client.routegate.example/sub/" + vpnClientE2EToken
 	if tokenPayload.SubscriptionToken != vpnClientE2EToken || tokenPayload.SubscriptionURL != expectedSubscriptionURL {
 		t.Fatalf("unexpected subscription token payload: %+v", tokenPayload)
 	}

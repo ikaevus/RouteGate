@@ -46,7 +46,7 @@ func TestCreateSubscriptionTokenFallsBackFromInvalidForwardedHeaders(t *testing.
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	want := "http://manager.routegate.local/api/v1/subscriptions/fixed-token"
+	want := "http://manager.routegate.local/sub/fixed-token"
 	if body.SubscriptionURL != want {
 		t.Fatalf("expected subscription URL %q, got %q", want, body.SubscriptionURL)
 	}

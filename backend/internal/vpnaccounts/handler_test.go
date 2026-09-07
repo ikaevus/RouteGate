@@ -239,7 +239,7 @@ func TestCreateSubscriptionTokenReturnsRawTokenOnce(t *testing.T) {
 	if body.TokenPreview != "fixe...oken" {
 		t.Fatalf("expected masked token preview, got %q", body.TokenPreview)
 	}
-	if body.SubscriptionURL != "https://routegate.example/api/v1/subscriptions/fixed-token" {
+	if body.SubscriptionURL != "https://routegate.example/sub/fixed-token" {
 		t.Fatalf("unexpected subscription URL %q", body.SubscriptionURL)
 	}
 }
@@ -279,7 +279,7 @@ func TestGetSubscriptionQRCodeReturnsPayloadForValidToken(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.QRText != "https://routegate.example/api/v1/subscriptions/fixed-token" || body.Format != "subscription-url" {
+	if body.QRText != "https://routegate.example/sub/fixed-token" || body.Format != "subscription-url" {
 		t.Fatalf("unexpected qr response: %+v", body)
 	}
 }

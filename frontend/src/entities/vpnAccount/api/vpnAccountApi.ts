@@ -528,29 +528,13 @@ export function rotateVpnAccountSubscriptionToken(
   );
 }
 
-export async function getVpnAccountSubscriptionQRCode(
+export function getVpnAccountSubscriptionQRCode(
   vpnAccountId: string,
   subscriptionToken: string,
 ): Promise<SubscriptionQRCodeResponse> {
-  const subscription = await getPublicSubscription(subscriptionToken);
-  if (subscription.vpnAccountId !== vpnAccountId) {
-    throw new Error('Subscription belongs to a different VPN account.');
-  }
-
-  const renderedText = subscription.config.rendered?.text;
-  const isWireGuard = subscription.config.type === 'wireguard' && typeof renderedText === 'string';
-  const isHysteria2 = subscription.config.type === 'hysteria2' && typeof renderedText === 'string';
-  const isShadowsocks = subscription.config.type === 'shadowsocks' && typeof renderedText === 'string';
-  const isMTProto = subscription.config.type === 'mtproto' && typeof renderedText === 'string';
-  return {
-    vpnAccountId,
-    subscriptionUrl: new URL(
-      `/api/v1/subscriptions/${encodeURIComponent(subscriptionToken)}`,
-      globalThis.location.origin,
-    ).toString(),
-    qrText: isWireGuard || isHysteria2 || isShadowsocks || isMTProto ? renderedText : buildVlessRealityShareLink(subscription),
-    format: isWireGuard ? 'wireguard-config' : isHysteria2 ? 'hysteria2-uri' : isShadowsocks ? 'shadowsocks-uri' : isMTProto ? 'mtproto-uri' : 'vless-reality-uri',
-  };
+  return apiGet<SubscriptionQRCodeResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/qr?token=${encodeURIComponent(subscriptionToken)}`,
+  );
 }
 
 export function getPublicSubscription(
