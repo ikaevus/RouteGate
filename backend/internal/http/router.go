@@ -180,6 +180,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/subscription-token", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.RevokeSubscriptionToken))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/qr", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetSubscriptionQRCode))))
 	mux.HandleFunc("GET /api/v1/subscriptions/{token}", vpnAccountsHandler.GetPublicSubscription)
+	mux.HandleFunc("GET /sub/{token}", vpnAccountsHandler.GetClientSubscription)
 
 	mux.Handle("GET /api/v1/users", authn(auth.RequirePermission("users:read")(stdhttp.HandlerFunc(usersHandler.List))))
 	mux.Handle("GET /api/v1/users/{id}", authn(auth.RequirePermission("users:read")(stdhttp.HandlerFunc(usersHandler.Get))))
