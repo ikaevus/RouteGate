@@ -104,7 +104,7 @@ sing_box_presence_diagnostics() {
     return 0
   fi
 
-  journal=$(journalctl -b -u "$service" "_PID=${pid}" --since '-15 minutes' -n 3000 --no-pager -o cat 2>/dev/null || true)
+  journal=$(journalctl -b -u "$service" --since '-15 minutes' -n 3000 --no-pager -o cat 2>/dev/null || true)
   log "sing-box-presence journal-lines=$(printf '%s\n' "$journal" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$journal" 'inbound/vless\[') connection-from=$(count_matches "$journal" 'inbound connection from') named-connection=$(count_matches "$journal" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection') anonymous-connection-to=$(count_matches "$journal" 'inbound connection to') ansi-lines=$(printf '%s\n' "$journal" | LC_ALL=C grep -c $'\033\\[' || true)"
 }
 
