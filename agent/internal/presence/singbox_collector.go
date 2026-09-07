@@ -12,10 +12,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const SingBoxSocketCollectorSource = "sing-box-socket-journal"
+const externalSnapshotMaxAge = 75 * time.Second
 
 var errSingBoxPresenceUnavailable = errors.New("sing-box presence source is unavailable")
 
@@ -43,6 +45,10 @@ func (c *RuntimeCollector) Collect(ctx context.Context) (Snapshot, error) {
 		if fileErr != nil {
 			return Snapshot{}, fileErr
 		}
+		if fileSnapshot.ObservedAt.After(nativeSnapshot.ObservedAt.Add(externalSnapshotMaxAge)) ||
+			nativeSnapshot.ObservedAt.Sub(fileSnapshot.ObservedAt) > externalSnapshotMaxAge {
+			return nativeSnapshot, nil
+		}
 		seen := make(map[string]struct{}, len(nativeSnapshot.Items))
 		for _, item := range nativeSnapshot.Items {
 			seen[item.VPNAccountID+"\x00"+strings.ToLower(item.Protocol)] = struct{}{}
@@ -63,6 +69,11 @@ type SingBoxCollector struct {
 	serviceName      string
 	run              commandRunner
 	now              func() time.Time
+	mu               sync.Mutex
+	processID        string
+	journalReadAt    time.Time
+	contexts         map[string]singBoxContextState
+	authenticated    map[netip.AddrPort]string
 }
 
 func NewSingBoxCollector(activeConfigPath, serviceName string) *SingBoxCollector {
@@ -113,23 +124,48 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, errSingBoxPresenceUnavailable
 	}
 
-	journal, err := c.run(ctx, "journalctl", "-u", normalizeServiceName(c.serviceName), "--no-pager", "-o", "cat", "-n", "20000")
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	serviceName := normalizeServiceName(c.serviceName)
+	pidOutput, err := c.run(ctx, "systemctl", "show", "--property=MainPID", "--value", serviceName)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("read sing-box process ID: %w", err)
+	}
+	processID := strings.TrimSpace(string(pidOutput))
+	pid, parseErr := strconv.ParseUint(processID, 10, 32)
+	if parseErr != nil || pid == 0 {
+		return Snapshot{}, errSingBoxPresenceUnavailable
+	}
+
+	journalArgs := []string{"-b", "-u", serviceName, "_PID=" + processID, "--no-pager", "-o", "cat"}
+	if c.processID != processID {
+		c.processID = processID
+		c.journalReadAt = time.Time{}
+		c.contexts = make(map[string]singBoxContextState)
+		c.authenticated = make(map[netip.AddrPort]string)
+	} else if !c.journalReadAt.IsZero() {
+		journalArgs = append(journalArgs, "--since", "@"+strconv.FormatInt(c.journalReadAt.Add(-2*time.Second).Unix(), 10))
+	}
+	journal, err := c.run(ctx, "journalctl", journalArgs...)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read sing-box journal: %w", err)
 	}
+	c.consumeJournal(string(journal))
+	c.journalReadAt = now
 	activeSockets, err := c.run(ctx, "ss", "-Htn", "state", "established")
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read established TCP sockets: %w", err)
 	}
 
-	authenticatedPeers := parseAuthenticatedPeers(string(journal))
+	activePeers := make(map[netip.AddrPort]struct{})
 	counts := make(map[singBoxUser]int)
 	for _, socket := range parseEstablishedSockets(string(activeSockets)) {
 		users := usersByPort[socket.localPort]
 		if len(users) == 0 {
 			continue
 		}
-		userName, ok := authenticatedPeers[socket.peer]
+		activePeers[socket.peer] = struct{}{}
+		userName, ok := c.authenticated[socket.peer]
 		if !ok {
 			continue
 		}
@@ -138,6 +174,16 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 			continue
 		}
 		counts[user]++
+	}
+	for peer := range c.authenticated {
+		if _, active := activePeers[peer]; !active {
+			delete(c.authenticated, peer)
+		}
+	}
+	for contextID, state := range c.contexts {
+		if _, active := activePeers[state.peer]; !active {
+			delete(c.contexts, contextID)
+		}
 	}
 
 	items := make([]Observation, 0, len(counts))
@@ -202,19 +248,20 @@ func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, error) {
 var singBoxJournalContextPattern = regexp.MustCompile(`\[(\d+)(?:\s+[^\]]*)?\]\s+inbound/vless\[[^\]]+\]:\s+(.+)$`)
 var singBoxAuthenticatedUserPattern = regexp.MustCompile(`^\[([^\]]+)\]\s+inbound (?:multiplex |packet addr |packet )?connection`)
 
-func parseAuthenticatedPeers(journal string) map[netip.AddrPort]string {
-	type contextState struct {
-		peer netip.AddrPort
-		name string
-	}
-	states := make(map[string]contextState)
-	result := make(map[netip.AddrPort]string)
+type singBoxContextState struct {
+	peer netip.AddrPort
+	name string
+}
+
+func (c *SingBoxCollector) consumeJournal(journal string) {
+	if c.contexts == nil { c.contexts = make(map[string]singBoxContextState) }
+	if c.authenticated == nil { c.authenticated = make(map[netip.AddrPort]string) }
 	for _, line := range strings.Split(journal, "\n") {
 		match := singBoxJournalContextPattern.FindStringSubmatch(strings.TrimSpace(line))
 		if len(match) != 3 {
 			continue
 		}
-		state := states[match[1]]
+		state := c.contexts[match[1]]
 		payload := match[2]
 		if rawPeer, ok := strings.CutPrefix(payload, "inbound connection from "); ok {
 			fields := strings.Fields(rawPeer)
@@ -223,20 +270,25 @@ func parseAuthenticatedPeers(journal string) map[netip.AddrPort]string {
 			}
 			if peer, err := parseAddrPort(fields[0]); err == nil {
 				if state.peer.IsValid() {
-					delete(result, state.peer)
+					delete(c.authenticated, state.peer)
 				}
-				state = contextState{peer: peer}
-				delete(result, peer)
+				state = singBoxContextState{peer: peer}
+				delete(c.authenticated, peer)
 			}
 		} else if userMatch := singBoxAuthenticatedUserPattern.FindStringSubmatch(payload); len(userMatch) == 2 {
 			state.name = strings.TrimSpace(userMatch[1])
 			if state.peer.IsValid() {
-				result[state.peer] = state.name
+				c.authenticated[state.peer] = state.name
 			}
 		}
-		states[match[1]] = state
+		c.contexts[match[1]] = state
 	}
-	return result
+}
+
+func parseAuthenticatedPeers(journal string) map[netip.AddrPort]string {
+	collector := &SingBoxCollector{}
+	collector.consumeJournal(journal)
+	return collector.authenticated
 }
 
 type establishedSocket struct {

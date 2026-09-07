@@ -54,7 +54,11 @@ func (c *FileCollector) Collect(ctx context.Context) (Snapshot, error) {
 	var snapshot Snapshot
 	if err := json.Unmarshal(data, &snapshot); err != nil { return Snapshot{}, fmt.Errorf("parse client presence file: %w", err) }
 	if snapshot.Items == nil { snapshot.Items = []Observation{} }
-	if snapshot.ObservedAt.IsZero() { snapshot.ObservedAt = now }
+	if snapshot.ObservedAt.IsZero() {
+		info, statErr := os.Stat(c.path)
+		if statErr != nil { return Snapshot{}, fmt.Errorf("stat client presence file: %w", statErr) }
+		snapshot.ObservedAt = info.ModTime().UTC()
+	}
 	for index := range snapshot.Items {
 		item := &snapshot.Items[index]
 		item.VPNAccountID = strings.TrimSpace(item.VPNAccountID)
@@ -69,4 +73,3 @@ func (c *FileCollector) Collect(ctx context.Context) (Snapshot, error) {
 	}
 	return snapshot, nil
 }
-
