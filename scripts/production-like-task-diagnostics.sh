@@ -105,118 +105,7 @@ sing_box_presence_diagnostics() {
   fi
 
   journal=$(journalctl -b -u "$service" "_PID=${pid}" --since '-15 minutes' -n 3000 --no-pager -o cat 2>/dev/null || true)
-  log "sing-box-presence journal-lines=$(printf '%s\n' "$journal" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$journal" 'inbound/vless\[') connection-from=$(count_matches "$journal" 'inbound connection from') named-connection=$(count_matches "$journal" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection') anonymous-connection-to=$(count_matches "$journal" 'inbound connection to') ansi-lines=$(printf '%s\n' "$journal" | LC_ALL=C grep -c  {
-  local config_version_id=${1:-}
-  local staging_dir=/var/lib/routegate-agent/configs
-  if [[ -z "$config_version_id" ]]; then
-    log 'failed-job-staged-config=unknown reason=no-config-version'
-    return 0
-  fi
-
-  local staged_path="${staging_dir}/${config_version_id}.json"
-  if [[ ! -r "$staged_path" ]]; then
-    log 'failed-job-staged-config=absent'
-    return 0
-  fi
-
-  local vless_count shadowsocks_count mtime now age
-  vless_count=$(grep -Eoc '"type"[[:space:]]*:[[:space:]]*"vless"' "$staged_path" 2>/dev/null || true)
-  shadowsocks_count=$(grep -Eoc '"type"[[:space:]]*:[[:space:]]*"shadowsocks"' "$staged_path" 2>/dev/null || true)
-  mtime=$(stat -c %Y "$staged_path" 2>/dev/null || true)
-  now=$(date +%s)
-  age=-1
-  if [[ "$mtime" =~ ^[0-9]+$ ]] && (( now >= mtime )); then
-    age=$((now - mtime))
-  fi
-
-  log "failed-job-staged-config=present vless=${vless_count:-0} shadowsocks=${shadowsocks_count:-0} mtime-age-seconds=${age}"
-}
-
-load_manager_database() {
-  [[ -r /etc/routegate/manager.env ]] || return 1
-  command -v psql >/dev/null 2>&1 || return 1
-  set -a
-  # shellcheck disable=SC1091
-  source /etc/routegate/manager.env
-  set +a
-  [[ -n ${ROUTEGATE_DATABASE_URL:-} ]]
-}
-
-database_diagnostics() {
-  if ! load_manager_database; then
-    log 'database=unavailable'
-    return 0
-  fi
-
-  local latest audit_rows
-  latest=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
-    SELECT
-      status,
-      COALESCE(floor(extract(epoch FROM (completed_at - started_at)))::bigint, -1),
-      COALESCE(floor(extract(epoch FROM (now() - created_at)))::bigint, -1),
-      COALESCE(jsonb_array_length(COALESCE(result_payload->'components', '[]'::jsonb)), 0),
-      length(COALESCE(result_payload::text, '')),
-      CASE
-        WHEN COALESCE(error_message, '') ILIKE '%completion was not confirmed%' THEN 'completion-unconfirmed'
-        WHEN COALESCE(error_message, '') ILIKE '%listener%' THEN 'listener-health'
-        WHEN COALESCE(error_message, '') ILIKE '%restart%' THEN 'restart'
-        WHEN COALESCE(error_message, '') ILIKE '%timeout%' THEN 'timeout'
-        WHEN COALESCE(error_message, '') = '' THEN 'none'
-        ELSE 'other'
-      END,
-      config_version_id::text
-    FROM config_apply_jobs
-    ORDER BY created_at DESC
-    LIMIT 1
-  " 2>/dev/null || true)
-  if [[ -n "$latest" ]]; then
-    local status duration age components payload_size error_class config_version_id
-    IFS='|' read -r status duration age components payload_size error_class config_version_id <<<"$latest"
-    log "latest-config-job status=${status:-unknown} duration-seconds=${duration:--1} age-seconds=${age:--1} result-components=${components:-0} result-payload-bytes=${payload_size:-0} error-class=${error_class:-unknown}"
-    staged_sing_box_diagnostics "$config_version_id"
-  else
-    log 'latest-config-job=none'
-  fi
-
-  audit_rows=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
-    SELECT
-      COALESCE(metadata->>'reason', 'unknown'),
-      count(*)
-    FROM audit_events
-    WHERE action = 'agent.task.completion_rejected'
-      AND created_at > now() - interval '90 minutes'
-    GROUP BY COALESCE(metadata->>'reason', 'unknown')
-    ORDER BY 1
-  " 2>/dev/null || true)
-  if [[ -z "$audit_rows" ]]; then
-    log 'completion-rejected=0'
-  else
-    while IFS='|' read -r reason count; do
-      [[ -n "$reason" ]] || continue
-      log "completion-rejected reason=${reason} count=${count:-0}"
-    done <<<"$audit_rows"
-  fi
-
-  local completed_count
-  completed_count=$(psql "$ROUTEGATE_DATABASE_URL" -qAtc "
-    SELECT count(*)
-    FROM audit_events
-    WHERE action = 'agent.task.completed'
-      AND created_at > now() - interval '90 minutes'
-  " 2>/dev/null || true)
-  log "completion-audit-success=${completed_count:-unknown}"
-}
-
-main() {
-  require_root
-  classify_journals
-  sing_box_config_diagnostics
-  sing_box_presence_diagnostics
-  database_diagnostics
-}
-
-main "$@"
-\033\\[' || true)"
+  log "sing-box-presence journal-lines=$(printf '%s\n' "$journal" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$journal" 'inbound/vless\[') connection-from=$(count_matches "$journal" 'inbound connection from') named-connection=$(count_matches "$journal" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection') anonymous-connection-to=$(count_matches "$journal" 'inbound connection to') ansi-lines=$(printf '%s\n' "$journal" | LC_ALL=C grep -c $'\033\\[' || true)"
 }
 
 staged_sing_box_diagnostics() {
@@ -325,6 +214,7 @@ main() {
   require_root
   classify_journals
   sing_box_config_diagnostics
+  sing_box_presence_diagnostics
   database_diagnostics
 }
 
