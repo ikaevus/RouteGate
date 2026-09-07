@@ -23,7 +23,7 @@ func (r *Repository) ReplaceSnapshot(ctx context.Context, tokenHash string, inpu
 	err := r.pool.QueryRow(ctx, `
 		SELECT id::text, server_id::text
 		FROM agents
-		WHERE agent_key_hash=$1 AND status <> 'disabled'
+		WHERE token_hash=$1 AND status <> 'disabled'
 	`, tokenHash).Scan(&agentID, &serverID)
 	if errors.Is(err, pgx.ErrNoRows) { return SnapshotResponse{}, ErrUnauthorizedAgent }
 	if err != nil { return SnapshotResponse{}, err }
