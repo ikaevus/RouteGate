@@ -48,8 +48,8 @@ func (r *Repository) ReplaceSnapshot(ctx context.Context, tokenHash string, inpu
 	if _, err := tx.Exec(ctx, `DELETE FROM vpn_account_presence WHERE agent_id=$1::uuid`, agentID); err != nil {
 		return SnapshotResponse{}, err
 	}
-	expiresAt := input.ObservedAt.Add(PresenceTTL)
 	for _, item := range input.Items {
+		itemExpiresAt := presenceItemExpiry(input.ObservedAt, item)
 		result, err := tx.Exec(ctx, `
 			INSERT INTO vpn_account_presence (
 				agent_id, server_id, vpn_account_id, protocol, connection_count,
@@ -61,12 +61,20 @@ func (r *Repository) ReplaceSnapshot(ctx context.Context, tokenHash string, inpu
 			  AND a.status='active'
 			  AND (a.id::text=$3 OR (a.vless_uuid::text=$3 AND lower($4) LIKE 'vless%'))
 		`, agentID, serverID, item.VPNAccountID, item.Protocol, item.ConnectionCount,
-			item.Source, item.Confidence, item.ConnectedAt, item.LastActivityAt, input.ObservedAt, expiresAt)
+			item.Source, item.Confidence, item.ConnectedAt, item.LastActivityAt, input.ObservedAt, itemExpiresAt)
 		if err != nil { return SnapshotResponse{}, err }
 		if result.RowsAffected() == 0 { return SnapshotResponse{}, ErrVPNAccountNotFound }
 	}
 	if err := tx.Commit(ctx); err != nil { return SnapshotResponse{}, err }
 	return SnapshotResponse{OK: true, AgentID: agentID, ServerID: serverID, Accepted: len(input.Items)}, nil
+}
+
+func presenceItemExpiry(observedAt time.Time, item SnapshotItem) time.Time {
+	expiresAt := observedAt.Add(PresenceTTL)
+	if item.Confidence != "heuristic" || item.LastActivityAt == nil { return expiresAt }
+	activityExpiry := item.LastActivityAt.Add(PresenceTTL)
+	if activityExpiry.Before(expiresAt) { return activityExpiry }
+	return expiresAt
 }
 
 func (r *Repository) List(ctx context.Context, now time.Time, limit int) (ListResponse, error) {
