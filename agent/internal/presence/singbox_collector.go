@@ -144,7 +144,11 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, errSingBoxPresenceUnavailable
 	}
 
-	journalArgs := []string{"-b", "-u", serviceName, "_PID=" + processID, "--no-pager", "-o", "json"}
+	// Filter by the systemd unit rather than MainPID. Depending on how the
+	// service hands stdout/stderr to journald, sing-box records can belong to
+	// the unit invocation without carrying the unit's current MainPID field.
+	// MainPID is still used below to reset correlation state after a restart.
+	journalArgs := []string{"-b", "-u", serviceName, "--no-pager", "-o", "json"}
 	if c.processID != processID {
 		c.processID = processID
 		c.journalReadAt = time.Time{}
