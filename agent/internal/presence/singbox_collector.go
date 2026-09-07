@@ -17,7 +17,9 @@ import (
 )
 
 const SingBoxSocketCollectorSource = "sing-box-socket-journal"
+const SingBoxRecentAuthCollectorSource = "sing-box-auth-journal"
 const externalSnapshotMaxAge = 75 * time.Second
+const recentAuthenticationMaxAge = 75 * time.Second
 
 var errSingBoxPresenceUnavailable = errors.New("sing-box presence source is unavailable")
 
@@ -56,6 +58,10 @@ func (c *RuntimeCollector) Collect(ctx context.Context) (Snapshot, error) {
 		for _, item := range fileSnapshot.Items {
 			key := item.VPNAccountID + "\x00" + strings.ToLower(item.Protocol)
 			if _, exists := seen[key]; !exists {
+				if item.LastActivityAt == nil {
+					observedAt := fileSnapshot.ObservedAt
+					item.LastActivityAt = &observedAt
+				}
 				nativeSnapshot.Items = append(nativeSnapshot.Items, item)
 			}
 		}
@@ -74,6 +80,7 @@ type SingBoxCollector struct {
 	journalReadAt    time.Time
 	contexts         map[string]singBoxContextState
 	authenticated    map[netip.AddrPort]string
+	recentAuth       map[string]time.Time
 }
 
 func NewSingBoxCollector(activeConfigPath, serviceName string) *SingBoxCollector {
@@ -137,12 +144,13 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, errSingBoxPresenceUnavailable
 	}
 
-	journalArgs := []string{"-b", "-u", serviceName, "_PID=" + processID, "--no-pager", "-o", "cat"}
+	journalArgs := []string{"-b", "-u", serviceName, "_PID=" + processID, "--no-pager", "-o", "json"}
 	if c.processID != processID {
 		c.processID = processID
 		c.journalReadAt = time.Time{}
 		c.contexts = make(map[string]singBoxContextState)
 		c.authenticated = make(map[netip.AddrPort]string)
+		c.recentAuth = make(map[string]time.Time)
 	} else if !c.journalReadAt.IsZero() {
 		journalArgs = append(journalArgs, "--since", "@"+strconv.FormatInt(c.journalReadAt.Add(-2*time.Second).Unix(), 10))
 	}
@@ -150,7 +158,7 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read sing-box journal: %w", err)
 	}
-	c.consumeJournal(string(journal))
+	c.consumeJournal(string(journal), now)
 	c.journalReadAt = now
 	activeSockets, err := c.run(ctx, "ss", "-Htn", "state", "established")
 	if err != nil {
@@ -185,8 +193,13 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 			delete(c.contexts, contextID)
 		}
 	}
+	for name, authenticatedAt := range c.recentAuth {
+		if now.Sub(authenticatedAt) > recentAuthenticationMaxAge {
+			delete(c.recentAuth, name)
+		}
+	}
 
-	items := make([]Observation, 0, len(counts))
+	items := make([]Observation, 0, len(counts)+len(c.recentAuth))
 	for user, count := range counts {
 		lastActivity := now
 		items = append(items, Observation{
@@ -198,6 +211,22 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 			LastActivityAt: &lastActivity,
 		})
 	}
+	usersByName := uniqueSingBoxUsersByName(usersByPort)
+	for name, authenticatedAt := range c.recentAuth {
+		user, ok := usersByName[name]
+		if !ok || counts[user] > 0 {
+			continue
+		}
+		lastActivity := authenticatedAt
+		items = append(items, Observation{
+			VPNAccountID:   user.credentialID,
+			Protocol:       user.protocol,
+			ConnectionCount: 1,
+			Source:         SingBoxRecentAuthCollectorSource,
+			Confidence:     "heuristic",
+			LastActivityAt: &lastActivity,
+		})
+	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].VPNAccountID == items[j].VPNAccountID {
 			return items[i].Protocol < items[j].Protocol
@@ -205,6 +234,21 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		return items[i].VPNAccountID < items[j].VPNAccountID
 	})
 	return Snapshot{ObservedAt: now, Items: items}, nil
+}
+
+func uniqueSingBoxUsersByName(usersByPort map[int]map[string]singBoxUser) map[string]singBoxUser {
+	counts := make(map[string]int)
+	users := make(map[string]singBoxUser)
+	for _, byName := range usersByPort {
+		for name, user := range byName {
+			counts[name]++
+			users[name] = user
+		}
+	}
+	for name, count := range counts {
+		if count != 1 { delete(users, name) }
+	}
+	return users
 }
 
 func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, error) {
@@ -253,11 +297,41 @@ type singBoxContextState struct {
 	name string
 }
 
-func (c *SingBoxCollector) consumeJournal(journal string) {
+type systemdJournalEntry struct {
+	Message   string `json:"MESSAGE"`
+	Timestamp string `json:"__REALTIME_TIMESTAMP"`
+}
+
+type singBoxJournalMessage struct {
+	message string
+	at      time.Time
+}
+
+func parseJournalMessages(journal string, fallback time.Time) []singBoxJournalMessage {
+	messages := make([]singBoxJournalMessage, 0)
+	for _, line := range strings.Split(journal, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" { continue }
+		entry := systemdJournalEntry{}
+		if strings.HasPrefix(line, "{") && json.Unmarshal([]byte(line), &entry) == nil && entry.Message != "" {
+			at := fallback
+			if micros, err := strconv.ParseInt(entry.Timestamp, 10, 64); err == nil {
+				at = time.UnixMicro(micros).UTC()
+			}
+			messages = append(messages, singBoxJournalMessage{message: entry.Message, at: at})
+			continue
+		}
+		messages = append(messages, singBoxJournalMessage{message: line, at: fallback})
+	}
+	return messages
+}
+
+func (c *SingBoxCollector) consumeJournal(journal string, fallback time.Time) {
 	if c.contexts == nil { c.contexts = make(map[string]singBoxContextState) }
 	if c.authenticated == nil { c.authenticated = make(map[netip.AddrPort]string) }
-	for _, line := range strings.Split(journal, "\n") {
-		match := singBoxJournalContextPattern.FindStringSubmatch(strings.TrimSpace(line))
+	if c.recentAuth == nil { c.recentAuth = make(map[string]time.Time) }
+	for _, journalMessage := range parseJournalMessages(journal, fallback) {
+		match := singBoxJournalContextPattern.FindStringSubmatch(journalMessage.message)
 		if len(match) != 3 {
 			continue
 		}
@@ -277,6 +351,9 @@ func (c *SingBoxCollector) consumeJournal(journal string) {
 			}
 		} else if userMatch := singBoxAuthenticatedUserPattern.FindStringSubmatch(payload); len(userMatch) == 2 {
 			state.name = strings.TrimSpace(userMatch[1])
+			if previous, ok := c.recentAuth[state.name]; !ok || journalMessage.at.After(previous) {
+				c.recentAuth[state.name] = journalMessage.at
+			}
 			if state.peer.IsValid() {
 				c.authenticated[state.peer] = state.name
 			}
@@ -287,7 +364,7 @@ func (c *SingBoxCollector) consumeJournal(journal string) {
 
 func parseAuthenticatedPeers(journal string) map[netip.AddrPort]string {
 	collector := &SingBoxCollector{}
-	collector.consumeJournal(journal)
+	collector.consumeJournal(journal, time.Now().UTC())
 	return collector.authenticated
 }
 

@@ -3,6 +3,7 @@ package presence
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,6 +95,41 @@ func TestSingBoxCollectorReturnsEmptyAfterDisconnect(t *testing.T) {
 	if snapshot.Items == nil || len(snapshot.Items) != 0 {
 		t.Fatalf("items=%v, want authoritative empty snapshot", snapshot.Items)
 	}
+}
+
+func TestSingBoxCollectorReportsNamedRecentAuthenticationAfterSocketCloses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"inbounds":[{"type":"vless","listen_port":8443,"tls":{"reality":{"enabled":true}},"users":[{"name":"Felix","uuid":"523446e8-0351-4c0a-a9ec-19a269a8848f"}]}]}`), 0o600); err != nil { t.Fatal(err) }
+	collector := NewSingBoxCollector(path, "sing-box")
+	now := time.Date(2026, 9, 7, 9, 0, 30, 0, time.UTC)
+	collector.now = func() time.Time { return now }
+	authenticatedAt := now.Add(-15 * time.Second)
+	journal := `{"MESSAGE":"INFO [1 0ms] inbound/vless[vless-in]: inbound connection from 203.0.113.10:51001","__REALTIME_TIMESTAMP":"` +
+		formatJournalTimestamp(authenticatedAt.Add(-time.Second)) + `"}` + "\n" +
+		`{"MESSAGE":"INFO [1 50ms] inbound/vless[vless-in]: [Felix] inbound connection to example.com:443","__REALTIME_TIMESTAMP":"` +
+		formatJournalTimestamp(authenticatedAt) + `"}` + "\n"
+	collector.run = func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		switch name {
+		case "systemctl": return []byte("42\n"), nil
+		case "journalctl": return []byte(journal), nil
+		case "ss": return []byte{}, nil
+		default: return nil, errors.New("unexpected command")
+		}
+	}
+	snapshot, err := collector.Collect(context.Background())
+	if err != nil { t.Fatal(err) }
+	if len(snapshot.Items) != 1 { t.Fatalf("items=%+v", snapshot.Items) }
+	item := snapshot.Items[0]
+	if item.VPNAccountID != "523446e8-0351-4c0a-a9ec-19a269a8848f" || item.Confidence != "heuristic" || item.Source != SingBoxRecentAuthCollectorSource {
+		t.Fatalf("item=%+v", item)
+	}
+	if item.LastActivityAt == nil || !item.LastActivityAt.Equal(authenticatedAt) {
+		t.Fatalf("lastActivityAt=%v want %s", item.LastActivityAt, authenticatedAt)
+	}
+}
+
+func formatJournalTimestamp(value time.Time) string {
+	return fmt.Sprintf("%d", value.UnixMicro())
 }
 
 func TestSingBoxCollectorRetainsAuthenticationAcrossIncrementalReads(t *testing.T) {

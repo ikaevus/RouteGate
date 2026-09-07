@@ -313,7 +313,9 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
 }
 
 function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; available: boolean }) {
-  const onlineItems = items.filter((item) => item.state === 'online' && item.confidence === 'exact').slice(0, 5);
+  const visibleItems = items
+    .filter((item) => (item.state === 'online' && item.confidence === 'exact') || item.state === 'recently_active')
+    .slice(0, 5);
   return (
     <WidgetPanel
       title={t('dashboard.onlineVpnUsers')}
@@ -323,21 +325,28 @@ function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; av
     >
       {!available ? (
         <p className="empty-state">{t('common.notAvailable')}</p>
-      ) : onlineItems.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <p className="empty-state">{t('dashboard.noOnlineVpnUsers')}</p>
       ) : (
         <div className="dashboard-table online-users-table">
           <div className="dashboard-table-row dashboard-table-head">
-            <span>{t('dashboard.user')}</span><span>{t('dashboard.server')}</span><span>{t('dashboard.agentNode')}</span><span>{t('dashboard.connections')}</span>
+            <span>{t('dashboard.user')}</span><span>{t('dashboard.connectionState')}</span><span>{t('dashboard.server')}</span><span>{t('dashboard.agentNode')}</span><span>{t('dashboard.connections')}</span>
           </div>
-          {onlineItems.map((item) => (
-            <div className="dashboard-table-row" key={`${item.vpnAccountId}-${item.agentId}-${item.protocol}`}>
-              <strong title={item.email || item.accountName}>{item.accountName}</strong>
-              <span title={item.serverName}>{item.serverName}</span>
-              <span title={item.agentName}>{item.agentName || '—'}</span>
-              <span className="online-user-count"><i aria-hidden="true" />{item.connectionCount}</span>
-            </div>
-          ))}
+          {visibleItems.map((item) => {
+            const online = item.state === 'online' && item.confidence === 'exact';
+            return (
+              <div className="dashboard-table-row" key={`${item.vpnAccountId}-${item.agentId}-${item.protocol}`}>
+                <strong title={item.email || item.accountName}>{item.accountName}</strong>
+                <span className={`online-user-state online-user-state--${online ? 'online' : 'recent'}`}>
+                  <i aria-hidden="true" />
+                  {t(online ? 'dashboard.online' : 'dashboard.recentlyActive')}
+                </span>
+                <span title={item.serverName}>{item.serverName}</span>
+                <span title={item.agentName}>{item.agentName || '—'}</span>
+                <span className="online-user-count">{item.connectionCount}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </WidgetPanel>
