@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -168,6 +169,35 @@ func TestSingBoxCollectorRetainsAuthenticationAcrossIncrementalReads(t *testing.
 	now = now.Add(30 * time.Second)
 	second, err := collector.Collect(context.Background())
 	if err != nil || len(second.Items) != 1 { t.Fatalf("second snapshot=%+v err=%v", second, err) }
+}
+
+func TestSingBoxCollectorReadsJournalByUnitWithoutMainPIDFilter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"inbounds":[{"type":"vless","listen_port":8443,"users":[{"name":"Felix","uuid":"523446e8-0351-4c0a-a9ec-19a269a8848f"}]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	collector := NewSingBoxCollector(path, "sing-box")
+	collector.run = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "systemctl":
+			return []byte("42\n"), nil
+		case "journalctl":
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "_PID=") {
+					t.Fatalf("journal query must not filter by MainPID: %v", args)
+				}
+			}
+			return []byte{}, nil
+		case "ss":
+			return []byte{}, nil
+		default:
+			return nil, errors.New("unexpected command")
+		}
+	}
+
+	if _, err := collector.Collect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRuntimeCollectorDoesNotRefreshStaleExternalSnapshot(t *testing.T) {
