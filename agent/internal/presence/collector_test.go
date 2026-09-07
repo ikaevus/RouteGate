@@ -105,9 +105,9 @@ func TestSingBoxCollectorReportsNamedRecentAuthenticationAfterSocketCloses(t *te
 	collector.now = func() time.Time { return now }
 	authenticatedAt := now.Add(-15 * time.Second)
 	journal := `{"MESSAGE":"INFO [1 0ms] inbound/vless[vless-in]: inbound connection from 203.0.113.10:51001","__REALTIME_TIMESTAMP":"` +
-		formatJournalTimestamp(authenticatedAt.Add(-time.Second)) + `"}\n` +
+		formatJournalTimestamp(authenticatedAt.Add(-time.Second)) + `"}` + "\n" +
 		`{"MESSAGE":"INFO [1 50ms] inbound/vless[vless-in]: [Felix] inbound connection to example.com:443","__REALTIME_TIMESTAMP":"` +
-		formatJournalTimestamp(authenticatedAt) + `"}\n`
+		formatJournalTimestamp(authenticatedAt) + `"}` + "\n"
 	collector.run = func(_ context.Context, name string, _ ...string) ([]byte, error) {
 		switch name {
 		case "systemctl": return []byte("42\n"), nil
