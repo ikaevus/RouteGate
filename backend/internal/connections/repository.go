@@ -57,7 +57,9 @@ func (r *Repository) ReplaceSnapshot(ctx context.Context, tokenHash string, inpu
 			)
 			SELECT $1::uuid, $2::uuid, a.id, $4, $5, $6, $7, $8, $9, $10, $11
 			FROM vpn_accounts a
-			WHERE a.id=$3::uuid AND a.server_id=$2::uuid AND a.status='active'
+			WHERE a.server_id=$2::uuid
+			  AND a.status='active'
+			  AND (a.id::text=$3 OR (a.vless_uuid::text=$3 AND lower($4) LIKE 'vless%'))
 		`, agentID, serverID, item.VPNAccountID, item.Protocol, item.ConnectionCount,
 			item.Source, item.Confidence, item.ConnectedAt, item.LastActivityAt, input.ObservedAt, expiresAt)
 		if err != nil { return SnapshotResponse{}, err }

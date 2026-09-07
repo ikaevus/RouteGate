@@ -73,7 +73,13 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 	if cfg.TrafficCollectionEnabled {
 		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
 	}
-	if cfg.ClientPresenceEnabled { runner.presenceCollector = presence.NewFileCollector(cfg.ClientPresenceFilePath) }
+	if cfg.ClientPresenceEnabled {
+		runner.presenceCollector = presence.NewRuntimeCollector(
+			cfg.ActiveConfigPath,
+			cfg.SingBoxServiceName,
+			cfg.ClientPresenceFilePath,
+		)
+	}
 	return runner
 }
 
