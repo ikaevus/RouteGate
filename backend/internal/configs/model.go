@@ -241,7 +241,8 @@ type SingBoxConfig struct {
 }
 
 type SingBoxLog struct {
-	Level string `json:"level"`
+	Level  string `json:"level"`
+	Output string `json:"output,omitempty"`
 }
 
 type SingBoxOutbound struct {
