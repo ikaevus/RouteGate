@@ -75,6 +75,20 @@ classify_journals() {
   last_failure_class=$(classify_process_failure "$last_failure")
   last_presence_failure=$(printf '%s\n' "$agent_journal" | grep -Ei 'report client presence failed' | tail -n 1 || true)
   last_presence_failure_class=$(classify_presence_failure "$last_presence_failure")
+  local presence_stage=unknown presence_cancelled=false child_pid child_state
+  case "$last_presence_failure" in
+    *"collect client presence:"*) presence_stage=collect ;;
+    *"submit client presence:"*) presence_stage=submit ;;
+  esac
+  case "$last_presence_failure" in *"context canceled"*) presence_cancelled=true ;; esac
+  log "client-presence-stage last=$presence_stage cancelled=$presence_cancelled"
+  if [[ ${agent_pid:-0} =~ ^[1-9][0-9]*$ ]]; then
+    while read -r child_pid; do
+      [[ $child_pid =~ ^[1-9][0-9]*$ ]] || continue
+      child_state=$(ps -p "$child_pid" -o comm=,etime=,wchan= 2>/dev/null || true)
+      log "agent-child ${child_state:-exited}"
+    done < <(pgrep -P "$agent_pid" 2>/dev/null || true)
+  fi
   latest_presence_accepted=$(printf '%s\n' "$agent_journal" | grep -Ei 'client presence report accepted' | tail -n 1 | sed -n 's/.*accepted[= ]\([0-9][0-9]*\).*/\1/p' || true)
 
   log "agent process-count=${agent_processes:-unknown} main-pid-present=$([[ ${agent_pid:-0} =~ ^[1-9][0-9]*$ ]] && printf true || printf false) restarts=${agent_restarts:-unknown} heartbeats=$(count_matches "$agent_journal" 'heartbeat accepted') process-task-failed=$(count_matches "$agent_journal" 'process agent task failed') completion-retry-exhausted=$(count_matches "$agent_journal" 'complete agent task after [0-9]+ attempts') http-404=$(count_matches "$agent_journal" 'status 404') http-4xx=$(count_matches "$agent_journal" 'status 4[0-9][0-9]') http-5xx=$(count_matches "$agent_journal" 'status 5[0-9][0-9]') context-timeout=$(count_matches "$agent_journal" 'context deadline exceeded|context canceled') connection-failure=$(count_matches "$agent_journal" 'connection refused|connection reset|broken pipe|no route to host')"
