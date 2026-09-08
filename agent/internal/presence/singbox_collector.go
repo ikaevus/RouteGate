@@ -29,6 +29,20 @@ var errSingBoxPresenceUnavailable = errors.New("sing-box presence source is unav
 
 type commandRunner func(context.Context, string, ...string) ([]byte, error)
 
+const presenceProbeTimeout = 3 * time.Second
+
+func runPresenceProbe(ctx context.Context, run commandRunner, name string, args ...string) ([]byte, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, presenceProbeTimeout)
+	defer cancel()
+	return run(probeCtx, name, args...)
+}
+
+func executePresenceCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = time.Second
+	return cmd.Output()
+}
+
 type RuntimeCollector struct {
 	singBox   *SingBoxCollector
 	wireGuard *WireGuardCollector
@@ -139,9 +153,7 @@ func NewSingBoxCollector(activeConfigPath, serviceName string) *SingBoxCollector
 	return &SingBoxCollector{
 		activeConfigPath: strings.TrimSpace(activeConfigPath),
 		serviceName:      strings.TrimSpace(serviceName),
-		run: func(ctx context.Context, name string, args ...string) ([]byte, error) {
-			return exec.CommandContext(ctx, name, args...).Output()
-		},
+		run: executePresenceCommand,
 		now: time.Now,
 		logRoot: singBoxLogRoot,
 	}
@@ -190,7 +202,7 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	serviceName := normalizeServiceName(c.serviceName)
-	pidOutput, err := c.run(ctx, "systemctl", "show", "--property=MainPID", "--value", serviceName)
+	pidOutput, err := runPresenceProbe(ctx, c.run, "systemctl", "show", "--property=MainPID", "--value", serviceName)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read sing-box process ID: %w", err)
 	}
@@ -213,21 +225,28 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		c.recentAuth = make(map[string]time.Time)
 		c.logFilePath = ""
 		c.logFileOffset = 0
+		journalArgs = append(journalArgs, "-n", "2000", "--since", "@"+strconv.FormatInt(now.Add(-15*time.Minute).Unix(), 10))
 	} else if !c.journalReadAt.IsZero() {
 		journalArgs = append(journalArgs, "--since", "@"+strconv.FormatInt(c.journalReadAt.Add(-2*time.Second).Unix(), 10))
 	}
-	journal, err := c.run(ctx, "journalctl", journalArgs...)
-	if err == nil {
-		c.consumeJournal(string(journal), now)
-	}
+	// A configured file is the actual sing-box log sink. Do not scan journald
+	// before reading it: a slow journal scan used to stall the entire Agent loop.
+	fileRead := false
 	if logOutput != "" && logOutput != "stdout" && logOutput != "stderr" {
 		fileLog, readErr := c.readLogFile(logOutput)
 		if readErr == nil {
 			c.consumeJournal(fileLog, now)
+			fileRead = true
+		}
+	}
+	if !fileRead {
+		journal, journalErr := runPresenceProbe(ctx, c.run, "journalctl", journalArgs...)
+		if journalErr == nil {
+			c.consumeJournal(string(journal), now)
 		}
 	}
 	c.journalReadAt = now
-	activeSockets, err := c.run(ctx, "ss", "-Htn", "state", "established")
+	activeSockets, err := runPresenceProbe(ctx, c.run, "ss", "-Htn", "state", "established")
 	if err != nil {
 		activeSockets = nil
 	}
