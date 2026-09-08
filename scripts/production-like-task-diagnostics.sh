@@ -97,15 +97,36 @@ sing_box_config_diagnostics() {
 }
 
 sing_box_presence_diagnostics() {
-  local service=sing-box.service pid journal
+	local service=sing-box.service pid journal presence_log log_data log_state log_size log_mtime now log_age config_output
   pid=$(systemctl show "$service" --property=MainPID --value 2>/dev/null || true)
   if [[ ! ${pid:-} =~ ^[1-9][0-9]*$ ]]; then
     log 'sing-box-presence process=unavailable'
     return 0
   fi
 
-  journal=$(journalctl -b -u "$service" --since '-15 minutes' -n 3000 --no-pager -o cat 2>/dev/null || true)
-  log "sing-box-presence journal-lines=$(printf '%s\n' "$journal" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$journal" 'inbound/vless\[') connection-from=$(count_matches "$journal" 'inbound connection from') named-connection=$(count_matches "$journal" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection') anonymous-connection-to=$(count_matches "$journal" 'inbound connection to') ansi-lines=$(printf '%s\n' "$journal" | LC_ALL=C grep -c $'\033\\[' || true)"
+	journal=$(journalctl -b -u "$service" --since '-15 minutes' -n 3000 --no-pager -o cat 2>/dev/null || true)
+	log "sing-box-presence journal-lines=$(printf '%s\n' "$journal" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$journal" 'inbound/vless\[') connection-from=$(count_matches "$journal" 'inbound connection from') named-connection=$(count_matches "$journal" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection') anonymous-connection-to=$(count_matches "$journal" 'inbound connection to') ansi-lines=$(printf '%s\n' "$journal" | LC_ALL=C grep -c $'\033\\[' || true)"
+
+	presence_log=/var/lib/sing-box/routegate-presence.log
+	config_output=absent
+	if grep -Eq '"output"[[:space:]]*:[[:space:]]*"/var/lib/sing-box/routegate-presence\.log"' /etc/sing-box/config.json 2>/dev/null; then
+		config_output=configured
+	fi
+	log_state=absent
+	log_size=0
+	log_age=-1
+	log_data=''
+	if [[ -r "$presence_log" ]]; then
+		log_state=readable
+		log_size=$(stat -c %s "$presence_log" 2>/dev/null || true)
+		log_mtime=$(stat -c %Y "$presence_log" 2>/dev/null || true)
+		now=$(date +%s)
+		if [[ "$log_mtime" =~ ^[0-9]+$ ]] && (( now >= log_mtime )); then
+			log_age=$((now - log_mtime))
+		fi
+		log_data=$(tail -c 8388608 "$presence_log" 2>/dev/null || true)
+	fi
+	log "sing-box-presence-file config-output=$config_output state=$log_state size-bytes=${log_size:-0} mtime-age-seconds=$log_age lines=$(printf '%s\n' "$log_data" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$log_data" 'inbound/vless\[') connection-from=$(count_matches "$log_data" 'inbound connection from') named-connection=$(count_matches "$log_data" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection')"
 }
 
 staged_sing_box_diagnostics() {
