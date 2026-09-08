@@ -237,7 +237,13 @@ func configuredVPNServicesReady(config RenderedConfig) bool {
 }
 
 func ensureSingBoxBase(config *RenderedConfig) {
-	if config.SingBox.Log.Level == "" { config.SingBox.Log = SingBoxLog{Level: "info"} }
+	if config.SingBox.Log.Level == "" { config.SingBox.Log.Level = "info" }
+	// The distro sing-box unit may discard stdout/stderr, which makes its
+	// journal unusable for correlating authenticated VLESS sessions with the
+	// configured RouteGate account. Keep a root-readable local runtime log in
+	// sing-box's own state directory; the Agent consumes it locally and reports
+	// only account IDs and aggregate presence observations.
+	if config.SingBox.Log.Output == "" { config.SingBox.Log.Output = "/var/lib/sing-box/routegate-presence.log" }
 	if config.SingBox.Inbounds == nil { config.SingBox.Inbounds = []map[string]any{} }
 	if config.SingBox.Outbounds == nil { config.SingBox.Outbounds = []SingBoxOutbound{} }
 	ensureSingBoxOutbound(config, SingBoxOutbound{Type: "direct", Tag: singBoxDirectTag})
