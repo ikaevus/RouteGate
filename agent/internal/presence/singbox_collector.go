@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -20,6 +22,8 @@ const SingBoxSocketCollectorSource = "sing-box-socket-journal"
 const SingBoxRecentAuthCollectorSource = "sing-box-auth-journal"
 const externalSnapshotMaxAge = 75 * time.Second
 const recentAuthenticationMaxAge = 75 * time.Second
+const singBoxLogRoot = "/var/lib/sing-box"
+const maxSingBoxLogReadBytes int64 = 8 << 20
 
 var errSingBoxPresenceUnavailable = errors.New("sing-box presence source is unavailable")
 
@@ -81,6 +85,9 @@ type SingBoxCollector struct {
 	contexts         map[string]singBoxContextState
 	authenticated    map[netip.AddrPort]string
 	recentAuth       map[string]time.Time
+	logFilePath      string
+	logFileOffset    int64
+	logRoot          string
 }
 
 func NewSingBoxCollector(activeConfigPath, serviceName string) *SingBoxCollector {
@@ -91,10 +98,14 @@ func NewSingBoxCollector(activeConfigPath, serviceName string) *SingBoxCollector
 			return exec.CommandContext(ctx, name, args...).Output()
 		},
 		now: time.Now,
+		logRoot: singBoxLogRoot,
 	}
 }
 
 type singBoxConfig struct {
+	Log struct {
+		Output string `json:"output"`
+	} `json:"log"`
 	Inbounds []struct {
 		Type       string `json:"type"`
 		ListenPort int    `json:"listen_port"`
@@ -120,7 +131,7 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	now := c.now().UTC()
-	usersByPort, err := readSingBoxUsers(c.activeConfigPath)
+	usersByPort, logOutput, err := readSingBoxUsers(c.activeConfigPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Snapshot{}, errSingBoxPresenceUnavailable
@@ -155,6 +166,8 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		c.contexts = make(map[string]singBoxContextState)
 		c.authenticated = make(map[netip.AddrPort]string)
 		c.recentAuth = make(map[string]time.Time)
+		c.logFilePath = ""
+		c.logFileOffset = 0
 	} else if !c.journalReadAt.IsZero() {
 		journalArgs = append(journalArgs, "--since", "@"+strconv.FormatInt(c.journalReadAt.Add(-2*time.Second).Unix(), 10))
 	}
@@ -163,6 +176,13 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("read sing-box journal: %w", err)
 	}
 	c.consumeJournal(string(journal), now)
+	if logOutput != "" && logOutput != "stdout" && logOutput != "stderr" {
+		fileLog, readErr := c.readLogFile(logOutput)
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return Snapshot{}, fmt.Errorf("read sing-box presence log: %w", readErr)
+		}
+		c.consumeJournal(fileLog, now)
+	}
 	c.journalReadAt = now
 	activeSockets, err := c.run(ctx, "ss", "-Htn", "state", "established")
 	if err != nil {
@@ -255,14 +275,14 @@ func uniqueSingBoxUsersByName(usersByPort map[int]map[string]singBoxUser) map[st
 	return users
 }
 
-func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, error) {
+func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, string, error) {
 	data, err := os.ReadFile(strings.TrimSpace(path))
 	if err != nil {
-		return nil, fmt.Errorf("read active sing-box config: %w", err)
+		return nil, "", fmt.Errorf("read active sing-box config: %w", err)
 	}
 	var config singBoxConfig
 	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("parse active sing-box config: %w", err)
+		return nil, "", fmt.Errorf("parse active sing-box config: %w", err)
 	}
 	result := make(map[int]map[string]singBoxUser)
 	for _, inbound := range config.Inbounds {
@@ -290,7 +310,45 @@ func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, error) {
 			result[inbound.ListenPort] = byName
 		}
 	}
-	return result, nil
+	return result, strings.TrimSpace(config.Log.Output), nil
+}
+
+func (c *SingBoxCollector) readLogFile(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", nil
+	}
+	root := filepath.Clean(strings.TrimSpace(c.logRoot))
+	cleanPath := filepath.Clean(path)
+	relative, err := filepath.Rel(root, cleanPath)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("sing-box log path is outside the allowed state directory")
+	}
+	file, err := os.Open(cleanPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if c.logFilePath != cleanPath || info.Size() < c.logFileOffset {
+		c.logFilePath = cleanPath
+		c.logFileOffset = 0
+	}
+	if unread := info.Size() - c.logFileOffset; unread > maxSingBoxLogReadBytes {
+		c.logFileOffset = info.Size() - maxSingBoxLogReadBytes
+	}
+	if _, err := file.Seek(c.logFileOffset, io.SeekStart); err != nil {
+		return "", err
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxSingBoxLogReadBytes))
+	if err != nil {
+		return "", err
+	}
+	c.logFileOffset += int64(len(data))
+	return string(data), nil
 }
 
 var singBoxJournalContextPattern = regexp.MustCompile(`\[(\d+)(?:\s+[^\]]*)?\]\s+inbound/vless\[[^\]]+\]:\s+(.+)$`)
