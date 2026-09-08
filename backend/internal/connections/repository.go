@@ -31,10 +31,19 @@ func (r *Repository) ReplaceSnapshot(ctx context.Context, tokenHash string, inpu
 	tx, err := r.pool.Begin(ctx)
 	if err != nil { return SnapshotResponse{}, err }
 	defer tx.Rollback(ctx)
-	// Heartbeats own Agent liveness and already serialize authenticated writes to
-	// the hot agents row. Presence reports arrive from the same sequential Agent
-	// runner, so touching that row again here only creates avoidable contention
-	// with heartbeat and health reconciliation transactions.
+	claim, err := tx.Exec(ctx, `
+		UPDATE agents
+		SET client_presence_observed_at=$2, last_seen_at=now(), status='online', updated_at=now()
+		WHERE id=$1::uuid
+		  AND (client_presence_observed_at IS NULL OR client_presence_observed_at <= $2)
+	`, agentID, input.ObservedAt)
+	if err != nil {
+		return SnapshotResponse{}, err
+	}
+	if claim.RowsAffected() == 0 {
+		if err := tx.Commit(ctx); err != nil { return SnapshotResponse{}, err }
+		return SnapshotResponse{OK: true, AgentID: agentID, ServerID: serverID, Accepted: 0}, nil
+	}
 
 	if _, err := tx.Exec(ctx, `DELETE FROM vpn_account_presence WHERE agent_id=$1::uuid`, agentID); err != nil {
 		return SnapshotResponse{}, err

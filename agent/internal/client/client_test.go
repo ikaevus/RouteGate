@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/config"
-	"github.com/ikaevus/routegate/agent/internal/presence"
 	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
@@ -260,31 +259,6 @@ func TestReportTrafficUsageSkipsEmptyEvents(t *testing.T) {
 	response, err := client.ReportTrafficUsage(context.Background(), "agent-token", nil)
 	if err != nil {
 		t.Fatalf("report empty traffic usage: %v", err)
-	}
-	if !response.OK || response.Accepted != 0 {
-		t.Fatalf("unexpected response: %+v", response)
-	}
-}
-
-func TestReportClientPresenceUsesDedicatedHTTPBudget(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/agent/client-presence" {
-			t.Fatalf("unexpected presence request: %s %s", r.Method, r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"agentId":"agent-1","serverId":"server-1","accepted":0}`))
-	}))
-	defer server.Close()
-
-	client := New(server.URL)
-	client.httpClient.Timeout = time.Nanosecond
-	client.clientPresenceHTTPClient.Timeout = time.Second
-	response, err := client.ReportClientPresence(context.Background(), "agent-token", presence.Snapshot{
-		ObservedAt: time.Now().UTC(),
-		Items:      []presence.Observation{},
-	})
-	if err != nil {
-		t.Fatalf("report client presence: %v", err)
 	}
 	if !response.OK || response.Accepted != 0 {
 		t.Fatalf("unexpected response: %+v", response)

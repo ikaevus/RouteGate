@@ -79,7 +79,7 @@ INFO[0003] [1003 0ms] inbound/vless[vless-in]: inbound connection from 203.0.113
 	}
 }
 
-func TestSingBoxCollectorReadsConfiguredLogFileWhenJournalIsEmpty(t *testing.T) {
+func TestSingBoxCollectorReadsConfiguredLogFileWithoutScanningJournal(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	logPath := filepath.Join(dir, "sing-box.log")
@@ -99,7 +99,7 @@ func TestSingBoxCollectorReadsConfiguredLogFileWhenJournalIsEmpty(t *testing.T) 
 	collector.run = func(_ context.Context, name string, _ ...string) ([]byte, error) {
 		switch name {
 		case "systemctl": return []byte("42\n"), nil
-		case "journalctl": return []byte{}, nil
+		case "journalctl": t.Fatal("configured log file must bypass journald"); return nil, nil
 		case "ss": return []byte("0 0 10.0.0.1:8443 203.0.113.10:51001\n"), nil
 		default: return nil, errors.New("unexpected command")
 		}
@@ -401,4 +401,47 @@ func TestFileCollectorRejectsInvalidConfidence(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil { t.Fatal(err) }
 	_, err := NewFileCollector(path).Collect(context.Background())
 	if err == nil { t.Fatal("expected invalid confidence error") }
+}
+
+func TestPresenceProbeBoundsHungCommand(t *testing.T) {
+	parent := context.Background()
+	started := time.Now()
+	_, err := runPresenceProbe(parent, func(ctx context.Context, _ string, _ ...string) ([]byte, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) > presenceProbeTimeout {
+			t.Fatal("probe must have its own bounded deadline")
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}, "journalctl")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error=%v, want deadline exceeded", err)
+	}
+	if time.Since(started) > presenceProbeTimeout + 2*time.Second || parent.Err() != nil {
+		t.Fatal("probe must finish promptly without cancelling the Agent context")
+	}
+}
+
+func TestSingBoxCollectorFallsBackToBoundedJournalWhenFileMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"log":{"output":"`+filepath.Join(dir,"missing.log")+`"},"inbounds":[{"type":"vless","listen_port":8443,"users":[{"name":"test-user","uuid":"test-account"}]}]}`), 0o600); err != nil { t.Fatal(err) }
+	c := NewSingBoxCollector(path, "sing-box")
+	c.logRoot = dir
+	journalCalled := false
+	c.run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if _, ok := ctx.Deadline(); !ok { t.Fatal("every probe needs a deadline") }
+		switch name {
+		case "systemctl": return []byte("42"), nil
+		case "journalctl":
+			journalCalled = true
+			joined := strings.Join(args, " ")
+			if !strings.Contains(joined, "-n 2000") || !strings.Contains(joined, "--since @") { t.Fatalf("unbounded initial journal read: %s", joined) }
+			return []byte("INFO [1 0ms] inbound/vless[in]: inbound connection from 203.0.113.1:12345\nINFO [1 1ms] inbound/vless[in]: [test-user] inbound connection to example.com:443\n"), nil
+		case "ss": return []byte("0 0 0.0.0.0:8443 203.0.113.1:12345\n"), nil
+		default: return nil, fmt.Errorf("unexpected command %s", name)
+		}
+	}
+	snapshot, err := c.Collect(context.Background())
+	if err != nil || !journalCalled || len(snapshot.Items) != 1 || snapshot.Items[0].VPNAccountID != "test-account" { t.Fatalf("snapshot=%+v err=%v journal=%v", snapshot, err, journalCalled) }
 }
