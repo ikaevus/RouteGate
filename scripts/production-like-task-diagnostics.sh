@@ -51,6 +51,14 @@ classify_presence_failure() {
     *"status 5"[0-9][0-9]*) printf 'manager-5xx' ;;
     *"context deadline exceeded"*|*"context canceled"*) printf 'timeout' ;;
     *"connection refused"*|*"connection reset"*|*"no route to host"*) printf 'connection' ;;
+    *"parse client presence file"*) printf 'fallback-json' ;;
+    *"read client presence file"*|*"stat client presence file"*) printf 'fallback-file' ;;
+    *"read active sing-box config"*|*"parse active sing-box config"*) printf 'sing-box-config' ;;
+    *"read sing-box process ID"*|*"read sing-box journal"*|*"read sing-box presence log"*|*"read established TCP sockets"*) printf 'sing-box-probe' ;;
+    *"read active WireGuard config"*) printf 'wireguard-config' ;;
+    *"executable file not found"*|*"exec format error"*) printf 'system-command' ;;
+    *"permission denied"*) printf 'permission' ;;
+    *"unexpected end of JSON input"*|*"unexpected EOF"*|*" EOF"*) printf 'empty-response' ;;
     '') printf 'none' ;;
     *) printf 'other' ;;
   esac
