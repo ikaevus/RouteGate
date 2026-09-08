@@ -1,3 +1,4 @@
+import { groupConnections } from '../../entities/connection/model/groupConnections';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -559,14 +560,25 @@ export function AnalyticsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {connectionsQuery.data.items.map((connection) => (
-                      <tr key={`${connection.vpnAccountId}-${connection.agentId}-${connection.protocol}`}>
+                    {groupConnections(connectionsQuery.data.items).map((connection) => (
+                      <tr key={connection.groupKey}>
                         <td><strong className="analytics-connection-user">{connection.accountName}</strong>{connection.email && <small>{connection.email}</small>}</td>
                         <td><ConnectionStatePill connection={connection} /></td>
                         <td>{connection.serverName}</td>
                         <td>{connection.agentName || '—'}</td>
-                        <td>{connection.protocol}</td>
-                        <td>{connection.connectionCount}</td>
+                        <td>
+                          <details>
+                            <summary>{connection.details.map((item) => item.protocol).join(', ')}</summary>
+                            {connection.details.map((item) => (
+                              <div key={`${item.protocol}-${item.source}`}>
+                                <span>{item.protocol} · </span>
+                                <ConnectionStatePill connection={item} />
+                                {item.state === 'online' && item.confidence === 'exact' && <span> · {item.connectionCount}</span>}
+                              </div>
+                            ))}
+                          </details>
+                        </td>
+                        <td>{connection.state === 'online' ? connection.connectionCount : '—'}</td>
                         <td>{formatDateTime(connection.lastActivityAt ?? connection.observedAt)}</td>
                       </tr>
                     ))}
