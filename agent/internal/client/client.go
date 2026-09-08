@@ -21,14 +21,16 @@ import (
 
 const (
 	timeout                   = 10 * time.Second
+	clientPresenceTimeout     = 30 * time.Second
 	completeTaskMaxAttempts   = 4
 	completeTaskRetryBaseWait = 500 * time.Millisecond
 	errorResponseBodyLimit    = 4096
 )
 
 type Client struct {
-	managerURL string
-	httpClient *http.Client
+	managerURL               string
+	httpClient               *http.Client
+	clientPresenceHTTPClient *http.Client
 }
 
 type httpStatusError struct {
@@ -43,7 +45,11 @@ func (e *httpStatusError) Error() string {
 }
 
 func New(managerURL string) *Client {
-	return &Client{managerURL: strings.TrimRight(managerURL, "/"), httpClient: &http.Client{Timeout: timeout}}
+	return &Client{
+		managerURL:               strings.TrimRight(managerURL, "/"),
+		httpClient:               &http.Client{Timeout: timeout},
+		clientPresenceHTTPClient: &http.Client{Timeout: clientPresenceTimeout},
+	}
 }
 
 type registerRequest struct {
@@ -242,13 +248,17 @@ func (c *Client) ReportTrafficUsage(ctx context.Context, agentToken string, even
 
 func (c *Client) ReportClientPresence(ctx context.Context, agentToken string, snapshot presence.Snapshot) (ReportPresenceResponse, error) {
 	var res ReportPresenceResponse
-	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/client-presence", agentToken, snapshot, &res); err != nil {
+	if err := c.doJSONWithClient(ctx, c.clientPresenceHTTPClient, http.MethodPost, "/api/v1/agent/client-presence", agentToken, snapshot, &res); err != nil {
 		return ReportPresenceResponse{}, err
 	}
 	return res, nil
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body any, out any) error {
+	return c.doJSONWithClient(ctx, c.httpClient, method, path, bearer, body, out)
+}
+
+func (c *Client) doJSONWithClient(ctx context.Context, httpClient *http.Client, method, path, bearer string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -267,7 +277,7 @@ func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body a
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
