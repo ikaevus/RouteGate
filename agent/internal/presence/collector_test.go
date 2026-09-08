@@ -308,6 +308,22 @@ func TestRuntimeCollectorDoesNotRefreshStaleExternalSnapshot(t *testing.T) {
 	if len(snapshot.Items) != 0 { t.Fatalf("stale external items were refreshed: %+v", snapshot.Items) }
 }
 
+func TestRuntimeCollectorKeepsNativeSnapshotWhenOptionalFileIsInvalid(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	filePath := filepath.Join(dir, "presence.json")
+	if err := os.WriteFile(configPath, []byte(`{"inbounds":[{"type":"vless","listen_port":8443,"users":[{"name":"Felix","uuid":"523446e8-0351-4c0a-a9ec-19a269a8848f"}]}]}`), 0o600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(filePath, []byte(`{"items":[`), 0o600); err != nil { t.Fatal(err) }
+	collector := NewRuntimeCollector(configPath, "sing-box", filePath)
+	collector.singBox.run = func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		if name == "systemctl" { return []byte("42\n"), nil }
+		return []byte{}, nil
+	}
+	snapshot, err := collector.Collect(context.Background())
+	if err != nil { t.Fatal(err) }
+	if snapshot.Items == nil || len(snapshot.Items) != 0 { t.Fatalf("snapshot=%+v", snapshot) }
+}
+
 func TestParseAuthenticatedPeersClearsReusedSocketBeforeAuthentication(t *testing.T) {
 	journal := `INFO [1 0ms] inbound/vless[vless-in]: inbound connection from 203.0.113.10:51001
 INFO [1 50ms] inbound/vless[vless-in]: [Felix] inbound connection to example.com:443
