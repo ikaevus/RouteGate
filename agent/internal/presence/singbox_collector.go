@@ -78,7 +78,7 @@ func (c *RuntimeCollector) Collect(ctx context.Context) (Snapshot, error) {
 	if nativeAvailable {
 		fileSnapshot, fileErr := c.file.Collect(ctx)
 		if fileErr != nil {
-			return Snapshot{}, fileErr
+			return nativeSnapshot, nil
 		}
 		if fileSnapshot.ObservedAt.After(nativeSnapshot.ObservedAt.Add(externalSnapshotMaxAge)) ||
 			nativeSnapshot.ObservedAt.Sub(fileSnapshot.ObservedAt) > externalSnapshotMaxAge {
