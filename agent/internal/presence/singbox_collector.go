@@ -30,8 +30,9 @@ var errSingBoxPresenceUnavailable = errors.New("sing-box presence source is unav
 type commandRunner func(context.Context, string, ...string) ([]byte, error)
 
 type RuntimeCollector struct {
-	singBox *SingBoxCollector
-	file    *FileCollector
+	singBox   *SingBoxCollector
+	wireGuard *WireGuardCollector
+	file      *FileCollector
 }
 
 func NewRuntimeCollector(activeConfigPath, serviceName, filePath string) *RuntimeCollector {
@@ -41,12 +42,40 @@ func NewRuntimeCollector(activeConfigPath, serviceName, filePath string) *Runtim
 	}
 }
 
+func NewRuntimeCollectorWithWireGuard(activeConfigPath, serviceName, filePath, wireGuardConfigPath, wireGuardInterface, wgPath string) *RuntimeCollector {
+	collector := NewRuntimeCollector(activeConfigPath, serviceName, filePath)
+	collector.wireGuard = NewWireGuardCollector(wireGuardConfigPath, wireGuardInterface, wgPath)
+	return collector
+}
+
 func (c *RuntimeCollector) Collect(ctx context.Context) (Snapshot, error) {
-	nativeSnapshot, err := c.singBox.Collect(ctx)
-	if !errors.Is(err, errSingBoxPresenceUnavailable) {
-		if err != nil {
+	now := time.Now().UTC()
+	nativeSnapshot := Snapshot{ObservedAt: now, Items: []Observation{}}
+	nativeAvailable := false
+	if c.singBox != nil {
+		singBoxSnapshot, err := c.singBox.Collect(ctx)
+		if err != nil && !errors.Is(err, errSingBoxPresenceUnavailable) {
 			return Snapshot{}, err
 		}
+		if err == nil {
+			nativeAvailable = true
+			nativeSnapshot = singBoxSnapshot
+		}
+	}
+	if c.wireGuard != nil {
+		wireGuardSnapshot, err := c.wireGuard.Collect(ctx)
+		if err != nil && !errors.Is(err, errWireGuardPresenceUnavailable) {
+			return Snapshot{}, err
+		}
+		if err == nil {
+			nativeAvailable = true
+			if wireGuardSnapshot.ObservedAt.After(nativeSnapshot.ObservedAt) {
+				nativeSnapshot.ObservedAt = wireGuardSnapshot.ObservedAt
+			}
+			nativeSnapshot.Items = mergePresenceItems(nativeSnapshot.Items, wireGuardSnapshot.Items)
+		}
+	}
+	if nativeAvailable {
 		fileSnapshot, fileErr := c.file.Collect(ctx)
 		if fileErr != nil {
 			return Snapshot{}, fileErr
@@ -55,23 +84,39 @@ func (c *RuntimeCollector) Collect(ctx context.Context) (Snapshot, error) {
 			nativeSnapshot.ObservedAt.Sub(fileSnapshot.ObservedAt) > externalSnapshotMaxAge {
 			return nativeSnapshot, nil
 		}
-		seen := make(map[string]struct{}, len(nativeSnapshot.Items))
-		for _, item := range nativeSnapshot.Items {
-			seen[item.VPNAccountID+"\x00"+strings.ToLower(item.Protocol)] = struct{}{}
-		}
-		for _, item := range fileSnapshot.Items {
-			key := item.VPNAccountID + "\x00" + strings.ToLower(item.Protocol)
-			if _, exists := seen[key]; !exists {
-				if item.LastActivityAt == nil {
-					observedAt := fileSnapshot.ObservedAt
-					item.LastActivityAt = &observedAt
-				}
-				nativeSnapshot.Items = append(nativeSnapshot.Items, item)
+		for index := range fileSnapshot.Items {
+			if fileSnapshot.Items[index].LastActivityAt == nil {
+				observedAt := fileSnapshot.ObservedAt
+				fileSnapshot.Items[index].LastActivityAt = &observedAt
 			}
 		}
+		nativeSnapshot.Items = mergePresenceItems(nativeSnapshot.Items, fileSnapshot.Items)
 		return nativeSnapshot, nil
 	}
 	return c.file.Collect(ctx)
+}
+
+func mergePresenceItems(base, additions []Observation) []Observation {
+	seen := make(map[string]struct{}, len(base)+len(additions))
+	merged := append([]Observation(nil), base...)
+	for _, item := range base {
+		seen[item.VPNAccountID+"\x00"+strings.ToLower(item.Protocol)] = struct{}{}
+	}
+	for _, item := range additions {
+		key := item.VPNAccountID+"\x00"+strings.ToLower(item.Protocol)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, item)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].VPNAccountID == merged[j].VPNAccountID {
+			return merged[i].Protocol < merged[j].Protocol
+		}
+		return merged[i].VPNAccountID < merged[j].VPNAccountID
+	})
+	return merged
 }
 
 type SingBoxCollector struct {
@@ -286,10 +331,11 @@ func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, string, erro
 	}
 	result := make(map[int]map[string]singBoxUser)
 	for _, inbound := range config.Inbounds {
-		if !strings.EqualFold(strings.TrimSpace(inbound.Type), "vless") || inbound.ListenPort < 1 || inbound.ListenPort > 65535 {
+		inboundType := strings.ToLower(strings.TrimSpace(inbound.Type))
+		if (inboundType != "vless" && inboundType != "shadowsocks") || inbound.ListenPort < 1 || inbound.ListenPort > 65535 {
 			continue
 		}
-		protocol := "vless"
+		protocol := inboundType
 		if inbound.TLS != nil && inbound.TLS.Reality != nil && inbound.TLS.Reality.Enabled {
 			protocol = "vless-reality"
 		}
@@ -301,6 +347,9 @@ func readSingBoxUsers(path string) (map[int]map[string]singBoxUser, string, erro
 		for _, user := range inbound.Users {
 			name := strings.TrimSpace(user.Name)
 			credentialID := strings.TrimSpace(user.UUID)
+			if inboundType == "shadowsocks" {
+				credentialID = name
+			}
 			if name == "" || credentialID == "" || nameCounts[name] != 1 {
 				continue
 			}
@@ -351,7 +400,7 @@ func (c *SingBoxCollector) readLogFile(path string) (string, error) {
 	return string(data), nil
 }
 
-var singBoxJournalContextPattern = regexp.MustCompile(`\[(\d+)(?:\s+[^\]]*)?\]\s+inbound/vless\[[^\]]+\]:\s+(.+)$`)
+var singBoxJournalContextPattern = regexp.MustCompile(`\[(\d+)(?:\s+[^\]]*)?\]\s+inbound/(?:vless|shadowsocks)\[[^\]]+\]:\s+(.+)$`)
 var singBoxAuthenticatedUserPattern = regexp.MustCompile(`^\[([^\]]+)\]\s+inbound (?:multiplex |packet addr |packet )?connection`)
 
 type singBoxContextState struct {
