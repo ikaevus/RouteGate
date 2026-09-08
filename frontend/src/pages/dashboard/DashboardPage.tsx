@@ -315,8 +315,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
 
 function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; available: boolean }) {
   const visibleItems = groupConnections(items)
-    .filter((item) => (item.state === 'online' && item.confidence === 'exact') || item.state === 'recently_active')
-    .slice(0, 5);
+    .filter((item) => (item.state === 'online' && item.confidence === 'exact') || item.state === 'recently_active');
   return (
     <WidgetPanel
       title={t('dashboard.onlineVpnUsers')}
@@ -329,7 +328,7 @@ function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; av
       ) : visibleItems.length === 0 ? (
         <p className="empty-state">{t('dashboard.noOnlineVpnUsers')}</p>
       ) : (
-        <div className="dashboard-table online-users-table">
+        <div className="dashboard-table online-users-table" tabIndex={0} role="region" aria-label={t('dashboard.onlineVpnUsers')}>
           <div className="dashboard-table-row dashboard-table-head">
             <span>{t('dashboard.user')}</span><span>{t('dashboard.connectionState')}</span><span>{t('dashboard.server')}</span><span>{t('dashboard.agentNode')}</span><span>{t('dashboard.connections')}</span>
           </div>
@@ -553,12 +552,14 @@ export function DashboardPage() {
         <NodeDistributionWidget distribution={dashboardNodesQuery.data} available={dashboardNodesQuery.isSuccess} />
         <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={dailyTrafficAvailable} />
         <QuickActionsWidget />
-        <ServersSummaryWidget servers={displayServers} />
-        <OnlineUsersWidget items={clientConnectionsQuery.data?.items ?? []} available={clientConnectionsQuery.isSuccess} />
-        <RecentDeploymentsWidget
-          deployments={dashboardActivityQuery.data?.recentDeployments ?? []}
-          available={dashboardActivityQuery.isSuccess}
-        />
+        <div className="dashboard-activity-grid">
+          <ServersSummaryWidget servers={displayServers} />
+          <OnlineUsersWidget items={clientConnectionsQuery.data?.items ?? []} available={clientConnectionsQuery.isSuccess} />
+          <RecentDeploymentsWidget
+            deployments={dashboardActivityQuery.data?.recentDeployments ?? []}
+            available={dashboardActivityQuery.isSuccess}
+          />
+        </div>
         <UnavailableWidget title={t('dashboard.trafficTypes')} subtitle={`(${t('dashboard.month')})`} className="traffic-types-widget" />
         <RecentAuditEventsWidget
           events={dashboardActivityQuery.data?.recentAuditEvents ?? []}
