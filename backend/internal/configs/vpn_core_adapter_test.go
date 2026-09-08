@@ -63,7 +63,7 @@ func TestVPNCoreAdapterBoundaryPreservesRouteGateConfigV1Envelope(t *testing.T) 
 	if err != nil {
 		t.Fatalf("marshal rendered config: %v", err)
 	}
-	want := `{"schemaVersion":"routegate.config.v1","server":{"id":"server-id","name":"fi-01","deploymentRole":"vpn","status":"active"},"vpnAccounts":[],"singBox":{"log":{"level":"info"},"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"rules":[],"final":"direct"}},"metadata":{"source":"routegate-manager","renderedAt":"2026-08-18T12:00:00Z","realityEnabled":false,"vpnCore":{"core":"sing-box","protocol":"vless","transport":"tcp","security":"none"}}}`
+	want := `{"schemaVersion":"routegate.config.v1","server":{"id":"server-id","name":"fi-01","deploymentRole":"vpn","status":"active"},"vpnAccounts":[],"singBox":{"log":{"level":"info","output":"/var/lib/sing-box/routegate-presence.log"},"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"rules":[],"final":"direct"}},"metadata":{"source":"routegate-manager","renderedAt":"2026-08-18T12:00:00Z","realityEnabled":false,"vpnCore":{"core":"sing-box","protocol":"vless","transport":"tcp","security":"none"}}}`
 	if string(payload) != want {
 		t.Fatalf("routegate.config.v1 changed:\n got: %s\nwant: %s", payload, want)
 	}

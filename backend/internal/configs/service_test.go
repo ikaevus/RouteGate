@@ -48,6 +48,9 @@ func TestBuildRenderedConfigIncludesServerAgentAndSingBoxSkeleton(t *testing.T) 
 	if config.SingBox.Route.Final != "direct" {
 		t.Fatalf("route final = %q, want direct", config.SingBox.Route.Final)
 	}
+	if config.SingBox.Log.Level != "info" || config.SingBox.Log.Output != "/var/lib/sing-box/routegate-presence.log" {
+		t.Fatalf("unexpected sing-box log config: %+v", config.SingBox.Log)
+	}
 
 	payload, err := json.Marshal(config)
 	if err != nil {
