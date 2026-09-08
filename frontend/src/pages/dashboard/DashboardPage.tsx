@@ -1,3 +1,4 @@
+import { groupConnections } from '../../entities/connection/model/groupConnections';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -313,7 +314,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
 }
 
 function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; available: boolean }) {
-  const visibleItems = items
+  const visibleItems = groupConnections(items)
     .filter((item) => (item.state === 'online' && item.confidence === 'exact') || item.state === 'recently_active')
     .slice(0, 5);
   return (
@@ -335,7 +336,7 @@ function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; av
           {visibleItems.map((item) => {
             const online = item.state === 'online' && item.confidence === 'exact';
             return (
-              <div className="dashboard-table-row" key={`${item.vpnAccountId}-${item.agentId}-${item.protocol}`}>
+              <div className="dashboard-table-row" key={item.groupKey}>
                 <strong title={item.email || item.accountName}>{item.accountName}</strong>
                 <span className={`online-user-state online-user-state--${online ? 'online' : 'recent'}`}>
                   <i aria-hidden="true" />
@@ -343,7 +344,7 @@ function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; av
                 </span>
                 <span title={item.serverName}>{item.serverName}</span>
                 <span title={item.agentName}>{item.agentName || '—'}</span>
-                <span className="online-user-count">{item.connectionCount}</span>
+                <span className="online-user-count">{item.state === 'online' ? item.connectionCount : '—'}</span>
               </div>
             );
           })}
