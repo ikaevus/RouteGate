@@ -111,6 +111,27 @@ func TestSingBoxCollectorReadsConfiguredLogFileWhenJournalIsEmpty(t *testing.T) 
 	}
 }
 
+func TestSingBoxCollectorKeepsRecentAuthenticationWhenJournalAndSocketProbeFail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	logPath := filepath.Join(dir, "sing-box.log")
+	accountID := "523446e8-0351-4c0a-a9ec-19a269a8848f"
+	data := []byte(`{"log":{"output":"`+logPath+`"},"inbounds":[{"type":"vless","listen_port":8443,"users":[{"name":"Felix","uuid":"`+accountID+`"}]}]}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil { t.Fatal(err) }
+	if err := os.WriteFile(logPath, []byte("INFO [7 0ms] inbound/vless[vless-in]: inbound connection from 203.0.113.10:51001\nINFO [7 50ms] inbound/vless[vless-in]: [Felix] inbound connection to example.com:443\n"), 0o600); err != nil { t.Fatal(err) }
+	collector := NewSingBoxCollector(path, "sing-box")
+	collector.logRoot = dir
+	collector.run = func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		if name == "systemctl" { return []byte("42\n"), nil }
+		return nil, errors.New("probe unavailable")
+	}
+	snapshot, err := collector.Collect(context.Background())
+	if err != nil { t.Fatal(err) }
+	if len(snapshot.Items) != 1 || snapshot.Items[0].VPNAccountID != accountID || snapshot.Items[0].Source != SingBoxRecentAuthCollectorSource {
+		t.Fatalf("items=%+v", snapshot.Items)
+	}
+}
+
 func TestSingBoxCollectorReportsShadowsocksUser(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	accountID := "523446e8-0351-4c0a-a9ec-19a269a8848f"
