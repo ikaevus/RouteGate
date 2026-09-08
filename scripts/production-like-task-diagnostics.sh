@@ -126,7 +126,7 @@ sing_box_presence_diagnostics() {
 		fi
 		log_data=$(tail -c 8388608 "$presence_log" 2>/dev/null || true)
 	fi
-	log "sing-box-presence-file config-output=$config_output state=$log_state size-bytes=${log_size:-0} mtime-age-seconds=$log_age lines=$(printf '%s\n' "$log_data" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$log_data" 'inbound/vless\[') connection-from=$(count_matches "$log_data" 'inbound connection from') named-connection=$(count_matches "$log_data" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection')"
+	log "sing-box-presence-file config-output=$config_output state=$log_state size-bytes=${log_size:-0} mtime-age-seconds=$log_age lines=$(printf '%s\n' "$log_data" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ') vless-lines=$(count_matches "$log_data" 'inbound/vless\[') connection-from=$(count_matches "$log_data" 'inbound connection from') named-connection=$(count_matches "$log_data" '\[[^]]+\][[:space:]]+inbound (multiplex |packet addr |packet )?connection') process-errors=$(count_matches "$log_data" 'process connection from') tls-handshake-errors=$(count_matches "$log_data" 'TLS handshake') invalid-user-errors=$(count_matches "$log_data" 'invalid user|unknown user|authentication failed|bad request') eof-errors=$(count_matches "$log_data" '(^|[^[:alpha:]])EOF([^[:alpha:]]|$)') reset-errors=$(count_matches "$log_data" 'connection reset|broken pipe') timeout-errors=$(count_matches "$log_data" 'timeout|deadline exceeded')"
 }
 
 staged_sing_box_diagnostics() {
