@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -32,9 +31,7 @@ func NewWireGuardCollector(activeConfigPath, interfaceName, wgPath string) *Wire
 		activeConfigPath: strings.TrimSpace(activeConfigPath),
 		interfaceName: strings.TrimSpace(interfaceName),
 		wgPath: strings.TrimSpace(wgPath),
-		run: func(ctx context.Context, name string, args ...string) ([]byte, error) {
-			return exec.CommandContext(ctx, name, args...).Output()
-		},
+		run: executePresenceCommand,
 		now: time.Now,
 	}
 }
@@ -54,7 +51,7 @@ func (c *WireGuardCollector) Collect(ctx context.Context) (Snapshot, error) {
 	if len(peers) == 0 || c.interfaceName == "" {
 		return Snapshot{}, errWireGuardPresenceUnavailable
 	}
-	dump, err := c.run(ctx, c.wgPath, "show", c.interfaceName, "dump")
+	dump, err := runPresenceProbe(ctx, c.run, c.wgPath, "show", c.interfaceName, "dump")
 	if err != nil {
 		return Snapshot{}, errWireGuardPresenceUnavailable
 	}
