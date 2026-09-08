@@ -375,3 +375,70 @@
   height: 10px;
   width: 15px;
 }
+
+/* Keep online accounts aligned with the two left-hand activity panels. */
+.dashboard-activity-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.dashboard-activity-grid > .servers-summary-widget,
+.dashboard-activity-grid > .deployments-widget {
+  grid-column: 1;
+}
+
+.dashboard-activity-grid > .online-users-widget {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: stretch;
+  contain: size;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dashboard-activity-grid .online-users-table {
+  align-content: start;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-reference-grid > .audit-widget {
+  grid-column: 1 / -1;
+}
+
+.dashboard-reference-grid > .audit-widget .audit-row {
+  grid-template-areas: "avatar body badge time";
+  grid-template-columns: 26px minmax(0, 1fr) auto minmax(140px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+@media (max-width: 980px) {
+  .dashboard-activity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-activity-grid > .online-users-widget {
+    grid-column: 1;
+    grid-row: auto;
+    contain: none;
+  }
+
+  .dashboard-activity-grid .online-users-table {
+    flex: auto;
+    max-height: 420px;
+  }
+
+  .dashboard-reference-grid > .audit-widget .audit-row {
+    grid-template-areas: "avatar body body" "avatar badge time";
+    grid-template-columns: 26px auto minmax(0, 1fr);
+    gap: 6px 8px;
+  }
+}
