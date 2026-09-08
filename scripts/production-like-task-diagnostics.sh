@@ -80,7 +80,7 @@ classify_journals() {
   log "agent process-count=${agent_processes:-unknown} main-pid-present=$([[ ${agent_pid:-0} =~ ^[1-9][0-9]*$ ]] && printf true || printf false) restarts=${agent_restarts:-unknown} heartbeats=$(count_matches "$agent_journal" 'heartbeat accepted') process-task-failed=$(count_matches "$agent_journal" 'process agent task failed') completion-retry-exhausted=$(count_matches "$agent_journal" 'complete agent task after [0-9]+ attempts') http-404=$(count_matches "$agent_journal" 'status 404') http-4xx=$(count_matches "$agent_journal" 'status 4[0-9][0-9]') http-5xx=$(count_matches "$agent_journal" 'status 5[0-9][0-9]') context-timeout=$(count_matches "$agent_journal" 'context deadline exceeded|context canceled') connection-failure=$(count_matches "$agent_journal" 'connection refused|connection reset|broken pipe|no route to host')"
   log "agent failure-stage last=${last_failure_class:-none} select=$(count_matches "$agent_journal" 'rendered config selects an unsupported VPN Core adapter|rendered config contains no managed VPN Core adapters') stage=$(count_matches "$agent_journal" 'task id is required|config version id is required|rendered config envelope|create config staging dir|write staged config|commit staged config') validate=$(count_matches "$agent_journal" 'sing-box check|check timed out') apply=$(count_matches "$agent_journal" 'apply VPN runtime config') restart=$(count_matches "$agent_journal" 'restart VPN runtime|systemctl restart|enable service before restart') healthcheck=$(count_matches "$agent_journal" 'VPN runtime active check|systemctl is-active') persistence=$(count_matches "$agent_journal" 'VPN runtime persistence check|systemctl is-enabled') listener=$(count_matches "$agent_journal" 'VPN runtime listener healthcheck|listener on port|contains no managed TCP listener') completion=$(count_matches "$agent_journal" 'complete agent task|report failure:|/api/v1/agent/tasks/.*/result')"
   log "client-presence failures=$(count_matches "$agent_journal" 'report client presence failed') last-class=${last_presence_failure_class:-none} accepted-reports=$(count_matches "$agent_journal" 'client presence report accepted') latest-accepted-items=${latest_presence_accepted:-unknown}"
-  log "manager complete-config-failed=$(count_matches "$manager_journal" 'complete agent config task failed') complete-operation-failed=$(count_matches "$manager_journal" 'complete agent operation task failed') database-error=$(count_matches "$manager_journal" 'database_error|database error') task-not-found=$(count_matches "$manager_journal" 'task_not_found|task not found')"
+  log "manager complete-config-failed=$(count_matches "$manager_journal" 'complete agent config task failed') complete-operation-failed=$(count_matches "$manager_journal" 'complete agent operation task failed') presence-snapshot-failed=$(count_matches "$manager_journal" 'client presence snapshot failed') context-cancelled=$(count_matches "$manager_journal" 'context canceled|deadline exceeded') database-error=$(count_matches "$manager_journal" 'database_error|database error') task-not-found=$(count_matches "$manager_journal" 'task_not_found|task not found')"
 }
 
 sing_box_config_diagnostics() {
@@ -180,7 +180,31 @@ database_diagnostics() {
     return 0
   fi
 
-  local latest audit_rows
+  local latest audit_rows presence_rows presence_waiters
+	presence_rows=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
+		SELECT
+			count(*),
+			count(*) FILTER (WHERE expires_at > now()),
+			count(DISTINCT vpn_account_id) FILTER (WHERE expires_at > now()),
+			COALESCE(floor(extract(epoch FROM (now() - max(observed_at))))::bigint, -1)
+		FROM vpn_account_presence
+	" 2>/dev/null || true)
+	if [[ -n "$presence_rows" ]]; then
+		local presence_total presence_live presence_accounts presence_age
+		IFS='|' read -r presence_total presence_live presence_accounts presence_age <<<"$presence_rows"
+		log "client-presence-db rows=${presence_total:-0} live=${presence_live:-0} accounts=${presence_accounts:-0} newest-age-seconds=${presence_age:--1}"
+	else
+		log 'client-presence-db=unavailable'
+	fi
+	presence_waiters=$(psql "$ROUTEGATE_DATABASE_URL" -qAtc "
+		SELECT count(*)
+		FROM pg_stat_activity
+		WHERE pid <> pg_backend_pid()
+		  AND state <> 'idle'
+		  AND query ILIKE '%vpn_account_presence%'
+		  AND wait_event_type IS NOT NULL
+	" 2>/dev/null || true)
+	log "client-presence-db-waiters=${presence_waiters:-unknown}"
   latest=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
     SELECT
       status,
