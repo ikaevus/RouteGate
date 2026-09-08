@@ -55,10 +55,10 @@ type SubscriptionProfile struct {
 }
 
 type SubscriptionCredentials struct {
-	VLESS   VLESSCredentials
-	Reality RealityCredentials
-	WireGuard WireGuardCredentials
-	Hysteria2 Hysteria2Credentials
+	VLESS       VLESSCredentials
+	Reality     RealityCredentials
+	WireGuard   WireGuardCredentials
+	Hysteria2   Hysteria2Credentials
 	Shadowsocks ShadowsocksCredentials
 }
 
@@ -91,40 +91,52 @@ type ShadowsocksCredentials struct {
 }
 
 type SubscriptionServer struct {
-	ID                string
-	Name              string
-	Hostname          string
-	PublicIP          string
-	Location          string
-	Provider          string
-	VLESSPort         int
-	VLESSFlow         string
-	VLESSNetwork      string
-	RealityPublicKey  string
-	RealityShortID    string
-	RealityServerName string
-	VPNProtocol        string
-	WireGuardPort      int
-	WireGuardAddress   string
-	WireGuardDNS       string
-	WireGuardPublicKey string
-	Hysteria2Port       int
-	Hysteria2Domain     string
-	Hysteria2ACMEEmail  string
-	ShadowsocksPort      int
-	ShadowsocksMethod    string
-	ShadowsocksServerKey string
+	ID                    string
+	Name                  string
+	Hostname              string
+	PublicIP              string
+	Location              string
+	Provider              string
+	VLESSPort             int
+	VLESSFlow             string
+	VLESSNetwork          string
+	RealityPublicKey      string
+	RealityShortID        string
+	RealityServerName     string
+	VPNProtocol           string
+	WireGuardPort         int
+	WireGuardAddress      string
+	WireGuardDNS          string
+	WireGuardPublicKey    string
+	Hysteria2Port         int
+	Hysteria2Domain       string
+	Hysteria2ACMEEmail    string
+	ShadowsocksPort       int
+	ShadowsocksMethod     string
+	ShadowsocksServerKey  string
 	MTProtoPort           int
 	MTProtoSecret         string
 	MTProtoFrontingDomain string
 }
 
 type RoutingProfile struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	IsDefault   bool                 `json:"isDefault"`
-	Rules       []RoutingProfileRule `json:"rules"`
+	ID              string               `json:"id"`
+	Name            string               `json:"name"`
+	Description     string               `json:"description,omitempty"`
+	IsDefault       bool                 `json:"isDefault"`
+	DefaultAction   string               `json:"defaultAction"`
+	Rules           []RoutingProfileRule `json:"rules"`
+	ManagedRuleSets []ManagedRuleSet     `json:"managedRuleSets,omitempty"`
+}
+
+type ManagedRuleSet struct {
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	Priority             int    `json:"priority"`
+	Action               string `json:"action"`
+	SourceURL            string `json:"sourceUrl"`
+	SourceFormat         string `json:"sourceFormat"`
+	RefreshIntervalHours int    `json:"refreshIntervalHours"`
 }
 
 type RoutingProfileRule struct {

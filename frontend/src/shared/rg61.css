@@ -25,6 +25,41 @@
   gap: 24px;
 }
 
+.routing-profile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.routing-profile-tabs .small-button.active {
+  border-color: var(--accent, #5b8cff);
+  color: var(--accent, #5b8cff);
+}
+
+.routing-managed-row {
+  grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 0.7fr) minmax(16rem, 1.4fr) auto;
+}
+
+.routing-managed-row > div:not(.table-actions) {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.routing-managed-row span {
+  overflow-wrap: anywhere;
+}
+
+.routing-diagnostic-result {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 0.75rem;
+}
+
 .routing-profiles-table {
   min-width: 980px;
 }
@@ -166,6 +201,10 @@
   .routing-rule-matchers-grid,
   .routing-profile-assignment-current,
   .routing-profile-assignment-form {
+    grid-template-columns: 1fr;
+  }
+
+  .routing-managed-row {
     grid-template-columns: 1fr;
   }
 

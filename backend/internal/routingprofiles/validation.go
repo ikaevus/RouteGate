@@ -10,7 +10,13 @@ func validateCreateProfileInput(input CreateRoutingProfileInput) error {
 	if err := validateProfileName(input.Name); err != nil {
 		return err
 	}
-	return validateProfileDescription(input.Description)
+	if err := validateProfileDescription(input.Description); err != nil {
+		return err
+	}
+	if !ValidAction(input.DefaultAction) {
+		return errors.New("defaultAction must be one of: direct, vpn, block")
+	}
+	return nil
 }
 
 func validateUpdateProfileInput(input UpdateRoutingProfileInput) error {
@@ -20,7 +26,12 @@ func validateUpdateProfileInput(input UpdateRoutingProfileInput) error {
 		}
 	}
 	if input.Description != nil {
-		return validateProfileDescription(*input.Description)
+		if err := validateProfileDescription(*input.Description); err != nil {
+			return err
+		}
+	}
+	if input.DefaultAction != nil && !ValidAction(*input.DefaultAction) {
+		return errors.New("defaultAction must be one of: direct, vpn, block")
 	}
 	return nil
 }

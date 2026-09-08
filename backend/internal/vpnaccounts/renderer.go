@@ -10,11 +10,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/ikaevus/routegate/backend/internal/routingpolicy"
 )
 
 const (
-	ClientConfigFormat        = "routegate.client_config.v1"
-	SingBoxClientConfigFormat = "sing-box.config.v1"
+	ClientConfigFormat          = "routegate.client_config.v1"
+	SingBoxClientConfigFormat   = "sing-box.config.v1"
 	WireGuardClientConfigFormat = "wireguard.config.v1"
 	Hysteria2ClientURIFormat    = "hysteria2.uri.v1"
 	ShadowsocksClientURIFormat  = "shadowsocks.uri.v1"
@@ -74,8 +76,18 @@ type SingBoxTLSReality struct {
 }
 
 type SingBoxRoute struct {
-	Rules []map[string]any `json:"rules,omitempty"`
-	Final string           `json:"final"`
+	Rules    []map[string]any `json:"rules,omitempty"`
+	RuleSets []SingBoxRuleSet `json:"rule_set,omitempty"`
+	Final    string           `json:"final"`
+}
+
+type SingBoxRuleSet struct {
+	Type           string `json:"type"`
+	Tag            string `json:"tag"`
+	Format         string `json:"format"`
+	URL            string `json:"url"`
+	DownloadDetour string `json:"download_detour,omitempty"`
+	UpdateInterval string `json:"update_interval,omitempty"`
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
@@ -314,7 +326,7 @@ func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig
 		vlessOutbound.Flow = flow
 	}
 
-	routeRules, needsBlockOutbound := renderClientRoutingRules(profile.RoutingProfile)
+	routeRules, ruleSets, finalOutbound, needsBlockOutbound := renderClientRoutingRules(profile.RoutingProfile)
 	outbounds := []SingBoxOutbound{
 		vlessOutbound,
 		{
@@ -341,20 +353,51 @@ func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig
 		},
 		Outbounds: outbounds,
 		Route: SingBoxRoute{
-			Rules: routeRules,
-			Final: singBoxOutboundTag,
+			Rules:    routeRules,
+			RuleSets: ruleSets,
+			Final:    finalOutbound,
 		},
 	}, nil
 }
 
-func renderClientRoutingRules(profile *RoutingProfile) ([]map[string]any, bool) {
+func renderClientRoutingRules(profile *RoutingProfile) ([]map[string]any, []SingBoxRuleSet, string, bool) {
 	if profile == nil {
-		return nil, false
+		return nil, nil, singBoxOutboundTag, false
 	}
-
-	rules := make([]map[string]any, 0, len(profile.Rules))
-	needsBlockOutbound := false
+	candidates := make([]routingpolicy.Candidate, 0, len(profile.Rules)+len(profile.ManagedRuleSets))
+	manualByID := make(map[string]RoutingProfileRule, len(profile.Rules))
+	managedByID := make(map[string]ManagedRuleSet, len(profile.ManagedRuleSets))
 	for _, rule := range profile.Rules {
+		manualByID[rule.ID] = rule
+		candidates = append(candidates, routingpolicy.Candidate{ID: rule.ID, Priority: rule.Priority, Source: routingpolicy.SourceManual})
+	}
+	for _, set := range profile.ManagedRuleSets {
+		managedByID[set.ID] = set
+		candidates = append(candidates, routingpolicy.Candidate{ID: set.ID, Priority: set.Priority, Source: routingpolicy.SourceManaged})
+	}
+	rules := make([]map[string]any, 0, len(candidates))
+	ruleSets := make([]SingBoxRuleSet, 0, len(profile.ManagedRuleSets))
+	needsBlockOutbound := profile.DefaultAction == RoutingActionBlock
+	for _, candidate := range routingpolicy.OrderCandidates(candidates) {
+		if candidate.Source == routingpolicy.SourceManaged {
+			set := managedByID[candidate.ID]
+			outbound := clientRoutingOutboundForAction(set.Action)
+			if outbound == "" {
+				continue
+			}
+			tag := "routegate-managed-" + set.ID
+			interval := set.RefreshIntervalHours
+			if interval < 1 {
+				interval = 24
+			}
+			ruleSets = append(ruleSets, SingBoxRuleSet{Type: "remote", Tag: tag, Format: set.SourceFormat, URL: set.SourceURL, DownloadDetour: singBoxDirectTag, UpdateInterval: strconv.Itoa(interval) + "h"})
+			rules = append(rules, map[string]any{"rule_set": []string{tag}, "outbound": outbound})
+			if outbound == singBoxBlockTag {
+				needsBlockOutbound = true
+			}
+			continue
+		}
+		rule := manualByID[candidate.ID]
 		outbound := clientRoutingOutboundForAction(rule.Action)
 		if outbound == "" {
 			continue
@@ -368,7 +411,11 @@ func renderClientRoutingRules(profile *RoutingProfile) ([]map[string]any, bool) 
 		}
 		rules = append(rules, rendered)
 	}
-	return rules, needsBlockOutbound
+	finalOutbound := clientRoutingOutboundForAction(profile.DefaultAction)
+	if finalOutbound == "" {
+		finalOutbound = singBoxOutboundTag
+	}
+	return rules, ruleSets, finalOutbound, needsBlockOutbound
 }
 
 func clientRoutingOutboundForAction(action string) string {

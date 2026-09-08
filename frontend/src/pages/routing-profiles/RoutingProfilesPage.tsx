@@ -16,6 +16,7 @@ import {
   type RoutingRuleAction,
 } from '../../entities/routingProfile/api/routingProfileApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
+import { ManagedRuleSetsPanel, RoutingDiagnosticsPanel } from './RoutingManagedPanels';
 
 type RuleForm = CreateRoutingProfileRuleRequest;
 
@@ -122,6 +123,8 @@ export function RoutingProfilesPage() {
   const [profileName, setProfileName] = useState('');
   const [profileDescription, setProfileDescription] = useState('');
   const [makeDefault, setMakeDefault] = useState(false);
+  const [defaultAction, setDefaultAction] = useState<RoutingRuleAction>('vpn');
+  const [activeTab, setActiveTab] = useState<'profiles' | 'managed' | 'diagnostics'>('profiles');
   const [ruleForm, setRuleForm] = useState<RuleForm>(emptyRule);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [ruleText, setRuleText] = useState({ domains: '', suffixes: '', keywords: '', cidrs: '', geosite: '', geoip: '' });
@@ -138,6 +141,7 @@ export function RoutingProfilesPage() {
     setProfileName(profileQuery.data.name);
     setProfileDescription(profileQuery.data.description ?? '');
     setMakeDefault(profileQuery.data.isDefault);
+    setDefaultAction(profileQuery.data.defaultAction ?? 'vpn');
   }, [profileQuery.data]);
 
   function resetRuleForm() {
@@ -152,7 +156,7 @@ export function RoutingProfilesPage() {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: () => updateRoutingProfile(profileId ?? '', { name: profileName.trim(), description: profileDescription.trim(), isDefault: makeDefault }),
+    mutationFn: () => updateRoutingProfile(profileId ?? '', { name: profileName.trim(), description: profileDescription.trim(), isDefault: makeDefault, defaultAction }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['routing-profiles'] });
       await queryClient.invalidateQueries({ queryKey: ['routing-profile', profileId] });
@@ -181,7 +185,7 @@ export function RoutingProfilesPage() {
 
   function handleCreateProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    createProfileMutation.mutate({ name: 'New routing profile', description: '', isDefault: false });
+    createProfileMutation.mutate({ name: 'New routing profile', description: '', isDefault: false, defaultAction: 'vpn' });
   }
 
   function handleRuleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -231,7 +235,16 @@ export function RoutingProfilesPage() {
         <div className='status-pill'><span className='status-dot status-dot-ok' />{t('routingProfiles.profileCount', { count: profiles.length })}</div>
       </div>
 
-      <div className='routing-profiles-layout'>
+      <div className='routing-profile-tabs' role='tablist'>
+        <button className={`small-button${activeTab === 'profiles' ? ' active' : ''}`} type='button' onClick={() => setActiveTab('profiles')}>{t('routingProfiles.tabProfiles')}</button>
+        <button className={`small-button${activeTab === 'managed' ? ' active' : ''}`} type='button' onClick={() => setActiveTab('managed')}>{t('routingProfiles.tabManaged')}</button>
+        <button className={`small-button${activeTab === 'diagnostics' ? ' active' : ''}`} type='button' onClick={() => setActiveTab('diagnostics')}>{t('routingProfiles.tabDiagnostics')}</button>
+      </div>
+
+      {activeTab === 'managed' && <ManagedRuleSetsPanel profiles={profiles} />}
+      {activeTab === 'diagnostics' && <RoutingDiagnosticsPanel profiles={profiles} />}
+
+      {activeTab === 'profiles' && <div className='routing-profiles-layout'>
         <form className='panel' onSubmit={handleCreateProfile}>
           <div className='panel-header'>
             <div>
@@ -274,6 +287,7 @@ export function RoutingProfilesPage() {
               <div className='routing-profile-form-grid'>
                 <label className='field'><span>{t('routingProfiles.name')}</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
                 <label className='field'><span>{t('routingProfiles.description')}</span><input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} /></label>
+                <label className='field'><span>{t('routingProfiles.defaultAction')}</span><select value={defaultAction} onChange={(event) => setDefaultAction(event.target.value as RoutingRuleAction)}><option value='direct'>DIRECT</option><option value='vpn'>VPN</option><option value='block'>BLOCK</option></select></label>
                 <div className='traffic-checkbox-field routing-profile-default-field'><label><input checked={makeDefault} type='checkbox' onChange={(event) => setMakeDefault(event.target.checked)} />{t('routingProfiles.defaultProfile')}</label><p>{t('routingProfiles.updatedValue', { value: formatDate(selectedProfile.updatedAt) })}</p></div>
               </div>
             </form>
@@ -328,7 +342,7 @@ export function RoutingProfilesPage() {
             </div>
           </>
         )}
-      </div>
+      </div>}
     </section>
   );
 }

@@ -345,6 +345,7 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 		writePublicSubscriptionNotFound(w)
 		return
 	}
+	rewriteManagedRuleSetURLs(&profile, r)
 
 	if err := h.accounts.MarkSubscriptionTokenUsed(r.Context(), token.ID); err != nil {
 		h.databaseError(w, "mark subscription token used", err)
@@ -487,19 +488,19 @@ func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentia
 		response.Hysteria2.ACMEEmail = profile.Server.Hysteria2ACMEEmail
 		if protocol == "shadowsocks" {
 			response.Shadowsocks = AdminShadowsocksCredentials{
-				Username: profile.Credentials.Shadowsocks.Username,
-				Method: profile.Server.ShadowsocksMethod,
+				Username:  profile.Credentials.Shadowsocks.Username,
+				Method:    profile.Server.ShadowsocksMethod,
 				ServerKey: profile.Server.ShadowsocksServerKey,
-				UserKey: profile.Credentials.Shadowsocks.UserKey,
-				Port: profile.Server.ShadowsocksPort,
+				UserKey:   profile.Credentials.Shadowsocks.UserKey,
+				Port:      profile.Server.ShadowsocksPort,
 			}
 		}
 		if protocol == "mtproto" {
 			response.MTProto = AdminMTProtoCredentials{
-				Secret: profile.Server.MTProtoSecret,
-				Port: profile.Server.MTProtoPort,
+				Secret:         profile.Server.MTProtoSecret,
+				Port:           profile.Server.MTProtoPort,
 				FrontingDomain: profile.Server.MTProtoFrontingDomain,
-				Shared: profile.Server.MTProtoSecret != "",
+				Shared:         profile.Server.MTProtoSecret != "",
 			}
 		}
 		if profile.Server.VPNProtocol == "hysteria2" {
@@ -534,6 +535,15 @@ func (h *Handler) subscriptionURL(r *http.Request, token string) string {
 		Host:   subscriptionHost(r),
 		Path:   "/sub/" + token,
 	}).String()
+}
+
+func rewriteManagedRuleSetURLs(profile *SubscriptionProfile, r *http.Request) {
+	if profile == nil || profile.RoutingProfile == nil {
+		return
+	}
+	for index := range profile.RoutingProfile.ManagedRuleSets {
+		profile.RoutingProfile.ManagedRuleSets[index].SourceURL = (&url.URL{Scheme: subscriptionScheme(r), Host: subscriptionHost(r), Path: "/api/public/routing-rule-sets/" + profile.RoutingProfile.ManagedRuleSets[index].ID}).String()
+	}
 }
 
 func subscriptionScheme(r *http.Request) string {

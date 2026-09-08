@@ -26,7 +26,7 @@ var (
 const routingProfileNameUniqueIndex = "routing_profiles_name_ci_unique"
 
 const routingProfileSelect = `
-	SELECT id::text, name, COALESCE(description, ''), is_default, created_at, updated_at
+	SELECT id::text, name, COALESCE(description, ''), is_default, default_action, created_at, updated_at
 	FROM routing_profiles`
 
 const routingProfileRuleSelect = `
@@ -58,6 +58,7 @@ func scanRoutingProfile(row scanner) (RoutingProfile, error) {
 		&profile.Name,
 		&profile.Description,
 		&profile.IsDefault,
+		&profile.DefaultAction,
 		&profile.CreatedAt,
 		&profile.UpdatedAt,
 	)

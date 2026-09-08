@@ -4,10 +4,21 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestRewriteManagedRuleSetURLsUsesManagerSnapshotEndpoint(t *testing.T) {
+	profile := SubscriptionProfile{RoutingProfile: &RoutingProfile{ManagedRuleSets: []ManagedRuleSet{{ID: "set-id", SourceURL: "https://upstream.example/rules.json"}}}}
+	request := httptest.NewRequest("GET", "https://manager.routegate.example/sub/token", nil)
+	rewriteManagedRuleSetURLs(&profile, request)
+	want := "https://manager.routegate.example/api/public/routing-rule-sets/set-id"
+	if got := profile.RoutingProfile.ManagedRuleSets[0].SourceURL; got != want {
+		t.Fatalf("source URL = %q, want %q", got, want)
+	}
+}
 
 const testVLESSUUID = "1cf448ee-dae5-4114-814e-61c384cdce62"
 
@@ -131,6 +142,44 @@ func TestRenderSingBoxClientConfigRendersSplitTunnelRules(t *testing.T) {
 	}
 }
 
+func TestRenderSingBoxClientConfigUsesDirectProfileDefault(t *testing.T) {
+	config, err := RenderSingBoxClientConfig(SubscriptionProfile{
+		Account:        Account{ID: "account-1", VLESSUUID: testVLESSUUID},
+		Server:         &SubscriptionServer{PublicIP: "203.0.113.10"},
+		RoutingProfile: &RoutingProfile{ID: "profile-1", DefaultAction: RoutingActionDirect},
+	})
+	if err != nil {
+		t.Fatalf("render config: %v", err)
+	}
+	if config.Route.Final != singBoxDirectTag {
+		t.Fatalf("final = %q, want direct", config.Route.Final)
+	}
+}
+
+func TestRenderSingBoxClientConfigOrdersManualOverrideBeforeManagedRuleSet(t *testing.T) {
+	config, err := RenderSingBoxClientConfig(SubscriptionProfile{
+		Account: Account{ID: "account-1", VLESSUUID: testVLESSUUID},
+		Server:  &SubscriptionServer{PublicIP: "203.0.113.10"},
+		RoutingProfile: &RoutingProfile{
+			ID: "profile-1", DefaultAction: RoutingActionDirect,
+			Rules:           []RoutingProfileRule{{ID: "manual", Name: "Admin override", Priority: 100, Action: RoutingActionDirect, Domains: []string{"example.org"}}},
+			ManagedRuleSets: []ManagedRuleSet{{ID: "managed", Name: "RU blocked", Priority: 100, Action: RoutingActionVPN, SourceURL: "https://rules.example/blocked.json", SourceFormat: "source", RefreshIntervalHours: 12}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render config: %v", err)
+	}
+	if len(config.Route.Rules) != 2 || config.Route.Rules[0]["outbound"] != singBoxDirectTag {
+		t.Fatalf("manual override must render first: %+v", config.Route.Rules)
+	}
+	if config.Route.Rules[1]["outbound"] != singBoxOutboundTag {
+		t.Fatalf("managed rule must use VPN: %+v", config.Route.Rules[1])
+	}
+	if len(config.Route.RuleSets) != 1 || config.Route.RuleSets[0].Format != "source" || config.Route.RuleSets[0].UpdateInterval != "12h" {
+		t.Fatalf("unexpected remote rule set: %+v", config.Route.RuleSets)
+	}
+}
+
 func TestRenderSingBoxClientConfigRendersRealityTLS(t *testing.T) {
 	config, err := RenderSingBoxClientConfig(SubscriptionProfile{
 		Account: Account{ID: "account-1", DisplayName: "Alice", Status: StatusActive, VLESSUUID: testVLESSUUID},
@@ -226,7 +275,7 @@ func TestRenderSingBoxClientConfigRequiresVLESSUUID(t *testing.T) {
 func TestRenderWireGuardClientConfig(t *testing.T) {
 	key := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 	config, err := RenderWireGuardClientConfig(SubscriptionProfile{
-		Server: &SubscriptionServer{PublicIP: "203.0.113.10", VPNProtocol: "wireguard", WireGuardPort: 51820, WireGuardDNS: "1.1.1.1", WireGuardPublicKey: key},
+		Server:      &SubscriptionServer{PublicIP: "203.0.113.10", VPNProtocol: "wireguard", WireGuardPort: 51820, WireGuardDNS: "1.1.1.1", WireGuardPublicKey: key},
 		Credentials: SubscriptionCredentials{WireGuard: WireGuardCredentials{PrivateKey: key, PublicKey: key, Address: "10.66.0.2"}},
 	})
 	if err != nil {
@@ -242,15 +291,19 @@ func TestRenderWireGuardClientConfig(t *testing.T) {
 func TestRenderHysteria2ClientURI(t *testing.T) {
 	uri, err := RenderHysteria2ClientURI(SubscriptionProfile{
 		Account: Account{ID: "22222222-2222-2222-2222-222222222222", DisplayName: "Alice"},
-		Server: &SubscriptionServer{VPNProtocol: "hysteria2", Hysteria2Domain: "vpn.example.com", Hysteria2Port: 443},
+		Server:  &SubscriptionServer{VPNProtocol: "hysteria2", Hysteria2Domain: "vpn.example.com", Hysteria2Port: 443},
 		Credentials: SubscriptionCredentials{Hysteria2: Hysteria2Credentials{
 			Username: "22222222-2222-2222-2222-222222222222",
 			Password: "0123456789abcdef0123456789abcdef0123456789abcdef",
 		}},
 	})
-	if err != nil { t.Fatalf("render Hysteria2 URI: %v", err) }
+	if err != nil {
+		t.Fatalf("render Hysteria2 URI: %v", err)
+	}
 	for _, expected := range []string{"hysteria2://", "22222222-2222-2222-2222-222222222222", "vpn.example.com:443", "sni=vpn.example.com"} {
-		if !strings.Contains(uri, expected) { t.Fatalf("Hysteria2 URI missing %q: %s", expected, uri) }
+		if !strings.Contains(uri, expected) {
+			t.Fatalf("Hysteria2 URI missing %q: %s", expected, uri)
+		}
 	}
 }
 

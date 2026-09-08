@@ -331,7 +331,8 @@ func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, accountI
 			p.id::text,
 			p.name,
 			COALESCE(p.description, ''),
-			p.is_default
+			p.is_default,
+			p.default_action
 		FROM routing_profiles p
 		WHERE p.id = COALESCE(
 			(
@@ -363,7 +364,34 @@ func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, accountI
 		return RoutingProfile{}, err
 	}
 	profile.Rules = rules
+	managedRuleSets, err := r.listSubscriptionManagedRuleSets(ctx, profile.ID)
+	if err != nil {
+		return RoutingProfile{}, err
+	}
+	profile.ManagedRuleSets = managedRuleSets
 	return profile, nil
+}
+
+func (r *Repository) listSubscriptionManagedRuleSets(ctx context.Context, profileID string) ([]ManagedRuleSet, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id::text, name, priority, action, source_url, source_format, refresh_interval_hours
+		FROM managed_routing_rule_sets
+		WHERE routing_profile_id = $1::uuid AND enabled = TRUE AND snapshot IS NOT NULL
+		ORDER BY priority ASC, id ASC
+	`, profileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]ManagedRuleSet, 0)
+	for rows.Next() {
+		var item ManagedRuleSet
+		if err := rows.Scan(&item.ID, &item.Name, &item.Priority, &item.Action, &item.SourceURL, &item.SourceFormat, &item.RefreshIntervalHours); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID string) ([]RoutingProfileRule, error) {
@@ -581,29 +609,29 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	profile.Credentials.VLESS.UUID = profile.Account.VLESSUUID
 	if serverID.Valid {
 		server := SubscriptionServer{
-			ID:                serverID.String,
-			Name:              serverName.String,
-			Hostname:          serverHostname.String,
-			PublicIP:          serverPublicIP.String,
-			Location:          serverLocation.String,
-			Provider:          serverProvider.String,
-			VLESSPort:         defaultSingBoxServerPort,
-			VLESSFlow:         vlessFlow.String,
-			VLESSNetwork:      vlessNetwork.String,
-			RealityPublicKey:  realityPublicKey.String,
-			RealityShortID:    realityShortID.String,
-			RealityServerName: realityServerName.String,
-			VPNProtocol:       vpnProtocol.String,
-			WireGuardPort:      int(wireGuardPort.Int32),
-			WireGuardAddress:   serverWireGuardAddress.String,
-			WireGuardDNS:       wireGuardDNS.String,
-			WireGuardPublicKey: serverWireGuardPublicKey.String,
-			Hysteria2Port:       int(hysteria2Port.Int32),
-			Hysteria2Domain:     hysteria2Domain.String,
-			Hysteria2ACMEEmail:  hysteria2ACMEEmail.String,
-			ShadowsocksPort:      int(shadowsocksPort.Int32),
-			ShadowsocksMethod:    shadowsocksMethod.String,
-			ShadowsocksServerKey: shadowsocksServerKey.String,
+			ID:                    serverID.String,
+			Name:                  serverName.String,
+			Hostname:              serverHostname.String,
+			PublicIP:              serverPublicIP.String,
+			Location:              serverLocation.String,
+			Provider:              serverProvider.String,
+			VLESSPort:             defaultSingBoxServerPort,
+			VLESSFlow:             vlessFlow.String,
+			VLESSNetwork:          vlessNetwork.String,
+			RealityPublicKey:      realityPublicKey.String,
+			RealityShortID:        realityShortID.String,
+			RealityServerName:     realityServerName.String,
+			VPNProtocol:           vpnProtocol.String,
+			WireGuardPort:         int(wireGuardPort.Int32),
+			WireGuardAddress:      serverWireGuardAddress.String,
+			WireGuardDNS:          wireGuardDNS.String,
+			WireGuardPublicKey:    serverWireGuardPublicKey.String,
+			Hysteria2Port:         int(hysteria2Port.Int32),
+			Hysteria2Domain:       hysteria2Domain.String,
+			Hysteria2ACMEEmail:    hysteria2ACMEEmail.String,
+			ShadowsocksPort:       int(shadowsocksPort.Int32),
+			ShadowsocksMethod:     shadowsocksMethod.String,
+			ShadowsocksServerKey:  shadowsocksServerKey.String,
 			MTProtoPort:           int(mtprotoPort.Int32),
 			MTProtoSecret:         mtprotoSecret.String,
 			MTProtoFrontingDomain: mtprotoFrontingDomain.String,
@@ -643,6 +671,7 @@ func scanRoutingProfile(row scanner) (RoutingProfile, error) {
 		&profile.Name,
 		&profile.Description,
 		&profile.IsDefault,
+		&profile.DefaultAction,
 	)
 	if err != nil {
 		return RoutingProfile{}, err

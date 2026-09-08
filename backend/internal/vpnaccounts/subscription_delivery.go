@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	SubscriptionDeliveryFormatAuto     = "auto"
-	SubscriptionDeliveryFormatBase64   = "base64"
-	SubscriptionDeliveryFormatRaw      = "raw"
-	SubscriptionDeliveryFormatSingBox  = "sing-box"
+	SubscriptionDeliveryFormatAuto      = "auto"
+	SubscriptionDeliveryFormatBase64    = "base64"
+	SubscriptionDeliveryFormatRaw       = "raw"
+	SubscriptionDeliveryFormatSingBox   = "sing-box"
 	SubscriptionDeliveryFormatWireGuard = "wireguard"
 )
 
@@ -79,6 +79,7 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		writePublicSubscriptionNotFound(w)
 		return
 	}
+	rewriteManagedRuleSetURLs(&profile, r)
 
 	connection, err := h.clientConnection(r.Context(), token.VPNAccountID)
 	if errors.Is(err, pgx.ErrNoRows) {

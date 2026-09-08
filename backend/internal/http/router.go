@@ -134,6 +134,12 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/rules", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.CreateRule))))
 	mux.Handle("PATCH /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateRule))))
 	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/rules/{rule_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteRule))))
+	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/diagnostics", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.Diagnose))))
+	mux.Handle("GET /api/v1/managed-routing-rule-sets", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.ListManagedRuleSets))))
+	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/managed-rule-sets", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.CreateManagedRuleSet))))
+	mux.Handle("PATCH /api/v1/managed-routing-rule-sets/{set_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateManagedRuleSet))))
+	mux.Handle("DELETE /api/v1/managed-routing-rule-sets/{set_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteManagedRuleSet))))
+	mux.Handle("POST /api/v1/managed-routing-rule-sets/{set_id}/refresh", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.RefreshManagedRuleSet))))
 
 	mux.Handle("GET /api/v1/node-groups", authn(auth.RequirePermission("servers:read")(stdhttp.HandlerFunc(nodeGroupsHandler.List))))
 	mux.Handle("POST /api/v1/node-groups", authn(auth.RequirePermission("servers:update")(stdhttp.HandlerFunc(nodeGroupsHandler.Create))))
@@ -181,6 +187,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/qr", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetSubscriptionQRCode))))
 	mux.HandleFunc("GET /api/v1/subscriptions/{token}", vpnAccountsHandler.GetPublicSubscription)
 	mux.HandleFunc("GET /sub/{token}", vpnAccountsHandler.GetClientSubscription)
+	mux.HandleFunc("GET /api/public/routing-rule-sets/{set_id}", routingProfilesHandler.PublicManagedRuleSet)
 
 	mux.Handle("GET /api/v1/users", authn(auth.RequirePermission("users:read")(stdhttp.HandlerFunc(usersHandler.List))))
 	mux.Handle("GET /api/v1/users/{id}", authn(auth.RequirePermission("users:read")(stdhttp.HandlerFunc(usersHandler.Get))))
