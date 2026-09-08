@@ -89,7 +89,7 @@ func TestWireGuardAdapterRendersStrictServerConfig(t *testing.T) {
 	if config.Metadata.VPNCore.Core != platform.VPNCoreWireGuard || config.Metadata.VPNCore.Transport != platform.VPNTransportUDP {
 		t.Fatalf("unexpected WireGuard descriptor: %+v", config.Metadata.VPNCore)
 	}
-	if !strings.Contains(config.WireGuard, "ListenPort = 51820") || !strings.Contains(config.WireGuard, "AllowedIPs = 10.66.0.2/32") {
+	if !strings.Contains(config.WireGuard, "ListenPort = 51820") || !strings.Contains(config.WireGuard, "AllowedIPs = 10.66.0.2/32") || !strings.Contains(config.WireGuard, "# routegate-account-id: account-id") {
 		t.Fatalf("unexpected WireGuard config:\n%s", config.WireGuard)
 	}
 	if result := ValidateRenderedConfig(config); !result.Valid {

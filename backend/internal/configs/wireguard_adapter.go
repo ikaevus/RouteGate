@@ -58,6 +58,7 @@ func (wireGuardAdapter) Render(config *RenderedConfig, info ServerConfigInfo) {
 			WireGuardAddress:   peerAddress,
 		})
 		rendered.WriteString("\n[Peer]\n")
+		fmt.Fprintf(&rendered, "# routegate-account-id: %s\n", safeWireGuardComment(account.ID))
 		fmt.Fprintf(&rendered, "# %s\n", safeWireGuardComment(accountDisplayName(account)))
 		fmt.Fprintf(&rendered, "PublicKey = %s\n", strings.TrimSpace(account.WireGuardPublicKey))
 		fmt.Fprintf(&rendered, "AllowedIPs = %s/32\n", peerAddress)

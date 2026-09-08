@@ -111,6 +111,62 @@ func TestSingBoxCollectorReadsConfiguredLogFileWhenJournalIsEmpty(t *testing.T) 
 	}
 }
 
+func TestSingBoxCollectorReportsShadowsocksUser(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	accountID := "523446e8-0351-4c0a-a9ec-19a269a8848f"
+	if err := os.WriteFile(path, []byte(`{"inbounds":[{"type":"shadowsocks","listen_port":8388,"users":[{"name":"`+accountID+`","password":"secret"}]}]}`), 0o600); err != nil { t.Fatal(err) }
+	collector := NewSingBoxCollector(path, "sing-box")
+	collector.run = func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		switch name {
+		case "systemctl": return []byte("42\n"), nil
+		case "journalctl": return []byte("INFO [9 0ms] inbound/shadowsocks[shadowsocks-in]: inbound connection from 203.0.113.10:51001\nINFO [9 2ms] inbound/shadowsocks[shadowsocks-in]: ["+accountID+"] inbound connection to example.com:443\n"), nil
+		case "ss": return []byte("0 0 10.0.0.1:8388 203.0.113.10:51001\n"), nil
+		default: return nil, errors.New("unexpected command")
+		}
+	}
+	snapshot, err := collector.Collect(context.Background())
+	if err != nil { t.Fatal(err) }
+	if len(snapshot.Items) != 1 || snapshot.Items[0].VPNAccountID != accountID || snapshot.Items[0].Protocol != "shadowsocks" {
+		t.Fatalf("items=%+v", snapshot.Items)
+	}
+}
+
+func TestWireGuardCollectorReportsRecentNamedPeerHandshake(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routegate-wg0.conf")
+	accountID := "523446e8-0351-4c0a-a9ec-19a269a8848f"
+	publicKey := "client-public-key"
+	config := "[Interface]\nPrivateKey = server\n\n[Peer]\n# routegate-account-id: "+accountID+"\n# Felix\nPublicKey = "+publicKey+"\nAllowedIPs = 10.66.0.2/32\n"
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil { t.Fatal(err) }
+	now := time.Date(2026, 9, 8, 5, 0, 0, 0, time.UTC)
+	collector := NewWireGuardCollector(path, "routegate-wg0", "wg")
+	collector.now = func() time.Time { return now }
+	collector.run = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name != "wg" || strings.Join(args, " ") != "show routegate-wg0 dump" { return nil, errors.New("unexpected command") }
+		return []byte("server-private\tserver-public\t51820\toff\n"+publicKey+"\t(none)\t198.51.100.2:32123\t10.66.0.2/32\t"+fmt.Sprint(now.Add(-40*time.Second).Unix())+"\t100\t200\t25\n"), nil
+	}
+	snapshot, err := collector.Collect(context.Background())
+	if err != nil { t.Fatal(err) }
+	if len(snapshot.Items) != 1 { t.Fatalf("items=%+v", snapshot.Items) }
+	item := snapshot.Items[0]
+	if item.VPNAccountID != accountID || item.Protocol != "wireguard" || item.Source != WireGuardHandshakeCollectorSource || item.Confidence != "exact" {
+		t.Fatalf("item=%+v", item)
+	}
+}
+
+func TestWireGuardCollectorIgnoresStaleHandshake(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routegate-wg0.conf")
+	if err := os.WriteFile(path, []byte("[Peer]\n# routegate-account-id: account-id\nPublicKey = client-public-key\n"), 0o600); err != nil { t.Fatal(err) }
+	now := time.Date(2026, 9, 8, 5, 0, 0, 0, time.UTC)
+	collector := NewWireGuardCollector(path, "routegate-wg0", "wg")
+	collector.now = func() time.Time { return now }
+	collector.run = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return []byte("server\tpublic\t51820\toff\nclient-public-key\t(none)\t(none)\t10.66.0.2/32\t"+fmt.Sprint(now.Add(-wireGuardHandshakeMaxAge-time.Second).Unix())+"\t0\t0\t25\n"), nil
+	}
+	snapshot, err := collector.Collect(context.Background())
+	if err != nil { t.Fatal(err) }
+	if len(snapshot.Items) != 0 { t.Fatalf("items=%+v", snapshot.Items) }
+}
+
 func TestSingBoxCollectorReturnsEmptyAfterDisconnect(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{"inbounds":[{"type":"vless","listen_port":8443,"users":[{"name":"Felix","uuid":"523446e8-0351-4c0a-a9ec-19a269a8848f"}]}]}`), 0o600); err != nil {
