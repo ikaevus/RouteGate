@@ -217,21 +217,19 @@ func (c *SingBoxCollector) Collect(ctx context.Context) (Snapshot, error) {
 		journalArgs = append(journalArgs, "--since", "@"+strconv.FormatInt(c.journalReadAt.Add(-2*time.Second).Unix(), 10))
 	}
 	journal, err := c.run(ctx, "journalctl", journalArgs...)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("read sing-box journal: %w", err)
+	if err == nil {
+		c.consumeJournal(string(journal), now)
 	}
-	c.consumeJournal(string(journal), now)
 	if logOutput != "" && logOutput != "stdout" && logOutput != "stderr" {
 		fileLog, readErr := c.readLogFile(logOutput)
-		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			return Snapshot{}, fmt.Errorf("read sing-box presence log: %w", readErr)
+		if readErr == nil {
+			c.consumeJournal(fileLog, now)
 		}
-		c.consumeJournal(fileLog, now)
 	}
 	c.journalReadAt = now
 	activeSockets, err := c.run(ctx, "ss", "-Htn", "state", "established")
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("read established TCP sockets: %w", err)
+		activeSockets = nil
 	}
 
 	activePeers := make(map[netip.AddrPort]struct{})
