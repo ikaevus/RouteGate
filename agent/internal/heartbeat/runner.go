@@ -139,9 +139,9 @@ func (r *Runner) reportClientPresence(ctx context.Context) error {
 	now := time.Now().UTC()
 	if !r.lastPresenceReport.IsZero() && now.Sub(r.lastPresenceReport) < r.cfg.ClientPresenceInterval() { return nil }
 	snapshot, err := r.presenceCollector.Collect(ctx)
-	if err != nil { return err }
+	if err != nil { return fmt.Errorf("collect client presence: %w", err) }
 	res, err := r.client.ReportClientPresence(ctx, r.cfg.AgentToken, snapshot)
-	if err != nil { return err }
+	if err != nil { return fmt.Errorf("submit client presence: %w", err) }
 	r.lastPresenceReport = now
 	r.logger.Info("client presence report accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "accepted", res.Accepted)
 	return nil
