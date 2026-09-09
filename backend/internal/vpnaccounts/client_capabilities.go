@@ -24,18 +24,19 @@ const (
 )
 
 type ClientCapabilities struct {
-	FullSingBoxConfigImport bool   `json:"fullSingBoxConfigImport"`
-	URISubscriptionImport   bool   `json:"uriSubscriptionImport"`
-	TUNMode                 bool   `json:"tunMode"`
-	DirectRouting           bool   `json:"directRouting"`
-	VPNRouting              bool   `json:"vpnRouting"`
-	BlockRouting            bool   `json:"blockRouting"`
-	RemoteRuleSets          bool   `json:"remoteRuleSets"`
-	DNSRouting              bool   `json:"dnsRouting"`
-	SplitDNS                bool   `json:"splitDns"`
-	ClientLocalRules        bool   `json:"clientLocalRules"`
-	SubscriptionRefresh     bool   `json:"subscriptionRefresh"`
-	ImportedRulePrecedence  string `json:"importedRulePrecedence"`
+	FullSingBoxConfigImport    bool   `json:"fullSingBoxConfigImport"`
+	URISubscriptionImport      bool   `json:"uriSubscriptionImport"`
+	TUNMode                    bool   `json:"tunMode"`
+	DirectRouting              bool   `json:"directRouting"`
+	VPNRouting                 bool   `json:"vpnRouting"`
+	BlockRouting               bool   `json:"blockRouting"`
+	RemoteRuleSets             bool   `json:"remoteRuleSets"`
+	DNSRouting                 bool   `json:"dnsRouting"`
+	SplitDNS                   bool   `json:"splitDns"`
+	ClientLocalRules           bool   `json:"clientLocalRules"`
+	SubscriptionRefresh        bool   `json:"subscriptionRefresh"`
+	SubscriptionRoutingPolicy  bool   `json:"subscriptionRoutingPolicy"`
+	ImportedRulePrecedence     string `json:"importedRulePrecedence"`
 }
 
 type ClientCompatibilityAssessment struct {
@@ -123,15 +124,16 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 		}
 	case ClientTypeV2RayTun:
 		return ClientCompatibilityAssessment{
-			ClientType: ClientTypeV2RayTun, DisplayName: "V2RayTun", Status: ClientCompatibilitySetupRequired,
+			ClientType: ClientTypeV2RayTun, DisplayName: "V2RayTun", Status: ClientCompatibilityPartial,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64, RequiresClientSetup: true,
 			Capabilities: ClientCapabilities{
 				URISubscriptionImport: true, TUNMode: true, DirectRouting: true, VPNRouting: true,
 				BlockRouting: true, DNSRouting: true, SplitDNS: true, ClientLocalRules: true,
-				SubscriptionRefresh: true, ImportedRulePrecedence: ImportedRulePrecedenceClient,
+				SubscriptionRefresh: true, SubscriptionRoutingPolicy: true,
+				ImportedRulePrecedence: ImportedRulePrecedenceRouteGate,
 			},
-			Guidance: []string{"Configure V2RayTun routing/DNS mode locally and verify DIRECT rules before treating smart routing as enforced."},
-			Limitations: []string{"Standard URI delivery provides connectivity but does not itself enforce the RouteGate routing rule set."},
+			Guidance: []string{"RouteGate sends the Routing Profile through V2RayTun's subscription routing header. Verify TUN and DNS settings on the device when system-wide or split-DNS behavior is required."},
+			Limitations: []string{"Routing rules are subscription-managed, but V2RayTun TUN/DNS runtime settings remain client-side and can affect deterministic DNS behavior."},
 		}
 	default:
 		return ClientCompatibilityAssessment{
