@@ -10,6 +10,7 @@ import {
   type SubscriptionTokenResponse,
   type UpdateVpnClientProfileRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getClientCompatibility } from '../../entities/vpnAccount/model/clientCompatibility';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { ShareAccessActions } from '../../shared/ui/ShareAccessActions';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
@@ -65,6 +66,12 @@ function getCopy() {
       copy: 'Копировать',
       copied: 'Скопировано',
       credentialWarning: 'QR-код, URI и конфигурация предоставляют VPN-доступ. Не публикуйте их.',
+      compatibility: t('clientCompatibility.title'),
+      compatibilityFull: t('clientCompatibility.full'),
+      compatibilitySetup: t('clientCompatibility.setup'),
+      compatibilityPartial: t('clientCompatibility.partial'),
+      compatibilityConnection: t('clientCompatibility.connectionOnly'),
+      preferredDelivery: t('clientCompatibility.preferredDelivery'),
       profileSettings: 'Настройки клиентского профиля',
       profileName: 'Название профиля',
       clientType: 'VPN-клиент',
@@ -94,8 +101,8 @@ function getCopy() {
       saving: 'Сохранение...',
       saved: 'Профиль сохранён',
       saveError: 'Не удалось сохранить клиентский профиль.',
-      advancedSubscription: 'Расширенный URL подписки',
-      subscriptionDescription: 'Отдельный токен для внутреннего формата RouteGate. Он не нужен для прямого QR-кода.',
+      advancedSubscription: t('clientCompatibility.secureSubscription'),
+      subscriptionDescription: t('clientCompatibility.subscriptionDescription'),
       createSubscription: 'Создать URL подписки',
       rotateSubscription: 'Обновить URL подписки',
       subscriptionBusy: 'Подготовка...',
@@ -138,6 +145,12 @@ function getCopy() {
     copy: 'Copy',
     copied: 'Copied',
     credentialWarning: 'The QR code, URI, and configuration grant VPN access. Do not publish them.',
+    compatibility: t('clientCompatibility.title'),
+    compatibilityFull: t('clientCompatibility.full'),
+    compatibilitySetup: t('clientCompatibility.setup'),
+    compatibilityPartial: t('clientCompatibility.partial'),
+    compatibilityConnection: t('clientCompatibility.connectionOnly'),
+    preferredDelivery: t('clientCompatibility.preferredDelivery'),
     profileSettings: 'Client profile settings',
     profileName: 'Profile name',
     clientType: 'VPN client',
@@ -167,8 +180,8 @@ function getCopy() {
     saving: 'Saving...',
     saved: 'Profile saved',
     saveError: 'Could not save client profile.',
-    advancedSubscription: 'Advanced subscription URL',
-    subscriptionDescription: 'A separate token for RouteGate’s internal subscription format. Direct QR does not require it.',
+    advancedSubscription: t('clientCompatibility.secureSubscription'),
+    subscriptionDescription: t('clientCompatibility.subscriptionDescription'),
     createSubscription: 'Create subscription URL',
     rotateSubscription: 'Refresh subscription URL',
     subscriptionBusy: 'Preparing...',
@@ -270,6 +283,15 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   };
 
   const connection = connectionQuery.data;
+  const compatibility = getClientCompatibility(connection);
+  const compatibilityLabel = compatibility?.status === 'full_smart_routing'
+    ? copy.compatibilityFull
+    : compatibility?.status === 'client_setup_required'
+      ? copy.compatibilitySetup
+      : compatibility?.status === 'partial_compatibility'
+        ? copy.compatibilityPartial
+        : copy.compatibilityConnection;
+  const compatibilityClass = compatibility?.status === 'full_smart_routing' ? 'form-message-success' : 'form-message-warning';
   const isWireGuard = connection?.protocol === 'wireguard';
   const isHysteria2 = connection?.protocol === 'hysteria2';
   const isShadowsocks = connection?.protocol === 'shadowsocks';
@@ -302,6 +324,15 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
       {connection && (
         <div className="subscription-result subscription-self-service-card">
           <div className="form-message form-message-warning">{copy.credentialWarning}</div>
+
+          {compatibility && (
+            <div className={`form-message ${compatibilityClass}`}>
+              <strong>{copy.compatibility}: {compatibility.displayName} · {compatibilityLabel}</strong>
+              <div>{copy.preferredDelivery}: <code>{compatibility.preferredDeliveryFormat}</code></div>
+              {(compatibility.guidance ?? []).map((item) => <div key={item}>• {item}</div>)}
+              {(compatibility.limitations ?? []).map((item) => <div key={item}>• {item}</div>)}
+            </div>
+          )}
 
           <div className="subscription-url-stack vpn-client-primary-card">
             <div className="subscription-url-header">
@@ -350,6 +381,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                 <label className="field">
                   <span>{copy.clientType}</span>
                   <select value={clientType} onChange={(event) => setClientType(event.target.value)}>
+                    <option value="hiddify">{t('clientCompatibility.hiddify')}</option>
                     <option value="v2rayn">v2rayN</option>
                     <option value="v2raytun">V2RayTun</option>
                     <option value="v2box">V2Box</option>
