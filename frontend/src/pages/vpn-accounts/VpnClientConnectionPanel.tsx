@@ -66,12 +66,12 @@ function getCopy() {
       copy: 'Копировать',
       copied: 'Скопировано',
       credentialWarning: 'QR-код, URI и конфигурация предоставляют VPN-доступ. Не публикуйте их.',
-      compatibility: 'Совместимость клиента',
-      compatibilityFull: 'Полная поддержка Smart Routing',
-      compatibilitySetup: 'Поддерживается с настройкой клиента',
-      compatibilityPartial: 'Частичная совместимость',
-      compatibilityConnection: 'Только подключение',
-      preferredDelivery: 'Формат подписки',
+      compatibility: t('clientCompatibility.title'),
+      compatibilityFull: t('clientCompatibility.full'),
+      compatibilitySetup: t('clientCompatibility.setup'),
+      compatibilityPartial: t('clientCompatibility.partial'),
+      compatibilityConnection: t('clientCompatibility.connectionOnly'),
+      preferredDelivery: t('clientCompatibility.preferredDelivery'),
       profileSettings: 'Настройки клиентского профиля',
       profileName: 'Название профиля',
       clientType: 'VPN-клиент',
@@ -101,8 +101,8 @@ function getCopy() {
       saving: 'Сохранение...',
       saved: 'Профиль сохранён',
       saveError: 'Не удалось сохранить клиентский профиль.',
-      advancedSubscription: 'Безопасный URL подписки',
-      subscriptionDescription: 'RG-115 URL остаётся коротким и непрозрачным. RG-115A выбирает представление конфигурации по выбранному VPN-клиенту; raw URI остаётся ручным fallback.',
+      advancedSubscription: t('clientCompatibility.secureSubscription'),
+      subscriptionDescription: t('clientCompatibility.subscriptionDescription'),
       createSubscription: 'Создать URL подписки',
       rotateSubscription: 'Обновить URL подписки',
       subscriptionBusy: 'Подготовка...',
@@ -145,12 +145,12 @@ function getCopy() {
     copy: 'Copy',
     copied: 'Copied',
     credentialWarning: 'The QR code, URI, and configuration grant VPN access. Do not publish them.',
-    compatibility: 'Client compatibility',
-    compatibilityFull: 'Full smart routing support',
-    compatibilitySetup: 'Supported with client-side setup',
-    compatibilityPartial: 'Partial compatibility',
-    compatibilityConnection: 'Connection only',
-    preferredDelivery: 'Subscription format',
+    compatibility: t('clientCompatibility.title'),
+    compatibilityFull: t('clientCompatibility.full'),
+    compatibilitySetup: t('clientCompatibility.setup'),
+    compatibilityPartial: t('clientCompatibility.partial'),
+    compatibilityConnection: t('clientCompatibility.connectionOnly'),
+    preferredDelivery: t('clientCompatibility.preferredDelivery'),
     profileSettings: 'Client profile settings',
     profileName: 'Profile name',
     clientType: 'VPN client',
@@ -180,8 +180,8 @@ function getCopy() {
     saving: 'Saving...',
     saved: 'Profile saved',
     saveError: 'Could not save client profile.',
-    advancedSubscription: 'Secure subscription URL',
-    subscriptionDescription: 'The RG-115 URL stays short and opaque. RG-115A selects the configuration representation for the chosen VPN client; raw protocol material remains a manual fallback.',
+    advancedSubscription: t('clientCompatibility.secureSubscription'),
+    subscriptionDescription: t('clientCompatibility.subscriptionDescription'),
     createSubscription: 'Create subscription URL',
     rotateSubscription: 'Refresh subscription URL',
     subscriptionBusy: 'Preparing...',
@@ -381,7 +381,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                 <label className="field">
                   <span>{copy.clientType}</span>
                   <select value={clientType} onChange={(event) => setClientType(event.target.value)}>
-                    <option value="hiddify">Hiddify</option>
+                    <option value="hiddify">{t('clientCompatibility.hiddify')}</option>
                     <option value="v2rayn">v2rayN</option>
                     <option value="v2raytun">V2RayTun</option>
                     <option value="v2box">V2Box</option>
