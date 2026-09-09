@@ -1,0 +1,141 @@
+name: EXP Polish Smart Routing UI
+
+on:
+  push:
+    branches:
+      - exp/rg-smart-routing-sol
+    paths:
+      - .github/workflows/exp-polish-smart-routing-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'ui: polish smart routing admin UX'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: exp/rg-smart-routing-sol
+          fetch-depth: 0
+      - name: Patch UI
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('frontend/src/pages/routing-profiles/RoutingManagedPanels.tsx')
+          s = p.read_text()
+          s = s.replace("<form className='panel' onSubmit={submit}>", "<form className='panel routing-managed-create-panel' onSubmit={submit}>", 1)
+          s = s.replace("<option value='direct'>DIRECT</option><option value='vpn'>VPN</option><option value='block'>BLOCK</option>", "<option value='direct'>{t('routingProfiles.actionDirectLabel')}</option><option value='vpn'>{t('routingProfiles.actionVpnLabel')}</option><option value='block'>{t('routingProfiles.actionBlockLabel')}</option>")
+          s = s.replace("<div><strong>{item.action.toUpperCase()} · {item.priority}</strong><span>{item.status}{item.lastError ? `: ${item.lastError}` : ''}</span></div>", "<div><strong>{t(`routingProfiles.action${item.action === 'direct' ? 'Direct' : item.action === 'vpn' ? 'Vpn' : 'Block'}Label` as Parameters<typeof t>[0])} · {item.priority}</strong><span>{item.status}{item.lastError ? `: ${item.lastError}` : ''}</span></div>")
+          old = "{result && <div className='routing-diagnostic-result'><span className={`badge badge-${result.action}`}>{result.action.toUpperCase()}</span><strong>{result.profileName}</strong><span>{result.matched ? `${result.matchedName} · ${result.source} · ${t('routingProfiles.priority')} ${result.priority}` : t('routingProfiles.profileDefaultResult')}</span><p>{result.precedence}</p></div>}"
+          new = """{result && <div className='routing-diagnostic-result'>
+      <div className='routing-diagnostic-summary'>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticDecision')}</span><span className={`badge badge-${result.action}`}>{result.action === 'direct' ? t('routingProfiles.actionDirectLabel') : result.action === 'vpn' ? t('routingProfiles.actionVpnLabel') : t('routingProfiles.actionBlockLabel')}</span></div>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticProfile')}</span><strong>{result.profileName}</strong></div>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticSource')}</span><strong>{result.source === 'manual' ? t('routingProfiles.sourceManual') : result.source === 'managed_rule_set' ? t('routingProfiles.sourceManaged') : t('routingProfiles.sourceDefault')}</strong></div>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticPriority')}</span><strong>{result.priority ?? t('common.notAvailable')}</strong></div>
+      </div>
+      <div className='routing-diagnostic-reason'>
+        <strong>{t('routingProfiles.diagnosticMatchedRule')}</strong>
+        <span>{result.matched ? (result.matchedName || result.matchedId || t('common.notAvailable')) : t('routingProfiles.profileDefaultResult')}</span>
+      </div>
+      <p className='routing-diagnostic-precedence'>{result.precedence}</p>
+    </div>}"""
+          if old not in s:
+              raise SystemExit('diagnostic result block not found')
+          s = s.replace(old, new)
+          p.write_text(s)
+
+          p = Path('frontend/src/pages/routing-profiles/RoutingProfilesPage.tsx')
+          s = p.read_text()
+          s = s.replace("<option value='direct'>DIRECT</option><option value='vpn'>VPN</option><option value='block'>BLOCK</option>", "<option value='direct'>{t('routingProfiles.actionDirectLabel')}</option><option value='vpn'>{t('routingProfiles.actionVpnLabel')}</option><option value='block'>{t('routingProfiles.actionBlockLabel')}</option>")
+          p.write_text(s)
+
+          for lang in ('en', 'ru'):
+              p = Path(f'frontend/src/shared/i18n/locales/{lang}.ts')
+              s = p.read_text()
+              if lang == 'en':
+                  s = s.replace("  'routingProfiles.actionBlock': 'block',\n", "  'routingProfiles.actionBlock': 'block',\n  'routingProfiles.actionDirectLabel': 'Direct',\n  'routingProfiles.actionVpnLabel': 'Via VPN',\n  'routingProfiles.actionBlockLabel': 'Block',\n")
+                  s = s.replace("  'routingProfiles.managedTitle': 'Managed Rule Set',\n", "  'routingProfiles.managedTitle': 'Add managed rule set',\n")
+                  s = s.replace("  'routingProfiles.addManaged': 'Add source',\n", "  'routingProfiles.addManaged': 'Add rule set',\n")
+                  s = s.replace("  'routingProfiles.profileDefaultResult': 'No rule matched; the profile default action wins.',\n", "  'routingProfiles.profileDefaultResult': 'No rule matched; the profile default action wins.',\n  'routingProfiles.diagnosticDecision': 'Decision',\n  'routingProfiles.diagnosticProfile': 'Effective profile',\n  'routingProfiles.diagnosticSource': 'Source',\n  'routingProfiles.diagnosticPriority': 'Priority',\n  'routingProfiles.diagnosticMatchedRule': 'Matched rule',\n  'routingProfiles.sourceManual': 'Manual administrator rule',\n  'routingProfiles.sourceManaged': 'Managed rule set',\n  'routingProfiles.sourceDefault': 'Profile default',\n")
+              else:
+                  s = s.replace("  'routingProfiles.actionBlock': 'block',\n", "  'routingProfiles.actionBlock': 'block',\n  'routingProfiles.actionDirectLabel': 'Напрямую',\n  'routingProfiles.actionVpnLabel': 'Через VPN',\n  'routingProfiles.actionBlockLabel': 'Блокировать',\n")
+                  s = s.replace("  'routingProfiles.managedTitle': 'Управляемый набор правил',\n", "  'routingProfiles.managedTitle': 'Добавить управляемый набор',\n")
+                  s = s.replace("  'routingProfiles.addManaged': 'Добавить источник',\n", "  'routingProfiles.addManaged': 'Добавить набор',\n")
+                  s = s.replace("  'routingProfiles.profileDefaultResult': 'Ни одно правило не совпало; используется действие профиля по умолчанию.',\n", "  'routingProfiles.profileDefaultResult': 'Ни одно правило не совпало; используется действие профиля по умолчанию.',\n  'routingProfiles.diagnosticDecision': 'Итоговое действие',\n  'routingProfiles.diagnosticProfile': 'Действующий профиль',\n  'routingProfiles.diagnosticSource': 'Источник решения',\n  'routingProfiles.diagnosticPriority': 'Приоритет',\n  'routingProfiles.diagnosticMatchedRule': 'Совпавшее правило',\n  'routingProfiles.sourceManual': 'Ручное правило администратора',\n  'routingProfiles.sourceManaged': 'Управляемый набор правил',\n  'routingProfiles.sourceDefault': 'Действие профиля по умолчанию',\n")
+              p.write_text(s)
+
+          p = Path('frontend/src/shared/rg61.css')
+          s = p.read_text()
+          anchor = ".routing-managed-row {\n  grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 0.7fr) minmax(16rem, 1.4fr) auto;\n}\n"
+          addition = """
+.routing-managed-create-panel .routing-rule-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.routing-managed-create-panel .field {
+  min-width: 0;
+}
+
+.routing-managed-create-panel .field input,
+.routing-managed-create-panel .field select {
+  width: 100%;
+}
+"""
+          if addition.strip() not in s:
+              s = s.replace(anchor, anchor + addition)
+          old = ".routing-diagnostic-result {\n  display: grid;\n  gap: 0.65rem;\n  margin-top: 1rem;\n  padding: 1rem;\n  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));\n  border-radius: 0.75rem;\n}\n"
+          new = """.routing-diagnostic-result {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
+  border-radius: 0.75rem;
+}
+
+.routing-diagnostic-summary {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.routing-diagnostic-summary > div,
+.routing-diagnostic-reason {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.routing-diagnostic-label {
+  color: var(--muted-color, #94a3b8);
+  font-size: 0.8rem;
+}
+
+.routing-diagnostic-reason {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 0.9rem;
+}
+
+.routing-diagnostic-precedence {
+  margin: 0;
+  color: var(--muted-color, #94a3b8);
+}
+"""
+          if old not in s:
+              raise SystemExit('diagnostic css block not found')
+          s = s.replace(old, new)
+          s = s.replace("  .routing-managed-row {\n    grid-template-columns: 1fr;\n  }\n", "  .routing-managed-row,\n  .routing-managed-create-panel .routing-rule-form-grid,\n  .routing-diagnostic-summary {\n    grid-template-columns: 1fr;\n  }\n")
+          p.write_text(s)
+          PY
+
+          git config user.name 'RouteGate CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add frontend/src/pages/routing-profiles/RoutingManagedPanels.tsx frontend/src/pages/routing-profiles/RoutingProfilesPage.tsx frontend/src/shared/i18n/locales/en.ts frontend/src/shared/i18n/locales/ru.ts frontend/src/shared/rg61.css
+          git commit -m 'ui: polish smart routing admin UX'
+          git push origin HEAD:exp/rg-smart-routing-sol
