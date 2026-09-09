@@ -8,8 +8,12 @@ EXPECTED_BUNDLE_SHA=${3:?bundle sha256 is required}
 VALIDATION_SCRIPT=${4:?validation script path is required}
 UPDATE_CORE=${5:?update core path is required}
 PUBLIC_URL=${ROUTEGATE_PUBLIC_URL_OVERRIDE:-https://us.routegate.org}
+NGINX_SITE=${ROUTEGATE_NGINX_SITE:-/etc/nginx/sites-available/routegate}
+NGINX_BIN=${ROUTEGATE_NGINX_BIN:-/usr/sbin/nginx}
 WORK_DIR=$(mktemp -d /tmp/routegate-production-like.XXXXXX)
 BACKUP_DIR=""
+NGINX_BACKUP=""
+NGINX_MUTATED=0
 DB_URL=""
 EXPECTED_SCHEMA=""
 MUTATED=0
@@ -23,6 +27,113 @@ source "$UPDATE_CORE"
 
 log() {
   rg_update_log "$*"
+}
+
+reconcile_subscription_proxy_route() {
+  local template="$WORK_DIR/nginx/routegate.conf.example"
+  local candidate
+  local api_location_count
+
+  [[ -f "$template" && ! -L "$template" ]] \
+    || { printf '[production-like] release bundle is missing nginx route template.\n' >&2; return 1; }
+  [[ -f "$NGINX_SITE" && ! -L "$NGINX_SITE" ]] \
+    || { printf '[production-like] RouteGate nginx site is missing or unsafe: %s\n' "$NGINX_SITE" >&2; return 1; }
+  [[ -x "$NGINX_BIN" ]] \
+    || { printf '[production-like] nginx binary is unavailable: %s\n' "$NGINX_BIN" >&2; return 1; }
+
+  if grep -Eq '^[[:space:]]*location[[:space:]]+/sub/[[:space:]]*\{' "$NGINX_SITE"; then
+    log "nginx subscription proxy route=present"
+    return 0
+  fi
+
+  grep -Eq '^[[:space:]]*location[[:space:]]+/sub/[[:space:]]*\{' "$template" \
+    || { printf '[production-like] bundle nginx template has no /sub/ route.\n' >&2; return 1; }
+  grep -Fq 'access_log off;' "$template" \
+    || { printf '[production-like] bundle /sub/ route does not disable access logging.\n' >&2; return 1; }
+
+  api_location_count=$(grep -Ec '^[[:space:]]*location[[:space:]]+/api/[[:space:]]*\{' "$NGINX_SITE" || true)
+  [[ "$api_location_count" == "1" ]] \
+    || { printf '[production-like] expected exactly one /api/ nginx location, found %s.\n' "$api_location_count" >&2; return 1; }
+
+  NGINX_BACKUP="$BACKUP_DIR/nginx-routegate.conf"
+  cp -a -- "$NGINX_SITE" "$NGINX_BACKUP" || return 1
+  candidate=$(mktemp "$(dirname "$NGINX_SITE")/.routegate-subscription-route.XXXXXX") || return 1
+
+  if ! python3 - "$NGINX_SITE" "$template" "$candidate" <<'PY'
+from pathlib import Path
+import sys
+
+live_path, template_path, output_path = map(Path, sys.argv[1:])
+live = live_path.read_text().splitlines(keepends=True)
+template = template_path.read_text().splitlines(keepends=True)
+
+
+def extract_location(lines, marker):
+    starts = [i for i, line in enumerate(lines) if line.strip() == marker]
+    if len(starts) != 1:
+        raise SystemExit(f"expected one {marker!r} block, found {len(starts)}")
+    start = starts[0]
+    depth = 0
+    block = []
+    for line in lines[start:]:
+        block.append(line)
+        depth += line.count("{") - line.count("}")
+        if depth == 0:
+            break
+    if not block or depth != 0:
+        raise SystemExit(f"unterminated {marker!r} block")
+    return block
+
+
+block = extract_location(template, "location /sub/ {")
+block_text = "".join(block)
+if "access_log off;" not in block_text or "proxy_pass http://127.0.0.1:8080;" not in block_text:
+    raise SystemExit("subscription block is missing required security/proxy directives")
+
+api_positions = [i for i, line in enumerate(live) if line.strip() == "location /api/ {"]
+if len(api_positions) != 1:
+    raise SystemExit(f"expected one live /api/ location, found {len(api_positions)}")
+insert_at = api_positions[0]
+indent = live[insert_at][: len(live[insert_at]) - len(live[insert_at].lstrip())]
+base_indent = block[0][: len(block[0]) - len(block[0].lstrip())]
+rendered = []
+for line in block:
+    if line.strip():
+        if not line.startswith(base_indent):
+            raise SystemExit("subscription block indentation is inconsistent")
+        rendered.append(indent + line[len(base_indent):])
+    else:
+        rendered.append(line)
+
+if rendered and not rendered[-1].endswith("\n"):
+    rendered[-1] += "\n"
+rendered.append("\n")
+output_path.write_text("".join(live[:insert_at] + rendered + live[insert_at:]))
+PY
+  then
+    rm -f -- "$candidate"
+    return 1
+  fi
+
+  cat -- "$candidate" > "$NGINX_SITE" || { rm -f -- "$candidate"; return 1; }
+  rm -f -- "$candidate"
+
+  if ! "$NGINX_BIN" -t; then
+    cp -a -- "$NGINX_BACKUP" "$NGINX_SITE"
+    "$NGINX_BIN" -t >/dev/null 2>&1 || true
+    printf '[production-like] nginx validation rejected the /sub/ route; original site restored.\n' >&2
+    return 1
+  fi
+  if ! systemctl reload nginx; then
+    cp -a -- "$NGINX_BACKUP" "$NGINX_SITE"
+    "$NGINX_BIN" -t >/dev/null 2>&1 || true
+    systemctl reload nginx >/dev/null 2>&1 || true
+    printf '[production-like] nginx reload failed; original site restored.\n' >&2
+    return 1
+  fi
+
+  NGINX_MUTATED=1
+  log "nginx subscription proxy route=reconciled"
 }
 
 runtime_status() {
@@ -111,6 +222,11 @@ rollback() {
     log "Failure at stage=${STAGE}; restoring production-like baseline."
     rg_update_restore_backup "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" || rollback_rc=$?
     set +e
+    if [[ "$NGINX_MUTATED" == "1" && -n "$NGINX_BACKUP" && -f "$NGINX_BACKUP" ]]; then
+      cp -a -- "$NGINX_BACKUP" "$NGINX_SITE" || rollback_rc=1
+      "$NGINX_BIN" -t >/dev/null 2>&1 || rollback_rc=1
+      systemctl reload nginx >/dev/null 2>&1 || rollback_rc=1
+    fi
     if ((rollback_rc != 0)); then
       printf '[production-like] WARNING: file/service rollback reported exit %d. Backup retained at %s\n' \
         "$rollback_rc" "$BACKUP_DIR" >&2
@@ -129,7 +245,7 @@ trap rollback ERR
 trap cleanup EXIT
 
 rg_update_require_root
-rg_update_require_commands curl date find pg_dump pg_restore psql sha256sum tar systemctl
+rg_update_require_commands curl date find grep pg_dump pg_restore psql python3 sha256sum tar systemctl
 [[ -r /etc/routegate/manager.env ]] || { printf 'Missing /etc/routegate/manager.env\n' >&2; exit 1; }
 [[ -r "$VALIDATION_SCRIPT" ]] || { printf 'Validation script is not readable.\n' >&2; exit 1; }
 
@@ -185,6 +301,9 @@ rg_update_validate_database_schema "$DB_URL" "$EXPECTED_SCHEMA"
 STAGE=agent_start
 rg_update_wait_agent 30
 
+STAGE=nginx_subscription_proxy
+reconcile_subscription_proxy_route
+
 STAGE=observability_validation
 chmod 0700 "$VALIDATION_SCRIPT"
 "$VALIDATION_SCRIPT" "$EXPECTED_COMMIT"
@@ -194,6 +313,9 @@ systemctl is-active --quiet routegate-manager
 systemctl is-active --quiet routegate-agent
 public_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")
 [[ "$public_status" == 200 ]]
+subscription_probe_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/sub/routegate-deploy-probe")
+[[ "$subscription_probe_status" == 404 ]]
+log "subscription proxy probe=http_${subscription_probe_status}"
 log_runtime_diagnostics
 
 STAGE=complete
