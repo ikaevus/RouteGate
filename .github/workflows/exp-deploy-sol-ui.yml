@@ -1,0 +1,116 @@
+name: EXP Deploy Sol UI
+
+on:
+  push:
+    branches:
+      - exp/rg-smart-routing-sol
+
+permissions:
+  contents: read
+
+concurrency:
+  group: routegate-production-like-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: 20845ee9ae325565048a0ff5e4201c3a54de8051
+
+    steps:
+      - name: Checkout validated Sol commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build validated release bundle
+        shell: bash
+        env:
+          VERSION: production-like
+          COMMIT: ${{ env.TARGET_SHA }}
+          ARCHITECTURES: amd64
+          OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
+        run: |
+          set -euo pipefail
+          ./scripts/build-release-bundle.sh
+          bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
+          test -s "$bundle"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy validated Sol bundle
+        shell: bash
+        env:
+          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          bundle="${RUNNER_TEMP}/routegate-dist/routegate-production-like-linux-amd64.tar.gz"
+          bundle_sha="$(sha256sum "$bundle" | awk '{print $1}')"
+          remote_bundle="/tmp/routegate-deploy-${TARGET_SHA}.tar.gz"
+          remote_deploy="/tmp/routegate-deploy-${TARGET_SHA}.sh"
+          remote_validate="/tmp/routegate-deploy-validate-${TARGET_SHA}.sh"
+          remote_core="/tmp/routegate-update-core-${TARGET_SHA}.sh"
+
+          "${SCP[@]}" "$bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle"
+          "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
+          "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
+          "${SCP[@]}" scripts/routegate-update-core.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_core"
+
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" 'sudo bash -s' <<'REMOTE_PREFLIGHT'
+          set -euo pipefail
+          for service in routegate-manager routegate-agent; do
+            state="$(systemctl is-active "$service" || true)"
+            if [[ "$state" == "activating" || "$state" == "reloading" ]]; then
+              for _ in $(seq 1 30); do
+                sleep 1
+                state="$(systemctl is-active "$service" || true)"
+                [[ "$state" == "activating" || "$state" == "reloading" ]] || break
+              done
+            fi
+            printf '[experiment] stabilized preflight %s=%s\n' "$service" "$state"
+            [[ "$state" == "active" ]] || exit 1
+          done
+          command -v flock >/dev/null 2>&1
+          REMOTE_PREFLIGHT
+
+          set +e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate' '$remote_core'"
+          rc=$?
+          set -e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            "rm -f '$remote_deploy' '$remote_validate' '$remote_core' '$remote_bundle'" || true
+          exit "$rc"
