@@ -12,7 +12,7 @@ function withFormat(url: string, format: string): string {
 }
 
 function v2raytunImportDeepLink(subscriptionUrl: string): string {
-  return `v2raytun://import/${subscriptionUrl}`;
+  return `v2raytun://import/${withFormat(subscriptionUrl, 'raw')}`;
 }
 
 export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRoutingImportProps) {

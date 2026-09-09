@@ -12,7 +12,7 @@ Compatibility is evaluated for the **selected client and the effective protocol 
 | sing-box | sing-box JSON for VLESS | Routing Profile embedded in the same sing-box config | Full smart routing on validated VLESS path | Normal client/runtime setup |
 | v2rayN | Base64 standard share links | Separate native custom-rules URL: `/sub/<token>?format=v2rayn-routing` | Supported with client-side setup | Import/refresh the RouteGate rules source, activate the intended routing mode/profile, and verify DNS/TUN behavior |
 | V2Box | Base64 standard share links | Native route-object import helper via `v2box://routes?multi=...` | Supported with client-side setup | Import the generated route set and verify local DNS/TUN/rule precedence; deep-link format remains manual-validation gated |
-| V2RayTun | Base64 standard share links + `routing` header | Routing Profile serialized to subscription routing JSON | Partial compatibility on supported share-link protocols | Verify TUN and DNS runtime settings; these remain client-side |
+| V2RayTun | Active protocol URI via native import deep link + `routing` header | Routing Profile serialized to subscription routing JSON | Partial compatibility on validated VLESS path | Verify TUN and DNS runtime settings; these remain client-side |
 | Other / unknown | RG-115 auto | Not assumed | Connection only | Select a known client before relying on Smart Routing |
 
 ## Capability detail
@@ -34,9 +34,10 @@ Compatibility is evaluated for the **selected client and the effective protocol 
 RouteGate must never derive a strong routing status from client name alone.
 
 - Hiddify and sing-box are `full_smart_routing` only when the effective protocol is VLESS and RouteGate can deliver the full sing-box representation.
-- v2rayN, V2Box and V2RayTun use their documented share-link path for VLESS, Hysteria2 and Shadowsocks.
-- If one of those clients is paired with WireGuard, MTProto, or another protocol without a validated adapter, the default `/sub/<token>` response uses RG-115 `auto`, which may fall back to raw protocol-native connection material, and compatibility becomes `connection_only`.
-- V2RayTun's subscription `routing` header is emitted only on the validated share-link path; it is not attached to unsupported protocol combinations.
+- v2rayN and V2Box use their standard share-link subscription paths for compatible protocols.
+- V2RayTun onboarding deliberately requests only the active protocol URI from the same RG-115 token (`format=raw`) rather than a mixed-protocol Base64 list. This avoids one secondary or unsupported URI causing the mobile client to reject the entire subscription.
+- The V2RayTun native `routing` response header is currently treated as validated together with the VLESS onboarding path. Other protocol combinations remain manual-validation gated.
+- If a client/protocol pair has no validated representation, compatibility must fall back to `connection_only` rather than claiming Smart Routing enforcement.
 
 This rule prevents both impossible subscription representations and false Smart Routing claims when only connectivity material was delivered.
 
@@ -72,30 +73,38 @@ The QR rendered for this URL is a **desktop v2rayN routing-source transfer helpe
 
 ### V2RayTun
 
-V2RayTun does not need a second RouteGate routing URL or a separate routing-policy QR on the validated share-link path.
+V2RayTun does not need a second RouteGate routing URL or a separate routing-policy QR.
 
-The normal opaque RG-115 subscription URL remains the only RouteGate bearer credential and delivery boundary:
+The normal opaque RG-115 token remains the only RouteGate bearer credential and delivery boundary:
 
 ```text
 https://vpn.example.com/sub/<opaque-token>
 ```
 
-When the selected client is V2RayTun and the effective protocol supports share-link subscription delivery, RouteGate serializes the resolved Routing Profile and sends it in V2RayTun's native subscription `Routing` response header. V2RayTun receives the connection subscription and routing policy together.
+RouteGate serializes the resolved Routing Profile and sends it in V2RayTun's native subscription `Routing` response header on the validated VLESS path.
 
-Manual testing showed that a QR containing only the bare HTTPS subscription URL is not reliably recognized as a subscription import by the tested mobile V2RayTun build. RouteGate therefore wraps the same HTTPS URL in V2RayTun's native import deep link for QR onboarding:
+Manual testing established two onboarding constraints on the tested iOS build:
+
+1. A QR containing only the bare HTTPS subscription URL was not handed off as a subscription.
+2. The native `v2raytun://import/` wrapper opened V2RayTun, but the client rejected RouteGate's mixed-protocol Base64 response as unparseable.
+
+Therefore the V2RayTun onboarding wrapper uses the same opaque token but explicitly asks RouteGate for the **active protocol URI only**:
 
 ```text
-v2raytun://import/https://vpn.example.com/sub/<opaque-token>
+v2raytun://import/https://vpn.example.com/sub/<opaque-token>?format=raw
 ```
 
-This deep link is **only a client-side import wrapper**. It does not replace RG-115, create another credential, or move routing policy into the URL. After V2RayTun accepts the deep link, it still fetches the normal HTTPS subscription from RouteGate; the `Routing` response header remains the routing-policy delivery mechanism.
+For the current validated scenario the active protocol is VLESS Reality, so the HTTP response body is one `vless://...` URI. The same response still carries the V2RayTun `Routing` header generated from the assigned RouteGate Routing Profile.
+
+This is **not** a second credential and it does not move routing policy into the URL. `format=raw` is only a client-specific representation selector on the existing RG-115 token boundary.
 
 Operational consequences:
 
 - onboarding QR for V2RayTun encodes the native `v2raytun://import/` deep link;
-- the underlying opaque HTTPS `/sub/<token>` URL remains unchanged and revocable;
+- the wrapped HTTPS URL uses the same revocable `/sub/<token>` credential plus `format=raw`;
+- the response body contains only the current active protocol material rather than all enabled share-link protocols;
+- RouteGate routing is still delivered via the native `Routing` response header;
 - after changing a RouteGate Routing Profile, refresh the same subscription in V2RayTun;
-- no second routing-policy URL or routing QR should be generated or required;
 - TUN and DNS remain client-local runtime concerns, so native routing delivery alone does not promote V2RayTun to full smart-routing compatibility.
 
 ### V2Box
@@ -119,7 +128,7 @@ Validation must use the same account/profile and check at minimum:
 1. Hiddify baseline: Ozon and Wildberries open with the full RouteGate sing-box profile.
 2. v2rayN: import/refresh the RouteGate `v2rayn-routing` URL, activate the corresponding routing profile, then verify both Ozon and Wildberries.
 3. V2Box: import the generated RouteGate route deep link, verify the imported rules are enabled/ordered as expected, then verify both Ozon and Wildberries.
-4. V2RayTun: scan/open the RouteGate `v2raytun://import/<https-subscription-url>` onboarding wrapper, verify that the subscription is created, refresh it, verify the native subscription routing is effective, then verify both Ozon and Wildberries.
+4. V2RayTun: scan/open the RouteGate `v2raytun://import/<https-subscription-url>?format=raw` onboarding wrapper, verify that the subscription is created, refresh it, verify the native subscription routing is effective, then verify both Ozon and Wildberries.
 5. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
 6. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
 
