@@ -15,6 +15,10 @@ function v2raytunImportDeepLink(subscriptionUrl: string): string {
   return `v2raytun://import/${withFormat(subscriptionUrl, 'raw')}`;
 }
 
+function v2raytunRoutingHandoffUrl(subscriptionUrl: string): string {
+  return `${withFormat(subscriptionUrl, 'v2raytun-routing')}&handoff=1`;
+}
+
 export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRoutingImportProps) {
   const [copied, setCopied] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
@@ -33,21 +37,11 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
     window.setTimeout(() => setCopied(false), 1800);
   };
 
-  const prepareV2RayTunRoutingLink = async () => {
-    setIsPreparing(true);
+  const prepareV2RayTunRoutingLink = () => {
     setError(false);
-    try {
-      const response = await fetch(withFormat(subscriptionUrl, 'v2raytun-routing'), { cache: 'no-store' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const value = (await response.text()).trim();
-      if (!value.startsWith('v2raytun://import_route/')) throw new Error('Unexpected V2RayTun routing payload');
-      setV2raytunRoutingLink(value);
-      setIsRoutingQrOpen(true);
-    } catch {
-      setError(true);
-    } finally {
-      setIsPreparing(false);
-    }
+    const value = v2raytunRoutingHandoffUrl(subscriptionUrl);
+    setV2raytunRoutingLink(value);
+    setIsRoutingQrOpen(true);
   };
 
   if (clientType === 'v2raytun') {
@@ -63,8 +57,8 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
           <button className="small-button" type="button" onClick={() => setIsQrOpen(true)}>
             {t('clientCompatibility.v2raytunShowSubscriptionQr')}
           </button>
-          <button className="small-button" type="button" disabled={isPreparing} onClick={() => void prepareV2RayTunRoutingLink()}>
-            {isPreparing ? t('clientCompatibility.routingPreparing') : t('clientCompatibility.v2raytunPrepareRoutingQr')}
+          <button className="small-button" type="button" onClick={prepareV2RayTunRoutingLink}>
+            {t('clientCompatibility.v2raytunPrepareRoutingQr')}
           </button>
         </div>
         {error && <div className="form-message form-message-error">{t('clientCompatibility.routingError')}</div>}
