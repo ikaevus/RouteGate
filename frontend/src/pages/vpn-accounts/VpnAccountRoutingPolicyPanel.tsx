@@ -9,11 +9,13 @@ import {
   applyVpnAccountAutomaticSelection,
   clearVpnAccountNodeGroup,
   clearVpnAccountRoutingProfile,
+  getVpnAccountClientConnection,
   getVpnAccountRoutingPolicy,
   previewVpnAccountAutomaticSelection,
   updateVpnAccountAutomaticSelection,
   type RoutingProfileSource,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getClientCompatibility } from '../../entities/vpnAccount/model/clientCompatibility';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import './vpnAccountRoutingPolicy.css';
 
@@ -53,6 +55,13 @@ function getCopy() {
       unsavedNodeGroup: 'Группа узлов изменена, но ещё не сохранена.',
       saveNodeGroupFirst: 'Сначала сохраните выбранную группу узлов. Предпросмотр и применение используют только сохранённую группу.',
       savePolicyFirst: 'Настройки автоматического выбора изменены. Сначала сохраните их, чтобы предпросмотр и применение использовали именно эти значения.',
+      clientCompatibility: 'Совместимость Smart Routing',
+      full: 'Полная поддержка',
+      setup: 'Нужна настройка клиента',
+      partial: 'Частичная совместимость',
+      connectionOnly: 'Только подключение',
+      noSilentDowngrade: 'Routing Profile назначен, но этот клиент не может считаться полностью управляемым RouteGate. Выполните указанные настройки клиента перед тем, как считать DIRECT/VPN/BLOCK политику применённой.',
+      compatibilityUnavailable: 'Не удалось определить возможности выбранного VPN-клиента. Не считайте Smart Routing гарантированным.',
     } as const;
   }
 
@@ -60,6 +69,13 @@ function getCopy() {
     unsavedNodeGroup: 'The node group has changed but is not saved yet.',
     saveNodeGroupFirst: 'Save the selected node group first. Preview and Apply use only the persisted group.',
     savePolicyFirst: 'Automatic-selection settings have changed. Save them first so Preview and Apply use these exact values.',
+    clientCompatibility: 'Smart Routing compatibility',
+    full: 'Full support',
+    setup: 'Client-side setup required',
+    partial: 'Partial compatibility',
+    connectionOnly: 'Connection only',
+    noSilentDowngrade: 'A Routing Profile is assigned, but this client cannot be treated as fully RouteGate-managed. Complete the client guidance before considering DIRECT/VPN/BLOCK policy enforced.',
+    compatibilityUnavailable: 'Could not determine the selected VPN client capabilities. Do not treat Smart Routing as guaranteed.',
   } as const;
 }
 
@@ -75,6 +91,10 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const policyQuery = useQuery({
     queryKey: ['vpn-account-routing-policy', accountId],
     queryFn: () => getVpnAccountRoutingPolicy(accountId),
+  });
+  const clientConnectionQuery = useQuery({
+    queryKey: ['vpn-account-client-connection', accountId],
+    queryFn: () => getVpnAccountClientConnection(accountId),
   });
   const profilesQuery = useQuery({ queryKey: ['routing-profiles'], queryFn: getRoutingProfiles });
   const groupsQuery = useQuery({ queryKey: ['node-groups'], queryFn: getNodeGroups });
@@ -153,6 +173,18 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   }
 
   const policy = policyQuery.data;
+  const compatibility = getClientCompatibility(clientConnectionQuery.data);
+  const compatibilityLabel = compatibility?.status === 'full_smart_routing'
+    ? copy.full
+    : compatibility?.status === 'client_setup_required'
+      ? copy.setup
+      : compatibility?.status === 'partial_compatibility'
+        ? copy.partial
+        : copy.connectionOnly;
+  const compatibilityClass = compatibility?.status === 'full_smart_routing' ? 'form-message-success' : 'form-message-warning';
+  const routingProfileNeedsClientWarning = Boolean(policy?.effectiveRoutingProfile)
+    && policy?.clientRoutingSupported
+    && compatibility?.status !== 'full_smart_routing';
   const hasError = policyQuery.isError || profilesQuery.isError || groupsQuery.isError;
 
   return (
@@ -180,6 +212,20 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
               <strong>{policy.effectiveRoutingProfile?.name ?? t('common.notAvailable')}</strong>
               <small>{t('routingPolicy.source', { source: sourceLabel(policy.routingProfileSource) })}</small>
             </div>
+
+            {clientConnectionQuery.isError && (
+              <div className="form-message form-message-warning">{copy.compatibilityUnavailable}</div>
+            )}
+            {compatibility && (
+              <div className={`form-message ${compatibilityClass}`}>
+                <strong>{copy.clientCompatibility}: {compatibility.displayName} · {compatibilityLabel}</strong>
+                {(compatibility.guidance ?? []).map((item) => <div key={item}>• {item}</div>)}
+                {(compatibility.limitations ?? []).map((item) => <div key={item}>• {item}</div>)}
+              </div>
+            )}
+            {routingProfileNeedsClientWarning && (
+              <div className="form-message form-message-warning">{copy.noSilentDowngrade}</div>
+            )}
             {!policy.clientRoutingSupported && <div className="form-message form-message-warning">{t('routingPolicy.clientRoutingUnsupported')}</div>}
             <div className="form-actions">
               <button className="small-button" type="submit" disabled={profileMutation.isPending}>{routingProfileId ? t('routingPolicy.saveProfile') : t('routingPolicy.clearProfile')}</button>
