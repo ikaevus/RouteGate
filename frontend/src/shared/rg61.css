@@ -41,6 +41,14 @@
   grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 0.7fr) minmax(16rem, 1.4fr) auto;
 }
 
+.routing-managed-create-panel .routing-rule-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+.routing-managed-create-panel .field { min-width: 0; }
+.routing-managed-create-panel .field input,
+.routing-managed-create-panel .field select { width: 100%; }
+
 .routing-managed-row > div:not(.table-actions) {
   min-width: 0;
   display: grid;
@@ -53,12 +61,17 @@
 
 .routing-diagnostic-result {
   display: grid;
-  gap: 0.65rem;
+  gap: 1rem;
   margin-top: 1rem;
   padding: 1rem;
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.25));
   border-radius: 0.75rem;
 }
+.routing-diagnostic-summary { display: grid; gap: 0.75rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.routing-diagnostic-summary > div, .routing-diagnostic-reason { display: grid; gap: 0.35rem; min-width: 0; }
+.routing-diagnostic-label { color: var(--muted-color, #94a3b8); font-size: 0.8rem; }
+.routing-diagnostic-reason { border-top: 1px solid rgba(148, 163, 184, 0.12); padding-top: 0.9rem; }
+.routing-diagnostic-precedence { margin: 0; color: var(--muted-color, #94a3b8); }
 
 .routing-profiles-table {
   min-width: 980px;
@@ -204,7 +217,9 @@
     grid-template-columns: 1fr;
   }
 
-  .routing-managed-row {
+  .routing-managed-row,
+  .routing-managed-create-panel .routing-rule-form-grid,
+  .routing-diagnostic-summary {
     grid-template-columns: 1fr;
   }
 

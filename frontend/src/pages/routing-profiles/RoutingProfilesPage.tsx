@@ -287,7 +287,7 @@ export function RoutingProfilesPage() {
               <div className='routing-profile-form-grid'>
                 <label className='field'><span>{t('routingProfiles.name')}</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
                 <label className='field'><span>{t('routingProfiles.description')}</span><input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} /></label>
-                <label className='field'><span>{t('routingProfiles.defaultAction')}</span><select value={defaultAction} onChange={(event) => setDefaultAction(event.target.value as RoutingRuleAction)}><option value='direct'>DIRECT</option><option value='vpn'>VPN</option><option value='block'>BLOCK</option></select></label>
+                <label className='field'><span>{t('routingProfiles.defaultAction')}</span><select value={defaultAction} onChange={(event) => setDefaultAction(event.target.value as RoutingRuleAction)}><option value='direct'>{t('routingProfiles.actionDirectLabel')}</option><option value='vpn'>{t('routingProfiles.actionVpnLabel')}</option><option value='block'>{t('routingProfiles.actionBlockLabel')}</option></select></label>
                 <div className='traffic-checkbox-field routing-profile-default-field'><label><input checked={makeDefault} type='checkbox' onChange={(event) => setMakeDefault(event.target.checked)} />{t('routingProfiles.defaultProfile')}</label><p>{t('routingProfiles.updatedValue', { value: formatDate(selectedProfile.updatedAt) })}</p></div>
               </div>
             </form>

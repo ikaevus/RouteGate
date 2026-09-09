@@ -38,7 +38,7 @@ export function ManagedRuleSetsPanel({ profiles }: { profiles: RoutingProfile[] 
   function submit(event: FormEvent) { event.preventDefault(); if (profileId && form.name.trim() && form.sourceUrl.trim()) create.mutate(); }
 
   return <div className='routing-profiles-layout'>
-    <form className='panel' onSubmit={submit}>
+    <form className='panel routing-managed-create-panel' onSubmit={submit}>
       <div className='panel-header'><div><div className='panel-title'>{t('routingProfiles.managedTitle')}</div><p className='panel-subtitle'>{t('routingProfiles.managedSubtitle')}</p></div><button className='small-button' disabled={!profileId || !form.name.trim() || !form.sourceUrl.trim()}>{t('routingProfiles.addManaged')}</button></div>
       {error && <div className='form-message form-message-error'>{error instanceof Error ? error.message : t('routingProfiles.managedError')}</div>}
       <div className='routing-rule-form-grid'>
@@ -47,7 +47,7 @@ export function ManagedRuleSetsPanel({ profiles }: { profiles: RoutingProfile[] 
         <label className='field'><span>{t('routingProfiles.provider')}</span><select value={form.provider} onChange={(event) => setForm({ ...form, provider: event.target.value })}><option value='custom'>{t('routingProfiles.providerCustom')}</option><option value='refilter'>{t('routingProfiles.providerRefilter')}</option><option value='runetfreedom'>{t('routingProfiles.providerRunetFreedom')}</option></select></label>
         <label className='field'><span>{t('routingProfiles.sourceUrl')}</span><input type='url' value={form.sourceUrl} onChange={(event) => setForm({ ...form, sourceUrl: event.target.value })} placeholder='https://…/rules.json' /></label>
         <label className='field'><span>{t('routingProfiles.priority')}</span><input type='number' min='0' value={form.priority} onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })} /></label>
-        <label className='field'><span>{t('routingProfiles.action')}</span><select value={form.action} onChange={(event) => setForm({ ...form, action: event.target.value as ManagedRuleSetRequest['action'] })}><option value='direct'>DIRECT</option><option value='vpn'>VPN</option><option value='block'>BLOCK</option></select></label>
+        <label className='field'><span>{t('routingProfiles.action')}</span><select value={form.action} onChange={(event) => setForm({ ...form, action: event.target.value as ManagedRuleSetRequest['action'] })}><option value='direct'>{t('routingProfiles.actionDirectLabel')}</option><option value='vpn'>{t('routingProfiles.actionVpnLabel')}</option><option value='block'>{t('routingProfiles.actionBlockLabel')}</option></select></label>
         <label className='field'><span>{t('routingProfiles.refreshHours')}</span><input type='number' min='1' max='720' value={form.refreshIntervalHours} onChange={(event) => setForm({ ...form, refreshIntervalHours: Number(event.target.value) })} /></label>
       </div>
     </form>
@@ -56,7 +56,7 @@ export function ManagedRuleSetsPanel({ profiles }: { profiles: RoutingProfile[] 
       {!query.data?.items.length ? <p className='empty-state'>{t('routingProfiles.noManaged')}</p> : <div className='admin-table'>
         {query.data.items.map((item) => <div className='admin-table-row routing-managed-row' key={item.id}>
           <div><strong>{item.name}</strong><span>{item.provider} · {item.ruleCount} {t('routingProfiles.sourceRules')}</span></div>
-          <div><strong>{item.action.toUpperCase()} · {item.priority}</strong><span>{item.status}{item.lastError ? `: ${item.lastError}` : ''}</span></div>
+          <div><strong>{item.action === 'direct' ? t('routingProfiles.actionDirectLabel') : item.action === 'vpn' ? t('routingProfiles.actionVpnLabel') : t('routingProfiles.actionBlockLabel')} · {item.priority}</strong><span>{item.status}{item.lastError ? `: ${item.lastError}` : ''}</span></div>
           <div><strong>{formatDate(item.lastSuccessfulAt)}</strong><span>{item.sourceUrl}</span></div>
           <div className='table-actions'><button className='small-button' onClick={() => refresh.mutate(item.id)}>{t('routingProfiles.refresh')}</button><button className='small-button' onClick={() => toggle.mutate({ id: item.id, enabled: !item.enabled })}>{item.enabled ? t('routingProfiles.disable') : t('routingProfiles.enable')}</button><button className='small-button' onClick={() => remove.mutate(item.id)}>{t('routingProfiles.deleteProfile')}</button></div>
         </div>)}
@@ -75,6 +75,15 @@ export function RoutingDiagnosticsPanel({ profiles }: { profiles: RoutingProfile
     <div className='panel-header'><div><div className='panel-title'>{t('routingProfiles.diagnosticsTitle')}</div><p className='panel-subtitle'>{t('routingProfiles.diagnosticsSubtitle')}</p></div><button className='small-button' disabled={!profileId || !target.trim()}>{t('routingProfiles.testRoute')}</button></div>
     <div className='routing-rule-form-grid'><label className='field'><span>{t('routingProfiles.profile')}</span><select value={profileId} onChange={(event) => { setProfileId(event.target.value); setResult(null); }}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label><label className='field'><span>{t('routingProfiles.target')}</span><input value={target} onChange={(event) => setTarget(event.target.value)} placeholder='example.org / 203.0.113.8' /></label></div>
     {mutation.error && <div className='form-message form-message-error'>{mutation.error.message}</div>}
-    {result && <div className='routing-diagnostic-result'><span className={`badge badge-${result.action}`}>{result.action.toUpperCase()}</span><strong>{result.profileName}</strong><span>{result.matched ? `${result.matchedName} · ${result.source} · ${t('routingProfiles.priority')} ${result.priority}` : t('routingProfiles.profileDefaultResult')}</span><p>{result.precedence}</p></div>}
+    {result && <div className='routing-diagnostic-result'>
+      <div className='routing-diagnostic-summary'>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticDecision')}</span><span className={`badge badge-${result.action}`}>{result.action === 'direct' ? t('routingProfiles.actionDirectLabel') : result.action === 'vpn' ? t('routingProfiles.actionVpnLabel') : t('routingProfiles.actionBlockLabel')}</span></div>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticProfile')}</span><strong>{result.profileName}</strong></div>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticSource')}</span><strong>{result.source === 'manual' ? t('routingProfiles.sourceManual') : result.source === 'managed_rule_set' ? t('routingProfiles.sourceManaged') : t('routingProfiles.sourceDefault')}</strong></div>
+        <div><span className='routing-diagnostic-label'>{t('routingProfiles.diagnosticPriority')}</span><strong>{result.priority ?? t('common.notAvailable')}</strong></div>
+      </div>
+      <div className='routing-diagnostic-reason'><strong>{t('routingProfiles.diagnosticMatchedRule')}</strong><span>{result.matched ? (result.matchedName || result.matchedId || t('common.notAvailable')) : t('routingProfiles.profileDefaultResult')}</span></div>
+      <p className='routing-diagnostic-precedence'>{result.precedence}</p>
+    </div>}
   </form>;
 }
