@@ -14,6 +14,7 @@ import { getClientCompatibility } from '../../entities/vpnAccount/model/clientCo
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { ShareAccessActions } from '../../shared/ui/ShareAccessActions';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
+import { ClientRoutingImport } from './ClientRoutingImport';
 import './vpn-client-connection.css';
 
 type VpnClientConnectionPanelProps = {
@@ -468,6 +469,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
                     </button>
                   </div>
                   <code className="subscription-url-value">{subscriptionToken.subscriptionUrl}</code>
+                  <ClientRoutingImport clientType={connection.profile.clientType} subscriptionUrl={subscriptionToken.subscriptionUrl} />
                 </div>
               )}
             </div>
