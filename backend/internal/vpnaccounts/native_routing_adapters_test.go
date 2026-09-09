@@ -92,6 +92,22 @@ func TestRenderSubscriptionDeliveryPayloadNativeRoutingFormats(t *testing.T) {
 		t.Fatalf("unexpected v2rayN payload: %+v", v2rayn)
 	}
 
+	v2raytun, err := renderSubscriptionDeliveryPayload(ClientConnectionResponse{}, profile, SubscriptionDeliveryFormatV2RayTunRouting)
+	if err != nil {
+		t.Fatalf("V2RayTun routing payload: %v", err)
+	}
+	if !strings.HasPrefix(v2raytun.Body, "v2raytun://import_route/") {
+		t.Fatalf("unexpected V2RayTun payload: %+v", v2raytun)
+	}
+	encodedRouting := strings.TrimPrefix(v2raytun.Body, "v2raytun://import_route/")
+	decodedRouting, err := base64.StdEncoding.DecodeString(encodedRouting)
+	if err != nil {
+		t.Fatalf("decode V2RayTun routing payload: %v", err)
+	}
+	if !strings.Contains(string(decodedRouting), `"outboundTag":"direct"`) || !strings.Contains(string(decodedRouting), `"outboundTag":"proxy"`) {
+		t.Fatalf("V2RayTun routing payload lacks direct/proxy semantics: %s", decodedRouting)
+	}
+
 	v2box, err := renderSubscriptionDeliveryPayload(ClientConnectionResponse{}, profile, SubscriptionDeliveryFormatV2BoxRouting)
 	if err != nil {
 		t.Fatalf("V2Box routing payload: %v", err)
