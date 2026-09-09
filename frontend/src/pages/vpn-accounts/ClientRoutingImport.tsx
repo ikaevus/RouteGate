@@ -38,7 +38,7 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
             <div className="subscription-url-label">{t('clientCompatibility.v2raynRoutingUrl')}</div>
           </div>
           <button className="small-button" type="button" onClick={() => void copyValue(routingUrl)}>
-            {copied ? t('common.copied') : t('clientCompatibility.copyRoutingUrl')}
+            {copied ? t('clientCompatibility.copied') : t('clientCompatibility.copyRoutingUrl')}
           </button>
         </div>
         <code className="subscription-url-value">{routingUrl}</code>
@@ -81,7 +81,7 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
               <div className="subscription-url-label">{t('clientCompatibility.v2boxRoutingLink')}</div>
             </div>
             <button className="small-button" type="button" onClick={() => void copyValue(v2boxLink)}>
-              {copied ? t('common.copied') : t('clientCompatibility.copyV2boxRouting')}
+              {copied ? t('clientCompatibility.copied') : t('clientCompatibility.copyV2boxRouting')}
             </button>
           </div>
           <code className="subscription-url-value">{v2boxLink}</code>
