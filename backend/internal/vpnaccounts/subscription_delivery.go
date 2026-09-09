@@ -14,11 +14,13 @@ import (
 )
 
 const (
-	SubscriptionDeliveryFormatAuto      = "auto"
-	SubscriptionDeliveryFormatBase64    = "base64"
-	SubscriptionDeliveryFormatRaw       = "raw"
-	SubscriptionDeliveryFormatSingBox   = "sing-box"
-	SubscriptionDeliveryFormatWireGuard = "wireguard"
+	SubscriptionDeliveryFormatAuto          = "auto"
+	SubscriptionDeliveryFormatBase64        = "base64"
+	SubscriptionDeliveryFormatRaw           = "raw"
+	SubscriptionDeliveryFormatSingBox       = "sing-box"
+	SubscriptionDeliveryFormatWireGuard     = "wireguard"
+	SubscriptionDeliveryFormatV2RayNRouting = "v2rayn-routing"
+	SubscriptionDeliveryFormatV2BoxRouting  = "v2box-routing"
 )
 
 var errSubscriptionDeliveryFormatUnavailable = errors.New("subscription delivery format is unavailable")
@@ -32,9 +34,10 @@ type subscriptionDeliveryPayload struct {
 
 // GetClientSubscription serves the opaque user-facing subscription URL.
 //
-// RG-115 owns the secure bearer-token boundary. RG-115A only chooses the most
-// faithful representation for the selected/detected client. Routing policy is
-// still rendered by the existing RouteGate routing renderer.
+// RG-115 owns the secure bearer-token boundary. RG-115A chooses the most
+// faithful connection representation for the selected/detected client.
+// RG-115B additionally exposes explicit native routing artifacts through the
+// same token boundary; Routing Profiles remain the only routing-policy source.
 func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) {
 	setSubscriptionDeliverySecurityHeaders(w)
 
@@ -232,8 +235,35 @@ func renderSubscriptionDeliveryPayload(connection ClientConnectionResponse, prof
 			Body:        string(encoded),
 			Protocols:   []string{ClientProtocolVLESS},
 		}, nil
+	case SubscriptionDeliveryFormatV2RayNRouting:
+		rules, ok := renderV2RayNCustomRoutingRules(profile.RoutingProfile)
+		if !ok {
+			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: v2rayN routing rules are not available", errSubscriptionDeliveryFormatUnavailable)
+		}
+		encoded, err := json.MarshalIndent(rules, "", "  ")
+		if err != nil {
+			return subscriptionDeliveryPayload{}, err
+		}
+		return subscriptionDeliveryPayload{
+			ContentType: "application/json; charset=utf-8",
+			Filename:    "routegate-v2rayn-routing.json",
+			Body:        string(encoded),
+		}, nil
+	case SubscriptionDeliveryFormatV2BoxRouting:
+		deepLink, ok, err := renderV2BoxRoutingDeepLink(profile.RoutingProfile)
+		if err != nil {
+			return subscriptionDeliveryPayload{}, err
+		}
+		if !ok {
+			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: V2Box routing rules are not available", errSubscriptionDeliveryFormatUnavailable)
+		}
+		return subscriptionDeliveryPayload{
+			ContentType: "text/plain; charset=utf-8",
+			Filename:    "routegate-v2box-routing.txt",
+			Body:        deepLink,
+		}, nil
 	default:
-		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: supported formats are auto, base64, raw, sing-box, and wireguard", errSubscriptionDeliveryFormatUnavailable)
+		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: supported formats are auto, base64, raw, sing-box, wireguard, v2rayn-routing, and v2box-routing", errSubscriptionDeliveryFormatUnavailable)
 	}
 }
 
