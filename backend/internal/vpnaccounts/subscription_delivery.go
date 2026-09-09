@@ -123,6 +123,20 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if selectedFormat == SubscriptionDeliveryFormatV2RayTunRouting && strings.TrimSpace(r.URL.Query().Get("handoff")) == "1" {
+		target := strings.TrimSpace(payload.Body)
+		if !strings.HasPrefix(target, "v2raytun://import_route/") {
+			h.logger.Warn("render V2RayTun routing handoff failed", "vpn_account_id", token.VPNAccountID)
+			http.Error(w, "Client routing data is temporarily unavailable.", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("X-RouteGate-Client", clientType)
+		w.Header().Set("X-RouteGate-Compatibility", assessment.Status)
+		w.Header().Set("X-RouteGate-Delivery-Format", selectedFormat)
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", payload.ContentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", payload.Filename))
 	w.Header().Set("Profile-Title", subscriptionProfileTitle(profile))
