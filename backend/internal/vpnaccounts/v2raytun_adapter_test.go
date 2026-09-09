@@ -62,7 +62,7 @@ func TestClientSubscriptionHeadersEmitV2RayTunRouting(t *testing.T) {
 			Rules: []RoutingProfileRule{{Name: "Direct", Action: RoutingActionDirect, DomainSuffixes: []string{"example.org"}}},
 		},
 	}
-	headers, err := clientSubscriptionHeaders(ClientTypeV2RayTun, profile)
+	headers, err := clientSubscriptionHeaders(ClientTypeV2RayTun, ClientProtocolVLESS, profile)
 	if err != nil {
 		t.Fatalf("client headers: %v", err)
 	}
@@ -71,5 +71,21 @@ func TestClientSubscriptionHeadersEmitV2RayTunRouting(t *testing.T) {
 	}
 	if got := subscriptionProfileTitle(profile); got != "base64:RGVtbw==" {
 		t.Fatalf("profile title = %q", got)
+	}
+}
+
+func TestClientSubscriptionHeadersDoNotEmitRoutingForUnsupportedProtocol(t *testing.T) {
+	profile := SubscriptionProfile{
+		RoutingProfile: &RoutingProfile{
+			Name: "Smart",
+			Rules: []RoutingProfileRule{{Name: "Direct", Action: RoutingActionDirect, DomainSuffixes: []string{"example.org"}}},
+		},
+	}
+	headers, err := clientSubscriptionHeaders(ClientTypeV2RayTun, ClientProtocolWireGuard, profile)
+	if err != nil {
+		t.Fatalf("client headers: %v", err)
+	}
+	if headers["Routing"] != "" {
+		t.Fatalf("did not expect routing header for WireGuard: %+v", headers)
 	}
 }
