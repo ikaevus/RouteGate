@@ -107,6 +107,13 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	clientHeaders, err := clientSubscriptionHeaders(clientType, profile)
+	if err != nil {
+		h.logger.Warn("render client subscription headers failed", "vpn_account_id", token.VPNAccountID, "client_type", clientType, "error", err)
+		http.Error(w, "Subscription configuration is temporarily unavailable.", http.StatusServiceUnavailable)
+		return
+	}
+
 	if err := h.accounts.MarkSubscriptionTokenUsed(r.Context(), token.ID); err != nil {
 		h.databaseError(w, "mark client subscription token used", err)
 		return
@@ -118,6 +125,9 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("X-RouteGate-Client", clientType)
 	w.Header().Set("X-RouteGate-Compatibility", assessment.Status)
 	w.Header().Set("X-RouteGate-Delivery-Format", selectedFormat)
+	for name, value := range clientHeaders {
+		w.Header().Set(name, value)
+	}
 	if assessment.RequiresClientSetup && profile.RoutingProfile != nil {
 		w.Header().Set("X-RouteGate-Client-Setup-Required", "true")
 		w.Header().Set("Warning", `299 RouteGate "Client-side routing setup is required for this VPN client"`)
@@ -127,6 +137,22 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, payload.Body)
+}
+
+func clientSubscriptionHeaders(clientType string, profile SubscriptionProfile) (map[string]string, error) {
+	headers := map[string]string{}
+	switch clientType {
+	case ClientTypeHiddify:
+		headers["Profile-Update-Interval"] = "12"
+	case ClientTypeV2RayTun:
+		headers["Profile-Update-Interval"] = "12"
+		if routing, ok, err := renderV2RayTunRoutingHeader(profile.RoutingProfile); err != nil {
+			return nil, err
+		} else if ok {
+			headers["Routing"] = routing
+		}
+	}
+	return headers, nil
 }
 
 func renderSubscriptionDeliveryPayload(connection ClientConnectionResponse, profile SubscriptionProfile, requestedFormat string) (subscriptionDeliveryPayload, error) {
@@ -277,7 +303,7 @@ func subscriptionProfileTitle(profile SubscriptionProfile) string {
 	if title == "" {
 		title = "RouteGate"
 	}
-	return base64.StdEncoding.EncodeToString([]byte(title))
+	return "base64:" + base64.StdEncoding.EncodeToString([]byte(title))
 }
 
 func setSubscriptionDeliverySecurityHeaders(w http.ResponseWriter) {
