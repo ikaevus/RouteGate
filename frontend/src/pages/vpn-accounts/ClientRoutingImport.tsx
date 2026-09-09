@@ -18,7 +18,7 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
   const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState(false);
 
-  if (clientType !== 'v2rayn' && clientType !== 'v2box') return null;
+  if (clientType !== 'v2rayn' && clientType !== 'v2box' && clientType !== 'v2raytun') return null;
 
   const copyValue = async (value: string) => {
     if (!navigator.clipboard || value.trim() === '') return;
@@ -26,6 +26,18 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
+
+  if (clientType === 'v2raytun') {
+    return (
+      <div className="subscription-url-stack">
+        <div className="subscription-url-meta">
+          <div className="subscription-url-label">{t('clientCompatibility.v2raytunNativeRouting')}</div>
+          <p className="subscription-url-helper">{t('clientCompatibility.v2raytunRoutingHelp')}</p>
+          <p className="subscription-url-helper">{t('clientCompatibility.v2raytunRoutingScope')}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (clientType === 'v2rayn') {
     const routingUrl = withFormat(subscriptionUrl, 'v2rayn-routing');
