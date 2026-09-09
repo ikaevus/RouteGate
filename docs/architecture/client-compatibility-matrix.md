@@ -72,9 +72,9 @@ The QR rendered for this URL is a **desktop v2rayN routing-source transfer helpe
 
 ### V2RayTun
 
-V2RayTun does not need a second RouteGate routing URL or a separate routing QR on the validated share-link path.
+V2RayTun does not need a second RouteGate routing URL or a separate routing-policy QR on the validated share-link path.
 
-The normal opaque RG-115 subscription URL remains the only user-facing credential:
+The normal opaque RG-115 subscription URL remains the only RouteGate bearer credential and delivery boundary:
 
 ```text
 https://vpn.example.com/sub/<opaque-token>
@@ -82,11 +82,20 @@ https://vpn.example.com/sub/<opaque-token>
 
 When the selected client is V2RayTun and the effective protocol supports share-link subscription delivery, RouteGate serializes the resolved Routing Profile and sends it in V2RayTun's native subscription `Routing` response header. V2RayTun receives the connection subscription and routing policy together.
 
+Manual testing showed that a QR containing only the bare HTTPS subscription URL is not reliably recognized as a subscription import by the tested mobile V2RayTun build. RouteGate therefore wraps the same HTTPS URL in V2RayTun's native import deep link for QR onboarding:
+
+```text
+v2raytun://import/https://vpn.example.com/sub/<opaque-token>
+```
+
+This deep link is **only a client-side import wrapper**. It does not replace RG-115, create another credential, or move routing policy into the URL. After V2RayTun accepts the deep link, it still fetches the normal HTTPS subscription from RouteGate; the `Routing` response header remains the routing-policy delivery mechanism.
+
 Operational consequences:
 
-- onboarding should use the normal secure subscription URL/QR;
+- onboarding QR for V2RayTun encodes the native `v2raytun://import/` deep link;
+- the underlying opaque HTTPS `/sub/<token>` URL remains unchanged and revocable;
 - after changing a RouteGate Routing Profile, refresh the same subscription in V2RayTun;
-- no second routing QR should be generated or required;
+- no second routing-policy URL or routing QR should be generated or required;
 - TUN and DNS remain client-local runtime concerns, so native routing delivery alone does not promote V2RayTun to full smart-routing compatibility.
 
 ### V2Box
@@ -110,7 +119,7 @@ Validation must use the same account/profile and check at minimum:
 1. Hiddify baseline: Ozon and Wildberries open with the full RouteGate sing-box profile.
 2. v2rayN: import/refresh the RouteGate `v2rayn-routing` URL, activate the corresponding routing profile, then verify both Ozon and Wildberries.
 3. V2Box: import the generated RouteGate route deep link, verify the imported rules are enabled/ordered as expected, then verify both Ozon and Wildberries.
-4. V2RayTun: add/refresh the normal secure RouteGate subscription, verify the native subscription routing is present/effective, then verify both Ozon and Wildberries.
+4. V2RayTun: scan/open the RouteGate `v2raytun://import/<https-subscription-url>` onboarding wrapper, verify that the subscription is created, refresh it, verify the native subscription routing is effective, then verify both Ozon and Wildberries.
 5. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
 6. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
 
@@ -122,5 +131,5 @@ The matrix combines RouteGate automated tests, current client source/documentati
 
 - v2rayN current source models custom routing as an ordered `RulesItem` list and supports importing that list from a configured subscription URL.
 - V2Box current releases expose custom routing/DNS/Xray-TUN functionality; the native route/deep-link serialization used here follows a working community converter and remains manual-validation gated.
-- V2RayTun documentation supports subscription routing headers and their precedence model.
+- V2RayTun documentation supports subscription routing headers and their precedence model; current client guidance/community tooling also uses `v2raytun://import/<subscription-url>` for native subscription handoff.
 - Hiddify is the current full-config baseline for this Smart Routing scenario.
