@@ -37,11 +37,10 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
     setIsPreparing(true);
     setError(false);
     try {
-      const response = await fetch(withFormat(subscriptionUrl, 'raw'), { cache: 'no-store' });
+      const response = await fetch(withFormat(subscriptionUrl, 'v2raytun-routing'), { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const routing = (response.headers.get('routing') ?? '').trim();
-      if (routing === '') throw new Error('Missing V2RayTun Routing header');
-      const value = `v2raytun://import_route/${routing}`;
+      const value = (await response.text()).trim();
+      if (!value.startsWith('v2raytun://import_route/')) throw new Error('Unexpected V2RayTun routing payload');
       setV2raytunRoutingLink(value);
       setIsRoutingQrOpen(true);
     } catch {
