@@ -21,6 +21,7 @@ export const clientCompatibilityEn = {
   'clientCompatibility.copyV2boxRouting': 'Copy V2Box routing link',
   'clientCompatibility.routingPreparing': 'Preparing routing import...',
   'clientCompatibility.routingError': 'Could not prepare the client routing artifact.',
+  'clientCompatibility.copied': 'Copied',
 } as const;
 
 export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, string> = {
@@ -46,6 +47,7 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
   'clientCompatibility.copyV2boxRouting': 'Скопировать ссылку V2Box',
   'clientCompatibility.routingPreparing': 'Подготовка импорта маршрутизации...',
   'clientCompatibility.routingError': 'Не удалось подготовить данные маршрутизации клиента.',
+  'clientCompatibility.copied': 'Скопировано',
 };
 
 export type ClientCompatibilityTranslationKey = keyof typeof clientCompatibilityEn;
