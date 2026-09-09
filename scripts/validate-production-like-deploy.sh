@@ -49,6 +49,16 @@ manager_status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/a
 public_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")
 [[ "$public_status" == 200 ]]
 
+# An invalid opaque subscription token must reach Manager and produce its 404.
+# A 200 here means nginx fell through to the SPA index instead of proxying
+# /sub/ to the RG-115 delivery boundary.
+subscription_probe_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/sub/routegate-deploy-probe")
+[[ "$subscription_probe_status" == 404 ]] || {
+  printf 'Subscription proxy route mismatch: expected HTTP 404, got %s\n' "$subscription_probe_status" >&2
+  exit 1
+}
+log "subscription proxy route=ok"
+
 [[ -r /etc/routegate/manager.env ]] || { printf 'Missing /etc/routegate/manager.env\n' >&2; exit 1; }
 set -a
 # shellcheck disable=SC1091
