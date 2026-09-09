@@ -42,7 +42,53 @@ func TestPreferredDeliveryFormatUsesFullConfigOnlyForVLESS(t *testing.T) {
 		t.Fatalf("Hiddify WireGuard format = %q", got)
 	}
 	if got := preferredDeliveryFormatForClient(ClientTypeV2RayN, ClientProtocolVLESS); got != SubscriptionDeliveryFormatBase64 {
-		t.Fatalf("v2rayN format = %q", got)
+		t.Fatalf("v2rayN VLESS format = %q", got)
+	}
+	if got := preferredDeliveryFormatForClient(ClientTypeV2RayN, ClientProtocolWireGuard); got != SubscriptionDeliveryFormatAuto {
+		t.Fatalf("v2rayN WireGuard format = %q", got)
+	}
+	if got := preferredDeliveryFormatForClient(ClientTypeV2RayTun, ClientProtocolMTProto); got != SubscriptionDeliveryFormatAuto {
+		t.Fatalf("V2RayTun MTProto format = %q", got)
+	}
+}
+
+func TestCompatibilityDowngradesWhenProtocolCannotCarryPolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		clientType string
+		protocol   string
+	}{
+		{"Hiddify WireGuard", ClientTypeHiddify, ClientProtocolWireGuard},
+		{"sing-box Hysteria2", ClientTypeSingBox, ClientProtocolHysteria2},
+		{"v2rayN WireGuard", ClientTypeV2RayN, ClientProtocolWireGuard},
+		{"V2Box MTProto", ClientTypeV2Box, ClientProtocolMTProto},
+		{"V2RayTun WireGuard", ClientTypeV2RayTun, ClientProtocolWireGuard},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assessment := clientCompatibilityForProtocol(test.clientType, test.protocol)
+			if assessment.Status != ClientCompatibilityConnectionOnly {
+				t.Fatalf("status = %q, want connection_only: %+v", assessment.Status, assessment)
+			}
+			if assessment.PreferredDeliveryFormat != SubscriptionDeliveryFormatAuto {
+				t.Fatalf("format = %q, want auto", assessment.PreferredDeliveryFormat)
+			}
+			if !assessment.RequiresClientSetup {
+				t.Fatal("expected client setup / compatibility warning")
+			}
+		})
+	}
+}
+
+func TestCompatibilityKeepsValidatedProtocolBehavior(t *testing.T) {
+	if got := clientCompatibilityForProtocol(ClientTypeHiddify, ClientProtocolVLESS).Status; got != ClientCompatibilityFullSmartRouting {
+		t.Fatalf("Hiddify VLESS status = %q", got)
+	}
+	if got := clientCompatibilityForProtocol(ClientTypeV2RayTun, ClientProtocolVLESS).Status; got != ClientCompatibilityPartial {
+		t.Fatalf("V2RayTun VLESS status = %q", got)
+	}
+	if got := clientCompatibilityForProtocol(ClientTypeV2RayN, ClientProtocolShadowsocks).Status; got != ClientCompatibilitySetupRequired {
+		t.Fatalf("v2rayN Shadowsocks status = %q", got)
 	}
 }
 
@@ -86,5 +132,20 @@ func TestClientConnectionJSONIncludesCompatibilityAssessment(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("connection JSON missing %s: %s", want, body)
 		}
+	}
+}
+
+func TestClientConnectionJSONDoesNotClaimFullRoutingOnFallbackProtocol(t *testing.T) {
+	payload, err := json.Marshal(ClientConnectionResponse{
+		VPNAccountID: "account-1",
+		Protocol:     ClientProtocolWireGuard,
+		Profile:      ClientProfile{ClientType: ClientTypeHiddify},
+	})
+	if err != nil {
+		t.Fatalf("marshal connection: %v", err)
+	}
+	body := string(payload)
+	if !strings.Contains(body, `"status":"connection_only"`) || strings.Contains(body, `"status":"full_smart_routing"`) {
+		t.Fatalf("unexpected fallback compatibility JSON: %s", body)
 	}
 }
