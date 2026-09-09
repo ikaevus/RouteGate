@@ -16,6 +16,7 @@ export interface ClientCapabilities {
   splitDns: boolean;
   clientLocalRules: boolean;
   subscriptionRefresh: boolean;
+  subscriptionRoutingPolicy: boolean;
   importedRulePrecedence: string;
 }
 
