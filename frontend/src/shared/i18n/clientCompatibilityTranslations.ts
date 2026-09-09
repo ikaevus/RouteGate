@@ -11,6 +11,17 @@ export const clientCompatibilityEn = {
   'clientCompatibility.secureSubscription': 'Secure subscription URL',
   'clientCompatibility.subscriptionDescription': 'The RG-115 URL stays short and opaque. RG-115A selects the configuration representation for the chosen VPN client; raw protocol material remains a manual fallback.',
   'clientCompatibility.hiddify': 'Hiddify',
+  'clientCompatibility.nativeRouting': 'Client routing import',
+  'clientCompatibility.v2raynRoutingHelp': 'In v2rayN, open Routing Settings → Import rules → From subscription URL and use this RouteGate URL. Refresh that routing source after changing the RouteGate Routing Profile.',
+  'clientCompatibility.v2raynRoutingUrl': 'v2rayN routing URL',
+  'clientCompatibility.copyRoutingUrl': 'Copy routing URL',
+  'clientCompatibility.v2boxRoutingHelp': 'Prepare the V2Box routing deep link, copy it, and open it on the device with V2Box installed. Re-import after changing the RouteGate Routing Profile.',
+  'clientCompatibility.prepareV2boxRouting': 'Prepare V2Box routing link',
+  'clientCompatibility.v2boxRoutingLink': 'V2Box routing import link',
+  'clientCompatibility.copyV2boxRouting': 'Copy V2Box routing link',
+  'clientCompatibility.routingPreparing': 'Preparing routing import...',
+  'clientCompatibility.routingError': 'Could not prepare the client routing artifact.',
+  'clientCompatibility.copied': 'Copied',
 } as const;
 
 export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, string> = {
@@ -26,6 +37,17 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
   'clientCompatibility.secureSubscription': 'Безопасный URL подписки',
   'clientCompatibility.subscriptionDescription': 'RG-115 URL остаётся коротким и непрозрачным. RG-115A выбирает представление конфигурации по выбранному VPN-клиенту; raw URI остаётся ручным fallback.',
   'clientCompatibility.hiddify': 'Hiddify',
+  'clientCompatibility.nativeRouting': 'Импорт маршрутизации клиента',
+  'clientCompatibility.v2raynRoutingHelp': 'В v2rayN откройте Routing Settings → Import rules → From subscription URL и укажите этот URL RouteGate. После изменения Routing Profile обновите источник правил в v2rayN.',
+  'clientCompatibility.v2raynRoutingUrl': 'URL правил v2rayN',
+  'clientCompatibility.copyRoutingUrl': 'Скопировать URL правил',
+  'clientCompatibility.v2boxRoutingHelp': 'Подготовьте deeplink маршрутизации V2Box, скопируйте его и откройте на устройстве с установленным V2Box. После изменения Routing Profile импорт нужно повторить.',
+  'clientCompatibility.prepareV2boxRouting': 'Подготовить ссылку маршрутизации V2Box',
+  'clientCompatibility.v2boxRoutingLink': 'Ссылка импорта маршрутизации V2Box',
+  'clientCompatibility.copyV2boxRouting': 'Скопировать ссылку V2Box',
+  'clientCompatibility.routingPreparing': 'Подготовка импорта маршрутизации...',
+  'clientCompatibility.routingError': 'Не удалось подготовить данные маршрутизации клиента.',
+  'clientCompatibility.copied': 'Скопировано',
 };
 
 export type ClientCompatibilityTranslationKey = keyof typeof clientCompatibilityEn;

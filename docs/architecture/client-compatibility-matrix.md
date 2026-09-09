@@ -4,16 +4,16 @@ Reviewed: 2026-09-09
 
 This matrix distinguishes connection compatibility from Routing Profile compatibility.
 
-Compatibility is evaluated for the **selected client and the effective protocol together**. The table below describes the validated VLESS/share-link path. When the effective protocol has no validated client-specific subscription representation, RouteGate downgrades the state to `connection_only` and falls back to RG-115 `auto`/protocol-native material instead of claiming Smart Routing enforcement.
+Compatibility is evaluated for the **selected client and the effective protocol together**. A standard node subscription and a native routing-policy import are separate delivery concerns: a client can connect correctly while still routing DIRECT/VPN/BLOCK traffic incorrectly.
 
-| Client | Default RouteGate delivery | Smart Routing state | RouteGate-delivered routing | Client-side requirement |
+| Client | Connection delivery | RouteGate routing delivery | Smart Routing state | Remaining client-side requirement |
 | --- | --- | --- | --- | --- |
-| Hiddify | sing-box JSON for VLESS | Full smart routing on validated VLESS path | Existing sing-box Routing Profile renderer | Keep client TUN/routing behavior compatible with imported profile |
-| sing-box | sing-box JSON for VLESS | Full smart routing on validated VLESS path | Existing sing-box Routing Profile renderer | Normal client/runtime setup |
-| v2rayN | Base64 standard share links | Supported with client-side setup on supported share-link protocols | No complete Routing Profile in standard URI subscription | Choose routing mode/custom rules and DNS/TUN settings that preserve RouteGate DIRECT/VPN/BLOCK intent |
-| V2Box | Base64 standard share links | Supported with client-side setup on supported share-link protocols | No complete Routing Profile in standard URI subscription | Configure local routing and DNS consistently with RouteGate policy |
-| V2RayTun | Base64 standard share links + `routing` header | Partial compatibility on supported share-link protocols | Routing Profile is serialized to subscription routing JSON | Verify TUN and DNS runtime settings; these remain client-side |
-| Other / unknown | RG-115 auto | Connection only | Not assumed | Select a known client before relying on Smart Routing |
+| Hiddify | sing-box JSON for VLESS | Routing Profile embedded in the same sing-box config | Full smart routing on validated VLESS path | Keep client TUN/routing behavior compatible with imported profile |
+| sing-box | sing-box JSON for VLESS | Routing Profile embedded in the same sing-box config | Full smart routing on validated VLESS path | Normal client/runtime setup |
+| v2rayN | Base64 standard share links | Separate native custom-rules URL: `/sub/<token>?format=v2rayn-routing` | Supported with client-side setup | Import/refresh the RouteGate rules source, activate the intended routing mode/profile, and verify DNS/TUN behavior |
+| V2Box | Base64 standard share links | Native route-object import helper via `v2box://routes?multi=...` | Supported with client-side setup | Import the generated route set and verify local DNS/TUN/rule precedence; deep-link format remains manual-validation gated |
+| V2RayTun | Base64 standard share links + `routing` header | Routing Profile serialized to subscription routing JSON | Partial compatibility on supported share-link protocols | Verify TUN and DNS runtime settings; these remain client-side |
+| Other / unknown | RG-115 auto | Not assumed | Connection only | Select a known client before relying on Smart Routing |
 
 ## Capability detail
 
@@ -23,10 +23,11 @@ Compatibility is evaluated for the **selected client and the effective protocol 
 | Full sing-box config import used by RouteGate | Yes | No | No | No |
 | TUN functionality | Yes | Yes | Yes | Yes |
 | DIRECT/VPN/BLOCK capability | Yes | Yes | Yes | Yes |
-| Routing policy delivered by current RouteGate adapter | Yes on VLESS | No | No | Yes on supported share-link protocols |
+| RouteGate routing-policy artifact | Embedded config | Native custom-rules JSON URL | Native route objects / deep link | Subscription `routing` header |
 | DNS/split-DNS capability | Yes | Yes | Yes | Yes |
-| Subscription refresh | Yes | Yes | Yes | Yes |
-| Imported RouteGate routing precedence known | RouteGate config | Client-local routing governs | Client-local routing governs | Subscription routing takes precedence |
+| Connection subscription refresh | Yes | Yes | Yes | Yes |
+| Routing-policy refresh/import | Same config refresh | Separate routing URL refresh | Re-import currently required | Same subscription refresh |
+| Imported RouteGate routing precedence known | RouteGate config | Client routing profile governs once selected | Client-local runtime still governs | Subscription routing takes precedence |
 
 ## Protocol-aware fallback rule
 
@@ -37,43 +38,67 @@ RouteGate must never derive a strong routing status from client name alone.
 - If one of those clients is paired with WireGuard, MTProto, or another protocol without a validated adapter, the default `/sub/<token>` response uses RG-115 `auto`, which may fall back to raw protocol-native connection material, and compatibility becomes `connection_only`.
 - V2RayTun's subscription `routing` header is emitted only on the validated share-link path; it is not attached to unsupported protocol combinations.
 
-This rule prevents both HTTP 400 regressions from an impossible Base64 representation and false “Full Smart Routing” claims when only connectivity material was delivered.
+This rule prevents both impossible subscription representations and false Smart Routing claims when only connectivity material was delivered.
 
-## Deterministic RouteGate behavior
+## Native routing adapters (RG-115B)
 
-### Hiddify
-
-For a VLESS profile, the opaque `/sub/<token>` URL resolves to the RouteGate sing-box representation. RouteGate Routing Profile rules are rendered through the same core renderer used elsewhere. This is the preferred initial full Smart Routing path.
-
-For a non-VLESS effective protocol, RouteGate does not claim full routing-policy enforcement merely because Hiddify can establish a connection. The compatibility state becomes `connection_only` unless a protocol-specific adapter is validated later.
+RG-115B does **not** introduce a second routing-policy engine. Both native adapters serialize the already resolved RouteGate `RoutingProfile`.
 
 ### v2rayN
 
-For supported standard share-link protocols, the URL resolves to a Base64 share-link subscription. Connection settings are delivered automatically, but a standard VLESS/Hysteria2/Shadowsocks URI does not contain the complete RouteGate Routing Profile. RouteGate therefore reports `client_setup_required`. The administrator must select/configure a v2rayN routing mode and DNS/TUN behavior that implements the documented policy; Global mode must not be assumed compatible with profiles containing DIRECT rules.
+RouteGate exports an array compatible with v2rayN custom routing-rule import. The adapter mechanically maps:
 
-For protocols without a validated share-link adapter, RouteGate falls back to protocol-native connectivity material and reports `connection_only`.
+- `DIRECT` -> `direct`
+- `VPN` -> `proxy`
+- `BLOCK` -> `block`
+- exact domains -> `full:`
+- domain suffixes -> `domain:`
+- domain keywords -> `keyword:`
+- GeoSite values -> `geosite:`
+- CIDRs unchanged
+- GeoIP values -> `geoip:`
+
+A final all-ports `proxy` rule makes the RouteGate default (`unmatched -> VPN`) explicit instead of inheriting an arbitrary local routing mode.
+
+The same RG-115 bearer credential is reused:
+
+```text
+https://vpn.example.com/sub/<opaque-token>?format=v2rayn-routing
+```
+
+v2rayN supports importing routing rules from a subscription URL. The administrator/user still has to associate/activate the imported routing profile and verify DNS/TUN settings, so RouteGate keeps the state `client_setup_required` until the runtime behavior is validated.
 
 ### V2Box
 
-For supported standard share-link protocols, the URL resolves to a Base64 share-link subscription. V2Box exposes flexible routing, DNS and custom Xray/TUN settings, but RouteGate currently does not have a validated subscription-native route-policy transport for V2Box. RouteGate therefore reports `client_setup_required` and never claims the Routing Profile is automatically enforced.
+RouteGate converts the same policy into V2Box route objects and produces:
 
-For protocols without a validated share-link adapter, RouteGate falls back to protocol-native connectivity material and reports `connection_only`.
+```text
+v2box://routes?multi=<base64-json>
+```
 
-### V2RayTun
+The adapter maps domain keyword/suffix/exact/GeoSite and CIDR/GeoIP conditions into V2Box's `Domain`/`IP` route-object fields with `direct`, `proxy`, or `block` tags.
 
-For supported share-link protocols, the URL resolves to a Base64 share-link subscription and RouteGate also emits V2RayTun's supported `routing` response header. The header is mechanically generated from the resolved RouteGate Routing Profile and uses `direct`, `proxy`, and `block` outbound tags. V2RayTun documentation states subscription routing takes precedence over local routing and Direct Service.
+The deep-link shape is supported by working community tooling but is not backed by a public official V2Box format specification available to RouteGate. Therefore this remains an **import helper** and `client_setup_required` until manual validation confirms behavior on supported V2Box releases.
 
-The status remains `partial_compatibility`: routing policy is centrally delivered, but TUN and DNS runtime behavior is not encoded by this adapter and must be verified on the client.
+## Manual marketplace validation
 
-For protocols without a validated share-link adapter, the routing header is not emitted and RouteGate reports `connection_only`.
+The motivating regression scenario is a RouteGate Routing Profile in which Russian marketplace traffic is DIRECT while unmatched traffic uses the VPN.
+
+Validation must use the same account/profile and check at minimum:
+
+1. Hiddify baseline: Ozon and Wildberries open with the full RouteGate sing-box profile.
+2. v2rayN: import/refresh the RouteGate `v2rayn-routing` URL, activate the corresponding routing profile, then verify both Ozon and Wildberries.
+3. V2Box: import the generated RouteGate route deep link, verify the imported rules are enabled/ordered as expected, then verify both Ozon and Wildberries.
+4. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
+5. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
+
+A client may only be promoted to a stronger compatibility state after this real-client validation passes deterministically.
 
 ## Validation sources
 
-The matrix combines RouteGate automated tests with current vendor/project documentation and observed manual behavior. Client releases may change behavior, so capability changes must be reviewed before promoting a compatibility state.
+The matrix combines RouteGate automated tests, current client source/documentation, and observed manual behavior. Client releases may change behavior, so capability changes must be reviewed before promoting a compatibility state.
 
-- Hiddify project/documentation: subscription import and sing-box configuration support.
-- v2rayN project wiki: standard subscriptions; client-local routing/TUN configuration remains significant.
-- V2Box current App Store release information: custom DNS, flexible routing, custom JSON and Xray TUN configuration.
-- V2RayTun documentation: supported subscription headers, including Base64/raw body, profile refresh and subscription `routing` precedence.
-
-A client may only be promoted to a stronger compatibility state when RouteGate can test and document the required behavior without silently relying on unspecified local settings.
+- v2rayN current source models custom routing as an ordered `RulesItem` list and supports importing that list from a configured subscription URL.
+- V2Box current releases expose custom routing/DNS/Xray-TUN functionality; the native route/deep-link serialization used here follows a working community converter and remains manual-validation gated.
+- V2RayTun documentation supports subscription routing headers and their precedence model.
+- Hiddify is the current full-config baseline for this Smart Routing scenario.
