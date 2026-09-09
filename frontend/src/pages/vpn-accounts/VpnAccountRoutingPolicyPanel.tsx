@@ -55,13 +55,13 @@ function getCopy() {
       unsavedNodeGroup: 'Группа узлов изменена, но ещё не сохранена.',
       saveNodeGroupFirst: 'Сначала сохраните выбранную группу узлов. Предпросмотр и применение используют только сохранённую группу.',
       savePolicyFirst: 'Настройки автоматического выбора изменены. Сначала сохраните их, чтобы предпросмотр и применение использовали именно эти значения.',
-      clientCompatibility: 'Совместимость Smart Routing',
-      full: 'Полная поддержка',
-      setup: 'Нужна настройка клиента',
-      partial: 'Частичная совместимость',
-      connectionOnly: 'Только подключение',
-      noSilentDowngrade: 'Routing Profile назначен, но этот клиент не может считаться полностью управляемым RouteGate. Выполните указанные настройки клиента перед тем, как считать DIRECT/VPN/BLOCK политику применённой.',
-      compatibilityUnavailable: 'Не удалось определить возможности выбранного VPN-клиента. Не считайте Smart Routing гарантированным.',
+      clientCompatibility: t('clientCompatibility.smartRoutingTitle'),
+      full: t('clientCompatibility.full'),
+      setup: t('clientCompatibility.setup'),
+      partial: t('clientCompatibility.partial'),
+      connectionOnly: t('clientCompatibility.connectionOnly'),
+      noSilentDowngrade: t('clientCompatibility.noSilentDowngrade'),
+      compatibilityUnavailable: t('clientCompatibility.unavailable'),
     } as const;
   }
 
@@ -69,13 +69,13 @@ function getCopy() {
     unsavedNodeGroup: 'The node group has changed but is not saved yet.',
     saveNodeGroupFirst: 'Save the selected node group first. Preview and Apply use only the persisted group.',
     savePolicyFirst: 'Automatic-selection settings have changed. Save them first so Preview and Apply use these exact values.',
-    clientCompatibility: 'Smart Routing compatibility',
-    full: 'Full support',
-    setup: 'Client-side setup required',
-    partial: 'Partial compatibility',
-    connectionOnly: 'Connection only',
-    noSilentDowngrade: 'A Routing Profile is assigned, but this client cannot be treated as fully RouteGate-managed. Complete the client guidance before considering DIRECT/VPN/BLOCK policy enforced.',
-    compatibilityUnavailable: 'Could not determine the selected VPN client capabilities. Do not treat Smart Routing as guaranteed.',
+    clientCompatibility: t('clientCompatibility.smartRoutingTitle'),
+    full: t('clientCompatibility.full'),
+    setup: t('clientCompatibility.setup'),
+    partial: t('clientCompatibility.partial'),
+    connectionOnly: t('clientCompatibility.connectionOnly'),
+    noSilentDowngrade: t('clientCompatibility.noSilentDowngrade'),
+    compatibilityUnavailable: t('clientCompatibility.unavailable'),
   } as const;
 }
 
