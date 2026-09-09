@@ -11,6 +11,10 @@ function withFormat(url: string, format: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}format=${encodeURIComponent(format)}`;
 }
 
+function v2raytunImportDeepLink(subscriptionUrl: string): string {
+  return `v2raytun://import/${subscriptionUrl}`;
+}
+
 export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRoutingImportProps) {
   const [copied, setCopied] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
@@ -28,6 +32,7 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
   };
 
   if (clientType === 'v2raytun') {
+    const importLink = v2raytunImportDeepLink(subscriptionUrl);
     return (
       <div className="subscription-url-stack">
         <div className="subscription-url-meta">
@@ -42,13 +47,13 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
           isOpen={isQrOpen}
           title={t('clientCompatibility.v2raytunSubscriptionQrTitle')}
           onClose={() => setIsQrOpen(false)}
-          qrText={subscriptionUrl}
-          qrTitle={t('clientCompatibility.secureSubscription')}
+          qrText={importLink}
+          qrTitle={t('clientCompatibility.v2raytunImportLinkLabel')}
           qrSubtitle={t('clientCompatibility.v2raytunSubscriptionQrSubtitle')}
-          url={subscriptionUrl}
-          urlLabel={t('clientCompatibility.secureSubscription')}
-          onCopyQrText={() => void copyValue(subscriptionUrl)}
-          copyQrLabel={t('clientCompatibility.copySubscriptionUrl')}
+          url={importLink}
+          urlLabel={t('clientCompatibility.v2raytunImportLinkLabel')}
+          onCopyQrText={() => void copyValue(importLink)}
+          copyQrLabel={t('clientCompatibility.copyV2raytunImportLink')}
           copyCopiedLabel={t('clientCompatibility.copied')}
           copied={copied}
           closeLabel={t('clientCompatibility.close')}
