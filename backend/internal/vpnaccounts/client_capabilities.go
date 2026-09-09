@@ -1,6 +1,9 @@
 package vpnaccounts
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 const (
 	ClientTypeHiddify  = "hiddify"
@@ -44,6 +47,26 @@ type ClientCompatibilityAssessment struct {
 	Capabilities            ClientCapabilities `json:"capabilities"`
 	Guidance                []string           `json:"guidance,omitempty"`
 	Limitations             []string           `json:"limitations,omitempty"`
+}
+
+func init() {
+	// RG-115A extends the persisted client_type vocabulary without a schema
+	// migration because vpn_client_profiles.client_type is already textual.
+	allowedClientTypes[ClientTypeHiddify] = struct{}{}
+}
+
+// MarshalJSON enriches the existing client-connection API without changing
+// persistence or duplicating routing policy. The compatibility assessment is
+// computed from the selected client profile at response time.
+func (response ClientConnectionResponse) MarshalJSON() ([]byte, error) {
+	type alias ClientConnectionResponse
+	return json.Marshal(struct {
+		alias
+		ClientCompatibility ClientCompatibilityAssessment `json:"clientCompatibility"`
+	}{
+		alias:               alias(response),
+		ClientCompatibility: clientCompatibilityFor(response.Profile.ClientType),
+	})
 }
 
 func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
