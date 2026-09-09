@@ -7,12 +7,12 @@ import (
 )
 
 type v2RayTunRouting struct {
-	DomainStrategy string                  `json:"domainStrategy"`
-	DomainMatcher  string                  `json:"domainMatcher"`
-	ID             string                  `json:"id,omitempty"`
-	Name           string                  `json:"name"`
-	Balancers      []any                   `json:"balancers"`
-	Rules          []v2RayTunRoutingRule   `json:"rules"`
+	DomainStrategy string                `json:"domainStrategy"`
+	DomainMatcher  string                `json:"domainMatcher"`
+	ID             string                `json:"id,omitempty"`
+	Name           string                `json:"name"`
+	Balancers      []any                 `json:"balancers"`
+	Rules          []v2RayTunRoutingRule `json:"rules"`
 }
 
 type v2RayTunRoutingRule struct {
@@ -22,12 +22,13 @@ type v2RayTunRoutingRule struct {
 	DomainMatch string   `json:"domainMatcher,omitempty"`
 	Domain      []string `json:"domain,omitempty"`
 	IP          []string `json:"ip,omitempty"`
+	Port        string   `json:"port,omitempty"`
 	OutboundTag string   `json:"outboundTag"`
 }
 
-func renderV2RayTunRoutingHeader(profile *RoutingProfile) (string, bool, error) {
+func renderV2RayTunRouting(profile *RoutingProfile) (v2RayTunRouting, bool) {
 	if profile == nil || len(profile.Rules) == 0 {
-		return "", false, nil
+		return v2RayTunRouting{}, false
 	}
 
 	routing := v2RayTunRouting{
@@ -36,7 +37,7 @@ func renderV2RayTunRoutingHeader(profile *RoutingProfile) (string, bool, error) 
 		ID:             strings.TrimSpace(profile.ID),
 		Name:           strings.TrimSpace(profile.Name),
 		Balancers:      []any{},
-		Rules:          make([]v2RayTunRoutingRule, 0, len(profile.Rules)),
+		Rules:          make([]v2RayTunRoutingRule, 0, len(profile.Rules)+1),
 	}
 	if routing.Name == "" {
 		routing.Name = "RouteGate"
@@ -65,6 +66,24 @@ func renderV2RayTunRoutingHeader(profile *RoutingProfile) (string, bool, error) 
 		routing.Rules = append(routing.Rules, rendered)
 	}
 	if len(routing.Rules) == 0 {
+		return v2RayTunRouting{}, false
+	}
+
+	// RouteGate routing profiles currently use VPN as their implicit default.
+	// Make that default explicit for V2RayTun so a successfully imported preset
+	// cannot silently fall through to a client-local routing mode.
+	routing.Rules = append(routing.Rules, v2RayTunRoutingRule{
+		Type:        "field",
+		Name:        "RouteGate default VPN",
+		Port:        "0-65535",
+		OutboundTag: "proxy",
+	})
+	return routing, true
+}
+
+func renderV2RayTunRoutingHeader(profile *RoutingProfile) (string, bool, error) {
+	routing, ok := renderV2RayTunRouting(profile)
+	if !ok {
 		return "", false, nil
 	}
 
@@ -73,6 +92,14 @@ func renderV2RayTunRoutingHeader(profile *RoutingProfile) (string, bool, error) 
 		return "", false, err
 	}
 	return base64.StdEncoding.EncodeToString(encoded), true, nil
+}
+
+func renderV2RayTunRoutingDeepLink(profile *RoutingProfile) (string, bool, error) {
+	encoded, ok, err := renderV2RayTunRoutingHeader(profile)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	return "v2raytun://import_route/" + encoded, true, nil
 }
 
 func v2RayTunOutboundTag(action string) string {
