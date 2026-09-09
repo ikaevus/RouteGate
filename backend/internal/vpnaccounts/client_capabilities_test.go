@@ -16,7 +16,7 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 		{ClientTypeHiddify, ClientCompatibilityFullSmartRouting, SubscriptionDeliveryFormatSingBox, false},
 		{ClientTypeV2RayN, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
 		{ClientTypeV2Box, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
-		{ClientTypeV2RayTun, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
+		{ClientTypeV2RayTun, ClientCompatibilityPartial, SubscriptionDeliveryFormatBase64, true},
 	}
 	for _, test := range tests {
 		t.Run(test.clientType, func(t *testing.T) {
@@ -28,6 +28,9 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 				t.Fatalf("official client must support subscription import/refresh: %+v", assessment.Capabilities)
 			}
 		})
+	}
+	if !clientCompatibilityFor(ClientTypeV2RayTun).Capabilities.SubscriptionRoutingPolicy {
+		t.Fatal("expected V2RayTun subscription routing policy support")
 	}
 }
 
