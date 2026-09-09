@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -326,43 +327,20 @@ func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) e
 }
 
 func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, accountID, serverID string) (RoutingProfile, error) {
-	profile, err := scanRoutingProfile(r.pool.QueryRow(ctx, `
-		SELECT
-			p.id::text,
-			p.name,
-			COALESCE(p.description, ''),
-			p.is_default
-		FROM routing_profiles p
-		WHERE p.id = COALESCE(
-			(
-				SELECT arp.routing_profile_id
-				FROM vpn_account_routing_profiles arp
-				WHERE arp.vpn_account_id = $1::uuid
-			),
-			(
-				SELECT srp.routing_profile_id
-				FROM server_routing_profiles srp
-				WHERE srp.server_id = $2::uuid
-			),
-			(
-				SELECT rp.id
-				FROM routing_profiles rp
-				WHERE rp.is_default = TRUE
-				ORDER BY rp.created_at ASC
-				LIMIT 1
-			)
-		)
-		LIMIT 1
-	`, accountID, serverID))
+	effective, err := routingprofiles.NewRepository(r.pool).GetEffectiveProfile(ctx, accountID, serverID)
 	if err != nil {
 		return RoutingProfile{}, err
 	}
-
-	rules, err := r.listRoutingProfileRules(ctx, profile.ID)
+	policy, err := routingprofiles.CompilePolicy(effective)
 	if err != nil {
 		return RoutingProfile{}, err
 	}
-	profile.Rules = rules
+	profile := RoutingProfile{ID: effective.ID, Name: effective.Name, Description: effective.Description, IsDefault: effective.IsDefault, DefaultAction: effective.DefaultAction, Policy: &policy}
+	for _, r := range effective.Rules {
+		if r.Enabled {
+			profile.Rules = append(profile.Rules, RoutingProfileRule{ID: r.ID, Name: r.Name, Priority: r.Priority, Action: r.Action, Domains: r.Domains, DomainSuffixes: r.DomainSuffixes, DomainKeywords: r.DomainKeywords, IPCIDRs: r.IPCIDRs, GeoSites: r.GeoSites, GeoIPs: r.GeoIPs})
+		}
+	}
 	return profile, nil
 }
 
@@ -382,7 +360,7 @@ func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID stri
 		FROM routing_profile_rules
 		WHERE routing_profile_id = $1::uuid
 		  AND enabled = TRUE
-		ORDER BY priority ASC, created_at ASC
+		ORDER BY priority ASC, created_at ASC, id ASC
 	`, profileID)
 	if err != nil {
 		return nil, err
@@ -581,29 +559,29 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	profile.Credentials.VLESS.UUID = profile.Account.VLESSUUID
 	if serverID.Valid {
 		server := SubscriptionServer{
-			ID:                serverID.String,
-			Name:              serverName.String,
-			Hostname:          serverHostname.String,
-			PublicIP:          serverPublicIP.String,
-			Location:          serverLocation.String,
-			Provider:          serverProvider.String,
-			VLESSPort:         defaultSingBoxServerPort,
-			VLESSFlow:         vlessFlow.String,
-			VLESSNetwork:      vlessNetwork.String,
-			RealityPublicKey:  realityPublicKey.String,
-			RealityShortID:    realityShortID.String,
-			RealityServerName: realityServerName.String,
-			VPNProtocol:       vpnProtocol.String,
-			WireGuardPort:      int(wireGuardPort.Int32),
-			WireGuardAddress:   serverWireGuardAddress.String,
-			WireGuardDNS:       wireGuardDNS.String,
-			WireGuardPublicKey: serverWireGuardPublicKey.String,
-			Hysteria2Port:       int(hysteria2Port.Int32),
-			Hysteria2Domain:     hysteria2Domain.String,
-			Hysteria2ACMEEmail:  hysteria2ACMEEmail.String,
-			ShadowsocksPort:      int(shadowsocksPort.Int32),
-			ShadowsocksMethod:    shadowsocksMethod.String,
-			ShadowsocksServerKey: shadowsocksServerKey.String,
+			ID:                    serverID.String,
+			Name:                  serverName.String,
+			Hostname:              serverHostname.String,
+			PublicIP:              serverPublicIP.String,
+			Location:              serverLocation.String,
+			Provider:              serverProvider.String,
+			VLESSPort:             defaultSingBoxServerPort,
+			VLESSFlow:             vlessFlow.String,
+			VLESSNetwork:          vlessNetwork.String,
+			RealityPublicKey:      realityPublicKey.String,
+			RealityShortID:        realityShortID.String,
+			RealityServerName:     realityServerName.String,
+			VPNProtocol:           vpnProtocol.String,
+			WireGuardPort:         int(wireGuardPort.Int32),
+			WireGuardAddress:      serverWireGuardAddress.String,
+			WireGuardDNS:          wireGuardDNS.String,
+			WireGuardPublicKey:    serverWireGuardPublicKey.String,
+			Hysteria2Port:         int(hysteria2Port.Int32),
+			Hysteria2Domain:       hysteria2Domain.String,
+			Hysteria2ACMEEmail:    hysteria2ACMEEmail.String,
+			ShadowsocksPort:       int(shadowsocksPort.Int32),
+			ShadowsocksMethod:     shadowsocksMethod.String,
+			ShadowsocksServerKey:  shadowsocksServerKey.String,
 			MTProtoPort:           int(mtprotoPort.Int32),
 			MTProtoSecret:         mtprotoSecret.String,
 			MTProtoFrontingDomain: mtprotoFrontingDomain.String,

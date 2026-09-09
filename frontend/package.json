@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "i18n:check": "node scripts/i18n-check.mjs",
+    "test:routing": "node --test src/pages/routing-profiles/managedRoutingModel.test.ts",
     "test:rollout": "node --test src/pages/settings/platformUpdateRolloutModel.test.ts",
     "preview": "vite preview"
   },

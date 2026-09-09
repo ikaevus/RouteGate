@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	ClientConfigFormat        = "routegate.client_config.v1"
-	SingBoxClientConfigFormat = "sing-box.config.v1"
+	ClientConfigFormat          = "routegate.client_config.v1"
+	SingBoxClientConfigFormat   = "sing-box.config.v1"
 	WireGuardClientConfigFormat = "wireguard.config.v1"
 	Hysteria2ClientURIFormat    = "hysteria2.uri.v1"
 	ShadowsocksClientURIFormat  = "shadowsocks.uri.v1"
@@ -74,8 +74,9 @@ type SingBoxTLSReality struct {
 }
 
 type SingBoxRoute struct {
-	Rules []map[string]any `json:"rules,omitempty"`
-	Final string           `json:"final"`
+	RuleSets []map[string]any `json:"rule_set,omitempty"`
+	Rules    []map[string]any `json:"rules,omitempty"`
+	Final    string           `json:"final"`
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
@@ -315,6 +316,22 @@ func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig
 	}
 
 	routeRules, needsBlockOutbound := renderClientRoutingRules(profile.RoutingProfile)
+	var ruleSets []map[string]any
+	final := singBoxOutboundTag
+	if profile.RoutingProfile != nil {
+		if policy := profile.RoutingProfile.Policy; policy != nil {
+			routeRules, ruleSets, final = policy.Render(singBoxOutboundTag)
+			needsBlockOutbound = false
+		} else if action := profile.RoutingProfile.DefaultAction; action != "" {
+			final = clientRoutingOutboundForAction(action)
+			if final == "" {
+				return SingBoxClientConfig{}, errors.New("invalid default routing action")
+			}
+			if action == RoutingActionBlock {
+				needsBlockOutbound = true
+			}
+		}
+	}
 	outbounds := []SingBoxOutbound{
 		vlessOutbound,
 		{
@@ -341,8 +358,9 @@ func RenderSingBoxClientConfig(profile SubscriptionProfile) (SingBoxClientConfig
 		},
 		Outbounds: outbounds,
 		Route: SingBoxRoute{
-			Rules: routeRules,
-			Final: singBoxOutboundTag,
+			Rules:    routeRules,
+			Final:    final,
+			RuleSets: ruleSets,
 		},
 	}, nil
 }

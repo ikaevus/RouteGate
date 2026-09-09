@@ -89,7 +89,8 @@ func (r *Repository) getServerAssignment(ctx context.Context, serverID string) (
 			COALESCE(p.description, ''),
 			p.is_default,
 			p.created_at,
-			p.updated_at
+			p.updated_at,
+ p.default_action
 		FROM server_routing_profiles srp
 		JOIN routing_profiles p ON p.id = srp.routing_profile_id
 		WHERE srp.server_id = $1::uuid
@@ -103,6 +104,7 @@ func (r *Repository) getServerAssignment(ctx context.Context, serverID string) (
 		&profile.IsDefault,
 		&profile.CreatedAt,
 		&profile.UpdatedAt,
+		&profile.DefaultAction,
 	)
 	if err != nil {
 		return ServerRoutingProfileAssignment{}, err

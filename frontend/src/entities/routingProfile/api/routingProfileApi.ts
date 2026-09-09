@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../../shared/api/client';
 
 export type RoutingRuleAction = 'direct' | 'vpn' | 'block';
 
@@ -20,6 +20,8 @@ export interface RoutingProfileRule {
 }
 
 export interface RoutingProfile {
+  defaultAction: RoutingRuleAction;
+  managedSets?: ManagedRuleSet[];
   id: string;
   name: string;
   description?: string | null;
@@ -34,12 +36,14 @@ export interface ListRoutingProfilesResponse {
 }
 
 export interface CreateRoutingProfileRequest {
+  defaultAction?: RoutingRuleAction;
   name: string;
   description: string;
   isDefault: boolean;
 }
 
 export interface UpdateRoutingProfileRequest {
+  defaultAction?: RoutingRuleAction;
   name?: string;
   description?: string;
   isDefault?: boolean;
@@ -114,3 +118,27 @@ export function deleteRoutingProfileRule(profileId: string, ruleId: string): Pro
     `/api/v1/routing-profiles/${encodeURIComponent(profileId)}/rules/${encodeURIComponent(ruleId)}`,
   );
 }
+
+export interface ManagedSetInput {
+  name: string; provider: string; sourceUrl: string; priority: number;
+  action: RoutingRuleAction; enabled: boolean; refreshHours: number;
+}
+export interface ManagedRuleSet extends ManagedSetInput {
+  id: string; routingProfileId: string; snapshotSha256: string;
+  lastAttemptAt: string | null; lastSuccessAt: string | null; lastError: string;
+  createdAt: string; updatedAt: string;
+}
+export interface RuleSetProvider { id: string; name: string; url: string; action: RoutingRuleAction }
+export interface RoutingDiagnostic {
+  profileId: string; profileName: string; destination: string; resolvedIp?: string;
+  action?: RoutingRuleAction; status: 'matched' | 'default' | 'indeterminate';
+  winner?: { id: string; name: string; kind: 'manual' | 'managed'; provider?: string; priority: number; createdAt: string; snapshotSha256?: string };
+  order?: number; reason: string;
+}
+const managedPath = (profileId: string, id?: string) => `/api/v1/routing-profiles/${encodeURIComponent(profileId)}/managed-sets${id ? `/${encodeURIComponent(id)}` : ''}`;
+export const getRuleSetProviders = () => apiGet<{ items: RuleSetProvider[] }>('/api/v1/routing-rule-set-providers');
+export const createManagedSet = (profileId: string, input: ManagedSetInput) => apiPost<ManagedSetInput, ManagedRuleSet>(managedPath(profileId), input);
+export const updateManagedSet = (profileId: string, id: string, input: ManagedSetInput) => apiPut<ManagedSetInput, ManagedRuleSet>(managedPath(profileId, id), input);
+export const deleteManagedSet = (profileId: string, id: string) => apiDelete(managedPath(profileId, id));
+export const refreshManagedSet = (profileId: string, id: string) => apiPost<Record<string, never>, ManagedRuleSet>(`${managedPath(profileId, id)}/refresh`, {});
+export const diagnoseRouting = (profileId: string, destination: string, resolvedIp: string) => apiPost<{ destination: string; resolvedIp: string }, RoutingDiagnostic>(`/api/v1/routing-profiles/${encodeURIComponent(profileId)}/diagnostics`, { destination, resolvedIp });

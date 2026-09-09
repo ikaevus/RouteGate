@@ -17,6 +17,8 @@ import {
 } from '../../entities/routingProfile/api/routingProfileApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
 
+import { ManagedRoutingPanel } from './ManagedRoutingPanel';
+
 type RuleForm = CreateRoutingProfileRuleRequest;
 
 const emptyRule: RuleForm = {
@@ -122,6 +124,7 @@ export function RoutingProfilesPage() {
   const [profileName, setProfileName] = useState('');
   const [profileDescription, setProfileDescription] = useState('');
   const [makeDefault, setMakeDefault] = useState(false);
+  const [defaultAction, setDefaultAction] = useState<RoutingRuleAction>('vpn');
   const [ruleForm, setRuleForm] = useState<RuleForm>(emptyRule);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [ruleText, setRuleText] = useState({ domains: '', suffixes: '', keywords: '', cidrs: '', geosite: '', geoip: '' });
@@ -138,6 +141,7 @@ export function RoutingProfilesPage() {
     setProfileName(profileQuery.data.name);
     setProfileDescription(profileQuery.data.description ?? '');
     setMakeDefault(profileQuery.data.isDefault);
+    setDefaultAction(profileQuery.data.defaultAction ?? 'vpn');
   }, [profileQuery.data]);
 
   function resetRuleForm() {
@@ -152,7 +156,7 @@ export function RoutingProfilesPage() {
   });
 
   const updateProfileMutation = useMutation({
-    mutationFn: () => updateRoutingProfile(profileId ?? '', { name: profileName.trim(), description: profileDescription.trim(), isDefault: makeDefault }),
+    mutationFn: () => updateRoutingProfile(profileId ?? '', { name: profileName.trim(), description: profileDescription.trim(), isDefault: makeDefault, defaultAction }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['routing-profiles'] });
       await queryClient.invalidateQueries({ queryKey: ['routing-profile', profileId] });
@@ -274,9 +278,12 @@ export function RoutingProfilesPage() {
               <div className='routing-profile-form-grid'>
                 <label className='field'><span>{t('routingProfiles.name')}</span><input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
                 <label className='field'><span>{t('routingProfiles.description')}</span><input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} /></label>
+                <label className='field'><span>{t('managedRouting.defaultAction')}</span><select value={defaultAction} onChange={e => setDefaultAction(e.target.value as RoutingRuleAction)}><option value='direct'>{t('routingProfiles.actionDirect')}</option><option value='vpn'>VPN</option><option value='block'>{t('routingProfiles.actionBlock')}</option></select></label>
                 <div className='traffic-checkbox-field routing-profile-default-field'><label><input checked={makeDefault} type='checkbox' onChange={(event) => setMakeDefault(event.target.checked)} />{t('routingProfiles.defaultProfile')}</label><p>{t('routingProfiles.updatedValue', { value: formatDate(selectedProfile.updatedAt) })}</p></div>
               </div>
             </form>
+
+            <ManagedRoutingPanel key={selectedProfile.id} profile={selectedProfile} />
 
             <form className='panel routing-rule-form' onSubmit={handleRuleSubmit}>
               <div className='panel-header'>

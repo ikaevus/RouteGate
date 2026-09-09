@@ -13,6 +13,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/geoip"
 	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
 	"github.com/ikaevus/routegate/backend/internal/observability"
+	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
 	"github.com/ikaevus/routegate/backend/internal/updates"
 )
@@ -86,8 +87,9 @@ func (a *App) Start(ctx context.Context) error {
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 7)
+	errCh := make(chan error, 8)
 	go func() { errCh <- a.server.Start(runtimeCtx) }()
+	go func() { errCh <- routingprofiles.NewRepository(pool).RunManagedRefresh(runtimeCtx, a.logger) }()
 	go func() { errCh <- deliveryWorker.Run(runtimeCtx) }()
 	go func() { errCh <- healthWorker.Run(runtimeCtx) }()
 	go func() { errCh <- alertWorker.Run(runtimeCtx) }()

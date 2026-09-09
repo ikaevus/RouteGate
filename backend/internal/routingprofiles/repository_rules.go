@@ -9,7 +9,7 @@ import (
 func (r *Repository) ListRules(ctx context.Context, profileID string) ([]RoutingProfileRule, error) {
 	rows, err := r.pool.Query(ctx, routingProfileRuleSelect+`
 		WHERE routing_profile_id = $1::uuid
-		ORDER BY priority ASC, created_at ASC
+		ORDER BY priority ASC, created_at ASC, id ASC
 	`, profileID)
 	if err != nil {
 		return nil, err

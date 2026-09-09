@@ -126,6 +126,12 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/servers/{server_id}/config/apply-jobs/completed", authn(auth.RequirePermission("configs:delete")(stdhttp.HandlerFunc(configsHandler.ClearCompletedApplyHistory))))
 	mux.Handle("GET /api/v1/servers/{server_id}/config/apply-jobs/{job_id}", authn(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(configsHandler.GetApplyJob))))
 
+	mux.Handle("GET /api/v1/routing-rule-set-providers", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.Providers))))
+	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/managed-sets", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.CreateManaged))))
+	mux.Handle("PUT /api/v1/routing-profiles/{profile_id}/managed-sets/{set_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.UpdateManaged))))
+	mux.Handle("DELETE /api/v1/routing-profiles/{profile_id}/managed-sets/{set_id}", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.DeleteManaged))))
+	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/managed-sets/{set_id}/refresh", authn(auth.RequirePermission("routing_profiles:update")(stdhttp.HandlerFunc(routingProfilesHandler.RefreshManaged))))
+	mux.Handle("POST /api/v1/routing-profiles/{profile_id}/diagnostics", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.Diagnose))))
 	mux.Handle("GET /api/v1/routing-profiles", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.List))))
 	mux.Handle("POST /api/v1/routing-profiles", authn(auth.RequirePermission("routing_profiles:create")(stdhttp.HandlerFunc(routingProfilesHandler.Create))))
 	mux.Handle("GET /api/v1/routing-profiles/{profile_id}", authn(auth.RequirePermission("routing_profiles:read")(stdhttp.HandlerFunc(routingProfilesHandler.Get))))

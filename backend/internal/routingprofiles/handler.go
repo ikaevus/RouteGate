@@ -69,9 +69,10 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := CreateRoutingProfileInput{
-		Name:        strings.TrimSpace(request.Name),
-		Description: strings.TrimSpace(request.Description),
-		IsDefault:   request.IsDefault,
+		Name:          strings.TrimSpace(request.Name),
+		Description:   strings.TrimSpace(request.Description),
+		IsDefault:     request.IsDefault,
+		DefaultAction: request.DefaultAction,
 	}
 	if err := validateCreateProfileInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())
@@ -101,9 +102,10 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	trimStringPointer(request.Description)
 
 	input := UpdateRoutingProfileInput{
-		Name:        request.Name,
-		Description: request.Description,
-		IsDefault:   request.IsDefault,
+		Name:          request.Name,
+		Description:   request.Description,
+		IsDefault:     request.IsDefault,
+		DefaultAction: request.DefaultAction,
 	}
 	if err := validateUpdateProfileInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())

@@ -9,13 +9,15 @@ const (
 )
 
 type RoutingProfile struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description string               `json:"description,omitempty"`
-	IsDefault   bool                 `json:"isDefault"`
-	Rules       []RoutingProfileRule `json:"rules,omitempty"`
-	CreatedAt   time.Time            `json:"createdAt"`
-	UpdatedAt   time.Time            `json:"updatedAt"`
+	DefaultAction string               `json:"defaultAction"`
+	ManagedSets   []ManagedRuleSet     `json:"managedSets,omitempty"`
+	ID            string               `json:"id"`
+	Name          string               `json:"name"`
+	Description   string               `json:"description,omitempty"`
+	IsDefault     bool                 `json:"isDefault"`
+	Rules         []RoutingProfileRule `json:"rules,omitempty"`
+	CreatedAt     time.Time            `json:"createdAt"`
+	UpdatedAt     time.Time            `json:"updatedAt"`
 }
 
 type RoutingProfileRule struct {
@@ -47,15 +49,17 @@ type ListRoutingProfilesResponse struct {
 }
 
 type CreateRoutingProfileRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	IsDefault   bool   `json:"isDefault"`
+	DefaultAction string `json:"defaultAction"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	IsDefault     bool   `json:"isDefault"`
 }
 
 type UpdateRoutingProfileRequest struct {
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
-	IsDefault   *bool   `json:"isDefault,omitempty"`
+	DefaultAction *string `json:"defaultAction,omitempty"`
+	Name          *string `json:"name,omitempty"`
+	Description   *string `json:"description,omitempty"`
+	IsDefault     *bool   `json:"isDefault,omitempty"`
 }
 
 type AssignServerRoutingProfileRequest struct {
@@ -63,15 +67,17 @@ type AssignServerRoutingProfileRequest struct {
 }
 
 type CreateRoutingProfileInput struct {
-	Name        string
-	Description string
-	IsDefault   bool
+	DefaultAction string
+	Name          string
+	Description   string
+	IsDefault     bool
 }
 
 type UpdateRoutingProfileInput struct {
-	Name        *string
-	Description *string
-	IsDefault   *bool
+	DefaultAction *string
+	Name          *string
+	Description   *string
+	IsDefault     *bool
 }
 
 type AssignServerRoutingProfileInput struct {

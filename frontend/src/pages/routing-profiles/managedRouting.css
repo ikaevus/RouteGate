@@ -1,0 +1,10 @@
+.managed-routing-panel { min-width: 0; }
+.managed-routing-panel [role='tab'][aria-selected='true'] { border-color: var(--accent, #197c70); font-weight: 700; }
+.managed-routing-list { display: grid; gap: 14px; margin: 18px 0; max-height: 560px; overflow-y: auto; }
+.managed-routing-item, .managed-routing-result { border: 1px solid var(--border-color, #dce2e7); border-radius: 12px; padding: 16px; min-width: 0; }
+.managed-routing-item > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.managed-routing-item p, .managed-routing-result p { overflow-wrap: anywhere; }
+.managed-routing-source { font-size: 12px; overflow-wrap: anywhere; }
+.managed-routing-result { margin-top: 18px; }
+.managed-routing-panel .table-actions { flex-wrap: wrap; }
+.managed-routing-panel form > .field { margin: 12px 0; }

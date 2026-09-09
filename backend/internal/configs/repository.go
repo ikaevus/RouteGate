@@ -180,7 +180,7 @@ func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID stri
 		FROM routing_profile_rules
 		WHERE routing_profile_id = $1::uuid
 		  AND enabled = TRUE
-		ORDER BY priority ASC, created_at ASC
+		ORDER BY priority ASC, created_at ASC, id ASC
 	`, profileID)
 	if err != nil {
 		return nil, err

@@ -7,6 +7,9 @@ import (
 )
 
 func validateCreateProfileInput(input CreateRoutingProfileInput) error {
+	if input.DefaultAction != "" && !ValidAction(input.DefaultAction) {
+		return errors.New("invalid default action")
+	}
 	if err := validateProfileName(input.Name); err != nil {
 		return err
 	}
@@ -14,6 +17,9 @@ func validateCreateProfileInput(input CreateRoutingProfileInput) error {
 }
 
 func validateUpdateProfileInput(input UpdateRoutingProfileInput) error {
+	if input.DefaultAction != nil && !ValidAction(*input.DefaultAction) {
+		return errors.New("invalid default action")
+	}
 	if input.Name != nil {
 		if err := validateProfileName(*input.Name); err != nil {
 			return err

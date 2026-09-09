@@ -39,6 +39,10 @@ func (r *Repository) GetProfile(ctx context.Context, id string) (RoutingProfile,
 		return RoutingProfile{}, err
 	}
 	profile.Rules = rules
+	profile.ManagedSets, err = r.ListManagedSets(ctx, id)
+	if err != nil {
+		return RoutingProfile{}, err
+	}
 	return profile, nil
 }
 
@@ -48,10 +52,10 @@ func (r *Repository) CreateProfile(ctx context.Context, input CreateRoutingProfi
 	}
 
 	profile, err := scanRoutingProfile(r.pool.QueryRow(ctx, `
-		INSERT INTO routing_profiles (name, description, is_default)
-		VALUES ($1, NULLIF($2, ''), FALSE)
-		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at
-	`, input.Name, input.Description))
+		INSERT INTO routing_profiles (name, description, is_default, default_action)
+		VALUES ($1, NULLIF($2, ''), FALSE, COALESCE(NULLIF($3, ''), 'vpn'))
+		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at, default_action
+	`, input.Name, input.Description, input.DefaultAction))
 	if err != nil {
 		return RoutingProfile{}, mapProfileWriteError(err)
 	}
@@ -70,10 +74,10 @@ func (r *Repository) createDefaultProfile(ctx context.Context, input CreateRouti
 	}
 
 	profile, err := scanRoutingProfile(tx.QueryRow(ctx, `
-		INSERT INTO routing_profiles (name, description, is_default)
-		VALUES ($1, NULLIF($2, ''), TRUE)
-		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at
-	`, input.Name, input.Description))
+		INSERT INTO routing_profiles (name, description, is_default, default_action)
+		VALUES ($1, NULLIF($2, ''), TRUE, COALESCE(NULLIF($3, ''), 'vpn'))
+		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at, default_action
+	`, input.Name, input.Description, input.DefaultAction))
 	if err != nil {
 		return RoutingProfile{}, mapProfileWriteError(err)
 	}
@@ -94,14 +98,16 @@ func (r *Repository) UpdateProfile(ctx context.Context, id string, input UpdateR
 			name = CASE WHEN $2 THEN $3 ELSE name END,
 			description = CASE WHEN $4 THEN NULLIF($5, '') ELSE description END,
 			is_default = CASE WHEN $6 THEN $7 ELSE is_default END,
+			default_action = COALESCE($8, default_action),
 			updated_at = now()
 		WHERE id = $1::uuid
-		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at
+		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at, default_action
 	`,
 		id,
 		input.Name != nil, stringValue(input.Name),
 		input.Description != nil, stringValue(input.Description),
 		input.IsDefault != nil, boolValue(input.IsDefault),
+		input.DefaultAction,
 	))
 	if err != nil {
 		return RoutingProfile{}, mapProfileWriteError(err)
@@ -126,13 +132,15 @@ func (r *Repository) updateProfileAsDefault(ctx context.Context, id string, inpu
 			name = CASE WHEN $2 THEN $3 ELSE name END,
 			description = CASE WHEN $4 THEN NULLIF($5, '') ELSE description END,
 			is_default = TRUE,
+			default_action = COALESCE($6, default_action),
 			updated_at = now()
 		WHERE id = $1::uuid
-		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at
+		RETURNING id::text, name, COALESCE(description, ''), is_default, created_at, updated_at, default_action
 	`,
 		id,
 		input.Name != nil, stringValue(input.Name),
 		input.Description != nil, stringValue(input.Description),
+		input.DefaultAction,
 	))
 	if err != nil {
 		return RoutingProfile{}, mapProfileWriteError(err)
