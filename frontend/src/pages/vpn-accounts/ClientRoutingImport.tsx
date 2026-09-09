@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { t } from '../../shared/i18n/i18n';
+import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 
 type ClientRoutingImportProps = {
   clientType: string;
@@ -12,6 +13,7 @@ function withFormat(url: string, format: string): string {
 
 export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRoutingImportProps) {
   const [copied, setCopied] = useState(false);
+  const [isQrOpen, setIsQrOpen] = useState(false);
   const [v2boxLink, setV2boxLink] = useState('');
   const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState(false);
@@ -37,11 +39,31 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
           <div className="subscription-url-meta">
             <div className="subscription-url-label">{t('clientCompatibility.v2raynRoutingUrl')}</div>
           </div>
-          <button className="small-button" type="button" onClick={() => void copyValue(routingUrl)}>
-            {copied ? t('clientCompatibility.copied') : t('clientCompatibility.copyRoutingUrl')}
-          </button>
+          <div className="table-actions">
+            <button className="small-button" type="button" onClick={() => setIsQrOpen(true)}>
+              {t('clientCompatibility.showRoutingQr')}
+            </button>
+            <button className="small-button" type="button" onClick={() => void copyValue(routingUrl)}>
+              {copied ? t('clientCompatibility.copied') : t('clientCompatibility.copyRoutingUrl')}
+            </button>
+          </div>
         </div>
         <code className="subscription-url-value">{routingUrl}</code>
+        <SubscriptionQrDialog
+          isOpen={isQrOpen}
+          title={t('clientCompatibility.routingQrTitle')}
+          onClose={() => setIsQrOpen(false)}
+          qrText={routingUrl}
+          qrTitle={t('clientCompatibility.v2raynRoutingUrl')}
+          qrSubtitle={t('clientCompatibility.routingQrSubtitle')}
+          url={routingUrl}
+          urlLabel={t('clientCompatibility.v2raynRoutingUrl')}
+          onCopyQrText={() => void copyValue(routingUrl)}
+          copyQrLabel={t('clientCompatibility.copyRoutingUrl')}
+          copyCopiedLabel={t('clientCompatibility.copied')}
+          copied={copied}
+          closeLabel={t('clientCompatibility.close')}
+        />
       </div>
     );
   }
