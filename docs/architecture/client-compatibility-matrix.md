@@ -42,7 +42,7 @@ This rule prevents both impossible subscription representations and false Smart 
 
 ## Native routing adapters (RG-115B)
 
-RG-115B does **not** introduce a second routing-policy engine. Both native adapters serialize the already resolved RouteGate `RoutingProfile`.
+RG-115B does **not** introduce a second routing-policy engine. Native adapters serialize the already resolved RouteGate `RoutingProfile`.
 
 ### v2rayN
 
@@ -68,6 +68,27 @@ https://vpn.example.com/sub/<opaque-token>?format=v2rayn-routing
 
 v2rayN supports importing routing rules from a subscription URL. The administrator/user still has to associate/activate the imported routing profile and verify DNS/TUN settings, so RouteGate keeps the state `client_setup_required` until the runtime behavior is validated.
 
+The QR rendered for this URL is a **desktop v2rayN routing-source transfer helper**, not a universal mobile routing QR. Scanning it in V2RayTun or V2Box must not be presented as applying RouteGate routing. Mobile clients use their own native delivery paths.
+
+### V2RayTun
+
+V2RayTun does not need a second RouteGate routing URL or a separate routing QR on the validated share-link path.
+
+The normal opaque RG-115 subscription URL remains the only user-facing credential:
+
+```text
+https://vpn.example.com/sub/<opaque-token>
+```
+
+When the selected client is V2RayTun and the effective protocol supports share-link subscription delivery, RouteGate serializes the resolved Routing Profile and sends it in V2RayTun's native subscription `Routing` response header. V2RayTun receives the connection subscription and routing policy together.
+
+Operational consequences:
+
+- onboarding should use the normal secure subscription URL/QR;
+- after changing a RouteGate Routing Profile, refresh the same subscription in V2RayTun;
+- no second routing QR should be generated or required;
+- TUN and DNS remain client-local runtime concerns, so native routing delivery alone does not promote V2RayTun to full smart-routing compatibility.
+
 ### V2Box
 
 RouteGate converts the same policy into V2Box route objects and produces:
@@ -89,8 +110,9 @@ Validation must use the same account/profile and check at minimum:
 1. Hiddify baseline: Ozon and Wildberries open with the full RouteGate sing-box profile.
 2. v2rayN: import/refresh the RouteGate `v2rayn-routing` URL, activate the corresponding routing profile, then verify both Ozon and Wildberries.
 3. V2Box: import the generated RouteGate route deep link, verify the imported rules are enabled/ordered as expected, then verify both Ozon and Wildberries.
-4. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
-5. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
+4. V2RayTun: add/refresh the normal secure RouteGate subscription, verify the native subscription routing is present/effective, then verify both Ozon and Wildberries.
+5. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
+6. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
 
 A client may only be promoted to a stronger compatibility state after this real-client validation passes deterministically.
 
