@@ -35,6 +35,24 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
           <p className="subscription-url-helper">{t('clientCompatibility.v2raytunRoutingHelp')}</p>
           <p className="subscription-url-helper">{t('clientCompatibility.v2raytunRoutingScope')}</p>
         </div>
+        <button className="small-button" type="button" onClick={() => setIsQrOpen(true)}>
+          {t('clientCompatibility.v2raytunShowSubscriptionQr')}
+        </button>
+        <SubscriptionQrDialog
+          isOpen={isQrOpen}
+          title={t('clientCompatibility.v2raytunSubscriptionQrTitle')}
+          onClose={() => setIsQrOpen(false)}
+          qrText={subscriptionUrl}
+          qrTitle={t('clientCompatibility.secureSubscription')}
+          qrSubtitle={t('clientCompatibility.v2raytunSubscriptionQrSubtitle')}
+          url={subscriptionUrl}
+          urlLabel={t('clientCompatibility.secureSubscription')}
+          onCopyQrText={() => void copyValue(subscriptionUrl)}
+          copyQrLabel={t('clientCompatibility.copySubscriptionUrl')}
+          copyCopiedLabel={t('clientCompatibility.copied')}
+          copied={copied}
+          closeLabel={t('clientCompatibility.close')}
+        />
       </div>
     );
   }
