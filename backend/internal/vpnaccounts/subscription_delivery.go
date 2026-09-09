@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	SubscriptionDeliveryFormatAuto          = "auto"
-	SubscriptionDeliveryFormatBase64        = "base64"
-	SubscriptionDeliveryFormatRaw           = "raw"
-	SubscriptionDeliveryFormatSingBox       = "sing-box"
-	SubscriptionDeliveryFormatWireGuard     = "wireguard"
-	SubscriptionDeliveryFormatV2RayNRouting = "v2rayn-routing"
-	SubscriptionDeliveryFormatV2BoxRouting  = "v2box-routing"
+	SubscriptionDeliveryFormatAuto             = "auto"
+	SubscriptionDeliveryFormatBase64           = "base64"
+	SubscriptionDeliveryFormatRaw              = "raw"
+	SubscriptionDeliveryFormatSingBox          = "sing-box"
+	SubscriptionDeliveryFormatWireGuard        = "wireguard"
+	SubscriptionDeliveryFormatV2RayNRouting    = "v2rayn-routing"
+	SubscriptionDeliveryFormatV2RayTunRouting  = "v2raytun-routing"
+	SubscriptionDeliveryFormatV2BoxRouting     = "v2box-routing"
 )
 
 var errSubscriptionDeliveryFormatUnavailable = errors.New("subscription delivery format is unavailable")
@@ -249,6 +250,19 @@ func renderSubscriptionDeliveryPayload(connection ClientConnectionResponse, prof
 			Filename:    "routegate-v2rayn-routing.json",
 			Body:        string(encoded),
 		}, nil
+	case SubscriptionDeliveryFormatV2RayTunRouting:
+		routing, ok, err := renderV2RayTunRoutingHeader(profile.RoutingProfile)
+		if err != nil {
+			return subscriptionDeliveryPayload{}, err
+		}
+		if !ok {
+			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: V2RayTun routing rules are not available", errSubscriptionDeliveryFormatUnavailable)
+		}
+		return subscriptionDeliveryPayload{
+			ContentType: "text/plain; charset=utf-8",
+			Filename:    "routegate-v2raytun-routing.txt",
+			Body:        "v2raytun://import_route/" + routing,
+		}, nil
 	case SubscriptionDeliveryFormatV2BoxRouting:
 		deepLink, ok, err := renderV2BoxRoutingDeepLink(profile.RoutingProfile)
 		if err != nil {
@@ -263,7 +277,7 @@ func renderSubscriptionDeliveryPayload(connection ClientConnectionResponse, prof
 			Body:        deepLink,
 		}, nil
 	default:
-		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: supported formats are auto, base64, raw, sing-box, wireguard, v2rayn-routing, and v2box-routing", errSubscriptionDeliveryFormatUnavailable)
+		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: supported formats are auto, base64, raw, sing-box, wireguard, v2rayn-routing, v2raytun-routing, and v2box-routing", errSubscriptionDeliveryFormatUnavailable)
 	}
 }
 
