@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	SubscriptionDeliveryFormatAuto     = "auto"
-	SubscriptionDeliveryFormatBase64   = "base64"
-	SubscriptionDeliveryFormatRaw      = "raw"
-	SubscriptionDeliveryFormatSingBox  = "sing-box"
+	SubscriptionDeliveryFormatAuto      = "auto"
+	SubscriptionDeliveryFormatBase64    = "base64"
+	SubscriptionDeliveryFormatRaw       = "raw"
+	SubscriptionDeliveryFormatSingBox   = "sing-box"
 	SubscriptionDeliveryFormatWireGuard = "wireguard"
 )
 
@@ -32,11 +32,9 @@ type subscriptionDeliveryPayload struct {
 
 // GetClientSubscription serves the opaque user-facing subscription URL.
 //
-// The URL itself contains no account, node, protocol, or credential metadata;
-// the bearer token is resolved server-side. The response intentionally avoids
-// RouteGate's management JSON envelope so third-party VPN clients can import
-// the URL directly. The existing /api/v1/subscriptions/{token} endpoint remains
-// available as the RouteGate API representation.
+// RG-115 owns the secure bearer-token boundary. RG-115A only chooses the most
+// faithful representation for the selected/detected client. Routing policy is
+// still rendered by the existing RouteGate routing renderer.
 func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) {
 	setSubscriptionDeliverySecurityHeaders(w)
 
@@ -91,13 +89,20 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	payload, err := renderSubscriptionDeliveryPayload(connection, profile, r.URL.Query().Get("format"))
+	clientType := resolveSubscriptionClientType(connection.Profile, r.UserAgent())
+	assessment := clientCompatibilityFor(clientType)
+	selectedFormat := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if selectedFormat == "" || selectedFormat == SubscriptionDeliveryFormatAuto {
+		selectedFormat = preferredDeliveryFormatForClient(clientType, connection.Protocol)
+	}
+
+	payload, err := renderSubscriptionDeliveryPayload(connection, profile, selectedFormat)
 	if errors.Is(err, errSubscriptionDeliveryFormatUnavailable) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err != nil {
-		h.logger.Warn("render client subscription payload failed", "vpn_account_id", token.VPNAccountID, "error", err)
+		h.logger.Warn("render client subscription payload failed", "vpn_account_id", token.VPNAccountID, "client_type", clientType, "delivery_format", selectedFormat, "error", err)
 		http.Error(w, "Subscription configuration is temporarily unavailable.", http.StatusServiceUnavailable)
 		return
 	}
@@ -110,6 +115,13 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", payload.ContentType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", payload.Filename))
 	w.Header().Set("Profile-Title", subscriptionProfileTitle(profile))
+	w.Header().Set("X-RouteGate-Client", clientType)
+	w.Header().Set("X-RouteGate-Compatibility", assessment.Status)
+	w.Header().Set("X-RouteGate-Delivery-Format", selectedFormat)
+	if assessment.RequiresClientSetup && profile.RoutingProfile != nil {
+		w.Header().Set("X-RouteGate-Client-Setup-Required", "true")
+		w.Header().Set("Warning", `299 RouteGate "Client-side routing setup is required for this VPN client"`)
+	}
 	if len(payload.Protocols) > 0 {
 		w.Header().Set("X-RouteGate-Protocols", strings.Join(payload.Protocols, ","))
 	}
