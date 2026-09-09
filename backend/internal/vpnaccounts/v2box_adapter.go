@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -108,5 +109,5 @@ func v2BoxRouteName(rule RoutingProfileRule, index int) string {
 		id = "rule"
 	}
 	id = strings.NewReplacer(" ", "-", "/", "-", "\\", "-").Replace(id)
-	return "routegate." + id + "." + string(rune('a'+index%26))
+	return "routegate." + id + "." + strconv.Itoa(index+1)
 }
