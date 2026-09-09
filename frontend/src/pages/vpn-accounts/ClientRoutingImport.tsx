@@ -18,6 +18,8 @@ function v2raytunImportDeepLink(subscriptionUrl: string): string {
 export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRoutingImportProps) {
   const [copied, setCopied] = useState(false);
   const [isQrOpen, setIsQrOpen] = useState(false);
+  const [isRoutingQrOpen, setIsRoutingQrOpen] = useState(false);
+  const [v2raytunRoutingLink, setV2raytunRoutingLink] = useState('');
   const [v2boxLink, setV2boxLink] = useState('');
   const [isPreparing, setIsPreparing] = useState(false);
   const [error, setError] = useState(false);
@@ -31,6 +33,24 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
     window.setTimeout(() => setCopied(false), 1800);
   };
 
+  const prepareV2RayTunRoutingLink = async () => {
+    setIsPreparing(true);
+    setError(false);
+    try {
+      const response = await fetch(withFormat(subscriptionUrl, 'raw'), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const routing = (response.headers.get('routing') ?? '').trim();
+      if (routing === '') throw new Error('Missing V2RayTun Routing header');
+      const value = `v2raytun://import_route/${routing}`;
+      setV2raytunRoutingLink(value);
+      setIsRoutingQrOpen(true);
+    } catch {
+      setError(true);
+    } finally {
+      setIsPreparing(false);
+    }
+  };
+
   if (clientType === 'v2raytun') {
     const importLink = v2raytunImportDeepLink(subscriptionUrl);
     return (
@@ -40,9 +60,20 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
           <p className="subscription-url-helper">{t('clientCompatibility.v2raytunRoutingHelp')}</p>
           <p className="subscription-url-helper">{t('clientCompatibility.v2raytunRoutingScope')}</p>
         </div>
-        <button className="small-button" type="button" onClick={() => setIsQrOpen(true)}>
-          {t('clientCompatibility.v2raytunShowSubscriptionQr')}
-        </button>
+        <div className="table-actions">
+          <button className="small-button" type="button" onClick={() => setIsQrOpen(true)}>
+            {t('clientCompatibility.v2raytunShowSubscriptionQr')}
+          </button>
+          <button className="small-button" type="button" disabled={isPreparing} onClick={() => void prepareV2RayTunRoutingLink()}>
+            {isPreparing ? t('clientCompatibility.routingPreparing') : t('clientCompatibility.v2raytunPrepareRoutingQr')}
+          </button>
+        </div>
+        {error && <div className="form-message form-message-error">{t('clientCompatibility.routingError')}</div>}
+        {v2raytunRoutingLink && (
+          <button className="small-button" type="button" onClick={() => setIsRoutingQrOpen(true)}>
+            {t('clientCompatibility.v2raytunShowRoutingQr')}
+          </button>
+        )}
         <SubscriptionQrDialog
           isOpen={isQrOpen}
           title={t('clientCompatibility.v2raytunSubscriptionQrTitle')}
@@ -54,6 +85,21 @@ export function ClientRoutingImport({ clientType, subscriptionUrl }: ClientRouti
           urlLabel={t('clientCompatibility.v2raytunImportLinkLabel')}
           onCopyQrText={() => void copyValue(importLink)}
           copyQrLabel={t('clientCompatibility.copyV2raytunImportLink')}
+          copyCopiedLabel={t('clientCompatibility.copied')}
+          copied={copied}
+          closeLabel={t('clientCompatibility.close')}
+        />
+        <SubscriptionQrDialog
+          isOpen={isRoutingQrOpen}
+          title={t('clientCompatibility.v2raytunRoutingQrTitle')}
+          onClose={() => setIsRoutingQrOpen(false)}
+          qrText={v2raytunRoutingLink}
+          qrTitle={t('clientCompatibility.v2raytunRoutingImportLinkLabel')}
+          qrSubtitle={t('clientCompatibility.v2raytunRoutingQrSubtitle')}
+          url={v2raytunRoutingLink}
+          urlLabel={t('clientCompatibility.v2raytunRoutingImportLinkLabel')}
+          onCopyQrText={() => void copyValue(v2raytunRoutingLink)}
+          copyQrLabel={t('clientCompatibility.copyV2raytunRoutingLink')}
           copyCopiedLabel={t('clientCompatibility.copied')}
           copied={copied}
           closeLabel={t('clientCompatibility.close')}
