@@ -197,6 +197,14 @@ func (r *vpnClientE2ERepository) MarkSubscriptionTokenUsed(_ context.Context, id
 	return nil
 }
 
+func (r *vpnClientE2ERepository) GetDeviceByID(context.Context, string) (Device, error) {
+	return Device{}, pgx.ErrNoRows
+}
+
+func (r *vpnClientE2ERepository) MarkDeviceUsed(context.Context, string) error {
+	return nil
+}
+
 func newVPNClientE2EHandler(repo *vpnClientE2ERepository) *Handler {
 	return &Handler{
 		logger:                    slog.New(slog.NewTextHandler(io.Discard, nil)),

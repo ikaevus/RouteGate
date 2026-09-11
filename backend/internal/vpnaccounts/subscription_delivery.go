@@ -14,14 +14,12 @@ import (
 )
 
 const (
-	SubscriptionDeliveryFormatAuto             = "auto"
-	SubscriptionDeliveryFormatBase64           = "base64"
-	SubscriptionDeliveryFormatRaw              = "raw"
-	SubscriptionDeliveryFormatSingBox          = "sing-box"
-	SubscriptionDeliveryFormatWireGuard        = "wireguard"
-	SubscriptionDeliveryFormatV2RayNRouting    = "v2rayn-routing"
-	SubscriptionDeliveryFormatV2RayTunRouting  = "v2raytun-routing"
-	SubscriptionDeliveryFormatV2BoxRouting     = "v2box-routing"
+	SubscriptionDeliveryFormatAuto          = "auto"
+	SubscriptionDeliveryFormatBase64        = "base64"
+	SubscriptionDeliveryFormatRaw           = "raw"
+	SubscriptionDeliveryFormatSingBox       = "sing-box"
+	SubscriptionDeliveryFormatWireGuard     = "wireguard"
+	SubscriptionDeliveryFormatV2RayNRouting = "v2rayn-routing"
 )
 
 var errSubscriptionDeliveryFormatUnavailable = errors.New("subscription delivery format is unavailable")
@@ -94,6 +92,18 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	}
 
 	clientType := resolveSubscriptionClientType(connection.Profile, r.UserAgent())
+	if strings.TrimSpace(token.DeviceID) != "" {
+		if device, deviceErr := h.accounts.GetDeviceByID(r.Context(), token.DeviceID); deviceErr == nil {
+			if normalized := normalizeClientType(device.ClientType); device.ClientType != "" {
+				clientType = normalized
+			}
+			if err := h.accounts.MarkDeviceUsed(r.Context(), device.ID); err != nil {
+				h.logger.Warn("mark device used failed", "device_id", device.ID, "error", err)
+			}
+		} else if !errors.Is(deviceErr, pgx.ErrNoRows) {
+			h.logger.Warn("resolve device for client subscription failed", "device_id", token.DeviceID, "error", deviceErr)
+		}
+	}
 	assessment := clientCompatibilityForProtocol(clientType, connection.Protocol)
 	selectedFormat := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
 	if selectedFormat == "" || selectedFormat == SubscriptionDeliveryFormatAuto {
@@ -143,20 +153,11 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	_, _ = io.WriteString(w, payload.Body)
 }
 
-func clientSubscriptionHeaders(clientType, protocol string, profile SubscriptionProfile) (map[string]string, error) {
+func clientSubscriptionHeaders(clientType, _ string, _ SubscriptionProfile) (map[string]string, error) {
 	headers := map[string]string{}
 	switch clientType {
 	case ClientTypeHiddify:
 		headers["Profile-Update-Interval"] = "12"
-	case ClientTypeV2RayTun:
-		headers["Profile-Update-Interval"] = "12"
-		if protocolSupportsShareLinkSubscription(protocol) {
-			if routing, ok, err := renderV2RayTunRoutingHeader(profile.RoutingProfile); err != nil {
-				return nil, err
-			} else if ok {
-				headers["Routing"] = routing
-			}
-		}
 	}
 	return headers, nil
 }
@@ -250,34 +251,8 @@ func renderSubscriptionDeliveryPayload(connection ClientConnectionResponse, prof
 			Filename:    "routegate-v2rayn-routing.json",
 			Body:        string(encoded),
 		}, nil
-	case SubscriptionDeliveryFormatV2RayTunRouting:
-		routing, ok, err := renderV2RayTunRoutingHeader(profile.RoutingProfile)
-		if err != nil {
-			return subscriptionDeliveryPayload{}, err
-		}
-		if !ok {
-			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: V2RayTun routing rules are not available", errSubscriptionDeliveryFormatUnavailable)
-		}
-		return subscriptionDeliveryPayload{
-			ContentType: "text/plain; charset=utf-8",
-			Filename:    "routegate-v2raytun-routing.txt",
-			Body:        "v2raytun://import_route/" + routing,
-		}, nil
-	case SubscriptionDeliveryFormatV2BoxRouting:
-		deepLink, ok, err := renderV2BoxRoutingDeepLink(profile.RoutingProfile)
-		if err != nil {
-			return subscriptionDeliveryPayload{}, err
-		}
-		if !ok {
-			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: V2Box routing rules are not available", errSubscriptionDeliveryFormatUnavailable)
-		}
-		return subscriptionDeliveryPayload{
-			ContentType: "text/plain; charset=utf-8",
-			Filename:    "routegate-v2box-routing.txt",
-			Body:        deepLink,
-		}, nil
 	default:
-		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: supported formats are auto, base64, raw, sing-box, wireguard, v2rayn-routing, v2raytun-routing, and v2box-routing", errSubscriptionDeliveryFormatUnavailable)
+		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: supported formats are auto, base64, raw, sing-box, wireguard, and v2rayn-routing", errSubscriptionDeliveryFormatUnavailable)
 	}
 }
 

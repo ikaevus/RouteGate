@@ -204,7 +204,8 @@ func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSu
 			last_used_at,
 			revoked_at,
 			created_at,
-			updated_at
+			updated_at,
+			COALESCE(device_id::text, '')
 	`, input.VPNAccountID, input.TokenHash, input.ExpiresAt))
 	if err != nil {
 		return SubscriptionToken{}, err
@@ -461,7 +462,8 @@ const subscriptionTokenSelect = `
 		last_used_at,
 		revoked_at,
 		created_at,
-		updated_at
+		updated_at,
+		COALESCE(device_id::text, '')
 	FROM vpn_subscription_tokens`
 
 type scanner interface {
@@ -514,6 +516,7 @@ func scanSubscriptionToken(row scanner) (SubscriptionToken, error) {
 		&revokedAt,
 		&token.CreatedAt,
 		&token.UpdatedAt,
+		&token.DeviceID,
 	)
 	if err != nil {
 		return SubscriptionToken{}, err

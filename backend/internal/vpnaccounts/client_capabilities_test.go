@@ -15,8 +15,7 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 	}{
 		{ClientTypeHiddify, ClientCompatibilityFullSmartRouting, SubscriptionDeliveryFormatSingBox, false},
 		{ClientTypeV2RayN, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
-		{ClientTypeV2Box, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
-		{ClientTypeV2RayTun, ClientCompatibilityPartial, SubscriptionDeliveryFormatBase64, true},
+		{ClientTypeV2RayNG, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
 	}
 	for _, test := range tests {
 		t.Run(test.clientType, func(t *testing.T) {
@@ -29,8 +28,19 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 			}
 		})
 	}
-	if !clientCompatibilityFor(ClientTypeV2RayTun).Capabilities.SubscriptionRoutingPolicy {
-		t.Fatal("expected V2RayTun subscription routing policy support")
+	if got := clientCompatibilityFor(ClientTypeGeneric).Status; got != ClientCompatibilityConnectionOnly {
+		t.Fatalf("generic status = %q, want connection_only", got)
+	}
+}
+
+func TestRetiredClientTypesNormalizeToGeneric(t *testing.T) {
+	for _, legacy := range []string{ClientTypeV2RayTun, ClientTypeV2Box, ClientTypeOther, "unknown-client"} {
+		if got := normalizeClientType(legacy); got != ClientTypeGeneric {
+			t.Fatalf("normalizeClientType(%q) = %q, want generic", legacy, got)
+		}
+		if got := clientCompatibilityFor(legacy).ClientType; got != ClientTypeGeneric {
+			t.Fatalf("clientCompatibilityFor(%q).ClientType = %q, want generic", legacy, got)
+		}
 	}
 }
 
@@ -47,8 +57,8 @@ func TestPreferredDeliveryFormatUsesFullConfigOnlyForVLESS(t *testing.T) {
 	if got := preferredDeliveryFormatForClient(ClientTypeV2RayN, ClientProtocolWireGuard); got != SubscriptionDeliveryFormatAuto {
 		t.Fatalf("v2rayN WireGuard format = %q", got)
 	}
-	if got := preferredDeliveryFormatForClient(ClientTypeV2RayTun, ClientProtocolMTProto); got != SubscriptionDeliveryFormatAuto {
-		t.Fatalf("V2RayTun MTProto format = %q", got)
+	if got := preferredDeliveryFormatForClient(ClientTypeV2RayNG, ClientProtocolMTProto); got != SubscriptionDeliveryFormatAuto {
+		t.Fatalf("v2rayNG MTProto format = %q", got)
 	}
 }
 
@@ -61,8 +71,7 @@ func TestCompatibilityDowngradesWhenProtocolCannotCarryPolicy(t *testing.T) {
 		{"Hiddify WireGuard", ClientTypeHiddify, ClientProtocolWireGuard},
 		{"sing-box Hysteria2", ClientTypeSingBox, ClientProtocolHysteria2},
 		{"v2rayN WireGuard", ClientTypeV2RayN, ClientProtocolWireGuard},
-		{"V2Box MTProto", ClientTypeV2Box, ClientProtocolMTProto},
-		{"V2RayTun WireGuard", ClientTypeV2RayTun, ClientProtocolWireGuard},
+		{"v2rayNG MTProto", ClientTypeV2RayNG, ClientProtocolMTProto},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -84,11 +93,11 @@ func TestCompatibilityKeepsValidatedProtocolBehavior(t *testing.T) {
 	if got := clientCompatibilityForProtocol(ClientTypeHiddify, ClientProtocolVLESS).Status; got != ClientCompatibilityFullSmartRouting {
 		t.Fatalf("Hiddify VLESS status = %q", got)
 	}
-	if got := clientCompatibilityForProtocol(ClientTypeV2RayTun, ClientProtocolVLESS).Status; got != ClientCompatibilityPartial {
-		t.Fatalf("V2RayTun VLESS status = %q", got)
-	}
 	if got := clientCompatibilityForProtocol(ClientTypeV2RayN, ClientProtocolShadowsocks).Status; got != ClientCompatibilitySetupRequired {
 		t.Fatalf("v2rayN Shadowsocks status = %q", got)
+	}
+	if got := clientCompatibilityForProtocol(ClientTypeV2RayNG, ClientProtocolShadowsocks).Status; got != ClientCompatibilitySetupRequired {
+		t.Fatalf("v2rayNG Shadowsocks status = %q", got)
 	}
 }
 
@@ -96,9 +105,10 @@ func TestDetectClientTypeFromUserAgentIsConservative(t *testing.T) {
 	cases := map[string]string{
 		"Hiddify/2.5":           ClientTypeHiddify,
 		"v2rayN/7.0":            ClientTypeV2RayN,
-		"V2RayTun iOS":          ClientTypeV2RayTun,
-		"V2Box/4.2":             ClientTypeV2Box,
+		"v2rayNG/1.9.20":        ClientTypeV2RayNG,
 		"sing-box/1.12":         ClientTypeSingBox,
+		"V2RayTun iOS":          "",
+		"V2Box/4.2":             "",
 		"Mozilla/5.0 Safari/18": "",
 	}
 	for ua, want := range cases {
@@ -109,11 +119,11 @@ func TestDetectClientTypeFromUserAgentIsConservative(t *testing.T) {
 }
 
 func TestSelectedClientProfileWinsOverUserAgent(t *testing.T) {
-	profile := ClientProfile{ClientType: ClientTypeV2Box}
-	if got := resolveSubscriptionClientType(profile, "Hiddify/2.5"); got != ClientTypeV2Box {
+	profile := ClientProfile{ClientType: ClientTypeV2RayN}
+	if got := resolveSubscriptionClientType(profile, "Hiddify/2.5"); got != ClientTypeV2RayN {
 		t.Fatalf("resolved client = %q", got)
 	}
-	if got := resolveSubscriptionClientType(ClientProfile{ClientType: ClientTypeOther}, "Hiddify/2.5"); got != ClientTypeHiddify {
+	if got := resolveSubscriptionClientType(ClientProfile{ClientType: ClientTypeGeneric}, "Hiddify/2.5"); got != ClientTypeHiddify {
 		t.Fatalf("detected fallback client = %q", got)
 	}
 }

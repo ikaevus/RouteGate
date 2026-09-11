@@ -179,6 +179,11 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/subscription-token/rotate", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.RotateSubscriptionToken))))
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/subscription-token", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.RevokeSubscriptionToken))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/qr", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetSubscriptionQRCode))))
+	mux.Handle("GET /api/v1/vpn-accounts/{id}/devices", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.ListDevices))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/devices", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.CreateDevice))))
+	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/devices/{deviceId}", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.UpdateDevice))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/devices/{deviceId}/rotate", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.RotateDeviceSubscriptionToken))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/devices/{deviceId}/revoke", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.RevokeDevice))))
 	mux.HandleFunc("GET /api/v1/subscriptions/{token}", vpnAccountsHandler.GetPublicSubscription)
 	mux.HandleFunc("GET /sub/{token}", vpnAccountsHandler.GetClientSubscription)
 

@@ -6,11 +6,23 @@ import (
 )
 
 const (
-	ClientTypeHiddify  = "hiddify"
-	ClientTypeV2RayN   = "v2rayn"
+	// Officially supported client identities. RouteGate supports protocols
+	// broadly, but officially supports VPN clients selectively: Hiddify is the
+	// primary/recommended client, v2rayN/v2rayNG are the officially supported
+	// desktop/Android members of the 2dust client family, and everything else
+	// (V2RayTun, V2Box, Streisand, FoXray, Amnezia, ...) uses Generic
+	// best-effort connectivity rather than a bespoke adapter.
+	ClientTypeHiddify = "hiddify"
+	ClientTypeV2RayN  = "v2rayn"
+	ClientTypeV2RayNG = "v2rayng"
+	ClientTypeSingBox = "sing-box"
+	ClientTypeGeneric = "generic"
+
+	// Deprecated (RG-115B): retained only so legacy persisted vpn_client_profiles
+	// rows normalize instead of erroring. New devices must not select these;
+	// normalizeClientType maps them to ClientTypeGeneric.
 	ClientTypeV2RayTun = "v2raytun"
 	ClientTypeV2Box    = "v2box"
-	ClientTypeSingBox  = "sing-box"
 	ClientTypeOther    = "other"
 
 	ClientCompatibilityFullSmartRouting = "full_smart_routing"
@@ -51,9 +63,13 @@ type ClientCompatibilityAssessment struct {
 }
 
 func init() {
-	// RG-115A extends the persisted client_type vocabulary without a schema
-	// migration because vpn_client_profiles.client_type is already textual.
+	// RG-115A/RG-115B extended the persisted client_type vocabulary without a
+	// schema migration because vpn_client_profiles.client_type is already
+	// textual. Keep legacy values accepted for existing rows while devices
+	// (RG-116) use their own, narrower allow-list.
 	allowedClientTypes[ClientTypeHiddify] = struct{}{}
+	allowedClientTypes[ClientTypeV2RayNG] = struct{}{}
+	allowedClientTypes[ClientTypeGeneric] = struct{}{}
 }
 
 // MarshalJSON enriches the existing client-connection API without changing
@@ -112,38 +128,25 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 			},
 			Limitations: []string{"Standard URI subscriptions do not carry RouteGate sing-box routing rules; matching routing/DNS behavior must be configured in v2rayN."},
 		}
-	case ClientTypeV2Box:
+	case ClientTypeV2RayNG:
 		return ClientCompatibilityAssessment{
-			ClientType: ClientTypeV2Box, DisplayName: "V2Box", Status: ClientCompatibilitySetupRequired,
+			ClientType: ClientTypeV2RayNG, DisplayName: "v2rayNG", Status: ClientCompatibilitySetupRequired,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64, RequiresClientSetup: true,
 			Capabilities: ClientCapabilities{
 				URISubscriptionImport: true, TUNMode: true, DirectRouting: true, VPNRouting: true,
 				BlockRouting: true, DNSRouting: true, SplitDNS: true, ClientLocalRules: true,
 				SubscriptionRefresh: true, ImportedRulePrecedence: ImportedRulePrecedenceClient,
 			},
-			Guidance: []string{"Configure V2Box routing and DNS locally so DIRECT/VPN/BLOCK behavior matches the RouteGate routing profile."},
-			Limitations: []string{"RouteGate cannot guarantee imported-rule precedence through a standard URI subscription; local V2Box rules may override routing intent."},
-		}
-	case ClientTypeV2RayTun:
-		return ClientCompatibilityAssessment{
-			ClientType: ClientTypeV2RayTun, DisplayName: "V2RayTun", Status: ClientCompatibilityPartial,
-			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64, RequiresClientSetup: true,
-			Capabilities: ClientCapabilities{
-				URISubscriptionImport: true, TUNMode: true, DirectRouting: true, VPNRouting: true,
-				BlockRouting: true, DNSRouting: true, SplitDNS: true, ClientLocalRules: true,
-				SubscriptionRefresh: true, SubscriptionRoutingPolicy: true,
-				ImportedRulePrecedence: ImportedRulePrecedenceRouteGate,
-			},
-			Guidance: []string{"RouteGate sends the Routing Profile through V2RayTun's subscription routing header. Verify TUN and DNS settings on the device when system-wide or split-DNS behavior is required."},
-			Limitations: []string{"Routing rules are subscription-managed, but V2RayTun TUN/DNS runtime settings remain client-side and can affect deterministic DNS behavior."},
+			Guidance:    []string{"v2rayNG is the Android member of the 2dust client family. Configure routing/DNS locally so DIRECT/VPN/BLOCK behavior matches the RouteGate routing profile."},
+			Limitations: []string{"Standard URI subscriptions do not carry RouteGate routing rules; matching routing/DNS behavior must be configured in v2rayNG."},
 		}
 	default:
 		return ClientCompatibilityAssessment{
-			ClientType: ClientTypeOther, DisplayName: "Other / unknown", Status: ClientCompatibilityConnectionOnly,
+			ClientType: ClientTypeGeneric, DisplayName: "Generic", Status: ClientCompatibilityConnectionOnly,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatAuto, RequiresClientSetup: true,
 			Capabilities: ClientCapabilities{URISubscriptionImport: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown},
-			Guidance: []string{"Select a known VPN client profile before relying on RouteGate smart routing."},
-			Limitations: []string{"Only protocol-level connectivity is assumed for unknown clients."},
+			Guidance:     []string{"Standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto connection material only. Select Hiddify, v2rayN, or v2rayNG for RouteGate-managed routing."},
+			Limitations:  []string{"Only protocol-level connectivity is assumed for generic/unrecognized clients; RouteGate routing/DNS policy is not reproduced."},
 		}
 	}
 }
@@ -168,7 +171,7 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		return assessment
 	}
 
-	if normalizedClient == ClientTypeV2RayN || normalizedClient == ClientTypeV2Box || normalizedClient == ClientTypeV2RayTun {
+	if normalizedClient == ClientTypeV2RayN || normalizedClient == ClientTypeV2RayNG {
 		if !protocolSupportsShareLinkSubscription(protocol) {
 			assessment.Status = ClientCompatibilityConnectionOnly
 			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
@@ -191,13 +194,17 @@ func protocolSupportsShareLinkSubscription(protocol string) bool {
 	}
 }
 
+// normalizeClientType maps any persisted or requested value to one of the
+// officially supported client identities. Anything RouteGate does not treat
+// as a first-class client (unknown values, and the retired V2RayTun/V2Box
+// bespoke adapters) normalizes to Generic rather than erroring.
 func normalizeClientType(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
-	case ClientTypeHiddify, ClientTypeV2RayN, ClientTypeV2RayTun, ClientTypeV2Box, ClientTypeSingBox:
+	case ClientTypeHiddify, ClientTypeV2RayN, ClientTypeV2RayNG, ClientTypeSingBox:
 		return value
 	default:
-		return ClientTypeOther
+		return ClientTypeGeneric
 	}
 }
 
@@ -206,12 +213,10 @@ func detectClientTypeFromUserAgent(userAgent string) string {
 	switch {
 	case strings.Contains(ua, "hiddify"):
 		return ClientTypeHiddify
+	case strings.Contains(ua, "v2rayng"):
+		return ClientTypeV2RayNG
 	case strings.Contains(ua, "v2rayn"):
 		return ClientTypeV2RayN
-	case strings.Contains(ua, "v2raytun") || strings.Contains(ua, "v2ray-tun"):
-		return ClientTypeV2RayTun
-	case strings.Contains(ua, "v2box"):
-		return ClientTypeV2Box
 	case strings.Contains(ua, "sing-box") || strings.Contains(ua, "singbox"):
 		return ClientTypeSingBox
 	default:
@@ -221,13 +226,13 @@ func detectClientTypeFromUserAgent(userAgent string) string {
 
 func resolveSubscriptionClientType(profile ClientProfile, userAgent string) string {
 	selected := normalizeClientType(profile.ClientType)
-	if selected != ClientTypeOther {
+	if selected != ClientTypeGeneric {
 		return selected
 	}
 	if detected := detectClientTypeFromUserAgent(userAgent); detected != "" {
 		return detected
 	}
-	return ClientTypeOther
+	return ClientTypeGeneric
 }
 
 func preferredDeliveryFormatForClient(clientType, protocol string) string {

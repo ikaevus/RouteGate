@@ -33,6 +33,8 @@ type accountRepository interface {
 	FindActiveSubscriptionTokenByHash(context.Context, string) (SubscriptionToken, error)
 	GetSubscriptionProfileByAccountID(context.Context, string) (SubscriptionProfile, error)
 	MarkSubscriptionTokenUsed(context.Context, string) error
+	GetDeviceByID(context.Context, string) (Device, error)
+	MarkDeviceUsed(context.Context, string) error
 }
 
 type Handler struct {

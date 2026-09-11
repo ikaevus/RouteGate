@@ -141,6 +141,14 @@ func (f *fakeAccountRepository) MarkSubscriptionTokenUsed(_ context.Context, id 
 	return f.markUsedErr
 }
 
+func (f *fakeAccountRepository) GetDeviceByID(context.Context, string) (Device, error) {
+	return Device{}, pgx.ErrNoRows
+}
+
+func (f *fakeAccountRepository) MarkDeviceUsed(context.Context, string) error {
+	return nil
+}
+
 func newTestHandler(repo *fakeAccountRepository) *Handler {
 	return &Handler{
 		logger:                    slog.New(slog.NewTextHandler(io.Discard, nil)),
