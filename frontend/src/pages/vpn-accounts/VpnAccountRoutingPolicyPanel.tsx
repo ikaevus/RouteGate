@@ -3,19 +3,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getNodeGroups } from '../../entities/nodeGroup/api/nodeGroupApi';
 import { getRoutingProfiles } from '../../entities/routingProfile/api/routingProfileApi';
+import { getServers } from '../../entities/server/api/serverApi';
 import {
   assignVpnAccountNodeGroup,
   assignVpnAccountRoutingProfile,
   applyVpnAccountAutomaticSelection,
   clearVpnAccountNodeGroup,
   clearVpnAccountRoutingProfile,
-  getVpnAccountClientConnection,
   getVpnAccountRoutingPolicy,
   previewVpnAccountAutomaticSelection,
   updateVpnAccountAutomaticSelection,
   type RoutingProfileSource,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
-import { getClientCompatibility } from '../../entities/vpnAccount/model/clientCompatibility';
+import { getVpnAccount, updateVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import './vpnAccountRoutingPolicy.css';
@@ -56,13 +56,14 @@ function getCopy() {
       unsavedNodeGroup: 'Группа узлов изменена, но ещё не сохранена.',
       saveNodeGroupFirst: 'Сначала сохраните выбранную группу узлов. Предпросмотр и применение используют только сохранённую группу.',
       savePolicyFirst: 'Настройки автоматического выбора изменены. Сначала сохраните их, чтобы предпросмотр и применение использовали именно эти значения.',
-      clientCompatibility: t('clientCompatibility.smartRoutingTitle'),
-      full: t('clientCompatibility.full'),
-      setup: t('clientCompatibility.setup'),
-      partial: t('clientCompatibility.partial'),
-      connectionOnly: t('clientCompatibility.connectionOnly'),
-      noSilentDowngrade: t('clientCompatibility.noSilentDowngrade'),
-      compatibilityUnavailable: t('clientCompatibility.unavailable'),
+      placementTitle: 'Размещение',
+      placementSubtitle: 'На каком узле обслуживается этот аккаунт.',
+      currentNode: 'Текущий узел',
+      saveNode: 'Назначить узел',
+      nodeSaved: 'Узел обновлён.',
+      nodeSaveError: 'Не удалось назначить узел.',
+      configNotice: 'Изменение затронуло конфигурацию VPN-сервера и требует нового развёртывания.',
+      openDeploy: 'Открыть развёртывание конфигов →',
     } as const;
   }
 
@@ -70,13 +71,14 @@ function getCopy() {
     unsavedNodeGroup: 'The node group has changed but is not saved yet.',
     saveNodeGroupFirst: 'Save the selected node group first. Preview and Apply use only the persisted group.',
     savePolicyFirst: 'Automatic-selection settings have changed. Save them first so Preview and Apply use these exact values.',
-    clientCompatibility: t('clientCompatibility.smartRoutingTitle'),
-    full: t('clientCompatibility.full'),
-    setup: t('clientCompatibility.setup'),
-    partial: t('clientCompatibility.partial'),
-    connectionOnly: t('clientCompatibility.connectionOnly'),
-    noSilentDowngrade: t('clientCompatibility.noSilentDowngrade'),
-    compatibilityUnavailable: t('clientCompatibility.unavailable'),
+    placementTitle: 'Placement',
+    placementSubtitle: 'Which node currently serves this account.',
+    currentNode: 'Current node',
+    saveNode: 'Assign node',
+    nodeSaved: 'Node updated.',
+    nodeSaveError: 'Failed to assign the node.',
+    configNotice: 'The change affected a VPN server configuration and requires a new deployment.',
+    openDeploy: 'Open Config Deploy →',
   } as const;
 }
 
@@ -88,18 +90,27 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const [automaticSelectionEnabled, setAutomaticSelectionEnabled] = useState(false);
   const [allowDegraded, setAllowDegraded] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(300);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
+  const [serverId, setServerId] = useState('');
+  const [nodeMessage, setNodeMessage] = useState('');
+  const [nodeError, setNodeError] = useState('');
+  const [nodeConfigChanged, setNodeConfigChanged] = useState(false);
 
   const policyQuery = useQuery({
     queryKey: ['vpn-account-routing-policy', accountId],
     queryFn: () => getVpnAccountRoutingPolicy(accountId),
   });
-  const clientConnectionQuery = useQuery({
-    queryKey: ['vpn-account-client-connection', accountId],
-    queryFn: () => getVpnAccountClientConnection(accountId),
+  const accountQuery = useQuery({
+    queryKey: ['vpn-account', accountId],
+    queryFn: () => getVpnAccount(accountId),
   });
   const profilesQuery = useQuery({ queryKey: ['routing-profiles'], queryFn: getRoutingProfiles });
   const groupsQuery = useQuery({ queryKey: ['node-groups'], queryFn: getNodeGroups });
+  const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
+
+  useEffect(() => {
+    setServerId(accountQuery.data?.serverId ?? '');
+  }, [accountQuery.data]);
 
   const savedNodeGroupId = policyQuery.data?.nodeGroup?.id ?? '';
   const savedSelectionPolicy = policyQuery.data?.automaticSelectionPolicy;
@@ -158,6 +169,29 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
     mutationFn: () => applyVpnAccountAutomaticSelection(accountId),
     onSuccess: refreshPolicy,
   });
+  const nodeMutation = useMutation({
+    mutationFn: () => updateVpnAccount(accountId, { serverId }),
+    onSuccess: async (updated) => {
+      setNodeMessage(copy.nodeSaved);
+      setNodeError('');
+      setNodeConfigChanged(true);
+      setServerId(updated.serverId ?? '');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
+        queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
+        refreshPolicy(),
+      ]);
+    },
+    onError: () => {
+      setNodeMessage('');
+      setNodeError(copy.nodeSaveError);
+    },
+  });
+
+  function saveNode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    nodeMutation.mutate();
+  }
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,19 +209,10 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   }
 
   const policy = policyQuery.data;
-  const compatibility = getClientCompatibility(clientConnectionQuery.data);
-  const compatibilityLabel = compatibility?.status === 'full_smart_routing'
-    ? copy.full
-    : compatibility?.status === 'client_setup_required'
-      ? copy.setup
-      : compatibility?.status === 'partial_compatibility'
-        ? copy.partial
-        : copy.connectionOnly;
-  const compatibilityClass = compatibility?.status === 'full_smart_routing' ? 'form-message-success' : 'form-message-warning';
-  const routingProfileNeedsClientWarning = Boolean(policy?.effectiveRoutingProfile)
-    && policy?.clientRoutingSupported
-    && compatibility?.status !== 'full_smart_routing';
   const hasError = policyQuery.isError || profilesQuery.isError || groupsQuery.isError;
+  const currentServerName = serversQuery.data?.items.find((server) => server.id === accountQuery.data?.serverId)?.name
+    ?? accountQuery.data?.serverId
+    ?? t('vpnAccounts.noServerAssignment');
 
   return (
     <div className="panel feature-detail-panel vpn-account-routing-policy-panel">
@@ -202,6 +227,38 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       <div className="panel-collapsible-body" hidden={!isOpen}>
       {hasError && <div className="form-message form-message-error">{t('routingPolicy.loadError')}</div>}
       {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
+
+      <form className="routing-policy-card vpn-account-placement-card" onSubmit={saveNode}>
+        <div>
+          <strong>{copy.placementTitle}</strong>
+          <p className="routing-policy-automation-note">{copy.placementSubtitle}</p>
+        </div>
+        <div className="routing-policy-effective">
+          <span>{copy.currentNode}</span>
+          <strong>{currentServerName}</strong>
+        </div>
+        <label className="field">
+          <span>{t('vpnAccounts.serverAssignment')}</span>
+          <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
+            <option value="">{t('vpnAccounts.noServerAssignment')}</option>
+            {(serversQuery.data?.items ?? []).map((server) => (
+              <option key={server.id} value={server.id}>{server.name || server.id}</option>
+            ))}
+          </select>
+        </label>
+        <div className="form-actions">
+          <button className="small-button" type="submit" disabled={nodeMutation.isPending || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
+        </div>
+        {nodeMessage && <div className="form-message form-message-success">{nodeMessage}</div>}
+        {nodeError && <div className="form-message form-message-error">{nodeError}</div>}
+        {nodeConfigChanged && (
+          <div className="form-message vpn-account-config-notice">
+            <span>{copy.configNotice}</span>
+            <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
+          </div>
+        )}
+      </form>
+
       {policy && (
         <div className="vpn-account-routing-policy-grid">
           <form className="routing-policy-card" onSubmit={saveProfile}>
@@ -218,19 +275,6 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
               <small>{t('routingPolicy.source', { source: sourceLabel(policy.routingProfileSource) })}</small>
             </div>
 
-            {clientConnectionQuery.isError && (
-              <div className="form-message form-message-warning">{copy.compatibilityUnavailable}</div>
-            )}
-            {compatibility && (
-              <div className={`form-message ${compatibilityClass}`}>
-                <strong>{copy.clientCompatibility}: {compatibility.displayName} · {compatibilityLabel}</strong>
-                {(compatibility.guidance ?? []).map((item) => <div key={item}>• {item}</div>)}
-                {(compatibility.limitations ?? []).map((item) => <div key={item}>• {item}</div>)}
-              </div>
-            )}
-            {routingProfileNeedsClientWarning && (
-              <div className="form-message form-message-warning">{copy.noSilentDowngrade}</div>
-            )}
             {!policy.clientRoutingSupported && <div className="form-message form-message-warning">{t('routingPolicy.clientRoutingUnsupported')}</div>}
             <div className="form-actions">
               <button className="small-button" type="submit" disabled={profileMutation.isPending}>{routingProfileId ? t('routingPolicy.saveProfile') : t('routingPolicy.clearProfile')}</button>

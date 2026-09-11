@@ -420,3 +420,12 @@
     grid-template-columns: 32px minmax(0, 1fr) auto;
   }
 }
+
+.vpn-account-advanced-heading {
+  margin: 8px 4px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--rg-text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
