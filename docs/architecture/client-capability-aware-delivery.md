@@ -30,18 +30,17 @@ The client capability layer must never create a second routing-policy engine. It
 
 ## Client identity
 
-The persisted `vpn_client_profiles.client_type` value is the primary source of client identity.
+The persisted `client_type` value is the primary source of client identity — on `vpn_account_devices.client_type` per device (RG-116), or on the legacy account-level `vpn_client_profiles.client_type` for the underlying protocol-rendering profile.
 
-Initial explicit values are:
+Officially supported values (RouteGate supports protocols broadly, but clients selectively; see [RG-116](access-devices.md)):
 
-- `hiddify`
+- `hiddify` (recommended)
 - `v2rayn`
-- `v2box`
-- `v2raytun`
+- `v2rayng`
 - `sing-box`
-- `other`
+- `generic`
 
-No database migration is required because the field is already textual.
+Legacy values `v2raytun`, `v2box`, and `other` remain accepted on existing persisted rows for backward compatibility but normalize to `generic` — RouteGate does not maintain bespoke adapters for them. No database migration was required for this vocabulary because the field is already textual.
 
 Automatic detection is deliberately conservative. If the saved profile is `other`, RouteGate may recognize an unambiguous client `User-Agent`. Explicit administrator selection always wins over automatic detection.
 
@@ -84,13 +83,11 @@ Only protocol-level connectivity is assumed. RouteGate does not claim routing-po
 
 `GET /sub/{token}` remains the sole user-facing RG-115 credential boundary.
 
-When `format` is omitted or `auto`, RG-115A selects a representation from the resolved client profile:
+When `format` is omitted or `auto`, RG-115A selects a representation from the resolved client identity (device client type, falling back to the account-level profile and then User-Agent detection):
 
 - Hiddify / sing-box on VLESS: full sing-box JSON rendered by the existing `RenderSingBoxClientConfig` path;
-- v2rayN: standard Base64 share-link subscription;
-- V2Box: standard Base64 share-link subscription;
-- V2RayTun: standard Base64 share-link subscription plus its supported subscription `routing` header;
-- unknown clients: conservative RG-115 `auto` behavior.
+- v2rayN / v2rayNG: standard Base64 share-link subscription;
+- Generic / unknown clients: conservative RG-115 `auto` behavior.
 
 An explicit `?format=` request still overrides automatic representation selection for compatibility and diagnostics.
 
@@ -106,39 +103,22 @@ The existing RouteGate renderer already translates Routing Profile actions to si
 
 The adapter therefore contains no routing-policy decisions of its own.
 
-## V2RayTun adapter
+## v2rayN and v2rayNG
 
-V2RayTun supports a subscription `routing` header containing Base64-encoded routing JSON. Its documentation states that subscription routing takes precedence over routing configured in the application and Direct Service.
-
-RouteGate mechanically translates the already-resolved Routing Profile:
-
-- RouteGate `DIRECT` -> V2RayTun `direct`
-- RouteGate `VPN` -> V2RayTun `proxy`
-- RouteGate `BLOCK` -> V2RayTun `block`
-- exact domains -> `full:`
-- suffixes -> `domain:`
-- keywords -> `keyword:`
-- GeoSite -> `geosite:`
-- CIDRs remain CIDRs
-- GeoIP -> `geoip:`
-
-This adapter does not decide which traffic should be direct/proxied/blocked; it only serializes the existing decision.
-
-V2RayTun remains `partial_compatibility` because TUN and DNS runtime settings remain client-side and may affect deterministic DNS/split-DNS behavior.
-
-## v2rayN and V2Box
-
-Both clients expose strong local routing and DNS functionality, but RouteGate currently delivers standard share-link subscriptions to them. That representation carries connection material, not the complete RouteGate Routing Profile.
+Both clients (the 2dust family) expose strong local routing and DNS functionality, but RouteGate currently delivers standard share-link subscriptions to them by default. That representation carries connection material, not the complete RouteGate Routing Profile; the separate `v2rayn-routing` native adapter (see `docs/architecture/client-compatibility-matrix.md`) carries the policy as an additional import.
 
 They are therefore classified as `client_setup_required`. Admin UI guidance must make this visible rather than silently degrading to ordinary VPN connectivity.
+
+## Generic clients (V2RayTun, V2Box, and others)
+
+RouteGate does not maintain a bespoke adapter, routing header, or deep-link flow for these clients (retired RG-115B work; see [RG-116](access-devices.md#rg-115b-retirement)). They receive standard connection material and are classified `connection_only`.
 
 ## Subscription metadata
 
 Known clients receive compatible subscription metadata where supported:
 
 - `Profile-Title` uses the `base64:` prefix when Base64 encoded;
-- Hiddify and V2RayTun receive a `Profile-Update-Interval` hint;
-- V2RayTun receives `Routing` when a RouteGate Routing Profile is present;
+- Hiddify receives a `Profile-Update-Interval` hint;
 - RouteGate diagnostic headers expose resolved client type, compatibility state, and selected delivery representation.
 
 The RG-115 no-store/no-referrer and token-log protections remain unchanged.
