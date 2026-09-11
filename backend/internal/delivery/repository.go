@@ -13,6 +13,7 @@ import (
 const deliveryColumns = `
 	id::text,
 	COALESCE(vpn_account_id::text, ''),
+	COALESCE(device_id::text, ''),
 	channel,
 	provider,
 	recipient,
@@ -37,6 +38,7 @@ const deliveryColumns = `
 const deliveryColumnsD = `
 	d.id::text,
 	COALESCE(d.vpn_account_id::text, ''),
+	COALESCE(d.device_id::text, ''),
 	d.channel,
 	d.provider,
 	d.recipient,
@@ -81,6 +83,7 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Delivery, b
 	delivery, err := scanDelivery(tx.QueryRow(ctx, `
 		INSERT INTO deliveries (
 			vpn_account_id,
+			device_id,
 			channel,
 			provider,
 			recipient,
@@ -93,20 +96,22 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Delivery, b
 		)
 		VALUES (
 			NULLIF($1, '')::uuid,
-			$2,
+			NULLIF($2, '')::uuid,
 			$3,
 			$4,
 			$5,
 			$6,
 			$7,
 			$8,
-			NULLIF($9, ''),
-			NULLIF($10, '')::uuid
+			$9,
+			NULLIF($10, ''),
+			NULLIF($11, '')::uuid
 		)
 		ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
 		RETURNING `+deliveryColumns+`
 	`,
 		input.VPNAccountID,
+		input.DeviceID,
 		input.Channel,
 		input.Provider,
 		input.Recipient,
@@ -286,6 +291,7 @@ func (r *Repository) RecoverSendingAfterRestart(ctx context.Context) ([]Delivery
 
 func normalizeCreateInput(input CreateInput) CreateInput {
 	input.VPNAccountID = strings.TrimSpace(input.VPNAccountID)
+	input.DeviceID = strings.TrimSpace(input.DeviceID)
 	input.Channel = strings.TrimSpace(input.Channel)
 	input.Provider = strings.TrimSpace(input.Provider)
 	input.Recipient = strings.TrimSpace(input.Recipient)
@@ -314,6 +320,7 @@ func scanDelivery(row scanner) (Delivery, error) {
 	if err := row.Scan(
 		&delivery.ID,
 		&delivery.VPNAccountID,
+		&delivery.DeviceID,
 		&delivery.Channel,
 		&delivery.Provider,
 		&delivery.Recipient,

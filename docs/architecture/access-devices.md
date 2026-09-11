@@ -49,6 +49,45 @@ The pre-existing account-level subscription-token endpoints
 for backward compatibility. New devices are managed exclusively through the
 new `/vpn-accounts/{id}/devices` endpoints.
 
+## Access & Devices owns Send
+
+The device card is the only place an administrator sends access; there is no
+separate account-level "Send" concept in the UI. This reuses the existing
+delivery stack end to end - providers, the durable queue/worker, retry,
+history, Telegram pairing, templates - it does not duplicate any of it.
+
+The one real constraint is RG-115 itself: a subscription token is stored
+hash-only and its plaintext is returned exactly once, on issue/rotate. A
+device's Send button is therefore enabled only while the frontend still
+holds that plaintext URL in memory (immediately after Create or Rotate) and
+passes it explicitly in the send request. The backend:
+
+1. confirms the device belongs to the account and is active;
+2. re-hashes the caller-supplied URL's token and confirms it matches the
+   device's own current active token hash (`delivery.validateDeviceAccessRequest`)
+   - this is what stops the endpoint from being used to relay an arbitrary
+   URL through RouteGate's mail/Telegram sender;
+3. stashes the plaintext in `deviceAccessMaterialStore`, an in-memory,
+   process-local, ~30-minute-TTL map keyed by the new delivery row's ID
+   (`backend/internal/delivery/device_access_material.go`) - never written
+   to Postgres, a log, or a delivery history record;
+4. enqueues a normal `Delivery` row (now carrying a `device_id`, metadata
+   only) that the existing worker picks up and resolves through
+   `VPNAccessResolver`, which serves device-scoped deliveries from that
+   store instead of re-deriving material from account credentials.
+
+If the process restarts or the entry's TTL elapses before the worker sends
+it, resolution fails permanently with `device_access_link_unavailable`
+rather than fabricating or recovering a URL - the admin re-sends from the
+still-revealed link, or rotates first. This is a deliberate trade-off: it
+keeps device-scoped Send fully within the "never persist a bearer token"
+rule at the cost of not supporting delivery *after* the reveal window has
+passed for that exact link (rotating always produces a fresh, sendable one).
+
+Delivery history keeps working unchanged; each device's card shows only the
+history rows tagged with its own `device_id`, so one device's send activity
+is never visible on another device's card.
+
 ## Client support strategy
 
 RouteGate supports protocols broadly, but supports VPN clients selectively:
@@ -56,9 +95,15 @@ RouteGate supports protocols broadly, but supports VPN clients selectively:
 1. **Hiddify** — primary/recommended client. Full RouteGate experience
    (sing-box config + Routing Profile) where the effective protocol is VLESS.
 2. **v2rayN** — officially supported desktop client (2dust family).
-   Connection/subscription support; routing may require local client setup.
-3. **v2rayNG** — officially supported Android client (2dust family). Same
-   compatibility posture as v2rayN.
+   Connection/subscription support, plus a manually-validated native
+   routing-rules import (`format=v2rayn-routing`); routing may still require
+   local client setup.
+3. **v2rayNG** — officially selectable Android client (2dust family) for
+   standard connection/subscription delivery. **Not** promoted to the same
+   routing tier as v2rayN merely because it shares a client family: its
+   native routing-rules import has not been independently validated on a
+   real client, so it stays `connection_only` (see
+   `client-compatibility-matrix.md`) until that validation happens.
 4. **Generic** — standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto
    connection material. Best-effort connectivity only; no RouteGate
    routing/DNS policy guarantee.

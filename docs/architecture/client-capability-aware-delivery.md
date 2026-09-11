@@ -103,11 +103,17 @@ The existing RouteGate renderer already translates Routing Profile actions to si
 
 The adapter therefore contains no routing-policy decisions of its own.
 
-## v2rayN and v2rayNG
+## v2rayN
 
-Both clients (the 2dust family) expose strong local routing and DNS functionality, but RouteGate currently delivers standard share-link subscriptions to them by default. That representation carries connection material, not the complete RouteGate Routing Profile; the separate `v2rayn-routing` native adapter (see `docs/architecture/client-compatibility-matrix.md`) carries the policy as an additional import.
+v2rayN exposes strong local routing and DNS functionality, but RouteGate currently delivers standard share-link subscriptions to it by default. That representation carries connection material, not the complete RouteGate Routing Profile; the separate `v2rayn-routing` native adapter (see `docs/architecture/client-compatibility-matrix.md`) carries the policy as an additional import, and this has been manually validated.
 
-They are therefore classified as `client_setup_required`. Admin UI guidance must make this visible rather than silently degrading to ordinary VPN connectivity.
+v2rayN is therefore classified as `client_setup_required`. Admin UI guidance must make this visible rather than silently degrading to ordinary VPN connectivity.
+
+## v2rayNG
+
+v2rayNG (the Android member of the same 2dust client family) also receives standard share-link subscriptions by default, but RouteGate does **not** offer it the `v2rayn-routing` native adapter and does not claim `client_setup_required` for it: that would assume v2rayNG's native routing-rules import behaves like v2rayN's without having independently validated it on a real client. Per RG-116's "no silent downgrade" rule, family membership is not evidence of compatibility.
+
+v2rayNG stays `connection_only` until a real client validates the same routing behavior, at which point this doc, the client capability model, and the compatibility matrix should be updated together.
 
 ## Generic clients (V2RayTun, V2Box, and others)
 

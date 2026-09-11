@@ -15,7 +15,6 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 	}{
 		{ClientTypeHiddify, ClientCompatibilityFullSmartRouting, SubscriptionDeliveryFormatSingBox, false},
 		{ClientTypeV2RayN, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
-		{ClientTypeV2RayNG, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
 	}
 	for _, test := range tests {
 		t.Run(test.clientType, func(t *testing.T) {
@@ -30,6 +29,28 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 	}
 	if got := clientCompatibilityFor(ClientTypeGeneric).Status; got != ClientCompatibilityConnectionOnly {
 		t.Fatalf("generic status = %q, want connection_only", got)
+	}
+}
+
+// TestV2RayNGRoutingCompatibilityStaysConservativeUntilValidated guards
+// against re-introducing the unvalidated claim that v2rayNG can consume the
+// same native routing-rules URL as v2rayN merely because both are 2dust
+// clients. Until that is independently validated on a real v2rayNG client,
+// "no silent downgrade" requires connection_only for RouteGate-managed
+// routing - standard subscription delivery may still be offered.
+func TestV2RayNGRoutingCompatibilityStaysConservativeUntilValidated(t *testing.T) {
+	assessment := clientCompatibilityFor(ClientTypeV2RayNG)
+	if assessment.Status != ClientCompatibilityConnectionOnly {
+		t.Fatalf("v2rayNG status = %q, want connection_only until routing is validated", assessment.Status)
+	}
+	if assessment.Capabilities.SubscriptionRoutingPolicy {
+		t.Fatal("v2rayNG must not claim SubscriptionRoutingPolicy support")
+	}
+	if assessment.Capabilities.ImportedRulePrecedence == ImportedRulePrecedenceClient || assessment.Capabilities.ImportedRulePrecedence == ImportedRulePrecedenceRouteGate {
+		t.Fatalf("v2rayNG imported rule precedence = %q, want unknown (no validated routing import claim)", assessment.Capabilities.ImportedRulePrecedence)
+	}
+	if assessment.PreferredDeliveryFormat != SubscriptionDeliveryFormatBase64 {
+		t.Fatalf("v2rayNG preferred format = %q, want base64 (standard subscription delivery is still valid)", assessment.PreferredDeliveryFormat)
 	}
 }
 
@@ -57,9 +78,6 @@ func TestPreferredDeliveryFormatUsesFullConfigOnlyForVLESS(t *testing.T) {
 	if got := preferredDeliveryFormatForClient(ClientTypeV2RayN, ClientProtocolWireGuard); got != SubscriptionDeliveryFormatAuto {
 		t.Fatalf("v2rayN WireGuard format = %q", got)
 	}
-	if got := preferredDeliveryFormatForClient(ClientTypeV2RayNG, ClientProtocolMTProto); got != SubscriptionDeliveryFormatAuto {
-		t.Fatalf("v2rayNG MTProto format = %q", got)
-	}
 }
 
 func TestCompatibilityDowngradesWhenProtocolCannotCarryPolicy(t *testing.T) {
@@ -71,7 +89,6 @@ func TestCompatibilityDowngradesWhenProtocolCannotCarryPolicy(t *testing.T) {
 		{"Hiddify WireGuard", ClientTypeHiddify, ClientProtocolWireGuard},
 		{"sing-box Hysteria2", ClientTypeSingBox, ClientProtocolHysteria2},
 		{"v2rayN WireGuard", ClientTypeV2RayN, ClientProtocolWireGuard},
-		{"v2rayNG MTProto", ClientTypeV2RayNG, ClientProtocolMTProto},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -96,8 +113,8 @@ func TestCompatibilityKeepsValidatedProtocolBehavior(t *testing.T) {
 	if got := clientCompatibilityForProtocol(ClientTypeV2RayN, ClientProtocolShadowsocks).Status; got != ClientCompatibilitySetupRequired {
 		t.Fatalf("v2rayN Shadowsocks status = %q", got)
 	}
-	if got := clientCompatibilityForProtocol(ClientTypeV2RayNG, ClientProtocolShadowsocks).Status; got != ClientCompatibilitySetupRequired {
-		t.Fatalf("v2rayNG Shadowsocks status = %q", got)
+	if got := clientCompatibilityForProtocol(ClientTypeV2RayNG, ClientProtocolShadowsocks).Status; got != ClientCompatibilityConnectionOnly {
+		t.Fatalf("v2rayNG Shadowsocks status = %q, want connection_only (routing not validated)", got)
 	}
 }
 

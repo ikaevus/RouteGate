@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -146,4 +147,234 @@ func TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken(t *testing
 	`, accountID, secondDeviceID); err == nil {
 		t.Fatal("expected duplicate active token for the same device to violate the per-device uniqueness index")
 	}
+}
+
+// TestVpnAccountDevicesLegacyNullDeviceTokenInvariant verifies migration
+// 000149 enforces, at the database level, both halves of the post-RG-116
+// uniqueness contract: one active token per device, AND one active
+// device_id-IS-NULL ("legacy") token per account for the pre-existing
+// account-level subscription-token endpoints, which remain supported. A
+// legacy token and one or more device tokens may coexist on the same
+// account; that is an intentional backward-compatibility allowance, not an
+// accident.
+func TestVpnAccountDevicesLegacyNullDeviceTokenInvariant(t *testing.T) {
+	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	pool, err := Connect(ctx, databaseURL, logger)
+	if err != nil {
+		t.Fatalf("connect to test PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	resetPublicSchema(t, ctx, pool)
+	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+		t.Fatalf("apply current migrations: %v", err)
+	}
+
+	var accountID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_accounts (username, protocol, display_name, status)
+		VALUES ('rg116-legacy-invariant-fixture', 'sing-box', 'RG-116 legacy invariant fixture', 'active')
+		RETURNING id::text
+	`).Scan(&accountID); err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+
+	// One legacy (device_id IS NULL) active token, issued the same way the
+	// pre-existing account-level subscription-token endpoints do.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO vpn_subscription_tokens (vpn_account_id, token_hash, status)
+		VALUES ($1::uuid, 'legacy-invariant-hash-1', 'active')
+	`, accountID); err != nil {
+		t.Fatalf("create first legacy token: %v", err)
+	}
+
+	// A second legacy active token on the SAME account must be rejected: at
+	// most one device_id-IS-NULL active token per account.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO vpn_subscription_tokens (vpn_account_id, token_hash, status)
+		VALUES ($1::uuid, 'legacy-invariant-hash-2', 'active')
+	`, accountID); err == nil {
+		t.Fatal("expected a second active legacy (device_id IS NULL) token on the same account to violate the DB-level invariant")
+	}
+
+	// A device-scoped active token on the SAME account must coexist fine
+	// alongside the still-active legacy token: legacy and per-device
+	// uniqueness are independent invariants by design.
+	var deviceID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_account_devices (vpn_account_id, name, client_type, device_type)
+		VALUES ($1::uuid, 'Coexisting device', 'hiddify', 'ios')
+		RETURNING id::text
+	`, accountID).Scan(&deviceID); err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO vpn_subscription_tokens (vpn_account_id, device_id, token_hash, status)
+		VALUES ($1::uuid, $2::uuid, 'legacy-invariant-device-hash', 'active')
+	`, accountID, deviceID); err != nil {
+		t.Fatalf("expected a device-scoped token to coexist with the account's active legacy token: %v", err)
+	}
+
+	var activeTokenCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM vpn_subscription_tokens WHERE vpn_account_id = $1::uuid AND status = 'active'
+	`, accountID).Scan(&activeTokenCount); err != nil {
+		t.Fatalf("count active tokens: %v", err)
+	}
+	if activeTokenCount != 2 {
+		t.Fatalf("active token count = %d, want 2 (one legacy + one device-scoped coexisting)", activeTokenCount)
+	}
+}
+
+// TestVpnAccountDevicesDownMigrationAbortsWhenUnrepresentable verifies the
+// 000149 down migration is fail-safe: it must abort atomically, before any
+// destructive change, when an account currently has more active tokens than
+// the pre-RG-116 schema (one active token per account, full stop) could
+// represent - rather than silently revoking a valid device/user credential
+// to force the rollback through.
+func TestVpnAccountDevicesDownMigrationAbortsWhenUnrepresentable(t *testing.T) {
+	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	pool, err := Connect(ctx, databaseURL, logger)
+	if err != nil {
+		t.Fatalf("connect to test PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	downSQL, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000149_vpn_account_devices.down.sql"))
+	if err != nil {
+		t.Fatalf("read down migration: %v", err)
+	}
+	// 000150 adds deliveries.device_id, a foreign key into vpn_account_devices.
+	// Rolling back 000149 alone (without first rolling back what was layered
+	// on top of it) would fail on that dependency regardless of the
+	// token-count preflight this test exercises, so roll back in the correct
+	// reverse order for the "succeeds" case below.
+	downSQL150, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000150_delivery_device_scope.down.sql"))
+	if err != nil {
+		t.Fatalf("read 000150 down migration: %v", err)
+	}
+
+	t.Run("aborts and changes nothing when unrepresentable", func(t *testing.T) {
+		resetPublicSchema(t, ctx, pool)
+		if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+			t.Fatalf("apply current migrations: %v", err)
+		}
+
+		var accountID string
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO vpn_accounts (username, protocol, display_name, status)
+			VALUES ('rg116-down-unsafe-fixture', 'sing-box', 'RG-116 down unsafe fixture', 'active')
+			RETURNING id::text
+		`).Scan(&accountID); err != nil {
+			t.Fatalf("create account: %v", err)
+		}
+		for _, name := range []string{"Device A", "Device B"} {
+			var deviceID string
+			if err := pool.QueryRow(ctx, `
+				INSERT INTO vpn_account_devices (vpn_account_id, name, client_type, device_type)
+				VALUES ($1::uuid, $2, 'hiddify', 'ios')
+				RETURNING id::text
+			`, accountID, name).Scan(&deviceID); err != nil {
+				t.Fatalf("create %s: %v", name, err)
+			}
+			if _, err := pool.Exec(ctx, `
+				INSERT INTO vpn_subscription_tokens (vpn_account_id, device_id, token_hash, status)
+				VALUES ($1::uuid, $2::uuid, $3, 'active')
+			`, accountID, deviceID, "down-unsafe-hash-"+name); err != nil {
+				t.Fatalf("issue token for %s: %v", name, err)
+			}
+		}
+
+		if _, err := pool.Exec(ctx, string(downSQL)); err == nil {
+			t.Fatal("expected the down migration to abort when an account has more active tokens than the old schema can represent")
+		}
+
+		var deviceCount int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM vpn_account_devices WHERE vpn_account_id = $1::uuid`, accountID).Scan(&deviceCount); err != nil {
+			t.Fatalf("count devices after aborted rollback: %v", err)
+		}
+		if deviceCount != 2 {
+			t.Fatalf("device count after aborted rollback = %d, want 2 (rollback must not have partially applied)", deviceCount)
+		}
+		var activeTokenCount int
+		if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM vpn_subscription_tokens WHERE vpn_account_id = $1::uuid AND status = 'active'`, accountID).Scan(&activeTokenCount); err != nil {
+			t.Fatalf("count active tokens after aborted rollback: %v", err)
+		}
+		if activeTokenCount != 2 {
+			t.Fatalf("active token count after aborted rollback = %d, want 2 (no credential must have been silently revoked)", activeTokenCount)
+		}
+	})
+
+	t.Run("succeeds when every account has at most one active token", func(t *testing.T) {
+		resetPublicSchema(t, ctx, pool)
+		if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+			t.Fatalf("apply current migrations: %v", err)
+		}
+
+		var accountID string
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO vpn_accounts (username, protocol, display_name, status)
+			VALUES ('rg116-down-safe-fixture', 'sing-box', 'RG-116 down safe fixture', 'active')
+			RETURNING id::text
+		`).Scan(&accountID); err != nil {
+			t.Fatalf("create account: %v", err)
+		}
+		var deviceID string
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO vpn_account_devices (vpn_account_id, name, client_type, device_type)
+			VALUES ($1::uuid, 'Only device', 'hiddify', 'ios')
+			RETURNING id::text
+		`, accountID).Scan(&deviceID); err != nil {
+			t.Fatalf("create device: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO vpn_subscription_tokens (vpn_account_id, device_id, token_hash, status)
+			VALUES ($1::uuid, $2::uuid, 'down-safe-hash', 'active')
+		`, accountID, deviceID); err != nil {
+			t.Fatalf("issue token: %v", err)
+		}
+
+		if _, err := pool.Exec(ctx, string(downSQL150)); err != nil {
+			t.Fatalf("roll back 000150 first (reverse order): %v", err)
+		}
+		if _, err := pool.Exec(ctx, string(downSQL)); err != nil {
+			t.Fatalf("expected the down migration to succeed when every account has at most one active token: %v", err)
+		}
+
+		var deviceTableExists bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'vpn_account_devices')`).Scan(&deviceTableExists); err != nil {
+			t.Fatalf("check vpn_account_devices table: %v", err)
+		}
+		if deviceTableExists {
+			t.Fatal("expected vpn_account_devices to be dropped after a successful rollback")
+		}
+		var deviceIDColumnExists bool
+		if err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'vpn_subscription_tokens' AND column_name = 'device_id'
+			)
+		`).Scan(&deviceIDColumnExists); err != nil {
+			t.Fatalf("check vpn_subscription_tokens.device_id column: %v", err)
+		}
+		if deviceIDColumnExists {
+			t.Fatal("expected vpn_subscription_tokens.device_id to be dropped after a successful rollback")
+		}
+	})
 }

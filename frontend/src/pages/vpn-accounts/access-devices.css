@@ -114,6 +114,23 @@
   border-top: 1px solid var(--border-color, rgba(148, 163, 184, 0.16));
 }
 
+.vpn-device-send-composer {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color, rgba(148, 163, 184, 0.24));
+}
+
+.vpn-device-send-channel-active {
+  border-color: var(--accent-color, #60a5fa);
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.vpn-device-send-history {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--rg-text-secondary, #94a3b8);
+}
+
 @media (max-width: 720px) {
   .vpn-access-devices-grid {
     grid-template-columns: 1fr;

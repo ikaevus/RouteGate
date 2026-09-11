@@ -165,8 +165,8 @@ Routing Profiles remain the **single routing-policy source of truth**. The clien
 |---|---|---|---|
 | **Hiddify** | sing-box JSON on supported VLESS path | Routing Profile embedded in the same config | Full on validated VLESS path |
 | **sing-box** | sing-box JSON on supported VLESS path | Routing Profile embedded in the same config | Full on validated VLESS path |
-| **v2rayN** | Standard Base64 share-link subscription | Separate native custom-rules URL through the same opaque token | Supported with client-side setup |
-| **v2rayNG** | Standard Base64 share-link subscription | Same native custom-rules URL (2dust client family) | Supported with client-side setup |
+| **v2rayN** | Standard Base64 share-link subscription | Separate native custom-rules URL through the same opaque token (manually validated) | Supported with client-side setup |
+| **v2rayNG** | Standard Base64 share-link subscription | Not offered — native routing import is not independently validated on this client | Connection only (not inherited from v2rayN) |
 | **Generic** (any other client) | Conservative RG-115 auto delivery | Not assumed | Connection only |
 
 RouteGate follows a **no silent downgrade** rule: successful protocol connectivity never implies that a client can faithfully reproduce the assigned Routing Profile. The Admin UI surfaces the selected client's compatibility state and remaining limitations.

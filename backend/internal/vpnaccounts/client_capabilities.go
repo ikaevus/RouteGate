@@ -129,16 +129,18 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 			Limitations: []string{"Standard URI subscriptions do not carry RouteGate sing-box routing rules; matching routing/DNS behavior must be configured in v2rayN."},
 		}
 	case ClientTypeV2RayNG:
+		// v2rayNG is officially selectable for standard connection/subscription
+		// delivery, but - unlike v2rayN - its native custom-routing-rules import
+		// has not been independently validated on a real client. RouteGate must
+		// not advertise unvalidated routing-policy compatibility ("no silent
+		// downgrade"), so this stays connection_only until that validation
+		// happens; see docs/architecture/client-compatibility-matrix.md.
 		return ClientCompatibilityAssessment{
-			ClientType: ClientTypeV2RayNG, DisplayName: "v2rayNG", Status: ClientCompatibilitySetupRequired,
+			ClientType: ClientTypeV2RayNG, DisplayName: "v2rayNG", Status: ClientCompatibilityConnectionOnly,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64, RequiresClientSetup: true,
-			Capabilities: ClientCapabilities{
-				URISubscriptionImport: true, TUNMode: true, DirectRouting: true, VPNRouting: true,
-				BlockRouting: true, DNSRouting: true, SplitDNS: true, ClientLocalRules: true,
-				SubscriptionRefresh: true, ImportedRulePrecedence: ImportedRulePrecedenceClient,
-			},
-			Guidance:    []string{"v2rayNG is the Android member of the 2dust client family. Configure routing/DNS locally so DIRECT/VPN/BLOCK behavior matches the RouteGate routing profile."},
-			Limitations: []string{"Standard URI subscriptions do not carry RouteGate routing rules; matching routing/DNS behavior must be configured in v2rayNG."},
+			Capabilities: ClientCapabilities{URISubscriptionImport: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown},
+			Guidance:     []string{"v2rayNG is the Android member of the 2dust client family and supports standard subscription import. RouteGate Routing Profile enforcement is not yet validated on this client; use Hiddify or v2rayN for RouteGate-managed routing."},
+			Limitations:  []string{"Only protocol-level connectivity is assumed; RouteGate does not claim Routing Profile enforcement for v2rayNG."},
 		}
 	default:
 		return ClientCompatibilityAssessment{
@@ -171,7 +173,7 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		return assessment
 	}
 
-	if normalizedClient == ClientTypeV2RayN || normalizedClient == ClientTypeV2RayNG {
+	if normalizedClient == ClientTypeV2RayN {
 		if !protocolSupportsShareLinkSubscription(protocol) {
 			assessment.Status = ClientCompatibilityConnectionOnly
 			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto

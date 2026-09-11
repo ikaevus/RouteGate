@@ -44,6 +44,7 @@ const (
 type Delivery struct {
 	ID                string
 	VPNAccountID      string
+	DeviceID          string
 	Channel           string
 	Provider          string
 	Recipient         string
@@ -68,6 +69,7 @@ type Delivery struct {
 
 type CreateInput struct {
 	VPNAccountID    string
+	DeviceID        string
 	Channel         string
 	Provider        string
 	Recipient       string

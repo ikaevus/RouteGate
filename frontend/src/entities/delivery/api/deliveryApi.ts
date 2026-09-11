@@ -31,6 +31,7 @@ export interface DeliveryProviderListResponse {
 export interface DeliveryRecord {
   id: string;
   vpnAccountId?: string;
+  deviceId?: string;
   channel: string;
   provider: string;
   recipientDisplay: string;
@@ -59,6 +60,14 @@ export interface CreateDeliveryRequest {
   locale: DeliveryLocale;
   template: DeliveryTemplate;
   attachQr: boolean;
+  // Scope this Send to one Access & Devices device: deviceId identifies it,
+  // accessUrl must be the exact plaintext link currently held in memory for
+  // that device (RG-115 tokens are hash-only server-side and cannot be
+  // recovered otherwise). The backend validates accessUrl hashes to the
+  // device's own current active token before sending anything. Omit both
+  // for account-level Send.
+  deviceId?: string;
+  accessUrl?: string;
 }
 
 export interface DeliveryPreviewRequest {

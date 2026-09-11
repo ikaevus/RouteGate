@@ -10,7 +10,6 @@ import { t } from '../../shared/i18n/i18n';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { AccessDevicesPanel } from './AccessDevicesPanel';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
-import { VpnAccessDeliveryPanel } from './VpnAccessDeliveryPanel';
 import { VpnAccountConnectionPanels } from './VpnAccountConnectionPanels';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
@@ -81,7 +80,7 @@ export function VpnAccountsPage() {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('create');
       nextParams.delete('page');
-      nextParams.set('sendAccess', '1');
+      nextParams.set('addDevice', '1');
       await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
       const query = nextParams.toString();
       navigate(`/vpn-accounts/${account.id}${query ? `?${query}` : ''}`);
@@ -200,7 +199,6 @@ export function VpnAccountsPage() {
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
           {accountId && <AccessDevicesPanel accountId={accountId} />}
-          {accountId && <VpnAccessDeliveryPanel accountId={accountId} />}
           {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
           {accountId && <VpnAccountConnectionPanels accountId={accountId} />}
           {accountId && <TrafficStatsPanel accountId={accountId} />}

@@ -1,10 +1,12 @@
 package delivery
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -24,6 +26,13 @@ type CreateDeliveryRequest struct {
 	Locale    string `json:"locale"`
 	Template  string `json:"template"`
 	AttachQR  bool   `json:"attachQr"`
+	// DeviceID and AccessURL scope this Send to one Access & Devices device.
+	// AccessURL must be the exact plaintext link the caller currently holds
+	// for that device (RG-115 tokens are hash-only server-side, so RouteGate
+	// cannot look it up); it is validated against the device's own active
+	// token hash before anything is sent. Omit both for account-level Send.
+	DeviceID  string `json:"deviceId,omitempty"`
+	AccessURL string `json:"accessUrl,omitempty"`
 }
 
 type ProviderResponse struct {
@@ -44,6 +53,7 @@ type ProviderListResponse struct {
 type DeliveryResponse struct {
 	ID               string     `json:"id"`
 	VPNAccountID     string     `json:"vpnAccountId,omitempty"`
+	DeviceID         string     `json:"deviceId,omitempty"`
 	Channel          string     `json:"channel"`
 	Provider         string     `json:"provider"`
 	RecipientDisplay string     `json:"recipientDisplay"`
@@ -191,17 +201,34 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := NormalizePublicURL(h.publicURL); err != nil {
-		failure := failureFromError(err, ErrorClassPermanent, "public_url_invalid")
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(failure.Code, "RouteGate public URL is not ready for access delivery."))
-		return
-	}
 
-	preflight := Delivery{VPNAccountID: accountID, TemplateKey: request.Template, AttachQR: false}
-	if _, err := h.resolver.Resolve(r.Context(), preflight); err != nil {
-		failure := failureFromError(err, ErrorClassPermanent, "vpn_access_unavailable")
-		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(failure.Code, "VPN access is not ready to send yet."))
-		return
+	deviceID := strings.TrimSpace(request.DeviceID)
+	var deviceProfileName, deviceAccessURL string
+	if deviceID != "" {
+		// Access & Devices: the device card owns Send. The caller must pass
+		// the exact plaintext access URL it currently holds in memory (RG-115
+		// tokens are hash-only; RouteGate cannot reconstruct it), and that URL
+		// must hash to the device's own current active token so an admin
+		// session cannot use this endpoint to relay an arbitrary URL through
+		// RouteGate's mail/Telegram sender.
+		profileName, resolvedAccessURL, deviceErr := h.validateDeviceAccessRequest(r.Context(), accountID, deviceID, request.AccessURL)
+		if deviceErr != nil {
+			httpx.WriteJSON(w, deviceErr.status, httpx.Error(deviceErr.code, deviceErr.message))
+			return
+		}
+		deviceProfileName, deviceAccessURL = profileName, resolvedAccessURL
+	} else {
+		if _, err := NormalizePublicURL(h.publicURL); err != nil {
+			failure := failureFromError(err, ErrorClassPermanent, "public_url_invalid")
+			httpx.WriteJSON(w, http.StatusConflict, httpx.Error(failure.Code, "RouteGate public URL is not ready for access delivery."))
+			return
+		}
+		preflight := Delivery{VPNAccountID: accountID, TemplateKey: request.Template, AttachQR: false}
+		if _, err := h.resolver.Resolve(r.Context(), preflight); err != nil {
+			failure := failureFromError(err, ErrorClassPermanent, "vpn_access_unavailable")
+			httpx.WriteJSON(w, http.StatusConflict, httpx.Error(failure.Code, "VPN access is not ready to send yet."))
+			return
+		}
 	}
 
 	createdBy := ""
@@ -210,6 +237,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	delivery, _, createErr := h.service.Create(r.Context(), CreateInput{
 		VPNAccountID:    accountID,
+		DeviceID:        deviceID,
 		Channel:         request.Channel,
 		Provider:        providerName,
 		Recipient:       recipient,
@@ -227,7 +255,82 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		h.databaseError(w, "create_delivery", createErr)
 		return
 	}
+	if deviceID != "" {
+		// Stash after the row exists (its ID is the store key) and only once
+		// we know the request will actually be enqueued; nothing here is
+		// persisted to the database.
+		h.resolver.StashDeviceAccess(delivery.ID, deviceAccessURL, deviceProfileName)
+	}
 	httpx.WriteJSON(w, http.StatusAccepted, toDeliveryResponse(delivery))
+}
+
+// deviceAccessRequestError is a small HTTP-shaped error for device-scoped
+// Send validation, distinct from channelRecipientError so callers can tell
+// device validation failures apart from channel/recipient ones.
+type deviceAccessRequestError struct {
+	status  int
+	code    string
+	message string
+}
+
+// validateDeviceAccessRequest confirms the caller-supplied access URL is
+// genuinely the device's own, currently active RG-115 link before letting it
+// anywhere near the mail/Telegram pipeline: the device must belong to this
+// account and be active, the URL must parse as a /sub/<token> link, and that
+// token must hash to the device's current active token. This never reads or
+// stores the plaintext token; it only re-hashes the caller's own value to
+// compare against the existing hash-only row.
+func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, deviceID, accessURL string) (string, string, *deviceAccessRequestError) {
+	accessURL = strings.TrimSpace(accessURL)
+	if accessURL == "" {
+		return "", "", &deviceAccessRequestError{http.StatusBadRequest, "device_access_url_required", "accessUrl is required when sending for a specific device."}
+	}
+
+	device, err := h.accounts.GetDevice(ctx, accountID, deviceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", &deviceAccessRequestError{http.StatusNotFound, "device_not_found", "Device not found."}
+	}
+	if err != nil {
+		return "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
+	}
+	if device.Status != vpnaccounts.DeviceStatusActive {
+		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_revoked", "This device has been revoked."}
+	}
+
+	token, err := h.accounts.GetActiveDeviceSubscriptionToken(ctx, deviceID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This device has no active access link. Rotate to create one, then send again."}
+	}
+	if err != nil {
+		return "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
+	}
+
+	rawToken, parseErr := extractSubscriptionToken(accessURL)
+	if parseErr != nil || vpnaccounts.HashSubscriptionToken(rawToken) != token.TokenHash {
+		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This access link is no longer the device's current one. Rotate to create a new link, then send again."}
+	}
+
+	return device.Name, accessURL, nil
+}
+
+// extractSubscriptionToken pulls the opaque bearer token out of an RG-115
+// `.../sub/<token>` URL without assuming a specific host, so this validates
+// against whatever RouteGate public URL issued the link.
+func extractSubscriptionToken(rawURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return "", err
+	}
+	const marker = "/sub/"
+	index := strings.LastIndex(parsed.Path, marker)
+	if index < 0 {
+		return "", errors.New("not a subscription URL")
+	}
+	token := strings.TrimSpace(parsed.Path[index+len(marker):])
+	if token == "" {
+		return "", errors.New("empty subscription token")
+	}
+	return token, nil
 }
 
 type channelRecipientError struct {
@@ -341,6 +444,7 @@ func toDeliveryResponse(item Delivery) DeliveryResponse {
 	return DeliveryResponse{
 		ID:               item.ID,
 		VPNAccountID:     item.VPNAccountID,
+		DeviceID:         item.DeviceID,
 		Channel:          item.Channel,
 		Provider:         item.Provider,
 		RecipientDisplay: MaskRecipient(item.Recipient),

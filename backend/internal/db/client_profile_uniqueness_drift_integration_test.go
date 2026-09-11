@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000149_vpn_account_devices" {
-		t.Fatalf("applied schema version = %q, want 000149_vpn_account_devices", version)
+	if version != "000150_delivery_device_scope" {
+		t.Fatalf("applied schema version = %q, want 000150_delivery_device_scope", version)
 	}
 }

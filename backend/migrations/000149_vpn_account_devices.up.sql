@@ -57,13 +57,27 @@ WHERE d.vpn_account_id = st.vpn_account_id
   AND st.status = 'active'
   AND st.device_id IS NULL;
 
--- Relax the account-wide "one active token" constraint: uniqueness now
--- applies per device. Legacy (device_id IS NULL) tokens issued through the
--- pre-existing account-level subscription-token endpoints remain governed by
--- the application-level revoke-then-insert transaction in CreateSubscriptionToken,
--- exactly as before this migration.
+-- Replace the single account-wide "one active token" constraint with two
+-- narrower DB-level invariants, so the database - not just application-level
+-- revoke-then-insert logic - enforces uniqueness for both token families:
+--
+--   1. one ACTIVE token per non-null device_id (one per device);
+--   2. one ACTIVE token with device_id IS NULL per vpn_account_id (the
+--      pre-existing account-level/"legacy" subscription-token endpoints,
+--      which are still supported and can still create device_id IS NULL
+--      tokens going forward).
+--
+-- A legacy NULL-device token and one or more device-scoped tokens may
+-- coexist on the same account: they are validated by different partial
+-- indexes below and are intentionally independent credentials. Backfill
+-- above already moves every pre-existing active token off device_id = NULL,
+-- so no existing row can violate the new legacy-token index.
 DROP INDEX IF EXISTS idx_vpn_subscription_tokens_active_account;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_subscription_tokens_active_device
     ON vpn_subscription_tokens(device_id)
     WHERE status = 'active' AND device_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_subscription_tokens_active_legacy_account
+    ON vpn_subscription_tokens(vpn_account_id)
+    WHERE status = 'active' AND device_id IS NULL;
