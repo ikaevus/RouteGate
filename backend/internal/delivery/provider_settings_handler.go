@@ -19,7 +19,7 @@ func (h *Handler) GetProviderSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.settings.View(r.Context(), providerName)
 	if err != nil {
-		h.databaseError(w, "get_delivery_provider_settings")
+		h.databaseError(w, "get_delivery_provider_settings", err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, view)
@@ -44,7 +44,7 @@ func (h *Handler) PutProviderSettings(w http.ResponseWriter, r *http.Request) {
 		if h.writeProviderSettingsFailure(w, err) {
 			return
 		}
-		h.databaseError(w, "save_delivery_provider_settings")
+		h.databaseError(w, "save_delivery_provider_settings", err)
 		return
 	}
 	h.recordAudit(r, audit.EventInput{
@@ -97,7 +97,7 @@ func (h *Handler) DeleteProviderSettings(w http.ResponseWriter, r *http.Request)
 		if h.writeProviderSettingsFailure(w, err) {
 			return
 		}
-		h.databaseError(w, "delete_delivery_provider_settings")
+		h.databaseError(w, "delete_delivery_provider_settings", err)
 		return
 	}
 	h.recordAudit(r, audit.EventInput{

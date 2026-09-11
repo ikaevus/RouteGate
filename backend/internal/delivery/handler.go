@@ -99,7 +99,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, cfg config.Config) *Han
 func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	items, err := h.providers.List(r.Context())
 	if err != nil {
-		h.databaseError(w, "list_delivery_providers")
+		h.databaseError(w, "list_delivery_providers", err)
 		return
 	}
 	response := ProviderListResponse{Items: make([]ProviderResponse, 0, len(items))}
@@ -131,7 +131,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("vpn_account_not_found", "VPN account not found."))
 		return
 	} else if err != nil {
-		h.databaseError(w, "read_vpn_account")
+		h.databaseError(w, "read_vpn_account", err)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 
 	provider, ok, err := h.providers.Resolve(r.Context(), providerName)
 	if err != nil {
-		h.databaseError(w, "resolve_delivery_provider")
+		h.databaseError(w, "resolve_delivery_provider", err)
 		return
 	}
 	if !ok || provider == nil {
@@ -224,7 +224,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if createErr != nil {
-		h.databaseError(w, "create_delivery")
+		h.databaseError(w, "create_delivery", createErr)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, toDeliveryResponse(delivery))
@@ -262,12 +262,12 @@ func (h *Handler) ListForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("vpn_account_not_found", "VPN account not found."))
 		return
 	} else if err != nil {
-		h.databaseError(w, "read_vpn_account")
+		h.databaseError(w, "read_vpn_account", err)
 		return
 	}
 	items, err := h.repository.ListForVPNAccount(r.Context(), accountID, 50)
 	if err != nil {
-		h.databaseError(w, "list_deliveries")
+		h.databaseError(w, "list_deliveries", err)
 		return
 	}
 	response := DeliveryListResponse{Items: make([]DeliveryResponse, 0, len(items))}
@@ -284,7 +284,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.databaseError(w, "get_delivery")
+		h.databaseError(w, "get_delivery", err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, toDeliveryResponse(item))
@@ -298,7 +298,7 @@ func (h *Handler) Retry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.databaseError(w, "get_delivery")
+		h.databaseError(w, "get_delivery", err)
 		return
 	}
 	if existing.Status != StatusFailed && existing.Status != StatusUncertain {
@@ -307,7 +307,7 @@ func (h *Handler) Retry(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, err := h.repository.Requeue(r.Context(), id)
 	if err != nil {
-		h.databaseError(w, "retry_delivery")
+		h.databaseError(w, "retry_delivery", err)
 		return
 	}
 	h.recordAudit(r, audit.EventInput{
@@ -330,9 +330,9 @@ func (h *Handler) recordAudit(r *http.Request, input audit.EventInput) {
 	h.audit.RecordSafe(r.Context(), input)
 }
 
-func (h *Handler) databaseError(w http.ResponseWriter, operation string) {
+func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
 	if h.logger != nil {
-		h.logger.Error("delivery storage operation failed", "operation", operation)
+		h.logger.Error("delivery storage operation failed", "operation", operation, "error", err)
 	}
 	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("delivery_storage_error", "Delivery storage operation failed."))
 }
