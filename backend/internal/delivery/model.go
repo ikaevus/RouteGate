@@ -17,6 +17,21 @@ const (
 	StatusUncertain Status = "uncertain"
 )
 
+// isTerminalStatus reports whether a delivery has reached a terminal outcome
+// for its current attempt (sent, delivered, permanently failed, or
+// uncertain) - the same set the worker uses to decide when to release
+// stashed device access material (see device_access_material.go's delete).
+// A delivery in any other status (queued, sending, retrying) is still going
+// to be claimed by the worker again.
+func isTerminalStatus(status Status) bool {
+	switch status {
+	case StatusSent, StatusDelivered, StatusFailed, StatusUncertain:
+		return true
+	default:
+		return false
+	}
+}
+
 type Outcome string
 
 const (

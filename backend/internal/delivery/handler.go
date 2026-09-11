@@ -235,7 +235,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 	if user, ok := auth.UserFromContext(r.Context()); ok {
 		createdBy = user.ID
 	}
-	delivery, _, createErr := h.service.Create(r.Context(), CreateInput{
+	delivery, created, createErr := h.service.Create(r.Context(), CreateInput{
 		VPNAccountID:        accountID,
 		DeviceID:            deviceID,
 		SubscriptionTokenID: deviceTokenID,
@@ -256,13 +256,38 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		h.databaseError(w, "create_delivery", createErr)
 		return
 	}
-	if deviceID != "" {
-		// Stash after the row exists (its ID is the store key) and only once
-		// we know the request will actually be enqueued; nothing here is
-		// persisted to the database.
+	// Stash after the row exists (its ID is the store key) and only when the
+	// plaintext material is actually still needed:
+	//   - created: a brand-new delivery, always stash.
+	//   - idempotent replay of an existing TERMINAL delivery (sent/delivered/
+	//     failed/uncertain): never re-stash - the worker will never claim a
+	//     terminal delivery again, so re-stashing would just leave the
+	//     plaintext access URL sitting in memory for the rest of the TTL for
+	//     no reason (undoing the point of the worker's terminal-release).
+	//   - idempotent replay of an existing queued/sending/retrying delivery:
+	//     the worker may still claim this delivery and will need the
+	//     material, so re-stash - but only because sameCreateRequest (called
+	//     inside h.service.Create) already confirmed this replay carries the
+	//     same DeviceID and the same SubscriptionTokenID generation as the
+	//     stored row (otherwise Create would have returned
+	//     ErrIdempotencyConflict), and deviceAccessURL was itself re-hashed
+	//     and matched against the device's current active token by
+	//     validateDeviceAccessRequest above, in this same request. This is a
+	//     deliberate recovery path, not a blind "if created" stash.
+	if shouldStashDeviceAccess(deviceID, created, delivery.Status) {
 		h.resolver.StashDeviceAccess(delivery.ID, deviceAccessURL, deviceProfileName)
 	}
 	httpx.WriteJSON(w, http.StatusAccepted, toDeliveryResponse(delivery))
+}
+
+// shouldStashDeviceAccess decides whether CreateForVPNAccount's call into
+// h.service.Create should be followed by StashDeviceAccess for a
+// device-scoped request. created is true only for a brand-new delivery row;
+// status is the row's current status (freshly created, or - for an
+// idempotent replay - whatever it already was). See the comment at the call
+// site for why replaying a terminal delivery must never re-stash.
+func shouldStashDeviceAccess(deviceID string, created bool, status Status) bool {
+	return deviceID != "" && (created || !isTerminalStatus(status))
 }
 
 // deviceAccessRequestError is a small HTTP-shaped error for device-scoped

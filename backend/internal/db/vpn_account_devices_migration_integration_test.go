@@ -13,9 +13,10 @@ import (
 // TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken verifies
 // migration 000149 (RG-116 Access & Devices) preserves existing subscription
 // URLs: an account with an active token before the migration keeps that
-// token active and gets exactly one backfilled device carrying over the
-// account's prior client/device type, so the existing link keeps resolving
-// after the upgrade.
+// token active and device_id IS NULL (it remains the legacy/Portal
+// subscription credential future rotate/revoke operations act on), and gets
+// exactly one backfilled "Default device" for visibility, carrying over the
+// account's prior client/device type, with no token of its own yet.
 func TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken(t *testing.T) {
 	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -107,8 +108,18 @@ func TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken(t *testing
 	if tokenStatus != "active" {
 		t.Fatalf("existing token status = %q, want active (must keep resolving)", tokenStatus)
 	}
-	if linkedDeviceID != deviceID {
-		t.Fatalf("existing token device_id = %q, want backfilled device %q", linkedDeviceID, deviceID)
+	if linkedDeviceID != "" {
+		t.Fatalf("existing token device_id = %q, want empty (it must remain the legacy/Portal credential, not become device-scoped)", linkedDeviceID)
+	}
+
+	var defaultDeviceTokenCount int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM vpn_subscription_tokens WHERE device_id = $1::uuid
+	`, deviceID).Scan(&defaultDeviceTokenCount); err != nil {
+		t.Fatalf("count backfilled device's tokens: %v", err)
+	}
+	if defaultDeviceTokenCount != 0 {
+		t.Fatalf("backfilled Default device token count = %d, want 0 (it starts with no device-scoped token)", defaultDeviceTokenCount)
 	}
 
 	var noTokenDeviceCount int
@@ -121,10 +132,11 @@ func TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken(t *testing
 		t.Fatalf("no-token account device count = %d, want 0", noTokenDeviceCount)
 	}
 
-	// A second device on the SAME account can hold its own active token
-	// concurrently: the one-active-token constraint is now per-device, not
-	// per-account, so a compromised device's token can be rotated/revoked
-	// without affecting the other device.
+	// A brand-new device on the SAME account can hold its own active token
+	// concurrently with the still-active legacy token: the legacy-token
+	// invariant and the per-device invariant are validated by independent
+	// partial indexes, so a device's token can be issued/rotated/revoked
+	// without affecting the legacy subscription (or vice versa).
 	var secondDeviceID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO vpn_account_devices (vpn_account_id, name, client_type, device_type)
@@ -137,7 +149,7 @@ func TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken(t *testing
 		INSERT INTO vpn_subscription_tokens (vpn_account_id, device_id, token_hash, status)
 		VALUES ($1::uuid, $2::uuid, 'rg116-second-device-token-hash', 'active')
 	`, accountID, secondDeviceID); err != nil {
-		t.Fatalf("issue token for second device while first device token is still active: %v", err)
+		t.Fatalf("issue device token while the legacy token is still active: %v", err)
 	}
 
 	// But a single device still cannot hold two active tokens at once.

@@ -170,8 +170,10 @@ RouteGate supports protocols broadly, but supports VPN clients selectively:
 2. **v2rayN** — officially supported desktop client (2dust family).
    Connection/subscription support, plus an implemented, automated-test-covered
    native routing-rules import (`format=v2rayn-routing`); routing requires
-   local client setup, and real-client runtime validation (issue #392) is
-   still pending, so this is not yet claimed as independently confirmed.
+   local client setup, and manual real-client runtime validation (historically
+   tracked in issue #392, which is closed - the validation itself is what
+   remains pending) is still outstanding, so this is not yet claimed as
+   independently confirmed.
 3. **v2rayNG** — officially selectable Android client (2dust family) for
    standard connection/subscription delivery. **Not** promoted to the same
    routing tier as v2rayN merely because it shares a client family: its

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
+	"github.com/ikaevus/routegate/backend/internal/publicurl"
 )
 
 // Access & Devices (RG-116): a VPN account may have several devices/access
@@ -439,6 +440,15 @@ func (h *Handler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// RG-116 device access links must always be issued on RouteGate's
+	// canonical PublicURL (see deviceCanonicalOrigin) - preflight it before
+	// creating anything, so a missing/invalid PublicURL never leaves behind
+	// a device row with no usable access link.
+	if _, err := h.deviceCanonicalOrigin(); err != nil {
+		writeDevicePublicURLError(w, err)
+		return
+	}
+
 	repository, ok := h.devicesRepository()
 	if !ok {
 		writeDevicesUnavailable(w)
@@ -462,7 +472,7 @@ func (h *Handler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.issueDeviceSubscriptionToken(r, repository, device, nil)
 	if err != nil {
-		h.databaseError(w, "create device subscription token", err)
+		h.writeDevicePublicURLOrDatabaseError(w, "create device subscription token", err)
 		return
 	}
 
@@ -619,7 +629,7 @@ func (h *Handler) RotateDeviceSubscriptionToken(w http.ResponseWriter, r *http.R
 
 	response, err := h.issueDeviceSubscriptionToken(r, repository, device, request.ExpiresAt)
 	if err != nil {
-		h.databaseError(w, "rotate device subscription token", err)
+		h.writeDevicePublicURLOrDatabaseError(w, "rotate device subscription token", err)
 		return
 	}
 
@@ -636,7 +646,18 @@ func (h *Handler) RotateDeviceSubscriptionToken(w http.ResponseWriter, r *http.R
 	httpx.WriteJSON(w, http.StatusCreated, response)
 }
 
+// issueDeviceSubscriptionToken creates (or rotates) a device's subscription
+// token. It resolves the canonical PublicURL origin *before* touching
+// CreateDeviceSubscriptionToken (which transactionally revokes the device's
+// previous active token, if any, before inserting the new one): if
+// PublicURL is missing or invalid, this fails before any existing token is
+// revoked, so a rotate can never destroy working access just because the
+// server's PublicURL setting is currently broken.
 func (h *Handler) issueDeviceSubscriptionToken(r *http.Request, repository deviceRepository, device Device, expiresAt *time.Time) (DeviceSubscriptionTokenResponse, error) {
+	canonicalOrigin, err := h.deviceCanonicalOrigin()
+	if err != nil {
+		return DeviceSubscriptionTokenResponse{}, err
+	}
 	rawToken, err := h.generateSubscriptionToken()
 	if err != nil {
 		return DeviceSubscriptionTokenResponse{}, err
@@ -649,7 +670,44 @@ func (h *Handler) issueDeviceSubscriptionToken(r *http.Request, repository devic
 		Device:            device,
 		SubscriptionToken: rawToken,
 		TokenPreview:      MaskSubscriptionToken(rawToken),
-		SubscriptionURL:   h.deviceSubscriptionURL(r, rawToken),
+		SubscriptionURL:   canonicalOrigin + "/sub/" + rawToken,
 		ExpiresAt:         token.ExpiresAt,
 	}, nil
+}
+
+// deviceCanonicalOrigin resolves RouteGate's configured PublicURL as the
+// mandatory origin for RG-116 device access links. Unlike the legacy
+// account-level subscriptionURL, this never falls back to the incoming
+// request's Host/X-Forwarded-* headers: a device credential's origin must
+// always be one delivery.extractCanonicalSubscriptionToken (Device Send's
+// own validator) will accept, and RouteGate must never issue a device link
+// its own validator later rejects. A missing or invalid PublicURL is
+// therefore a hard failure for device creation/rotation, not a silent
+// fallback - see writeDevicePublicURLError.
+func (h *Handler) deviceCanonicalOrigin() (string, error) {
+	return publicurl.Normalize(h.publicURL)
+}
+
+// writeDevicePublicURLError writes the stable public_url_missing/
+// public_url_invalid API error codes (matching the ones the delivery
+// package already uses for the same underlying publicurl policy) for a
+// device request rejected before anything was created or changed.
+func writeDevicePublicURLError(w http.ResponseWriter, err error) {
+	if errors.Is(err, publicurl.ErrMissing) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("public_url_missing", "Configure RouteGate's canonical public HTTPS URL before creating or rotating device access links."))
+		return
+	}
+	httpx.WriteJSON(w, http.StatusConflict, httpx.Error("public_url_invalid", "RouteGate's configured public URL is invalid. It must be an HTTPS origin with no path, query, or fragment."))
+}
+
+// writeDevicePublicURLOrDatabaseError distinguishes issueDeviceSubscriptionToken's
+// two possible failure modes: a publicurl policy error (device link/token
+// generation never touched, nothing to roll back) versus a genuine
+// database error.
+func (h *Handler) writeDevicePublicURLOrDatabaseError(w http.ResponseWriter, operation string, err error) {
+	if errors.Is(err, publicurl.ErrMissing) || errors.Is(err, publicurl.ErrInvalid) {
+		writeDevicePublicURLError(w, err)
+		return
+	}
+	h.databaseError(w, operation, err)
 }

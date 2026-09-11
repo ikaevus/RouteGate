@@ -176,11 +176,16 @@ func (f *fakeDeviceRepository) GetActiveDeviceSubscriptionToken(_ context.Contex
 	return SubscriptionToken{}, pgx.ErrNoRows
 }
 
+// newDeviceTestHandler builds a handler with a valid configured PublicURL,
+// since RG-116 device creation/rotation now requires one (see
+// device_url_canonicalization_test.go for the tests that specifically cover
+// the missing/invalid PublicURL cases).
 func newDeviceTestHandler(repo *fakeDeviceRepository) *Handler {
 	return &Handler{
 		logger:                    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		accounts:                  repo,
 		generateSubscriptionToken: GenerateSubscriptionToken,
+		publicURL:                 "https://vpn.example.com",
 	}
 }
 

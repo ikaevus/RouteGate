@@ -17,7 +17,6 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/audit"
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
-	"github.com/ikaevus/routegate/backend/internal/publicurl"
 )
 
 type accountRepository interface {
@@ -549,33 +548,15 @@ func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionSer
 // is deliberately left as-is (see TestCreateSubscriptionTokenFallsBackFromInvalidForwardedHeaders):
 // it lets the legacy endpoint keep working across reverse-proxy setups where
 // the configured PublicURL setting may not exactly match every host that
-// can reach the API. New RG-116 device links use deviceSubscriptionURL
-// instead, which prefers the canonical PublicURL - see that method's doc.
+// can reach the API. New RG-116 device links instead require the canonical
+// PublicURL outright, with no request-derived fallback - see
+// (*Handler).deviceCanonicalOrigin in device.go.
 func (h *Handler) subscriptionURL(r *http.Request, token string) string {
 	return (&url.URL{
 		Scheme: subscriptionScheme(r),
 		Host:   subscriptionHost(r),
 		Path:   "/sub/" + token,
 	}).String()
-}
-
-// deviceSubscriptionURL builds an RG-116 device's access URL. Unlike the
-// legacy subscriptionURL, this must agree with the exact canonical-origin
-// check delivery.extractCanonicalSubscriptionToken applies before a device's
-// Send is allowed to use a caller-supplied URL: RouteGate must never issue a
-// device link that its own validator later rejects. So whenever the
-// administrator has configured a valid PublicURL, that origin - not the
-// current request's Host/X-Forwarded-* headers - is what gets used;
-// forwarded headers can never move a device's credential to a different
-// origin. Only if PublicURL is not configured/invalid does this fall back
-// to the same request-derived origin the legacy endpoint always uses, so a
-// deployment that has not set PublicURL yet still gets a usable link (Send
-// itself already refuses to work without a valid PublicURL either way).
-func (h *Handler) deviceSubscriptionURL(r *http.Request, token string) string {
-	if canonical, err := publicurl.Normalize(h.publicURL); err == nil {
-		return canonical + "/sub/" + token
-	}
-	return h.subscriptionURL(r, token)
 }
 
 func subscriptionScheme(r *http.Request) string {

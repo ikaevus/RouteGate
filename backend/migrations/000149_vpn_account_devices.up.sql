@@ -30,10 +30,24 @@ ALTER TABLE vpn_subscription_tokens
 CREATE INDEX IF NOT EXISTS idx_vpn_subscription_tokens_device_id ON vpn_subscription_tokens(device_id);
 
 -- Backfill: give every account with an existing active subscription token a
--- "Default device" carrying over its current account-level client/device
--- type, then attach that token to the new device. Existing subscription URLs
--- keep resolving exactly as before; they simply become visible as one device
--- in the new Access & Devices model instead of being invalidated.
+-- "Default device" row for visibility in the new Access & Devices model,
+-- carrying over its current account-level client/device type as a starting
+-- point.
+--
+-- Deliberately NOT attached: the existing active subscription token stays
+-- exactly as it was, device_id IS NULL. Historically that token *is* "the
+-- account's subscription" - the thing users mean when they rotate their
+-- account-level or Portal subscription link - so it must remain the row
+-- account-level/Portal rotation revokes going forward
+-- (vpnaccounts.Repository.CreateSubscriptionToken/RevokeActiveSubscriptionTokens,
+-- portal.Repository.CreateSubscriptionToken all now filter on
+-- device_id IS NULL). Attaching it to the new Default device instead would
+-- silently move it out of reach of that rotation: the pre-upgrade URL would
+-- keep resolving forever, even after the administrator "rotates" their
+-- subscription, which breaks the ordinary meaning of rotate. The Default
+-- device therefore starts with no active token of its own; a device-scoped
+-- link for it is only ever created explicitly, later, through Access &
+-- Devices (Create/Rotate), exactly like any other device.
 --
 -- The legacy vpn_client_profiles.client_type vocabulary is wider than the new
 -- RG-116 device allow-list (hiddify, v2rayn, v2rayng, generic): it can be
@@ -74,28 +88,22 @@ FROM (
 ) active
 LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = active.vpn_account_id;
 
-UPDATE vpn_subscription_tokens st
-SET device_id = d.id
-FROM vpn_account_devices d
-WHERE d.vpn_account_id = st.vpn_account_id
-  AND st.status = 'active'
-  AND st.device_id IS NULL;
-
 -- Replace the single account-wide "one active token" constraint with two
 -- narrower DB-level invariants, so the database - not just application-level
 -- revoke-then-insert logic - enforces uniqueness for both token families:
 --
 --   1. one ACTIVE token per non-null device_id (one per device);
 --   2. one ACTIVE token with device_id IS NULL per vpn_account_id (the
---      pre-existing account-level/"legacy" subscription-token endpoints,
---      which are still supported and can still create device_id IS NULL
---      tokens going forward).
+--      pre-existing account-level/"legacy" subscription-token endpoints and
+--      the Portal's self-service subscription, both still supported and
+--      both still creating device_id IS NULL tokens going forward).
 --
 -- A legacy NULL-device token and one or more device-scoped tokens may
 -- coexist on the same account: they are validated by different partial
--- indexes below and are intentionally independent credentials. Backfill
--- above already moves every pre-existing active token off device_id = NULL,
--- so no existing row can violate the new legacy-token index.
+-- indexes below and are intentionally independent credentials. Every
+-- pre-existing active token stays device_id IS NULL (see above), so this
+-- index is just the prior account-wide uniqueness constraint narrowed to
+-- that same set of rows - no existing row can violate it.
 DROP INDEX IF EXISTS idx_vpn_subscription_tokens_active_account;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_subscription_tokens_active_device
