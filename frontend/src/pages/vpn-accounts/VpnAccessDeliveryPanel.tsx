@@ -104,7 +104,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   const [attachQr, setAttachQr] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [queuedNotice, setQueuedNotice] = useState(false);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(searchParams.get('sendAccess') === '1');
 
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],

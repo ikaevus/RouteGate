@@ -103,7 +103,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   const [speedLimitMbps, setSpeedLimitMbps] = useState('');
   const [resetDay, setResetDay] = useState('1');
   const [formError, setFormError] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const trafficQuery = useQuery({
     queryKey: ['vpn-account-traffic', accountId],

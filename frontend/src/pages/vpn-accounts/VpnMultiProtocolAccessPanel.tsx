@@ -127,7 +127,7 @@ function legacyConnection(connection: MultiProtocolConnection): ProtocolConnecti
 export function VpnMultiProtocolAccessPanel({ accountId }: { accountId: string }) {
   const copy = getCopy();
   const [copiedProtocol, setCopiedProtocol] = useState<ClientProtocol | null>(null);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const query = useQuery({
     queryKey: ['vpn-account-client-connection', accountId],
     queryFn: () => getVpnAccountClientConnection(accountId) as Promise<MultiProtocolConnection>,

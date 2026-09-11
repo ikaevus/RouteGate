@@ -213,7 +213,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   const [serverNameOverride, setServerNameOverride] = useState('');
   const [spiderX, setSpiderX] = useState('/');
   const [mtu, setMtu] = useState('');
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const connectionQuery = useQuery({
     queryKey,

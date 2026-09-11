@@ -88,7 +88,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const [automaticSelectionEnabled, setAutomaticSelectionEnabled] = useState(false);
   const [allowDegraded, setAllowDegraded] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(300);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const policyQuery = useQuery({
     queryKey: ['vpn-account-routing-policy', accountId],

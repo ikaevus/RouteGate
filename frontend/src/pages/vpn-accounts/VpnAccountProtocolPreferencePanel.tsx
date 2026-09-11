@@ -127,7 +127,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const [enabledProtocols, setEnabledProtocols] = useState<ClientProtocol[]>(['vless']);
   const [saved, setSaved] = useState(false);
   const [deploymentStage, setDeploymentStage] = useState<ProtocolDeploymentStage | null>(null);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   const connectionQuery = useQuery({
     queryKey,
