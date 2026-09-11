@@ -387,13 +387,17 @@
 
 @media (max-width: 1280px) {
   .vpn-account-management-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 760px) {
+  /* minmax(0, …) rather than a bare 1fr: a bare 1fr is minmax(auto, 1fr),
+     so the track cannot shrink below the min-content width of the fields
+     it holds — a bare <input> reports an intrinsic width of roughly 20
+     characters — and the form then overflows its panel on narrow screens. */
   .vpn-account-edit-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .vpn-account-management-row-link {
