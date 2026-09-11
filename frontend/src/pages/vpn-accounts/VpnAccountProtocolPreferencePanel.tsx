@@ -12,6 +12,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import {
   deployPendingProtocol,
   ensureProtocolRuntime,
@@ -126,6 +127,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const [enabledProtocols, setEnabledProtocols] = useState<ClientProtocol[]>(['vless']);
   const [saved, setSaved] = useState(false);
   const [deploymentStage, setDeploymentStage] = useState<ProtocolDeploymentStage | null>(null);
+  const [isOpen, setIsOpen] = useState(true);
 
   const connectionQuery = useQuery({
     queryKey,
@@ -268,13 +270,16 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   return (
     <div className="panel feature-detail-panel vpn-account-protocol-preference-panel">
       <div className="panel-header">
-        <div>
-          <div className="panel-title">{copy.title}</div>
-          <p className="panel-subtitle">{copy.subtitle}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={copy.title}
+          subtitle={copy.subtitle}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
         {connectionQuery.data && <span className="status-pill">{copy.active}: {activeSummary}</span>}
       </div>
 
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       {connectionQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
       {connectionQuery.isError && <div className="form-message form-message-error">{copy.loadError}</div>}
 
@@ -346,6 +351,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

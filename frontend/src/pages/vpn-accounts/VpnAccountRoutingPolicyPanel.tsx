@@ -17,6 +17,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getClientCompatibility } from '../../entities/vpnAccount/model/clientCompatibility';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import './vpnAccountRoutingPolicy.css';
 
 function selectionStatusLabel(status: 'selected' | 'current' | 'no_eligible_candidates' | 'node_group_required' | 'cooldown'): string {
@@ -87,6 +88,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const [automaticSelectionEnabled, setAutomaticSelectionEnabled] = useState(false);
   const [allowDegraded, setAllowDegraded] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(300);
+  const [isOpen, setIsOpen] = useState(true);
 
   const policyQuery = useQuery({
     queryKey: ['vpn-account-routing-policy', accountId],
@@ -190,11 +192,14 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   return (
     <div className="panel feature-detail-panel vpn-account-routing-policy-panel">
       <div className="panel-header">
-        <div>
-          <div className="panel-title">{t('routingPolicy.title')}</div>
-          <p className="panel-subtitle">{t('routingPolicy.subtitle')}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={t('routingPolicy.title')}
+          subtitle={t('routingPolicy.subtitle')}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
       </div>
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       {hasError && <div className="form-message form-message-error">{t('routingPolicy.loadError')}</div>}
       {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
       {policy && (
@@ -331,6 +336,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
           </form>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -195,6 +195,36 @@ a {
   margin: 0;
 }
 
+.panel-header-titles {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.panel-header-titles:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.panel-collapse-chevron {
+  flex-shrink: 0;
+  margin-top: 5px;
+  color: #94a3b8;
+  transition: transform 0.15s ease;
+}
+
+.panel-collapse-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.panel-collapsible-body[hidden] {
+  display: none;
+}
+
 .status-list {
   display: grid;
   gap: 10px;
