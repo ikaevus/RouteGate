@@ -86,12 +86,14 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := CreateAccountInput{
-		DisplayName: strings.TrimSpace(request.DisplayName),
-		Email:       strings.TrimSpace(request.Email),
-		Status:      strings.TrimSpace(request.Status),
-		ExpiresAt:   request.ExpiresAt,
-		MaxDevices:  request.MaxDevices,
-		ServerID:    strings.TrimSpace(request.ServerID),
+		DisplayName:      strings.TrimSpace(request.DisplayName),
+		Email:            strings.TrimSpace(request.Email),
+		Phone:            strings.TrimSpace(request.Phone),
+		TelegramUsername: strings.TrimSpace(strings.TrimPrefix(request.TelegramUsername, "@")),
+		Status:           strings.TrimSpace(request.Status),
+		ExpiresAt:        request.ExpiresAt,
+		MaxDevices:       request.MaxDevices,
+		ServerID:         strings.TrimSpace(request.ServerID),
 	}
 	if input.Status == "" {
 		input.Status = StatusCreated
@@ -160,16 +162,25 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	trimStringPointer(request.DisplayName)
 	trimStringPointer(request.Email)
+	trimStringPointer(request.Phone)
+	trimStringPointer(request.TelegramUsername)
+	if request.TelegramUsername != nil {
+		*request.TelegramUsername = strings.TrimPrefix(*request.TelegramUsername, "@")
+	}
+	trimStringPointer(request.TelegramRecipientID)
 	trimStringPointer(request.Status)
 	trimStringPointer(request.ServerID)
 
 	input := UpdateAccountInput{
-		DisplayName: request.DisplayName,
-		Email:       request.Email,
-		Status:      request.Status,
-		ExpiresAt:   request.ExpiresAt,
-		MaxDevices:  request.MaxDevices,
-		ServerID:    request.ServerID,
+		DisplayName:         request.DisplayName,
+		Email:               request.Email,
+		Phone:               request.Phone,
+		TelegramUsername:    request.TelegramUsername,
+		TelegramRecipientID: request.TelegramRecipientID,
+		Status:              request.Status,
+		ExpiresAt:           request.ExpiresAt,
+		MaxDevices:          request.MaxDevices,
+		ServerID:            request.ServerID,
 	}
 	if err := validateUpdateInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())

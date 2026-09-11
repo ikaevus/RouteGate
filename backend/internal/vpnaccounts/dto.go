@@ -3,23 +3,28 @@ package vpnaccounts
 import "time"
 
 type CreateAccountRequest struct {
-	DisplayName string     `json:"displayName"`
-	Email       string     `json:"email"`
-	Status      string     `json:"status"`
-	ExpiresAt   *time.Time `json:"expiresAt"`
-	MaxDevices  *int       `json:"maxDevices"`
-	ServerID    string     `json:"serverId"`
+	DisplayName      string     `json:"displayName"`
+	Email            string     `json:"email"`
+	Phone            string     `json:"phone"`
+	TelegramUsername string     `json:"telegramUsername"`
+	Status           string     `json:"status"`
+	ExpiresAt        *time.Time `json:"expiresAt"`
+	MaxDevices       *int       `json:"maxDevices"`
+	ServerID         string     `json:"serverId"`
 }
 
 type UpdateAccountRequest struct {
-	DisplayName     *string    `json:"displayName"`
-	Email           *string    `json:"email"`
-	Status          *string    `json:"status"`
-	ExpiresAt       *time.Time `json:"expiresAt"`
-	ClearExpiresAt  bool       `json:"clearExpiresAt"`
-	MaxDevices      *int       `json:"maxDevices"`
-	ClearMaxDevices bool       `json:"clearMaxDevices"`
-	ServerID        *string    `json:"serverId"`
+	DisplayName         *string    `json:"displayName"`
+	Email               *string    `json:"email"`
+	Phone               *string    `json:"phone"`
+	TelegramUsername    *string    `json:"telegramUsername"`
+	TelegramRecipientID *string    `json:"telegramRecipientId"`
+	Status              *string    `json:"status"`
+	ExpiresAt           *time.Time `json:"expiresAt"`
+	ClearExpiresAt      bool       `json:"clearExpiresAt"`
+	MaxDevices          *int       `json:"maxDevices"`
+	ClearMaxDevices     bool       `json:"clearMaxDevices"`
+	ServerID            *string    `json:"serverId"`
 }
 
 type CreateSubscriptionTokenRequest struct {

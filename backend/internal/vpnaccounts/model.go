@@ -22,17 +22,20 @@ const (
 )
 
 type Account struct {
-	ID              string     `json:"id"`
-	DisplayName     string     `json:"displayName"`
-	Email           string     `json:"email,omitempty"`
-	Status          string     `json:"status"`
-	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
-	MaxDevices      *int       `json:"maxDevices,omitempty"`
-	ServerID        string     `json:"serverId,omitempty"`
-	VLESSUUID       string     `json:"vlessUuid,omitempty"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	ConfigUpdatedAt time.Time  `json:"configUpdatedAt"`
+	ID                  string     `json:"id"`
+	DisplayName         string     `json:"displayName"`
+	Email               string     `json:"email,omitempty"`
+	Phone               string     `json:"phone,omitempty"`
+	TelegramUsername    string     `json:"telegramUsername,omitempty"`
+	TelegramRecipientID string     `json:"telegramRecipientId,omitempty"`
+	Status              string     `json:"status"`
+	ExpiresAt           *time.Time `json:"expiresAt,omitempty"`
+	MaxDevices          *int       `json:"maxDevices,omitempty"`
+	ServerID            string     `json:"serverId,omitempty"`
+	VLESSUUID           string     `json:"vlessUuid,omitempty"`
+	CreatedAt           time.Time  `json:"createdAt"`
+	UpdatedAt           time.Time  `json:"updatedAt"`
+	ConfigUpdatedAt     time.Time  `json:"configUpdatedAt"`
 }
 
 type SubscriptionToken struct {
@@ -141,23 +144,28 @@ type RoutingProfileRule struct {
 }
 
 type CreateAccountInput struct {
-	DisplayName string
-	Email       string
-	Status      string
-	ExpiresAt   *time.Time
-	MaxDevices  *int
-	ServerID    string
+	DisplayName      string
+	Email            string
+	Phone            string
+	TelegramUsername string
+	Status           string
+	ExpiresAt        *time.Time
+	MaxDevices       *int
+	ServerID         string
 }
 
 type UpdateAccountInput struct {
-	DisplayName     *string
-	Email           *string
-	Status          *string
-	ExpiresAt       *time.Time
-	ClearExpiresAt  bool
-	MaxDevices      *int
-	ClearMaxDevices bool
-	ServerID        *string
+	DisplayName         *string
+	Email               *string
+	Phone               *string
+	TelegramUsername    *string
+	TelegramRecipientID *string
+	Status              *string
+	ExpiresAt           *time.Time
+	ClearExpiresAt      bool
+	MaxDevices          *int
+	ClearMaxDevices     bool
+	ServerID            *string
 }
 
 type CreateSubscriptionTokenInput struct {

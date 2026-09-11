@@ -27,6 +27,9 @@ export interface PagedVpnAccountsResponse {
 export interface UpdateVpnAccountRequest {
   displayName?: string;
   email?: string;
+  phone?: string;
+  telegramUsername?: string;
+  telegramRecipientId?: string;
   status?: VpnAccountStatus;
   expiresAt?: string;
   clearExpiresAt?: boolean;

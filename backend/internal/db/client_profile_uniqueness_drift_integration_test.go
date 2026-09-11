@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000147_delivery_idempotency_index_repair" {
-		t.Fatalf("applied schema version = %q, want 000147_delivery_idempotency_index_repair", version)
+	if version != "000148_vpn_account_telegram_contact" {
+		t.Fatalf("applied schema version = %q, want 000148_vpn_account_telegram_contact", version)
 	}
 }
