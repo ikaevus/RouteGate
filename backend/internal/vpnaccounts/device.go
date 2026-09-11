@@ -88,12 +88,12 @@ type UpdateDeviceRequest struct {
 // plus its current subscription URL and a product-simplified compatibility
 // assessment (Full RouteGate / Compatible / Generic), never the raw token.
 type DeviceAccess struct {
-	Device          Device                         `json:"device"`
-	SubscriptionURL string                         `json:"subscriptionUrl,omitempty"`
-	TokenPreview    string                         `json:"tokenPreview,omitempty"`
-	TokenExpiresAt  *time.Time                     `json:"tokenExpiresAt,omitempty"`
-	TokenLastUsedAt *time.Time                     `json:"tokenLastUsedAt,omitempty"`
-	HasActiveToken  bool                           `json:"hasActiveToken"`
+	Device          Device                        `json:"device"`
+	SubscriptionURL string                        `json:"subscriptionUrl,omitempty"`
+	TokenPreview    string                        `json:"tokenPreview,omitempty"`
+	TokenExpiresAt  *time.Time                    `json:"tokenExpiresAt,omitempty"`
+	TokenLastUsedAt *time.Time                    `json:"tokenLastUsedAt,omitempty"`
+	HasActiveToken  bool                          `json:"hasActiveToken"`
 	Compatibility   ClientCompatibilityAssessment `json:"compatibility"`
 }
 
@@ -649,7 +649,7 @@ func (h *Handler) issueDeviceSubscriptionToken(r *http.Request, repository devic
 		Device:            device,
 		SubscriptionToken: rawToken,
 		TokenPreview:      MaskSubscriptionToken(rawToken),
-		SubscriptionURL:   h.subscriptionURL(r, rawToken),
+		SubscriptionURL:   h.deviceSubscriptionURL(r, rawToken),
 		ExpiresAt:         token.ExpiresAt,
 	}, nil
 }

@@ -92,14 +92,13 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	}
 
 	clientType := resolveSubscriptionClientType(connection.Profile, r.UserAgent())
+	resolvedDeviceID := ""
 	if strings.TrimSpace(token.DeviceID) != "" {
 		if device, deviceErr := h.accounts.GetDeviceByID(r.Context(), token.DeviceID); deviceErr == nil {
 			if normalized := normalizeClientType(device.ClientType); device.ClientType != "" {
 				clientType = normalized
 			}
-			if err := h.accounts.MarkDeviceUsed(r.Context(), device.ID); err != nil {
-				h.logger.Warn("mark device used failed", "device_id", device.ID, "error", err)
-			}
+			resolvedDeviceID = device.ID
 		} else if !errors.Is(deviceErr, pgx.ErrNoRows) {
 			h.logger.Warn("resolve device for client subscription failed", "device_id", token.DeviceID, "error", deviceErr)
 		}
@@ -128,9 +127,19 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Only mark the token (and, if this is a device-scoped token, the
+	// device) used once delivery has actually succeeded - an unavailable
+	// format or a header-rendering failure above returns an error to the
+	// caller without touching either timestamp, so a failed request can
+	// never look like a successful one in last_used_at.
 	if err := h.accounts.MarkSubscriptionTokenUsed(r.Context(), token.ID); err != nil {
 		h.databaseError(w, "mark client subscription token used", err)
 		return
+	}
+	if resolvedDeviceID != "" {
+		if err := h.accounts.MarkDeviceUsed(r.Context(), resolvedDeviceID); err != nil {
+			h.logger.Warn("mark device used failed", "device_id", resolvedDeviceID, "error", err)
+		}
 	}
 
 	w.Header().Set("Content-Type", payload.ContentType)

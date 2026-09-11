@@ -178,7 +178,7 @@ func TestVPNAccessResolverFailsPermanentlyWhenDeviceMaterialIsUnavailable(t *tes
 func activeDeviceAccessLookupFixture() fakeDeviceAccessLookup {
 	return fakeDeviceAccessLookup{
 		device: vpnaccounts.Device{ID: "device-1", VPNAccountID: "account-1", Name: "iPhone", Status: vpnaccounts.DeviceStatusActive},
-		token:  vpnaccounts.SubscriptionToken{DeviceID: "device-1", TokenHash: vpnaccounts.HashSubscriptionToken("rgsub_current")},
+		token:  vpnaccounts.SubscriptionToken{ID: "token-generation-1", DeviceID: "device-1", TokenHash: vpnaccounts.HashSubscriptionToken("rgsub_current")},
 	}
 }
 
@@ -186,8 +186,9 @@ func activeDeviceAccessLookupFixture() fakeDeviceAccessLookup {
 // happy path: the canonical URL for the device's own current active token
 // is accepted and its token returned untouched for downstream stashing.
 func TestValidateDeviceAccessRequestAcceptsTheDevicesOwnCurrentLink(t *testing.T) {
-	_, accessURL, failure := validateDeviceAccessRequestWith(
-		context.Background(), activeDeviceAccessLookupFixture(), "https://vpn.example.com",
+	fixture := activeDeviceAccessLookupFixture()
+	_, accessURL, tokenID, failure := validateDeviceAccessRequestWith(
+		context.Background(), fixture, "https://vpn.example.com",
 		"account-1", "device-1", "https://vpn.example.com/sub/rgsub_current",
 	)
 	if failure != nil {
@@ -195,6 +196,9 @@ func TestValidateDeviceAccessRequestAcceptsTheDevicesOwnCurrentLink(t *testing.T
 	}
 	if accessURL != "https://vpn.example.com/sub/rgsub_current" {
 		t.Fatalf("accessURL = %q", accessURL)
+	}
+	if tokenID != fixture.token.ID {
+		t.Fatalf("tokenID = %q, want the active token's own ID %q", tokenID, fixture.token.ID)
 	}
 }
 
@@ -204,7 +208,7 @@ func TestValidateDeviceAccessRequestAcceptsTheDevicesOwnCurrentLink(t *testing.T
 // or foreign link, never treated as good enough because the URL shape is
 // otherwise fine.
 func TestValidateDeviceAccessRequestRejectsWrongToken(t *testing.T) {
-	_, _, failure := validateDeviceAccessRequestWith(
+	_, _, _, failure := validateDeviceAccessRequestWith(
 		context.Background(), activeDeviceAccessLookupFixture(), "https://vpn.example.com",
 		"account-1", "device-1", "https://vpn.example.com/sub/rgsub_someone_elses_token",
 	)
@@ -222,7 +226,7 @@ func TestValidateDeviceAccessRequestRejectsWrongToken(t *testing.T) {
 // otherwise this endpoint could be used to relay delivery through an
 // attacker-chosen link.
 func TestValidateDeviceAccessRequestRejectsForeignHostEvenWithTheRightToken(t *testing.T) {
-	_, _, failure := validateDeviceAccessRequestWith(
+	_, _, _, failure := validateDeviceAccessRequestWith(
 		context.Background(), activeDeviceAccessLookupFixture(), "https://vpn.example.com",
 		"account-1", "device-1", "https://evil.example/sub/rgsub_current",
 	)
@@ -237,11 +241,35 @@ func TestValidateDeviceAccessRequestRejectsForeignHostEvenWithTheRightToken(t *t
 func TestValidateDeviceAccessRequestRejectsRevokedDevice(t *testing.T) {
 	lookup := activeDeviceAccessLookupFixture()
 	lookup.device.Status = vpnaccounts.DeviceStatusRevoked
-	_, _, failure := validateDeviceAccessRequestWith(
+	_, _, _, failure := validateDeviceAccessRequestWith(
 		context.Background(), lookup, "https://vpn.example.com",
 		"account-1", "device-1", "https://vpn.example.com/sub/rgsub_current",
 	)
 	if failure == nil || failure.code != "device_revoked" {
 		t.Fatalf("expected device_revoked, got %+v", failure)
+	}
+}
+
+// TestCanonicallyIssuedDeviceURLPassesTheSendValidator cross-checks that a
+// URL built the same way vpnaccounts.Handler.deviceSubscriptionURL builds
+// one - publicurl.Normalize(publicURL) + "/sub/" + token - always passes
+// extractCanonicalSubscriptionToken for that same publicURL. Both call
+// sites go through the shared internal/publicurl policy, so issuance and
+// validation can never quietly drift apart into "RouteGate issues a link
+// its own Send validator then rejects".
+func TestCanonicallyIssuedDeviceURLPassesTheSendValidator(t *testing.T) {
+	const configuredPublicURL = "https://vpn.example.com"
+	canonicalOrigin, err := NormalizePublicURL(configuredPublicURL)
+	if err != nil {
+		t.Fatalf("normalize configured public url: %v", err)
+	}
+	issuedURL := canonicalOrigin + "/sub/rgsub_device_fixture"
+
+	token, err := extractCanonicalSubscriptionToken(configuredPublicURL, issuedURL)
+	if err != nil {
+		t.Fatalf("canonically issued device URL rejected by its own Send validator: %v", err)
+	}
+	if token != "rgsub_device_fixture" {
+		t.Fatalf("token = %q, want rgsub_device_fixture", token)
 	}
 }

@@ -177,6 +177,11 @@ func (r *Repository) DeleteAccount(ctx context.Context, id string) error {
 	return nil
 }
 
+// CreateSubscriptionToken issues the legacy account-level subscription
+// token: it revokes only the account's previous legacy token
+// (device_id IS NULL) and must never touch a device's own RG-116 token.
+// Device tokens are issued/rotated exclusively through
+// CreateDeviceSubscriptionToken (device.go), which is scoped by device_id.
 func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSubscriptionTokenInput) (SubscriptionToken, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -187,7 +192,7 @@ func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSu
 	if _, err := tx.Exec(ctx, `
 		UPDATE vpn_subscription_tokens
 		SET status = 'revoked', revoked_at = now(), updated_at = now()
-		WHERE vpn_account_id = $1::uuid AND status = 'active'
+		WHERE vpn_account_id = $1::uuid AND status = 'active' AND device_id IS NULL
 	`, input.VPNAccountID); err != nil {
 		return SubscriptionToken{}, err
 	}
@@ -216,11 +221,14 @@ func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSu
 	return token, nil
 }
 
+// RevokeActiveSubscriptionTokens revokes only the account's legacy
+// (device_id IS NULL) token. It must never revoke a device's own RG-116
+// token; use device.go's RevokeDevice for that.
 func (r *Repository) RevokeActiveSubscriptionTokens(ctx context.Context, vpnAccountID string) error {
 	result, err := r.pool.Exec(ctx, `
 		UPDATE vpn_subscription_tokens
 		SET status = 'revoked', revoked_at = now(), updated_at = now()
-		WHERE vpn_account_id = $1::uuid AND status = 'active'
+		WHERE vpn_account_id = $1::uuid AND status = 'active' AND device_id IS NULL
 	`, vpnAccountID)
 	if err != nil {
 		return err
@@ -231,11 +239,15 @@ func (r *Repository) RevokeActiveSubscriptionTokens(ctx context.Context, vpnAcco
 	return nil
 }
 
+// GetActiveSubscriptionTokenByHash looks up the account's legacy
+// (device_id IS NULL) token by hash. Restricting to device_id IS NULL keeps
+// this legacy lookup from ever matching a device's own token.
 func (r *Repository) GetActiveSubscriptionTokenByHash(ctx context.Context, vpnAccountID string, tokenHash string) (SubscriptionToken, error) {
 	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
 		WHERE vpn_account_id = $1::uuid
 		  AND token_hash = $2
 		  AND status = 'active'
+		  AND device_id IS NULL
 		  AND (expires_at IS NULL OR expires_at > now())
 	`, vpnAccountID, tokenHash))
 }
@@ -605,29 +617,29 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	profile.Credentials.VLESS.UUID = profile.Account.VLESSUUID
 	if serverID.Valid {
 		server := SubscriptionServer{
-			ID:                serverID.String,
-			Name:              serverName.String,
-			Hostname:          serverHostname.String,
-			PublicIP:          serverPublicIP.String,
-			Location:          serverLocation.String,
-			Provider:          serverProvider.String,
-			VLESSPort:         defaultSingBoxServerPort,
-			VLESSFlow:         vlessFlow.String,
-			VLESSNetwork:      vlessNetwork.String,
-			RealityPublicKey:  realityPublicKey.String,
-			RealityShortID:    realityShortID.String,
-			RealityServerName: realityServerName.String,
-			VPNProtocol:       vpnProtocol.String,
-			WireGuardPort:      int(wireGuardPort.Int32),
-			WireGuardAddress:   serverWireGuardAddress.String,
-			WireGuardDNS:       wireGuardDNS.String,
-			WireGuardPublicKey: serverWireGuardPublicKey.String,
-			Hysteria2Port:       int(hysteria2Port.Int32),
-			Hysteria2Domain:     hysteria2Domain.String,
-			Hysteria2ACMEEmail:  hysteria2ACMEEmail.String,
-			ShadowsocksPort:      int(shadowsocksPort.Int32),
-			ShadowsocksMethod:    shadowsocksMethod.String,
-			ShadowsocksServerKey: shadowsocksServerKey.String,
+			ID:                    serverID.String,
+			Name:                  serverName.String,
+			Hostname:              serverHostname.String,
+			PublicIP:              serverPublicIP.String,
+			Location:              serverLocation.String,
+			Provider:              serverProvider.String,
+			VLESSPort:             defaultSingBoxServerPort,
+			VLESSFlow:             vlessFlow.String,
+			VLESSNetwork:          vlessNetwork.String,
+			RealityPublicKey:      realityPublicKey.String,
+			RealityShortID:        realityShortID.String,
+			RealityServerName:     realityServerName.String,
+			VPNProtocol:           vpnProtocol.String,
+			WireGuardPort:         int(wireGuardPort.Int32),
+			WireGuardAddress:      serverWireGuardAddress.String,
+			WireGuardDNS:          wireGuardDNS.String,
+			WireGuardPublicKey:    serverWireGuardPublicKey.String,
+			Hysteria2Port:         int(hysteria2Port.Int32),
+			Hysteria2Domain:       hysteria2Domain.String,
+			Hysteria2ACMEEmail:    hysteria2ACMEEmail.String,
+			ShadowsocksPort:       int(shadowsocksPort.Int32),
+			ShadowsocksMethod:     shadowsocksMethod.String,
+			ShadowsocksServerKey:  shadowsocksServerKey.String,
 			MTProtoPort:           int(mtprotoPort.Int32),
 			MTProtoSecret:         mtprotoSecret.String,
 			MTProtoFrontingDomain: mtprotoFrontingDomain.String,

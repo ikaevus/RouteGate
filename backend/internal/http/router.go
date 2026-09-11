@@ -41,7 +41,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	rolesHandler := roles.NewHandler(logger, pool)
 	systemHandler := system.NewHandler(logger, pool)
 	setupHandler := setup.NewHandler(logger, pool, cfg.AuthSessionTTL)
-	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool)
+	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool, cfg.PublicURL)
 	vpnAccountNotesHandler := vpnaccounts.NewNotesHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
 	connectionsHandler := connections.NewHandler(logger, pool)

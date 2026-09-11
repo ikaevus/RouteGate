@@ -49,6 +49,64 @@ The pre-existing account-level subscription-token endpoints
 for backward compatibility. New devices are managed exclusively through the
 new `/vpn-accounts/{id}/devices` endpoints.
 
+Backfill normalizes the legacy `vpn_client_profiles.client_type`/`device_type`
+vocabulary onto the RG-116 device allow-list rather than copying it verbatim:
+`hiddify`/`v2rayn`/`v2rayng` (and `windows`/`ios`/`android`/`macos`/`linux`)
+pass through unchanged, and everything else - `v2raytun`, `v2box`, `other`,
+`sing-box`, or any older/unknown value - normalizes to `generic`/`other`,
+matching `normalizeClientType` in `client_capabilities.go`. A backfilled
+device is never created with a `client_type` the device API's own validation
+(`allowedDeviceClientTypes`) would then reject on the next rename/rotate.
+
+## Token isolation: legacy, device, and Portal tokens never cross
+
+RG-116 intentionally allows two token families to coexist on one account: at
+most one legacy token (`device_id IS NULL`, from the pre-existing
+account-level endpoints and the Portal's self-service subscription) and at
+most one active token per device. Every repository method that creates or
+revokes a *legacy* token — `vpnaccounts.Repository.CreateSubscriptionToken`,
+`RevokeActiveSubscriptionTokens`, `GetActiveSubscriptionTokenByHash`, and
+`portal.Repository.CreateSubscriptionToken` — filters its `UPDATE`/`SELECT`
+on `device_id IS NULL`. None of them may ever revoke or match a device's own
+token; device tokens are created/rotated/revoked exclusively through
+`device.go`'s device-scoped methods, which filter on `device_id` instead.
+This is enforced at the application layer (these queries) and backstopped by
+the two independent partial unique indexes from the Schema section above.
+
+The Portal remains, deliberately, the legacy account-level access path: it
+does not yet know about individual devices, and this pass does not give it
+one. Its self-service subscription token is exactly the same
+`device_id IS NULL` legacy token the account-level HTTP endpoints issue, so
+it is subject to the same isolation guarantee - generating or rotating a
+Portal link never touches any RG-116 device. If Portal self-service ever
+needs its own per-device identity, that is a future, separate product
+decision (a "Portal → Access & Devices" migration), not something this pass
+introduces silently.
+
+## Device access URL uses the canonical PublicURL, not the request Host
+
+A device's issued `/sub/<token>` link must always pass RouteGate's own Send
+validator (`delivery.extractCanonicalSubscriptionToken`), which checks the
+URL's scheme/host against the administrator's configured RouteGate
+PublicURL exactly. So device token issuance and rotation
+(`Handler.deviceSubscriptionURL`) build that URL from the same configured
+PublicURL (via the shared `internal/publicurl` policy also used by
+`delivery.NormalizePublicURL`) instead of the incoming request's
+`Host`/`X-Forwarded-Host`/`X-Forwarded-Proto`. Forwarded headers can
+therefore never move where a device's credential resolves. If PublicURL is
+not configured yet, device issuance falls back to the same request-derived
+origin the legacy endpoint has always used (Send does not work without a
+valid PublicURL either way, so this fallback can never produce a link Send
+would otherwise have accepted from a different origin).
+
+The legacy account-level endpoint (`Handler.subscriptionURL`) intentionally
+keeps its original request-derived behavior for backward compatibility
+(pinned by `TestCreateSubscriptionTokenFallsBackFromInvalidForwardedHeaders`);
+Send validation for that endpoint's own share/QR flow does not apply the
+same strict canonical-origin check RG-116 device Send does, so this is a
+deliberate, documented divergence rather than an oversight. The Portal's
+subscription URL construction is unchanged for the same reason.
+
 ## Access & Devices owns Send
 
 The device card is the only place an administrator sends access; there is no
@@ -110,9 +168,10 @@ RouteGate supports protocols broadly, but supports VPN clients selectively:
 1. **Hiddify** — primary/recommended client. Full RouteGate experience
    (sing-box config + Routing Profile) where the effective protocol is VLESS.
 2. **v2rayN** — officially supported desktop client (2dust family).
-   Connection/subscription support, plus a manually-validated native
-   routing-rules import (`format=v2rayn-routing`); routing may still require
-   local client setup.
+   Connection/subscription support, plus an implemented, automated-test-covered
+   native routing-rules import (`format=v2rayn-routing`); routing requires
+   local client setup, and real-client runtime validation (issue #392) is
+   still pending, so this is not yet claimed as independently confirmed.
 3. **v2rayNG** — officially selectable Android client (2dust family) for
    standard connection/subscription delivery. **Not** promoted to the same
    routing tier as v2rayN merely because it shares a client family: its

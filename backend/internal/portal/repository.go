@@ -83,6 +83,12 @@ func (r *Repository) GetTrafficUsageForUser(ctx context.Context, email string) (
 	return usage, nil
 }
 
+// CreateSubscriptionToken issues the Portal's self-service subscription
+// token. The Portal remains the legacy account-level access path (RG-116
+// devices are managed exclusively through Access & Devices); this must only
+// revoke the account's previous legacy token (device_id IS NULL) and must
+// never touch a device's own RG-116 token. The new token is likewise
+// inserted with device_id left NULL.
 func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSubscriptionTokenInput) (PortalSubscriptionToken, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -93,7 +99,7 @@ func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSu
 	if _, err := tx.Exec(ctx, `
 		UPDATE vpn_subscription_tokens
 		SET status = 'revoked', revoked_at = now(), updated_at = now()
-		WHERE vpn_account_id = $1::uuid AND status = 'active'
+		WHERE vpn_account_id = $1::uuid AND status = 'active' AND device_id IS NULL
 	`, input.VPNAccountID); err != nil {
 		return PortalSubscriptionToken{}, err
 	}

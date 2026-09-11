@@ -28,19 +28,20 @@ func (f *fakeCreator) Create(_ context.Context, input CreateInput) (Delivery, bo
 	f.input = input
 	if f.delivery.ID == "" {
 		f.delivery = Delivery{
-			ID:              "11111111-1111-1111-1111-111111111111",
-			VPNAccountID:    input.VPNAccountID,
-			DeviceID:        input.DeviceID,
-			Channel:         input.Channel,
-			Provider:        input.Provider,
-			Recipient:       input.Recipient,
-			TemplateKey:     input.TemplateKey,
-			Locale:          input.Locale,
-			AttachQR:        input.AttachQR,
-			Status:          StatusQueued,
-			MaxAttempts:     input.MaxAttempts,
-			IdempotencyKey:  input.IdempotencyKey,
-			CreatedByUserID: input.CreatedByUserID,
+			ID:                  "11111111-1111-1111-1111-111111111111",
+			VPNAccountID:        input.VPNAccountID,
+			DeviceID:            input.DeviceID,
+			SubscriptionTokenID: input.SubscriptionTokenID,
+			Channel:             input.Channel,
+			Provider:            input.Provider,
+			Recipient:           input.Recipient,
+			TemplateKey:         input.TemplateKey,
+			Locale:              input.Locale,
+			AttachQR:            input.AttachQR,
+			Status:              StatusQueued,
+			MaxAttempts:         input.MaxAttempts,
+			IdempotencyKey:      input.IdempotencyKey,
+			CreatedByUserID:     input.CreatedByUserID,
 		}
 	}
 	return f.delivery, f.created, nil
@@ -263,6 +264,60 @@ func TestDeviceScopedIdempotencyNeverCrossesDevices(t *testing.T) {
 		_, _, err = service.Create(context.Background(), deviceScoped)
 		if !errors.Is(err, ErrIdempotencyConflict) {
 			t.Fatalf("expected idempotency conflict between account-level and device-scoped delivery, got %v", err)
+		}
+	})
+
+	// The following two subtests guard item 6: idempotency must also bind to
+	// the device's current subscription-token *generation*, not just its
+	// DeviceID. Without this, reusing an Idempotency-Key after rotating a
+	// device's token would replay the original delivery row - one whose
+	// stashed device access material (see device_access_material.go) belongs
+	// to the OLD, now-revoked token generation - instead of being rejected as
+	// a conflict that forces the caller to mint a fresh key for the new
+	// generation.
+
+	t.Run("same key, same device, same token generation replays as idempotent duplicate", func(t *testing.T) {
+		creator := &fakeCreator{created: true}
+		service := NewService(creator, &fakeAuditRecorder{})
+		deviceInput := baseInput
+		deviceInput.DeviceID = "11111111-1111-1111-1111-111111111111"
+		deviceInput.SubscriptionTokenID = "token-generation-1"
+
+		delivery, created, err := service.Create(context.Background(), deviceInput)
+		if err != nil || !created {
+			t.Fatalf("create device delivery: created=%v err=%v", created, err)
+		}
+
+		creator.created = false
+		creator.delivery = delivery
+		replay, created, err := service.Create(context.Background(), deviceInput)
+		if err != nil || created {
+			t.Fatalf("idempotent replay: created=%v err=%v", created, err)
+		}
+		if replay.ID != delivery.ID {
+			t.Fatalf("replay returned a different delivery: %+v vs %+v", replay, delivery)
+		}
+	})
+
+	t.Run("same key, same device, rotated token generation is a conflict", func(t *testing.T) {
+		creator := &fakeCreator{created: true}
+		service := NewService(creator, &fakeAuditRecorder{})
+		originalGeneration := baseInput
+		originalGeneration.DeviceID = "11111111-1111-1111-1111-111111111111"
+		originalGeneration.SubscriptionTokenID = "token-generation-1"
+
+		delivery, created, err := service.Create(context.Background(), originalGeneration)
+		if err != nil || !created {
+			t.Fatalf("create device delivery: created=%v err=%v", created, err)
+		}
+
+		creator.created = false
+		creator.delivery = delivery
+		rotatedGeneration := originalGeneration
+		rotatedGeneration.SubscriptionTokenID = "token-generation-2"
+		_, _, err = service.Create(context.Background(), rotatedGeneration)
+		if !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("expected idempotency conflict after token rotation reused the same key, got %v", err)
 		}
 	})
 }

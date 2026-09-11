@@ -149,6 +149,109 @@ func TestVpnAccountDevicesMigrationBackfillsExistingSubscriptionToken(t *testing
 	}
 }
 
+// TestVpnAccountDevicesBackfillNormalizesLegacyClientTypes verifies migration
+// 000149's backfill maps every historical vpn_client_profiles.client_type
+// value onto the RG-116 device allow-list (hiddify, v2rayn, v2rayng,
+// generic), never preserving a retired identity (v2raytun, v2box) or any
+// other historical/unknown value as a first-class device client. A
+// backfilled device row that failed this would be rejected by the device
+// API's own validation the next time it was renamed or rotated.
+func TestVpnAccountDevicesBackfillNormalizesLegacyClientTypes(t *testing.T) {
+	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	pool, err := Connect(ctx, databaseURL, logger)
+	if err != nil {
+		t.Fatalf("connect to test PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
+	resetPublicSchema(t, ctx, pool)
+	preDeviceDir := copyMigrationsBefore(t, "../../migrations", "000149_vpn_account_devices.up.sql")
+	if err := Migrate(ctx, pool, preDeviceDir, logger); err != nil {
+		t.Fatalf("apply migrations through 000148: %v", err)
+	}
+
+	cases := []struct {
+		legacyClientType string
+		legacyDeviceType string
+		wantClientType   string
+		wantDeviceType   string
+	}{
+		{"hiddify", "ios", "hiddify", "ios"},
+		{"v2rayn", "windows", "v2rayn", "windows"},
+		{"v2rayng", "android", "v2rayng", "android"},
+		{"v2raytun", "ios", "generic", "ios"},
+		{"v2box", "android", "generic", "android"},
+		{"other", "macos", "generic", "macos"},
+		// sing-box is not being added to the RG-116 device allow-list by this
+		// migration; that would be a silent product decision this pass must
+		// not make. It normalizes to generic like any other unsupported value.
+		{"sing-box", "linux", "generic", "linux"},
+		{"some-unknown-legacy-value", "some-unknown-platform", "generic", "other"},
+	}
+
+	accountIDs := make([]string, len(cases))
+	for i, tc := range cases {
+		username := "rg116-backfill-normalize-" + tc.legacyClientType
+		var accountID string
+		if err := pool.QueryRow(ctx, `
+			INSERT INTO vpn_accounts (username, protocol, display_name, status)
+			VALUES ($1, 'sing-box', $1, 'active')
+			RETURNING id::text
+		`, username).Scan(&accountID); err != nil {
+			t.Fatalf("create account for %q: %v", tc.legacyClientType, err)
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO vpn_client_profiles (vpn_account_id, client_type, device_type)
+			VALUES ($1::uuid, $2, $3)
+		`, accountID, tc.legacyClientType, tc.legacyDeviceType); err != nil {
+			t.Fatalf("create legacy client profile for %q: %v", tc.legacyClientType, err)
+		}
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO vpn_subscription_tokens (vpn_account_id, token_hash, status)
+			VALUES ($1::uuid, $2, 'active')
+		`, accountID, "backfill-normalize-hash-"+tc.legacyClientType); err != nil {
+			t.Fatalf("create legacy subscription token for %q: %v", tc.legacyClientType, err)
+		}
+		accountIDs[i] = accountID
+	}
+
+	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+		t.Fatalf("apply vpn_account_devices migration: %v", err)
+	}
+
+	allowedClientTypes := map[string]bool{"hiddify": true, "v2rayn": true, "v2rayng": true, "generic": true}
+	allowedDeviceTypes := map[string]bool{"windows": true, "ios": true, "android": true, "macos": true, "linux": true, "other": true}
+
+	for i, tc := range cases {
+		var gotClientType, gotDeviceType string
+		if err := pool.QueryRow(ctx, `
+			SELECT client_type, device_type FROM vpn_account_devices WHERE vpn_account_id = $1::uuid
+		`, accountIDs[i]).Scan(&gotClientType, &gotDeviceType); err != nil {
+			t.Fatalf("read backfilled device for legacy client_type %q: %v", tc.legacyClientType, err)
+		}
+		if gotClientType != tc.wantClientType {
+			t.Fatalf("legacy client_type %q backfilled to %q, want %q", tc.legacyClientType, gotClientType, tc.wantClientType)
+		}
+		if gotDeviceType != tc.wantDeviceType {
+			t.Fatalf("legacy device_type %q (client_type %q) backfilled to %q, want %q", tc.legacyDeviceType, tc.legacyClientType, gotDeviceType, tc.wantDeviceType)
+		}
+		if !allowedClientTypes[gotClientType] {
+			t.Fatalf("backfilled client_type %q is not in the RG-116 device allow-list", gotClientType)
+		}
+		if !allowedDeviceTypes[gotDeviceType] {
+			t.Fatalf("backfilled device_type %q is not in the RG-116 device allow-list", gotDeviceType)
+		}
+	}
+}
+
 // TestVpnAccountDevicesLegacyNullDeviceTokenInvariant verifies migration
 // 000149 enforces, at the database level, both halves of the post-RG-116
 // uniqueness contract: one active token per device, AND one active
@@ -269,6 +372,10 @@ func TestVpnAccountDevicesDownMigrationAbortsWhenUnrepresentable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read 000150 down migration: %v", err)
 	}
+	downSQL151, err := os.ReadFile(filepath.Join("..", "..", "migrations", "000151_delivery_token_generation.down.sql"))
+	if err != nil {
+		t.Fatalf("read 000151 down migration: %v", err)
+	}
 
 	t.Run("aborts and changes nothing when unrepresentable", func(t *testing.T) {
 		resetPublicSchema(t, ctx, pool)
@@ -350,11 +457,27 @@ func TestVpnAccountDevicesDownMigrationAbortsWhenUnrepresentable(t *testing.T) {
 			t.Fatalf("issue token: %v", err)
 		}
 
+		if _, err := pool.Exec(ctx, string(downSQL151)); err != nil {
+			t.Fatalf("roll back 000151 first (reverse order): %v", err)
+		}
 		if _, err := pool.Exec(ctx, string(downSQL150)); err != nil {
-			t.Fatalf("roll back 000150 first (reverse order): %v", err)
+			t.Fatalf("roll back 000150 next (reverse order): %v", err)
 		}
 		if _, err := pool.Exec(ctx, string(downSQL)); err != nil {
 			t.Fatalf("expected the down migration to succeed when every account has at most one active token: %v", err)
+		}
+
+		var subscriptionTokenIDColumnExists bool
+		if err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'deliveries' AND column_name = 'subscription_token_id'
+			)
+		`).Scan(&subscriptionTokenIDColumnExists); err != nil {
+			t.Fatalf("check deliveries.subscription_token_id column: %v", err)
+		}
+		if subscriptionTokenIDColumnExists {
+			t.Fatal("expected deliveries.subscription_token_id to be dropped after rolling back 000151")
 		}
 
 		var deviceTableExists bool

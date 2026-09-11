@@ -203,7 +203,7 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deviceID := strings.TrimSpace(request.DeviceID)
-	var deviceProfileName, deviceAccessURL string
+	var deviceProfileName, deviceAccessURL, deviceTokenID string
 	if deviceID != "" {
 		// Access & Devices: the device card owns Send. The caller must pass
 		// the exact plaintext access URL it currently holds in memory (RG-115
@@ -211,12 +211,12 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		// must hash to the device's own current active token so an admin
 		// session cannot use this endpoint to relay an arbitrary URL through
 		// RouteGate's mail/Telegram sender.
-		profileName, resolvedAccessURL, deviceErr := h.validateDeviceAccessRequest(r.Context(), accountID, deviceID, request.AccessURL)
+		profileName, resolvedAccessURL, tokenID, deviceErr := h.validateDeviceAccessRequest(r.Context(), accountID, deviceID, request.AccessURL)
 		if deviceErr != nil {
 			httpx.WriteJSON(w, deviceErr.status, httpx.Error(deviceErr.code, deviceErr.message))
 			return
 		}
-		deviceProfileName, deviceAccessURL = profileName, resolvedAccessURL
+		deviceProfileName, deviceAccessURL, deviceTokenID = profileName, resolvedAccessURL, tokenID
 	} else {
 		if _, err := NormalizePublicURL(h.publicURL); err != nil {
 			failure := failureFromError(err, ErrorClassPermanent, "public_url_invalid")
@@ -236,16 +236,17 @@ func (h *Handler) CreateForVPNAccount(w http.ResponseWriter, r *http.Request) {
 		createdBy = user.ID
 	}
 	delivery, _, createErr := h.service.Create(r.Context(), CreateInput{
-		VPNAccountID:    accountID,
-		DeviceID:        deviceID,
-		Channel:         request.Channel,
-		Provider:        providerName,
-		Recipient:       recipient,
-		TemplateKey:     request.Template,
-		Locale:          request.Locale,
-		AttachQR:        request.AttachQR,
-		IdempotencyKey:  idempotencyKey,
-		CreatedByUserID: createdBy,
+		VPNAccountID:        accountID,
+		DeviceID:            deviceID,
+		SubscriptionTokenID: deviceTokenID,
+		Channel:             request.Channel,
+		Provider:            providerName,
+		Recipient:           recipient,
+		TemplateKey:         request.Template,
+		Locale:              request.Locale,
+		AttachQR:            request.AttachQR,
+		IdempotencyKey:      idempotencyKey,
+		CreatedByUserID:     createdBy,
 	})
 	if errors.Is(createErr, ErrIdempotencyConflict) {
 		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("idempotency_conflict", "Idempotency-Key was already used for a different delivery request."))
@@ -293,42 +294,45 @@ type deviceAccessLookup interface {
 // correctly - see extractCanonicalSubscriptionToken), and that token must
 // hash to the device's current active token. This never reads or stores the
 // plaintext token; it only re-hashes the caller's own value to compare
-// against the existing hash-only row.
-func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, deviceID, accessURL string) (string, string, *deviceAccessRequestError) {
+// against the existing hash-only row. The returned tokenID is the current
+// active token's non-secret row ID, used only to detect rotation for
+// delivery idempotency (see CreateInput.SubscriptionTokenID); it is never
+// the token, its hash, or a substitute credential.
+func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, deviceID, accessURL string) (profileName, resolvedAccessURL, tokenID string, failure *deviceAccessRequestError) {
 	return validateDeviceAccessRequestWith(ctx, h.accounts, h.publicURL, accountID, deviceID, accessURL)
 }
 
-func validateDeviceAccessRequestWith(ctx context.Context, accounts deviceAccessLookup, publicURL, accountID, deviceID, accessURL string) (string, string, *deviceAccessRequestError) {
+func validateDeviceAccessRequestWith(ctx context.Context, accounts deviceAccessLookup, publicURL, accountID, deviceID, accessURL string) (profileName, resolvedAccessURL, tokenID string, failure *deviceAccessRequestError) {
 	accessURL = strings.TrimSpace(accessURL)
 	if accessURL == "" {
-		return "", "", &deviceAccessRequestError{http.StatusBadRequest, "device_access_url_required", "accessUrl is required when sending for a specific device."}
+		return "", "", "", &deviceAccessRequestError{http.StatusBadRequest, "device_access_url_required", "accessUrl is required when sending for a specific device."}
 	}
 
 	device, err := accounts.GetDevice(ctx, accountID, deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", &deviceAccessRequestError{http.StatusNotFound, "device_not_found", "Device not found."}
+		return "", "", "", &deviceAccessRequestError{http.StatusNotFound, "device_not_found", "Device not found."}
 	}
 	if err != nil {
-		return "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
+		return "", "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
 	}
 	if device.Status != vpnaccounts.DeviceStatusActive {
-		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_revoked", "This device has been revoked."}
+		return "", "", "", &deviceAccessRequestError{http.StatusConflict, "device_revoked", "This device has been revoked."}
 	}
 
 	token, err := accounts.GetActiveDeviceSubscriptionToken(ctx, deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This device has no active access link. Rotate to create one, then send again."}
+		return "", "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This device has no active access link. Rotate to create one, then send again."}
 	}
 	if err != nil {
-		return "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
+		return "", "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
 	}
 
 	rawToken, parseErr := extractCanonicalSubscriptionToken(publicURL, accessURL)
 	if parseErr != nil || vpnaccounts.HashSubscriptionToken(rawToken) != token.TokenHash {
-		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This access link is no longer the device's current one. Rotate to create a new link, then send again."}
+		return "", "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This access link is no longer the device's current one. Rotate to create a new link, then send again."}
 	}
 
-	return device.Name, accessURL, nil
+	return device.Name, accessURL, token.ID, nil
 }
 
 // extractCanonicalSubscriptionToken extracts the opaque bearer token from an

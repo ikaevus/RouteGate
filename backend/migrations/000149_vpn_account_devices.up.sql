@@ -34,12 +34,36 @@ CREATE INDEX IF NOT EXISTS idx_vpn_subscription_tokens_device_id ON vpn_subscrip
 -- type, then attach that token to the new device. Existing subscription URLs
 -- keep resolving exactly as before; they simply become visible as one device
 -- in the new Access & Devices model instead of being invalidated.
+--
+-- The legacy vpn_client_profiles.client_type vocabulary is wider than the new
+-- RG-116 device allow-list (hiddify, v2rayn, v2rayng, generic): it can be
+-- v2raytun, v2box, sing-box, other, or an older/unknown value. A backfilled
+-- device row must satisfy the same allow-list the device API itself enforces
+-- (allowedDeviceClientTypes in device.go), or a simple rename would fail
+-- because UpdateDevice revalidates the existing client_type. Retired
+-- V2RayTun/V2Box identities are therefore not preserved as a first-class
+-- device client here; they normalize to 'generic', matching normalizeClientType
+-- in client_capabilities.go. Historical device_type/platform values are
+-- normalized the same defensive way, in case any predate the current
+-- allow-list.
 INSERT INTO vpn_account_devices (vpn_account_id, name, client_type, device_type, created_at, updated_at)
 SELECT
     active.vpn_account_id,
     'Default device',
-    COALESCE(NULLIF(cp.client_type, ''), 'generic'),
-    COALESCE(NULLIF(cp.device_type, ''), 'other'),
+    CASE COALESCE(NULLIF(cp.client_type, ''), 'generic')
+        WHEN 'hiddify' THEN 'hiddify'
+        WHEN 'v2rayn'  THEN 'v2rayn'
+        WHEN 'v2rayng' THEN 'v2rayng'
+        ELSE 'generic'
+    END,
+    CASE COALESCE(NULLIF(cp.device_type, ''), 'other')
+        WHEN 'windows' THEN 'windows'
+        WHEN 'ios'     THEN 'ios'
+        WHEN 'android' THEN 'android'
+        WHEN 'macos'   THEN 'macos'
+        WHEN 'linux'   THEN 'linux'
+        ELSE 'other'
+    END,
     active.created_at,
     now()
 FROM (

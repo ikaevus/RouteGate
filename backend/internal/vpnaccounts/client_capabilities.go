@@ -192,7 +192,16 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		return assessment
 	}
 
-	if normalizedClient == ClientTypeV2RayN {
+	// v2rayN and v2rayNG both only have a valid Base64 share-link
+	// representation for protocols protocolSupportsShareLinkSubscription
+	// recognizes (VLESS/Hysteria2/Shadowsocks). Without this check, a
+	// WireGuard or MTProto account would still resolve to
+	// SubscriptionDeliveryFormatBase64 - a format RouteGate cannot actually
+	// render valid material for on that protocol - even though the
+	// compatibility badge correctly says connection_only. This never
+	// promotes v2rayNG's routing tier: its Status is already connection_only
+	// from clientCompatibilityFor and stays that way either way.
+	if normalizedClient == ClientTypeV2RayN || normalizedClient == ClientTypeV2RayNG {
 		if !protocolSupportsShareLinkSubscription(protocol) {
 			assessment.Status = ClientCompatibilityConnectionOnly
 			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto

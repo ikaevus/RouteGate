@@ -42,43 +42,50 @@ const (
 )
 
 type Delivery struct {
-	ID                string
-	VPNAccountID      string
-	DeviceID          string
-	Channel           string
-	Provider          string
-	Recipient         string
-	TemplateKey       string
-	Locale            string
-	AttachQR          bool
-	Status            Status
-	AttemptCount      int
-	MaxAttempts       int
-	NextAttemptAt     *time.Time
-	AttemptStartedAt  *time.Time
-	ProviderReference string
-	LastErrorClass    ErrorClass
-	LastErrorCode     string
-	IdempotencyKey    string
-	CreatedByUserID   string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	SentAt            *time.Time
-	CompletedAt       *time.Time
+	ID           string
+	VPNAccountID string
+	DeviceID     string
+	// SubscriptionTokenID is a non-secret reference to the vpn_subscription_tokens
+	// row active at the moment this delivery was created (device-scoped
+	// deliveries only). It exists purely to detect token rotation for
+	// idempotency purposes; it is never the token itself, its hash, or the
+	// access URL, and it carries no bearer capability on its own.
+	SubscriptionTokenID string
+	Channel             string
+	Provider            string
+	Recipient           string
+	TemplateKey         string
+	Locale              string
+	AttachQR            bool
+	Status              Status
+	AttemptCount        int
+	MaxAttempts         int
+	NextAttemptAt       *time.Time
+	AttemptStartedAt    *time.Time
+	ProviderReference   string
+	LastErrorClass      ErrorClass
+	LastErrorCode       string
+	IdempotencyKey      string
+	CreatedByUserID     string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	SentAt              *time.Time
+	CompletedAt         *time.Time
 }
 
 type CreateInput struct {
-	VPNAccountID    string
-	DeviceID        string
-	Channel         string
-	Provider        string
-	Recipient       string
-	TemplateKey     string
-	Locale          string
-	AttachQR        bool
-	MaxAttempts     int
-	IdempotencyKey  string
-	CreatedByUserID string
+	VPNAccountID        string
+	DeviceID            string
+	SubscriptionTokenID string
+	Channel             string
+	Provider            string
+	Recipient           string
+	TemplateKey         string
+	Locale              string
+	AttachQR            bool
+	MaxAttempts         int
+	IdempotencyKey      string
+	CreatedByUserID     string
 }
 
 type Attachment struct {

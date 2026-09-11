@@ -118,6 +118,42 @@ func TestCompatibilityKeepsValidatedProtocolBehavior(t *testing.T) {
 	}
 }
 
+// TestV2RayNGDeliveryFormatDependsOnProtocolNotJustClient guards against a
+// real delivery bug: v2rayNG's compatibility badge was already correctly
+// connection_only, but its PreferredDeliveryFormat stayed Base64 regardless
+// of protocol. For WireGuard/MTProto, RouteGate cannot render a valid Base64
+// share-link at all (subscriptionShareLinks only covers VLESS/Hysteria2/
+// Shadowsocks), so selecting Base64 there produced a request that
+// renderSubscriptionDeliveryPayload rejects as unavailable instead of a
+// working protocol-native fallback.
+func TestV2RayNGDeliveryFormatDependsOnProtocolNotJustClient(t *testing.T) {
+	tests := []struct {
+		name       string
+		protocol   string
+		wantFormat string
+	}{
+		{"VLESS has a valid share-link", ClientProtocolVLESS, SubscriptionDeliveryFormatBase64},
+		{"Shadowsocks has a valid share-link", ClientProtocolShadowsocks, SubscriptionDeliveryFormatBase64},
+		{"Hysteria2 has a valid share-link", ClientProtocolHysteria2, SubscriptionDeliveryFormatBase64},
+		{"WireGuard has no share-link representation", ClientProtocolWireGuard, SubscriptionDeliveryFormatAuto},
+		{"MTProto has no share-link representation", ClientProtocolMTProto, SubscriptionDeliveryFormatAuto},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assessment := clientCompatibilityForProtocol(ClientTypeV2RayNG, test.protocol)
+			if assessment.Status != ClientCompatibilityConnectionOnly {
+				t.Fatalf("v2rayNG status = %q, want connection_only regardless of protocol", assessment.Status)
+			}
+			if assessment.PreferredDeliveryFormat != test.wantFormat {
+				t.Fatalf("v2rayNG %s preferred format = %q, want %q", test.protocol, assessment.PreferredDeliveryFormat, test.wantFormat)
+			}
+			if got := preferredDeliveryFormatForClient(ClientTypeV2RayNG, test.protocol); got != test.wantFormat {
+				t.Fatalf("preferredDeliveryFormatForClient(v2rayNG, %s) = %q, want %q", test.protocol, got, test.wantFormat)
+			}
+		})
+	}
+}
+
 func TestDetectClientTypeFromUserAgentIsConservative(t *testing.T) {
 	cases := map[string]string{
 		"Hiddify/2.5":           ClientTypeHiddify,

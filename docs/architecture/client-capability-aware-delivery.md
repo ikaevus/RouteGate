@@ -105,9 +105,9 @@ The adapter therefore contains no routing-policy decisions of its own.
 
 ## v2rayN
 
-v2rayN exposes strong local routing and DNS functionality, but RouteGate currently delivers standard share-link subscriptions to it by default. That representation carries connection material, not the complete RouteGate Routing Profile; the separate `v2rayn-routing` native adapter (see `docs/architecture/client-compatibility-matrix.md`) carries the policy as an additional import, and this has been manually validated.
+v2rayN exposes strong local routing and DNS functionality, but RouteGate currently delivers standard share-link subscriptions to it by default. That representation carries connection material, not the complete RouteGate Routing Profile; the separate `v2rayn-routing` native adapter (see `docs/architecture/client-compatibility-matrix.md`) carries the policy as an additional import. The adapter's mechanical rule mapping is implemented and covered by automated tests, but real-client runtime validation (does the imported profile actually make Ozon/Wildberries DIRECT on a real v2rayN install) is still pending — see issue #392's open manual-validation gate.
 
-v2rayN is therefore classified as `client_setup_required`. Admin UI guidance must make this visible rather than silently degrading to ordinary VPN connectivity.
+v2rayN is therefore classified as `client_setup_required` on the strength of the implemented, tested adapter, not on a claim that its real-client routing behavior has already been confirmed. Admin UI guidance must make this visible rather than silently degrading to ordinary VPN connectivity.
 
 ## v2rayNG
 
