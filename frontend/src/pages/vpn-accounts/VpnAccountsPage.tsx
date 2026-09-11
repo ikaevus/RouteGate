@@ -45,7 +45,7 @@ export function VpnAccountsPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [serverId, setServerId] = useState('');
-  const [isCredentialsOpen, setIsCredentialsOpen] = useState(true);
+  const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('create') === '1') setIsCreateOpen(true);
