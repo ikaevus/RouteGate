@@ -18,6 +18,7 @@ import {
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { ApiError } from '../../shared/api/client';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import './vpn-access-delivery.css';
 
 type VpnAccessDeliveryPanelProps = { accountId: string };
@@ -103,6 +104,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   const [attachQr, setAttachQr] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [queuedNotice, setQueuedNotice] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
 
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
@@ -147,7 +149,10 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   }, [accountId]);
 
   useEffect(() => {
-    if (searchParams.get('sendAccess') === '1') setIsComposerOpen(true);
+    if (searchParams.get('sendAccess') === '1') {
+      setIsComposerOpen(true);
+      setIsOpen(true);
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -195,6 +200,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   function openComposer() {
     setQueuedNotice(false);
     setIsComposerOpen(true);
+    setIsOpen(true);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set('sendAccess', '1');
@@ -251,10 +257,12 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   return (
     <div className="panel feature-detail-panel vpn-access-delivery-panel">
       <div className="panel-header">
-        <div>
-          <div className="panel-title">{t('delivery.title')}</div>
-          <p className="panel-subtitle">{t('delivery.subtitle')}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={t('delivery.title')}
+          subtitle={t('delivery.subtitle')}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
         {!isComposerOpen && (
           <button className="primary-button" type="button" onClick={openComposer} disabled={providersQuery.isLoading}>
             {t('delivery.openComposer')}
@@ -262,6 +270,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
         )}
       </div>
 
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       {providersQuery.isLoading && !isComposerOpen && <p className="empty-state">{t('delivery.providerLoading')}</p>}
       {providersQuery.isError && <div className="form-message form-message-error">{t('delivery.providerLoadError')}</div>}
       {queuedNotice && <div className="form-message form-message-success">{t('delivery.queuedSuccess')}</div>}
@@ -392,6 +401,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
           />
         ))}
         {retryMutation.isError && <div className="form-message form-message-error">{t('delivery.retryError')}</div>}
+      </div>
       </div>
     </div>
   );

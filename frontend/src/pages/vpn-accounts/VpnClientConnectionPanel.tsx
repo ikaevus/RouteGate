@@ -12,6 +12,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getClientCompatibility } from '../../entities/vpnAccount/model/clientCompatibility';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { ShareAccessActions } from '../../shared/ui/ShareAccessActions';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { ClientRoutingImport } from './ClientRoutingImport';
@@ -212,6 +213,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   const [serverNameOverride, setServerNameOverride] = useState('');
   const [spiderX, setSpiderX] = useState('/');
   const [mtu, setMtu] = useState('');
+  const [isOpen, setIsOpen] = useState(true);
 
   const connectionQuery = useQuery({
     queryKey,
@@ -309,12 +311,15 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
   return (
     <div className="panel subscription-panel feature-detail-panel vpn-client-connection-panel">
       <div className="panel-header">
-        <div>
-          <div className="panel-title">{copy.title}</div>
-          <p className="panel-subtitle">{copy.subtitle}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={copy.title}
+          subtitle={copy.subtitle}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
       </div>
 
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       {connectionQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
       {connectionQuery.isError && (
         <div className="form-message form-message-error">
@@ -476,6 +481,7 @@ export function VpnClientConnectionPanel({ accountId }: VpnClientConnectionPanel
           </details>
         </div>
       )}
+      </div>
 
       <SubscriptionQrDialog
         isOpen={isQrOpen}

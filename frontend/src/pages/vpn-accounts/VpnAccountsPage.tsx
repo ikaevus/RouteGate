@@ -7,6 +7,7 @@ import {
   getVpnAccountCredentials,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
 import { VpnAccessDeliveryPanel } from './VpnAccessDeliveryPanel';
 import { VpnAccountConnectionPanels } from './VpnAccountConnectionPanels';
@@ -44,6 +45,7 @@ export function VpnAccountsPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [serverId, setServerId] = useState('');
+  const [isCredentialsOpen, setIsCredentialsOpen] = useState(true);
 
   useEffect(() => {
     if (searchParams.get('create') === '1') setIsCreateOpen(true);
@@ -179,11 +181,14 @@ export function VpnAccountsPage() {
           {accountId && (
             <div className="panel credentials-panel feature-detail-panel">
               <div className="panel-header">
-                <div>
-                  <div className="panel-title">{copy.credentialsTitle}</div>
-                  <p className="panel-subtitle">{copy.credentialsSubtitle}</p>
-                </div>
+                <CollapsiblePanelHeaderTitles
+                  title={copy.credentialsTitle}
+                  subtitle={copy.credentialsSubtitle}
+                  open={isCredentialsOpen}
+                  onToggle={() => setIsCredentialsOpen((value) => !value)}
+                />
               </div>
+              <div className="panel-collapsible-body" hidden={!isCredentialsOpen}>
               {credentialsQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingCredentials')}</p>}
               {credentialsQuery.isError && <div className="form-message form-message-error">{t('vpnAccounts.credentialsLoadError')}</div>}
               {credentials && (
@@ -236,6 +241,7 @@ export function VpnAccountsPage() {
                   )}
                 </div>
               )}
+              </div>
             </div>
           )}
 

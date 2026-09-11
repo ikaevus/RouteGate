@@ -6,6 +6,7 @@ import {
   type UpdateTrafficLimitRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 
 const BYTES_PER_GIB = 1024 ** 3;
 const BPS_PER_MBIT = 1_000_000;
@@ -102,6 +103,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   const [speedLimitMbps, setSpeedLimitMbps] = useState('');
   const [resetDay, setResetDay] = useState('1');
   const [formError, setFormError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(true);
 
   const trafficQuery = useQuery({
     queryKey: ['vpn-account-traffic', accountId],
@@ -199,12 +201,15 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   return (
     <div className="panel traffic-panel">
       <div className="panel-header">
-        <div>
-          <div className="panel-title">{t('traffic.title')}</div>
-          <p className="panel-subtitle">{t('traffic.subtitle')}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={t('traffic.title')}
+          subtitle={t('traffic.subtitle')}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
       </div>
 
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       {trafficQuery.isLoading && <p className="empty-state">{t('traffic.loading')}</p>}
 
       {trafficQuery.isError && (
@@ -349,6 +354,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
           </form>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   type VpnAccountStatus,
 } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
@@ -32,6 +33,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [configurationChanged, setConfigurationChanged] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
 
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
@@ -186,13 +188,16 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   return (
     <div className="panel feature-detail-panel vpn-account-management-panel">
       <div className="panel-header vpn-account-editor-header">
-        <div>
-          <div className="panel-title">{copy.editTitle}</div>
-          <p className="panel-subtitle">{copy.editSubtitle}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={copy.editTitle}
+          subtitle={copy.editSubtitle}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
         <StatusBadge status={account.status} />
       </div>
 
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       <form className="vpn-account-edit-form" onSubmit={handleSubmit}>
         <div className="vpn-account-edit-grid">
           <label className="field">
@@ -274,6 +279,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
         <button className="danger-button" type="button" disabled={deleteMutation.isPending} onClick={handleDelete}>
           {copy.deleteAccount}
         </button>
+      </div>
       </div>
     </div>
   );

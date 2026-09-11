@@ -6,6 +6,7 @@ import {
   type VpnClientConnectionResponse,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
+import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 
 type ProtocolConnection = {
   protocol: ClientProtocol;
@@ -126,6 +127,7 @@ function legacyConnection(connection: MultiProtocolConnection): ProtocolConnecti
 export function VpnMultiProtocolAccessPanel({ accountId }: { accountId: string }) {
   const copy = getCopy();
   const [copiedProtocol, setCopiedProtocol] = useState<ClientProtocol | null>(null);
+  const [isOpen, setIsOpen] = useState(true);
   const query = useQuery({
     queryKey: ['vpn-account-client-connection', accountId],
     queryFn: () => getVpnAccountClientConnection(accountId) as Promise<MultiProtocolConnection>,
@@ -157,12 +159,15 @@ export function VpnMultiProtocolAccessPanel({ accountId }: { accountId: string }
   return (
     <div className="panel feature-detail-panel vpn-multi-protocol-access-panel">
       <div className="panel-header">
-        <div>
-          <div className="panel-title">{copy.title}</div>
-          <p className="panel-subtitle">{copy.subtitle}</p>
-        </div>
+        <CollapsiblePanelHeaderTitles
+          title={copy.title}
+          subtitle={copy.subtitle}
+          open={isOpen}
+          onToggle={() => setIsOpen((value) => !value)}
+        />
       </div>
 
+      <div className="panel-collapsible-body" hidden={!isOpen}>
       {query.isLoading && <p className="empty-state">{copy.loading}</p>}
       {query.isError && <div className="form-message form-message-error">{copy.error}</div>}
       {!query.isLoading && !query.isError && visibleProtocols.length === 0 && <p className="empty-state">{copy.empty}</p>}
@@ -228,6 +233,7 @@ export function VpnMultiProtocolAccessPanel({ accountId }: { accountId: string }
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
