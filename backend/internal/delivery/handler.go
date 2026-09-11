@@ -273,20 +273,38 @@ type deviceAccessRequestError struct {
 	message string
 }
 
+// deviceAccessLookup is the narrow slice of *vpnaccounts.Repository that
+// device-scoped Send validation needs. Extracted as an interface (rather
+// than calling h.accounts directly) purely so validateDeviceAccessRequestWith
+// can be unit-tested with a fake in-memory repository instead of a real
+// database - h.accounts stays a concrete *vpnaccounts.Repository everywhere
+// else (it also serves as vpnaccounts.ClientConnectionSource for other
+// handlers, so it is not converted to an interface package-wide here).
+type deviceAccessLookup interface {
+	GetDevice(ctx context.Context, vpnAccountID, deviceID string) (vpnaccounts.Device, error)
+	GetActiveDeviceSubscriptionToken(ctx context.Context, deviceID string) (vpnaccounts.SubscriptionToken, error)
+}
+
 // validateDeviceAccessRequest confirms the caller-supplied access URL is
 // genuinely the device's own, currently active RG-115 link before letting it
 // anywhere near the mail/Telegram pipeline: the device must belong to this
-// account and be active, the URL must parse as a /sub/<token> link, and that
-// token must hash to the device's current active token. This never reads or
-// stores the plaintext token; it only re-hashes the caller's own value to
-// compare against the existing hash-only row.
+// account and be active, the URL must be RouteGate's own canonical
+// `/sub/<token>` link (not merely a URL embedding a token that hashes
+// correctly - see extractCanonicalSubscriptionToken), and that token must
+// hash to the device's current active token. This never reads or stores the
+// plaintext token; it only re-hashes the caller's own value to compare
+// against the existing hash-only row.
 func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, deviceID, accessURL string) (string, string, *deviceAccessRequestError) {
+	return validateDeviceAccessRequestWith(ctx, h.accounts, h.publicURL, accountID, deviceID, accessURL)
+}
+
+func validateDeviceAccessRequestWith(ctx context.Context, accounts deviceAccessLookup, publicURL, accountID, deviceID, accessURL string) (string, string, *deviceAccessRequestError) {
 	accessURL = strings.TrimSpace(accessURL)
 	if accessURL == "" {
 		return "", "", &deviceAccessRequestError{http.StatusBadRequest, "device_access_url_required", "accessUrl is required when sending for a specific device."}
 	}
 
-	device, err := h.accounts.GetDevice(ctx, accountID, deviceID)
+	device, err := accounts.GetDevice(ctx, accountID, deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", &deviceAccessRequestError{http.StatusNotFound, "device_not_found", "Device not found."}
 	}
@@ -297,7 +315,7 @@ func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, de
 		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_revoked", "This device has been revoked."}
 	}
 
-	token, err := h.accounts.GetActiveDeviceSubscriptionToken(ctx, deviceID)
+	token, err := accounts.GetActiveDeviceSubscriptionToken(ctx, deviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This device has no active access link. Rotate to create one, then send again."}
 	}
@@ -305,7 +323,7 @@ func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, de
 		return "", "", &deviceAccessRequestError{http.StatusInternalServerError, "database_error", "Database operation failed."}
 	}
 
-	rawToken, parseErr := extractSubscriptionToken(accessURL)
+	rawToken, parseErr := extractCanonicalSubscriptionToken(publicURL, accessURL)
 	if parseErr != nil || vpnaccounts.HashSubscriptionToken(rawToken) != token.TokenHash {
 		return "", "", &deviceAccessRequestError{http.StatusConflict, "device_access_url_stale", "This access link is no longer the device's current one. Rotate to create a new link, then send again."}
 	}
@@ -313,20 +331,56 @@ func (h *Handler) validateDeviceAccessRequest(ctx context.Context, accountID, de
 	return device.Name, accessURL, nil
 }
 
-// extractSubscriptionToken pulls the opaque bearer token out of an RG-115
-// `.../sub/<token>` URL without assuming a specific host, so this validates
-// against whatever RouteGate public URL issued the link.
-func extractSubscriptionToken(rawURL string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+// extractCanonicalSubscriptionToken extracts the opaque bearer token from an
+// RG-115 subscription URL, but only after confirming the URL is genuinely
+// RouteGate's own canonical `/sub/<token>` link - not merely a URL that
+// happens to embed a token that later hashes correctly. Without this check,
+// a URL like `https://evil.example/sub/<valid-device-token>` would satisfy a
+// token-hash-only comparison and let this endpoint relay mail/Telegram
+// delivery through an attacker-chosen link. It reuses NormalizePublicURL,
+// the same canonical-origin policy the rest of delivery already applies to
+// connect.html links, rather than inventing a second URL-validation policy.
+func extractCanonicalSubscriptionToken(publicURL, rawURL string) (string, error) {
+	canonicalOrigin, err := NormalizePublicURL(publicURL)
 	if err != nil {
 		return "", err
 	}
-	const marker = "/sub/"
-	index := strings.LastIndex(parsed.Path, marker)
-	if index < 0 {
-		return "", errors.New("not a subscription URL")
+	canonical, err := url.Parse(canonicalOrigin)
+	if err != nil {
+		return "", err
 	}
-	token := strings.TrimSpace(parsed.Path[index+len(marker):])
+
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", errors.New("empty URL")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	// Reject anything that isn't an exact match on RouteGate's own
+	// configured origin: wrong scheme, wrong host, or embedded userinfo
+	// (which some URL parsers/clients treat as part of the authority but
+	// browsers/proxies can disagree about) are all foreign-URL relay
+	// attempts, not "the device's current link".
+	if parsed.User != nil {
+		return "", errors.New("URL must not contain userinfo")
+	}
+	if !strings.EqualFold(parsed.Scheme, canonical.Scheme) || !strings.EqualFold(parsed.Host, canonical.Host) {
+		return "", errors.New("URL does not match the configured RouteGate public URL")
+	}
+	// The canonical Universal Access URL is exactly /sub/<token>: no extra
+	// path segments, and - so a relay attempt cannot smuggle instructions
+	// past this check via a client-specific delivery format - no query
+	// parameters or fragment either.
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("URL must not contain query parameters or a fragment")
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) != 2 || segments[0] != "sub" {
+		return "", errors.New("URL path is not a canonical subscription link")
+	}
+	token := strings.TrimSpace(segments[1])
 	if token == "" {
 		return "", errors.New("empty subscription token")
 	}

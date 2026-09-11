@@ -12,6 +12,7 @@ import {
   type VpnAccountDeviceAccess,
 } from '../../entities/vpnAccount/api/vpnAccountDeviceApi';
 import { t } from '../../shared/i18n/i18n';
+import { clientCompatibilityGuidanceKey, clientCompatibilityLimitationKey } from '../../shared/i18n/clientCompatibilityTranslations';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { DeviceSendComposer } from './DeviceSendComposer';
@@ -259,12 +260,14 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                     {device.clientType === 'hiddify' && <span className="vpn-access-device-recommended">{t('accessDevices.recommended')}</span>}
                   </div>
 
-                  {(compatibility.guidance ?? []).map((item) => (
-                    <p className="vpn-access-device-note" key={item}>{item}</p>
-                  ))}
-                  {(compatibility.limitations ?? []).map((item) => (
-                    <p className="vpn-access-device-note vpn-access-device-note-warning" key={item}>{item}</p>
-                  ))}
+                  {(compatibility.guidanceCodes ?? []).map((code) => {
+                    const key = clientCompatibilityGuidanceKey(code);
+                    return key ? <p className="vpn-access-device-note" key={code}>{t(key)}</p> : null;
+                  })}
+                  {(compatibility.limitationCodes ?? []).map((code) => {
+                    const key = clientCompatibilityLimitationKey(code);
+                    return key ? <p className="vpn-access-device-note vpn-access-device-note-warning" key={code}>{t(key)}</p> : null;
+                  })}
 
                   {renameMutation.isError && renamingId === null && (
                     <div className="form-message form-message-error">{getErrorMessage(renameMutation.error, t('accessDevices.renameError'))}</div>

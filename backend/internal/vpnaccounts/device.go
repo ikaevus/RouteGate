@@ -357,12 +357,24 @@ func writeDeviceNotFound(w http.ResponseWriter) {
 	httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("device_not_found", "Device not found."))
 }
 
-func deviceAccessAssessment(device Device) ClientCompatibilityAssessment {
-	return clientCompatibilityFor(device.ClientType)
+// deviceCompatibilityAssessment is the one compatibility truth shared with
+// public subscription delivery (subscription_delivery.go): a device's
+// client-type tier is narrowed by the account's actual effective protocol
+// via h.clientConnection, exactly like /sub/<token> does, instead of the
+// bare client-type-only tier. If the account's effective protocol cannot be
+// resolved (for example it has no server assignment yet), this is
+// conservative rather than overclaiming: it never reports a smart-routing or
+// setup-required tier without a confirmed protocol.
+func (h *Handler) deviceCompatibilityAssessment(ctx context.Context, device Device) ClientCompatibilityAssessment {
+	connection, err := h.clientConnection(ctx, device.VPNAccountID)
+	if err != nil {
+		return clientCompatibilityForResolvedProtocol(device.ClientType, "", false)
+	}
+	return clientCompatibilityForResolvedProtocol(device.ClientType, connection.Protocol, true)
 }
 
 func (h *Handler) deviceAccess(r *http.Request, repository deviceRepository, device Device) (DeviceAccess, error) {
-	access := DeviceAccess{Device: device, Compatibility: deviceAccessAssessment(device)}
+	access := DeviceAccess{Device: device, Compatibility: h.deviceCompatibilityAssessment(r.Context(), device)}
 	if device.Status != DeviceStatusActive {
 		return access, nil
 	}
@@ -571,7 +583,7 @@ func (h *Handler) RevokeDevice(w http.ResponseWriter, r *http.Request) {
 			"device_id": device.ID,
 		},
 	})
-	httpx.WriteJSON(w, http.StatusOK, DeviceAccess{Device: device, Compatibility: deviceAccessAssessment(device)})
+	httpx.WriteJSON(w, http.StatusOK, DeviceAccess{Device: device, Compatibility: h.deviceCompatibilityAssessment(r.Context(), device)})
 }
 
 func (h *Handler) RotateDeviceSubscriptionToken(w http.ResponseWriter, r *http.Request) {

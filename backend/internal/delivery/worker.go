@@ -23,6 +23,22 @@ type MaterialResolver interface {
 	Resolve(context.Context, Delivery) (ResolvedMaterial, error)
 }
 
+// deviceAccessReleaser lets the worker proactively drop stashed device-scoped
+// access material once a delivery reaches a terminal outcome (sent,
+// delivered, permanently failed, or uncertain), instead of leaving it in
+// memory for the rest of its TTL. Asserted optionally so a MaterialResolver
+// that does not stash anything (e.g. a test fake) does not need to implement
+// it.
+type deviceAccessReleaser interface {
+	ReleaseDeviceAccess(deliveryID string)
+}
+
+func (w *Worker) releaseDeviceAccess(deliveryID string) {
+	if releaser, ok := w.resolver.(deviceAccessReleaser); ok {
+		releaser.ReleaseDeviceAccess(deliveryID)
+	}
+}
+
 type messageRenderer interface {
 	Render(string, string, TemplateData) (Message, error)
 }
@@ -157,6 +173,7 @@ func (w *Worker) failBeforeSend(ctx context.Context, delivery Delivery, failure 
 	if err != nil {
 		return err
 	}
+	w.releaseDeviceAccess(delivery.ID)
 	w.recordLifecycle(ctx, updated, "delivery.failed", audit.ResultFailure)
 	return nil
 }
@@ -169,6 +186,7 @@ func (w *Worker) applyProviderResult(ctx context.Context, delivery Delivery, res
 		if err != nil {
 			return err
 		}
+		w.releaseDeviceAccess(delivery.ID)
 		w.recordLifecycle(ctx, updated, "delivery.sent", audit.ResultSuccess)
 		return nil
 	case OutcomeDelivered:
@@ -176,6 +194,7 @@ func (w *Worker) applyProviderResult(ctx context.Context, delivery Delivery, res
 		if err != nil {
 			return err
 		}
+		w.releaseDeviceAccess(delivery.ID)
 		w.recordLifecycle(ctx, updated, "delivery.delivered", audit.ResultSuccess)
 		return nil
 	case OutcomeRetryableFailure:
@@ -191,6 +210,7 @@ func (w *Worker) applyProviderResult(ctx context.Context, delivery Delivery, res
 		if err != nil {
 			return err
 		}
+		w.releaseDeviceAccess(delivery.ID)
 		w.recordLifecycle(ctx, updated, "delivery.failed", audit.ResultFailure)
 		return nil
 	case OutcomePermanentFailure:
@@ -198,6 +218,7 @@ func (w *Worker) applyProviderResult(ctx context.Context, delivery Delivery, res
 		if err != nil {
 			return err
 		}
+		w.releaseDeviceAccess(delivery.ID)
 		w.recordLifecycle(ctx, updated, "delivery.failed", audit.ResultFailure)
 		return nil
 	case OutcomeUncertain:
@@ -205,6 +226,7 @@ func (w *Worker) applyProviderResult(ctx context.Context, delivery Delivery, res
 		if err != nil {
 			return err
 		}
+		w.releaseDeviceAccess(delivery.ID)
 		w.recordLifecycle(ctx, updated, "delivery.uncertain", audit.ResultFailure)
 		return nil
 	default:
@@ -212,6 +234,7 @@ func (w *Worker) applyProviderResult(ctx context.Context, delivery Delivery, res
 		if err != nil {
 			return err
 		}
+		w.releaseDeviceAccess(delivery.ID)
 		w.recordLifecycle(ctx, updated, "delivery.uncertain", audit.ResultFailure)
 		return nil
 	}

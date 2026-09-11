@@ -33,6 +33,25 @@ const (
 	ImportedRulePrecedenceRouteGate = "routegate_config"
 	ImportedRulePrecedenceClient    = "client_local"
 	ImportedRulePrecedenceUnknown   = "unknown"
+
+	// Guidance/limitation codes are stable, machine-readable identifiers for
+	// product-facing compatibility copy. RouteGate requires full EN/RU
+	// localization of user-facing text with no hardcoded prose, so the
+	// backend never emits English sentences here: the frontend maps each
+	// code to t('clientCompatibility.guidance.<code>') /
+	// t('clientCompatibility.limitation.<code>').
+	GuidanceHiddifyImportAccessLink     = "hiddify_import_access_link"
+	GuidanceV2RayNRoutingMode           = "v2rayn_routing_mode"
+	GuidanceV2RayNTunMode               = "v2rayn_tun_mode"
+	GuidanceV2RayNGStandardSubscription = "v2rayng_standard_subscription"
+	GuidanceGenericStandardConnection   = "generic_standard_connection"
+
+	LimitationV2RayNNoRoutingRules       = "v2rayn_no_routing_rules"
+	LimitationV2RayNGRoutingNotValidated = "v2rayng_routing_not_validated"
+	LimitationGenericNoRoutingPolicy     = "generic_no_routing_policy"
+	LimitationProtocolValidatedVLESSOnly = "protocol_validated_vless_only"
+	LimitationProtocolNoShareLinkFormat  = "protocol_no_share_link_format"
+	LimitationNoEffectiveProtocol        = "no_effective_protocol"
 )
 
 type ClientCapabilities struct {
@@ -58,8 +77,8 @@ type ClientCompatibilityAssessment struct {
 	PreferredDeliveryFormat string             `json:"preferredDeliveryFormat"`
 	RequiresClientSetup     bool               `json:"requiresClientSetup"`
 	Capabilities            ClientCapabilities `json:"capabilities"`
-	Guidance                []string           `json:"guidance,omitempty"`
-	Limitations             []string           `json:"limitations,omitempty"`
+	GuidanceCodes           []string           `json:"guidanceCodes,omitempty"`
+	LimitationCodes         []string           `json:"limitationCodes,omitempty"`
 }
 
 func init() {
@@ -100,7 +119,7 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 				DNSRouting: true, SplitDNS: true, ClientLocalRules: true, SubscriptionRefresh: true,
 				ImportedRulePrecedence: ImportedRulePrecedenceRouteGate,
 			},
-			Guidance: []string{"Import the RouteGate subscription URL. Keep Hiddify routing/TUN settings compatible with the imported profile when using smart routing."},
+			GuidanceCodes: []string{GuidanceHiddifyImportAccessLink},
 		}
 	case ClientTypeSingBox:
 		return ClientCompatibilityAssessment{
@@ -122,11 +141,8 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 				BlockRouting: true, RemoteRuleSets: true, DNSRouting: true, SplitDNS: true,
 				ClientLocalRules: true, SubscriptionRefresh: true, ImportedRulePrecedence: ImportedRulePrecedenceClient,
 			},
-			Guidance: []string{
-				"Use a routing mode that preserves DIRECT/VPN intent (for example a whitelist/custom rules mode rather than Global when DIRECT rules are required).",
-				"Enable TUN when system-wide routing is required and verify v2rayN DNS/routing rules do not override the RouteGate intent.",
-			},
-			Limitations: []string{"Standard URI subscriptions do not carry RouteGate sing-box routing rules; matching routing/DNS behavior must be configured in v2rayN."},
+			GuidanceCodes:   []string{GuidanceV2RayNRoutingMode, GuidanceV2RayNTunMode},
+			LimitationCodes: []string{LimitationV2RayNNoRoutingRules},
 		}
 	case ClientTypeV2RayNG:
 		// v2rayNG is officially selectable for standard connection/subscription
@@ -134,21 +150,25 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 		// has not been independently validated on a real client. RouteGate must
 		// not advertise unvalidated routing-policy compatibility ("no silent
 		// downgrade"), so this stays connection_only until that validation
-		// happens; see docs/architecture/client-compatibility-matrix.md.
+		// happens, and it must never appear in a "use X for RouteGate-managed
+		// routing" recommendation; see docs/architecture/client-compatibility-matrix.md.
 		return ClientCompatibilityAssessment{
 			ClientType: ClientTypeV2RayNG, DisplayName: "v2rayNG", Status: ClientCompatibilityConnectionOnly,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64, RequiresClientSetup: true,
-			Capabilities: ClientCapabilities{URISubscriptionImport: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown},
-			Guidance:     []string{"v2rayNG is the Android member of the 2dust client family and supports standard subscription import. RouteGate Routing Profile enforcement is not yet validated on this client; use Hiddify or v2rayN for RouteGate-managed routing."},
-			Limitations:  []string{"Only protocol-level connectivity is assumed; RouteGate does not claim Routing Profile enforcement for v2rayNG."},
+			Capabilities:    ClientCapabilities{URISubscriptionImport: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown},
+			GuidanceCodes:   []string{GuidanceV2RayNGStandardSubscription},
+			LimitationCodes: []string{LimitationV2RayNGRoutingNotValidated},
 		}
 	default:
+		// Generic must not recommend v2rayNG (or any connection_only client)
+		// for RouteGate-managed routing; only Hiddify (full) and v2rayN
+		// (with client-side setup) have a validated routing path.
 		return ClientCompatibilityAssessment{
 			ClientType: ClientTypeGeneric, DisplayName: "Generic", Status: ClientCompatibilityConnectionOnly,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatAuto, RequiresClientSetup: true,
-			Capabilities: ClientCapabilities{URISubscriptionImport: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown},
-			Guidance:     []string{"Standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto connection material only. Select Hiddify, v2rayN, or v2rayNG for RouteGate-managed routing."},
-			Limitations:  []string{"Only protocol-level connectivity is assumed for generic/unrecognized clients; RouteGate routing/DNS policy is not reproduced."},
+			Capabilities:    ClientCapabilities{URISubscriptionImport: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown},
+			GuidanceCodes:   []string{GuidanceGenericStandardConnection},
+			LimitationCodes: []string{LimitationGenericNoRoutingPolicy},
 		}
 	}
 }
@@ -168,8 +188,7 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		assessment.Status = ClientCompatibilityConnectionOnly
 		assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
 		assessment.RequiresClientSetup = true
-		assessment.Limitations = append(assessment.Limitations,
-			"Full RouteGate smart routing delivery is currently validated for VLESS only; the selected protocol uses a connectivity fallback.")
+		assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolValidatedVLESSOnly)
 		return assessment
 	}
 
@@ -179,11 +198,34 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
 			assessment.RequiresClientSetup = true
 			assessment.Capabilities.SubscriptionRoutingPolicy = false
-			assessment.Limitations = append(assessment.Limitations,
-				"No validated client-specific subscription representation exists for the selected protocol; RouteGate falls back to protocol-native connectivity material.")
+			assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolNoShareLinkFormat)
 		}
 	}
 
+	return assessment
+}
+
+// clientCompatibilityForResolvedProtocol is the single compatibility truth
+// shared by subscription delivery and the Access & Devices read model.
+// protocolResolved distinguishes "the effective protocol is genuinely
+// unknown" (e.g. the account has no server assignment yet) from an empty
+// protocol argument used defensively elsewhere: when the caller could not
+// resolve a usable effective protocol, this never overclaims by falling
+// back to a client's bare (protocol-less) tier - it forces connection_only,
+// the same conservative posture Generic and unvalidated clients already use.
+func clientCompatibilityForResolvedProtocol(clientType, protocol string, protocolResolved bool) ClientCompatibilityAssessment {
+	if protocolResolved {
+		return clientCompatibilityForProtocol(clientType, protocol)
+	}
+	assessment := clientCompatibilityFor(clientType)
+	if assessment.Status == ClientCompatibilityConnectionOnly {
+		return assessment
+	}
+	assessment.Status = ClientCompatibilityConnectionOnly
+	assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
+	assessment.RequiresClientSetup = true
+	assessment.Capabilities.SubscriptionRoutingPolicy = false
+	assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationNoEffectiveProtocol)
 	return assessment
 }
 

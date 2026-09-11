@@ -63,26 +63,41 @@ holds that plaintext URL in memory (immediately after Create or Rotate) and
 passes it explicitly in the send request. The backend:
 
 1. confirms the device belongs to the account and is active;
-2. re-hashes the caller-supplied URL's token and confirms it matches the
-   device's own current active token hash (`delivery.validateDeviceAccessRequest`)
-   - this is what stops the endpoint from being used to relay an arbitrary
-   URL through RouteGate's mail/Telegram sender;
-3. stashes the plaintext in `deviceAccessMaterialStore`, an in-memory,
-   process-local, ~30-minute-TTL map keyed by the new delivery row's ID
+2. confirms the caller-supplied URL is genuinely RouteGate's own canonical
+   `/sub/<token>` link - not merely *some* URL that happens to embed a valid
+   token (`delivery.extractCanonicalSubscriptionToken`): scheme and host
+   must match the configured RouteGate public URL exactly, the path must be
+   exactly `/sub/<token>` (no extra segments, no query string, no
+   fragment), and the URL must not carry embedded userinfo. A same-token
+   link on a foreign host (`https://evil.example/sub/<valid-token>`) is
+   rejected before the token is even compared, so this can't be used as an
+   open relay for an attacker-chosen link;
+3. re-hashes the extracted token and confirms it matches the device's own
+   current active token hash (`delivery.validateDeviceAccessRequest`);
+4. stashes the plaintext in `deviceAccessMaterialStore`, an in-memory,
+   process-local map keyed by the new delivery row's ID
    (`backend/internal/delivery/device_access_material.go`) - never written
    to Postgres, a log, or a delivery history record;
-4. enqueues a normal `Delivery` row (now carrying a `device_id`, metadata
+5. enqueues a normal `Delivery` row (now carrying a `device_id`, metadata
    only) that the existing worker picks up and resolves through
    `VPNAccessResolver`, which serves device-scoped deliveries from that
    store instead of re-deriving material from account credentials.
 
-If the process restarts or the entry's TTL elapses before the worker sends
-it, resolution fails permanently with `device_access_link_unavailable`
-rather than fabricating or recovering a URL - the admin re-sends from the
-still-revealed link, or rotates first. This is a deliberate trade-off: it
-keeps device-scoped Send fully within the "never persist a bearer token"
-rule at the cost of not supporting delivery *after* the reveal window has
-passed for that exact link (rotating always produces a fresh, sendable one).
+The stashed entry has a ~30-minute TTL as a backstop, but the worker also
+releases it explicitly the moment a delivery reaches a terminal outcome for
+its current attempt - sent, delivered, permanently failed, or uncertain -
+rather than leaving the plaintext sitting in memory for the rest of the TTL.
+A delivery that is merely scheduled to retry keeps its material, since the
+worker will resolve it again on the next attempt.
+
+If the process restarts, the material is released early, or the TTL elapses
+before the worker sends it, resolution fails permanently with
+`device_access_link_unavailable` rather than fabricating or recovering a
+URL - the admin re-sends from the still-revealed link, or rotates first.
+This is a deliberate trade-off: it keeps device-scoped Send fully within the
+"never persist a bearer token" rule at the cost of not supporting delivery
+*after* the reveal window has passed for that exact link (rotating always
+produces a fresh, sendable one).
 
 Delivery history keeps working unchanged; each device's card shows only the
 history rows tagged with its own `device_id`, so one device's send activity

@@ -73,6 +73,7 @@ func validateCreateInput(input CreateInput) error {
 
 func sameCreateRequest(delivery Delivery, input CreateInput) bool {
 	return delivery.VPNAccountID == input.VPNAccountID &&
+		delivery.DeviceID == input.DeviceID &&
 		delivery.Channel == input.Channel &&
 		delivery.Provider == input.Provider &&
 		delivery.Recipient == input.Recipient &&

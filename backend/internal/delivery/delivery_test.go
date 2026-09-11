@@ -30,6 +30,7 @@ func (f *fakeCreator) Create(_ context.Context, input CreateInput) (Delivery, bo
 		f.delivery = Delivery{
 			ID:              "11111111-1111-1111-1111-111111111111",
 			VPNAccountID:    input.VPNAccountID,
+			DeviceID:        input.DeviceID,
 			Channel:         input.Channel,
 			Provider:        input.Provider,
 			Recipient:       input.Recipient,
@@ -97,6 +98,19 @@ type fakeResolver struct {
 
 func (f fakeResolver) Resolve(context.Context, Delivery) (ResolvedMaterial, error) {
 	return f.material, f.err
+}
+
+// fakeReleasingResolver additionally implements deviceAccessReleaser so
+// tests can assert exactly when the worker drops stashed device access
+// material: on every terminal outcome, never while a delivery is still
+// being retried.
+type fakeReleasingResolver struct {
+	fakeResolver
+	released []string
+}
+
+func (f *fakeReleasingResolver) ReleaseDeviceAccess(deliveryID string) {
+	f.released = append(f.released, deliveryID)
 }
 
 type fakeProvider struct {
@@ -172,6 +186,87 @@ func TestServiceIdempotencyAndAuditAreSafe(t *testing.T) {
 	}
 }
 
+// TestDeviceScopedIdempotencyNeverCrossesDevices guards RG-116's device
+// isolation invariant at the idempotency layer: because device-scoped Send
+// stashes plaintext access material in memory keyed by the delivery row's
+// ID (see device_access_material.go), an Idempotency-Key reused across two
+// different devices must never be treated as "the same request" - that
+// would let one device's Send return (or replay into) another device's
+// delivery row.
+func TestDeviceScopedIdempotencyNeverCrossesDevices(t *testing.T) {
+	baseInput := CreateInput{
+		VPNAccountID:   "22222222-2222-2222-2222-222222222222",
+		Channel:        "email",
+		Provider:       "smtp",
+		Recipient:      "felix@example.invalid",
+		TemplateKey:    TemplateVPNAccess,
+		IdempotencyKey: "shared-request-key",
+	}
+
+	t.Run("same key, same account, same device replays as idempotent duplicate", func(t *testing.T) {
+		creator := &fakeCreator{created: true}
+		service := NewService(creator, &fakeAuditRecorder{})
+		deviceInput := baseInput
+		deviceInput.DeviceID = "11111111-1111-1111-1111-111111111111"
+
+		delivery, created, err := service.Create(context.Background(), deviceInput)
+		if err != nil || !created {
+			t.Fatalf("create device delivery: created=%v err=%v", created, err)
+		}
+
+		creator.created = false
+		creator.delivery = delivery
+		replay, created, err := service.Create(context.Background(), deviceInput)
+		if err != nil || created {
+			t.Fatalf("idempotent replay: created=%v err=%v", created, err)
+		}
+		if replay.ID != delivery.ID {
+			t.Fatalf("replay returned a different delivery: %+v vs %+v", replay, delivery)
+		}
+	})
+
+	t.Run("same key, same account, different device is a conflict", func(t *testing.T) {
+		creator := &fakeCreator{created: true}
+		service := NewService(creator, &fakeAuditRecorder{})
+		firstDevice := baseInput
+		firstDevice.DeviceID = "11111111-1111-1111-1111-111111111111"
+
+		delivery, created, err := service.Create(context.Background(), firstDevice)
+		if err != nil || !created {
+			t.Fatalf("create first device delivery: created=%v err=%v", created, err)
+		}
+
+		creator.created = false
+		creator.delivery = delivery
+		secondDevice := baseInput
+		secondDevice.DeviceID = "99999999-9999-9999-9999-999999999999"
+		_, _, err = service.Create(context.Background(), secondDevice)
+		if !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("expected idempotency conflict across devices, got %v", err)
+		}
+	})
+
+	t.Run("same key, account-level vs device-scoped delivery is a conflict", func(t *testing.T) {
+		creator := &fakeCreator{created: true}
+		service := NewService(creator, &fakeAuditRecorder{})
+		accountLevel := baseInput
+
+		delivery, created, err := service.Create(context.Background(), accountLevel)
+		if err != nil || !created {
+			t.Fatalf("create account-level delivery: created=%v err=%v", created, err)
+		}
+
+		creator.created = false
+		creator.delivery = delivery
+		deviceScoped := baseInput
+		deviceScoped.DeviceID = "11111111-1111-1111-1111-111111111111"
+		_, _, err = service.Create(context.Background(), deviceScoped)
+		if !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("expected idempotency conflict between account-level and device-scoped delivery, got %v", err)
+		}
+	})
+}
+
 func TestRetryPolicyIsBounded(t *testing.T) {
 	policy := RetryPolicy{BaseDelay: time.Second, MaxDelay: 5 * time.Second}
 	cases := map[int]time.Duration{1: time.Second, 2: 2 * time.Second, 3: 4 * time.Second, 4: 5 * time.Second, 20: 5 * time.Second}
@@ -240,6 +335,90 @@ func TestWorkerRetryExhaustionBecomesFailed(t *testing.T) {
 	if err != nil || repository.marked.Status != StatusFailed || repository.markRetryingCalls != 0 || repository.markFailedCalls != 1 {
 		t.Fatalf("retry exhaustion: err=%v marked=%+v", err, repository.marked)
 	}
+}
+
+// TestWorkerReleasesDeviceAccessOnTerminalOutcomesOnly pins item 8's
+// lifecycle requirement: stashed device-scoped access material must not
+// wait out its full TTL once a delivery reaches a terminal outcome for this
+// attempt (sent/delivered/permanently-failed/uncertain), but a delivery
+// that is merely scheduled to retry must keep its material - the worker
+// will call Resolve again on the next attempt.
+func TestWorkerReleasesDeviceAccessOnTerminalOutcomesOnly(t *testing.T) {
+	material := ResolvedMaterial{TemplateData: TemplateData{ConnectURL: "https://example.invalid/sub/rgsub_fixture"}}
+
+	t.Run("accepted releases immediately", func(t *testing.T) {
+		resolver := &fakeReleasingResolver{fakeResolver: fakeResolver{material: material}}
+		repository := &fakeWorkerRepository{next: queuedFixture(1, 5)}
+		provider := &fakeProvider{name: "test", channel: "email", result: ProviderResult{Outcome: OutcomeAccepted, ProviderReference: "msg-123"}}
+		registry, _ := NewRegistry(provider)
+		worker := NewWorker(repository, resolver, NewRenderer(), registry, nil, nil)
+
+		if _, err := worker.ProcessNext(context.Background()); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(resolver.released) != 1 || resolver.released[0] != queuedFixture(1, 5).ID {
+			t.Fatalf("expected release on accepted outcome, got %+v", resolver.released)
+		}
+	})
+
+	t.Run("uncertain releases immediately", func(t *testing.T) {
+		resolver := &fakeReleasingResolver{fakeResolver: fakeResolver{material: material}}
+		repository := &fakeWorkerRepository{next: queuedFixture(1, 5)}
+		provider := &fakeProvider{name: "test", channel: "email", result: ProviderResult{Outcome: OutcomeUncertain, ErrorCode: "acknowledgement_unknown"}}
+		registry, _ := NewRegistry(provider)
+		worker := NewWorker(repository, resolver, NewRenderer(), registry, nil, nil)
+
+		if _, err := worker.ProcessNext(context.Background()); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(resolver.released) != 1 {
+			t.Fatalf("expected release on uncertain outcome, got %+v", resolver.released)
+		}
+	})
+
+	t.Run("retryable failure with attempts remaining keeps the material", func(t *testing.T) {
+		resolver := &fakeReleasingResolver{fakeResolver: fakeResolver{material: material}}
+		repository := &fakeWorkerRepository{next: queuedFixture(1, 5)}
+		provider := &fakeProvider{name: "test", channel: "email", result: ProviderResult{Outcome: OutcomeRetryableFailure, ErrorCode: "temporary_unavailable"}}
+		registry, _ := NewRegistry(provider)
+		worker := NewWorker(repository, resolver, NewRenderer(), registry, nil, nil)
+
+		if _, err := worker.ProcessNext(context.Background()); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(resolver.released) != 0 {
+			t.Fatalf("expected material kept while retrying, but released: %+v", resolver.released)
+		}
+	})
+
+	t.Run("retry exhaustion releases on the final failure", func(t *testing.T) {
+		resolver := &fakeReleasingResolver{fakeResolver: fakeResolver{material: material}}
+		repository := &fakeWorkerRepository{next: queuedFixture(5, 5)}
+		provider := &fakeProvider{name: "test", channel: "email", result: ProviderResult{Outcome: OutcomeRetryableFailure, ErrorCode: "temporary_unavailable"}}
+		registry, _ := NewRegistry(provider)
+		worker := NewWorker(repository, resolver, NewRenderer(), registry, nil, nil)
+
+		if _, err := worker.ProcessNext(context.Background()); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(resolver.released) != 1 {
+			t.Fatalf("expected release once retries are exhausted, got %+v", resolver.released)
+		}
+	})
+
+	t.Run("permanent failure before send releases the material", func(t *testing.T) {
+		resolver := &fakeReleasingResolver{fakeResolver: fakeResolver{err: Failure{Class: ErrorClassPermanent, Code: "material_resolution_failed"}}}
+		repository := &fakeWorkerRepository{next: queuedFixture(1, 5)}
+		registry, _ := NewRegistry()
+		worker := NewWorker(repository, resolver, NewRenderer(), registry, nil, nil)
+
+		if _, err := worker.ProcessNext(context.Background()); err != nil {
+			t.Fatalf("process: %v", err)
+		}
+		if len(resolver.released) != 1 {
+			t.Fatalf("expected release on preflight permanent failure, got %+v", resolver.released)
+		}
+	})
 }
 
 func TestWorkerRecoveryAuditsRestartedSendingAsUncertain(t *testing.T) {

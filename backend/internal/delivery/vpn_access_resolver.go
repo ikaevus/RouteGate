@@ -26,6 +26,18 @@ func (r *VPNAccessResolver) StashDeviceAccess(deliveryID, accessURL, profileName
 	r.devices.put(deliveryID, accessURL, profileName)
 }
 
+// ReleaseDeviceAccess drops a device's stashed plaintext access material as
+// soon as it is no longer needed, rather than leaving it in memory for the
+// rest of its TTL. The worker calls this once a delivery reaches a terminal
+// outcome (sent, delivered, permanently failed, or uncertain) - never for a
+// delivery that is merely being retried, since a later attempt still needs
+// the material. Safe to call for a delivery that never had anything
+// stashed (account-level deliveries, or a device delivery whose material
+// already expired).
+func (r *VPNAccessResolver) ReleaseDeviceAccess(deliveryID string) {
+	r.devices.delete(deliveryID)
+}
+
 func (r *VPNAccessResolver) Resolve(ctx context.Context, delivery Delivery) (ResolvedMaterial, error) {
 	switch delivery.TemplateKey {
 	case TemplateVPNAccess, TemplateVPNAccessReissued:

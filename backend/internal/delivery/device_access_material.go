@@ -75,6 +75,20 @@ func (s *deviceAccessMaterialStore) get(deliveryID string) (deviceAccessMaterial
 	return entry, true
 }
 
+// delete drops a stashed entry immediately. The worker calls this once a
+// delivery reaches a terminal outcome for its current attempt (sent,
+// delivered, permanently failed, or uncertain) so the plaintext access URL
+// does not sit in memory for the rest of the TTL after it is no longer
+// needed. It must never be called for a delivery that is merely being
+// retried: the worker will call Resolve again on the next attempt and still
+// needs the material. Deleting a key that was never stashed (e.g. an
+// account-level delivery) is a harmless no-op.
+func (s *deviceAccessMaterialStore) delete(deliveryID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.entries, strings.TrimSpace(deliveryID))
+}
+
 // sweepLocked drops expired entries. Called with mu held.
 func (s *deviceAccessMaterialStore) sweepLocked() {
 	now := s.now()
