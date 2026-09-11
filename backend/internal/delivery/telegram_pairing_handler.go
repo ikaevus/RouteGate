@@ -54,7 +54,7 @@ func (h *Handler) GetTelegramPairing(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListTelegramRecipients(w http.ResponseWriter, r *http.Request) {
 	items, err := h.telegramPairingManager().ListRecipients(r.Context())
 	if err != nil {
-		h.databaseError(w, "list_telegram_recipients")
+		h.databaseError(w, "list_telegram_recipients", err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, DeliveryRecipientListResponse{Items: items})
@@ -79,7 +79,7 @@ func (h *Handler) TestTelegramRecipient(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) DeleteTelegramRecipient(w http.ResponseWriter, r *http.Request) {
 	deleted, err := h.telegramPairingManager().DeleteRecipient(r.Context(), r.PathValue("recipient_id"))
 	if err != nil {
-		h.databaseError(w, "delete_telegram_recipient")
+		h.databaseError(w, "delete_telegram_recipient", err)
 		return
 	}
 	if !deleted {
@@ -116,5 +116,5 @@ func (h *Handler) writeTelegramPairingError(w http.ResponseWriter, err error) {
 		httpx.WriteJSON(w, status, httpx.Error(code, message))
 		return
 	}
-	h.databaseError(w, "telegram_pairing")
+	h.databaseError(w, "telegram_pairing", err)
 }
