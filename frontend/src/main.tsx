@@ -53,3 +53,33 @@ if (rootElement) {
     </React.StrictMode>,
   );
 }
+
+if (new URLSearchParams(window.location.search).get('debug') === '1') {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#000;color:#4ade80;font:10px/1.4 monospace;padding:6px 8px;white-space:pre-wrap;max-height:45vh;overflow:auto;pointer-events:auto;';
+  document.body.appendChild(overlay);
+
+  function renderDebugOverlay() {
+    const grid = document.querySelector('.vpn-account-edit-grid');
+    const small = document.querySelector('.vpn-account-edit-grid .field small');
+    const page = document.querySelector('.vpn-accounts-page');
+    const gridStyle = grid ? window.getComputedStyle(grid) : null;
+    const rect = (el: Element | null) => (el ? JSON.stringify(el.getBoundingClientRect()) : 'n/a');
+    overlay.textContent = [
+      `UA: ${navigator.userAgent}`,
+      `devicePixelRatio: ${window.devicePixelRatio}`,
+      `window.innerWidth/innerHeight: ${window.innerWidth}/${window.innerHeight}`,
+      `documentElement.clientWidth: ${document.documentElement.clientWidth}`,
+      `visualViewport: ${window.visualViewport ? `width=${window.visualViewport.width} scale=${window.visualViewport.scale}` : 'n/a'}`,
+      `body.scrollWidth: ${document.body.scrollWidth}`,
+      `.vpn-accounts-page rect: ${rect(page)}`,
+      `.vpn-account-edit-grid grid-template-columns: ${gridStyle ? gridStyle.gridTemplateColumns : 'n/a'}`,
+      `.vpn-account-edit-grid rect: ${rect(grid)}`,
+      `.field small rect: ${rect(small)}`,
+    ].join('\n');
+  }
+
+  renderDebugOverlay();
+  window.addEventListener('resize', renderDebugOverlay);
+  setInterval(renderDebugOverlay, 1000);
+}
