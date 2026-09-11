@@ -60,33 +60,35 @@ if (new URLSearchParams(window.location.search).get('debug') === '1') {
   document.body.appendChild(overlay);
 
   function renderDebugOverlay() {
-    const grid = document.querySelector('.vpn-account-edit-grid');
-    const panel = grid?.closest('.panel') ?? null;
-    const input = document.querySelector('.vpn-account-edit-grid .field input');
-    const width = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().width) : NaN);
+    const vw = window.innerWidth;
+    const describe = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      const name = `${el.tagName.toLowerCase()}.${(el.className?.toString() ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.')}`;
+      return `${name.slice(0, 34)} w=${Math.round(rect.width)} l=${Math.round(rect.left)} r=${Math.round(rect.right)}`;
+    };
 
-    const gridWidth = width(grid);
-    const inputWidth = width(input);
-    const panelInner = panel
-      ? panel.clientWidth
-        - parseFloat(window.getComputedStyle(panel).paddingLeft)
-        - parseFloat(window.getComputedStyle(panel).paddingRight)
-      : NaN;
-    const overflow = Number.isNaN(gridWidth) || Number.isNaN(panelInner)
-      ? 'form not on screen'
-      : gridWidth > panelInner + 1
-        ? `YES, by ${Math.round(gridWidth - panelInner)}px`
-        : 'no';
+    // Every element sticking out past the right edge of the viewport, widest first.
+    const sticking = Array.from(document.querySelectorAll('body *'))
+      .filter((el) => el !== overlay && el.getBoundingClientRect().right > vw + 1)
+      .sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right)
+      .slice(0, 6)
+      .map((el) => `  ${describe(el)}`);
+
+    // Ancestor chain from the edit grid up to body.
+    const chain: string[] = [];
+    let node: Element | null = document.querySelector('.vpn-account-edit-grid');
+    while (node && node !== document.documentElement) {
+      const style = window.getComputedStyle(node);
+      chain.push(`  ${describe(node)} pad=${parseFloat(style.paddingLeft)}/${parseFloat(style.paddingRight)} ovf=${style.overflowX}`);
+      node = node.parentElement;
+    }
 
     overlay.textContent = [
-      `viewport: ${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio} scale=${window.visualViewport?.scale ?? '?'}`,
-      `body.scrollWidth: ${document.body.scrollWidth}`,
-      `panel inner width: ${Math.round(panelInner)}`,
-      `edit-grid width:   ${gridWidth}`,
-      `input width:       ${inputWidth}`,
-      `grid-template-columns: ${grid ? window.getComputedStyle(grid).gridTemplateColumns : 'n/a'}`,
-      `>>> FORM OVERFLOWS PANEL: ${overflow}`,
-      `UA: ${navigator.userAgent}`,
+      `vw=${vw} scrollW=${document.body.scrollWidth} dpr=${window.devicePixelRatio} scale=${window.visualViewport?.scale ?? '?'}`,
+      `STICKING OUT PAST RIGHT EDGE (${sticking.length}):`,
+      ...(sticking.length ? sticking : ['  none']),
+      'CHAIN grid -> body:',
+      ...(chain.length ? chain : ['  form not on screen']),
     ].join('\n');
   }
 

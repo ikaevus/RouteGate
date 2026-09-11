@@ -18,6 +18,11 @@
   display: grid;
   gap: 16px;
   min-width: 0;
+  /* Pin the column. An implicit auto track cannot shrink below the widest
+     min-content among the panels it holds, so one panel with a wide
+     unwrappable child would stretch every panel in the stack past the
+     viewport. min-width: 0 above only constrains this element, not its track. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .vpn-account-management-list,
@@ -29,6 +34,7 @@
 .vpn-account-management-toolbar {
   display: grid;
   gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
   margin-bottom: 14px;
 }
 
@@ -340,6 +346,7 @@
 .vpn-account-edit-form {
   display: grid;
   gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .vpn-account-edit-grid {
