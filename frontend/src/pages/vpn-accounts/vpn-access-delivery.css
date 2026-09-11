@@ -63,6 +63,12 @@
   gap: 12px;
 }
 
+.vpn-access-delivery-telegram-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .vpn-access-delivery-checkbox {
   display: inline-flex;
   align-items: center;

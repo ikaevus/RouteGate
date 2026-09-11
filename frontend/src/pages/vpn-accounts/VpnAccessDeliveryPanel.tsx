@@ -4,22 +4,32 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createVpnAccountDelivery,
   getDeliveryProviders,
+  getTelegramPairing,
   getTelegramRecipients,
   getVpnAccountDeliveries,
   previewVpnAccountDelivery,
   retryDelivery,
+  startTelegramPairingForAccount,
   type CreateDeliveryRequest,
   type DeliveryChannel,
   type DeliveryLocale,
   type DeliveryRecord,
   type DeliveryStatus,
   type DeliveryTemplate,
+  type TelegramPairingSession,
 } from '../../entities/delivery/api/deliveryApi';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { ApiError } from '../../shared/api/client';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
+import { ScannableQrCode } from '../../shared/qr/ScannableQrCode';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
+import '../settings/TelegramRecipientsPanel.css';
 import './vpn-access-delivery.css';
+
+function formatPairingTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 type VpnAccessDeliveryPanelProps = { accountId: string };
 type SendVariables = { request: CreateDeliveryRequest; idempotencyKey: string };
@@ -105,6 +115,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [queuedNotice, setQueuedNotice] = useState(false);
   const [isOpen, setIsOpen] = useState(searchParams.get('sendAccess') === '1');
+  const [accountPairing, setAccountPairing] = useState<TelegramPairingSession | null>(null);
 
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
@@ -130,6 +141,14 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     enabled: isComposerOpen && channel === 'telegram' && selectedProvider?.ready === true,
   });
 
+  const accountPairingQuery = useQuery({
+    queryKey: ['vpn-account-telegram-pairing', accountPairing?.id],
+    queryFn: () => getTelegramPairing(accountPairing?.id ?? ''),
+    enabled: Boolean(accountPairing?.id && accountPairing.state === 'pending'),
+    refetchInterval: (query) => query.state.data?.state === 'pending' ? 2000 : false,
+    retry: false,
+  });
+
   const previewQuery = useQuery({
     queryKey: ['vpn-account-delivery-preview', accountId, locale, template],
     queryFn: () => previewVpnAccountDelivery(accountId, { locale, template }),
@@ -146,6 +165,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     setAttachQr(false);
     setIdempotencyKey(null);
     setQueuedNotice(false);
+    setAccountPairing(null);
   }, [accountId]);
 
   useEffect(() => {
@@ -173,6 +193,24 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
       setRecipient(items[0].recipient);
     }
   }, [channel, recipient, telegramRecipientsQuery.data]);
+
+  useEffect(() => {
+    const current = accountPairingQuery.data;
+    if (!current || !accountPairing) return;
+    const merged = { ...current, deepLink: accountPairing.deepLink };
+    setAccountPairing(merged);
+    if (current.state === 'paired') {
+      void queryClient.invalidateQueries({ queryKey: ['delivery-telegram-recipients'] });
+      if (current.recipient) {
+        setRecipient(current.recipient.recipient);
+      }
+    }
+  }, [accountPairingQuery.data, accountPairing, queryClient]);
+
+  const startAccountPairingMutation = useMutation({
+    mutationFn: () => startTelegramPairingForAccount(accountId),
+    onSuccess: (session) => setAccountPairing(session),
+  });
 
   const sendMutation = useMutation({
     mutationFn: ({ request, idempotencyKey: requestKey }: SendVariables) => createVpnAccountDelivery(accountId, request, requestKey),
@@ -202,6 +240,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     setChannel(nextChannel);
     setAttachQr(false);
     setIdempotencyKey(null);
+    setAccountPairing(null);
     if (nextChannel === 'email') {
       setRecipient(accountQuery.data?.email?.trim() ?? '');
       setRecipientSeededFor(accountId);
@@ -220,6 +259,7 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
   function closeComposer() {
     setIsComposerOpen(false);
     setIdempotencyKey(null);
+    setAccountPairing(null);
     clearSendAccessParam();
   }
 
@@ -345,15 +385,52 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
               </div>
 
               {channel === 'telegram' && !telegramRecipientsQuery.isLoading && !telegramRecipientsQuery.isError && telegramRecipients.length === 0 && (
-                <div className="vpn-access-delivery-next-action">
-                  <div>
-                    <strong>{t('telegramPairing.recipientRequired')}</strong>
-                  </div>
-                  <button className="primary-button" type="button" onClick={openTelegramRecipients}>
+                <div className="form-message form-message-warning">{t('telegramPairing.recipientRequired')}</div>
+              )}
+
+              {channel === 'telegram' && (
+                <div className="vpn-access-delivery-telegram-link">
+                  <button
+                    className="small-button"
+                    type="button"
+                    disabled={startAccountPairingMutation.isPending || accountPairing?.state === 'pending'}
+                    onClick={() => startAccountPairingMutation.mutate()}
+                  >
+                    {startAccountPairingMutation.isPending ? t('telegramPairing.connecting') : t('telegramPairing.linkNewRecipient')}
+                  </button>
+                  <button className="small-button" type="button" onClick={openTelegramRecipients}>
                     {t('telegramPairing.manageRecipients')}
                   </button>
                 </div>
               )}
+
+              {startAccountPairingMutation.isError && (
+                <div className="form-message form-message-error">{t('telegramPairing.error')}</div>
+              )}
+
+              {accountPairing && accountPairing.state === 'pending' && (
+                <div className="telegram-pairing-session">
+                  <div className="telegram-pairing-copy">
+                    <strong>{t('telegramPairing.instructionsTitle')}</strong>
+                    <p>{t('telegramPairing.instructions')}</p>
+                    <p>{t('telegramPairing.linkedToAccount')}</p>
+                    {accountPairing.deepLink && (
+                      <a className="primary-button telegram-pairing-link" href={accountPairing.deepLink} target="_blank" rel="noreferrer">
+                        {t('telegramPairing.openTelegram')}
+                      </a>
+                    )}
+                    <p className="telegram-pairing-waiting">{t('telegramPairing.waiting')}</p>
+                    <small>{t('telegramPairing.expires', { time: formatPairingTime(accountPairing.expiresAt) })}</small>
+                    {accountPairing.errorCode === 'telegram_pairing_webhook_conflict' && (
+                      <div className="form-message form-message-error">{t('telegramPairing.webhookConflict')}</div>
+                    )}
+                  </div>
+                  {accountPairing.deepLink && <ScannableQrCode value={accountPairing.deepLink} showHeader={false} />}
+                </div>
+              )}
+
+              {accountPairing?.state === 'expired' && <div className="form-message form-message-warning">{t('telegramPairing.expired')}</div>}
+              {accountPairing?.state === 'paired' && <div className="form-message form-message-success">{t('telegramPairing.paired')}</div>}
 
               {selectedProvider.capabilities.Attachments && (
                 <label className="vpn-access-delivery-checkbox">

@@ -27,6 +27,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [telegramUsername, setTelegramUsername] = useState('');
   const [status, setStatus] = useState<VpnAccountStatus>('active');
   const [serverId, setServerId] = useState('');
   const [notes, setNotes] = useState('');
@@ -54,6 +56,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     if (!account) return;
     setDisplayName(account.displayName);
     setEmail(account.email ?? '');
+    setPhone(account.phone ?? '');
+    setTelegramUsername(account.telegramUsername ?? '');
     setStatus(account.status as VpnAccountStatus);
     setServerId(account.serverId ?? '');
     setMessage('');
@@ -83,12 +87,16 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
       const nextDisplayName = displayName.trim();
       const nextEmail = email.trim();
+      const nextPhone = phone.trim();
+      const nextTelegramUsername = telegramUsername.trim();
       const nextServerId = serverId;
       const previousServerId = previous.serverId ?? '';
       const previousNotes = notesQuery.data?.notes ?? '';
 
       const accountChanged = previous.displayName !== nextDisplayName
         || (previous.email ?? '') !== nextEmail
+        || (previous.phone ?? '') !== nextPhone
+        || (previous.telegramUsername ?? '') !== nextTelegramUsername
         || previous.status !== status
         || previousServerId !== nextServerId;
       const configFieldsChanged = previous.displayName !== nextDisplayName
@@ -101,6 +109,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
         ? updateVpnAccount(accountId ?? '', {
             displayName: nextDisplayName,
             email: nextEmail,
+            phone: nextPhone,
+            telegramUsername: nextTelegramUsername,
             status,
             serverId: nextServerId,
           })
@@ -208,6 +218,25 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
           <label className="field">
             <span>{t('vpnAccounts.email')}</span>
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>{t('vpnAccounts.phone')}</span>
+            <input
+              type="tel"
+              value={phone}
+              placeholder={t('vpnAccounts.phonePlaceholder')}
+              onChange={(event) => setPhone(event.target.value)}
+            />
+            <small>{t('vpnAccounts.phoneHint')}</small>
+          </label>
+          <label className="field">
+            <span>{t('vpnAccounts.telegramUsername')}</span>
+            <input
+              value={telegramUsername}
+              placeholder={t('vpnAccounts.telegramUsernamePlaceholder')}
+              onChange={(event) => setTelegramUsername(event.target.value)}
+            />
+            <small>{t('vpnAccounts.telegramUsernameHint')}</small>
           </label>
           <label className="field">
             <span>{t('vpnAccounts.status')}</span>

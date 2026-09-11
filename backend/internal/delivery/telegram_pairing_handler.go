@@ -3,6 +3,7 @@ package delivery
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -20,7 +21,7 @@ func (h *Handler) StartTelegramPairing(w http.ResponseWriter, r *http.Request) {
 	if user, ok := auth.UserFromContext(r.Context()); ok {
 		createdBy = user.ID
 	}
-	view, err := h.telegramPairingManager().Start(r.Context(), createdBy)
+	view, err := h.telegramPairingManager().Start(r.Context(), createdBy, "")
 	if err != nil {
 		h.writeTelegramPairingError(w, err)
 		return
@@ -29,6 +30,38 @@ func (h *Handler) StartTelegramPairing(w http.ResponseWriter, r *http.Request) {
 		Action:       "delivery.telegram_pairing.started",
 		ResourceType: "delivery_provider",
 		ResourceID:   "telegram",
+		Result:       audit.ResultSuccess,
+		Metadata: map[string]any{
+			"provider":     "telegram",
+			"bot_username": view.BotUsername,
+		},
+	})
+	httpx.WriteJSON(w, http.StatusCreated, view)
+}
+
+func (h *Handler) StartTelegramPairingForVPNAccount(w http.ResponseWriter, r *http.Request) {
+	accountID := strings.TrimSpace(r.PathValue("id"))
+	if _, err := h.accounts.GetAccountByID(r.Context(), accountID); errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("vpn_account_not_found", "VPN account not found."))
+		return
+	} else if err != nil {
+		h.databaseError(w, "read_vpn_account", err)
+		return
+	}
+
+	createdBy := ""
+	if user, ok := auth.UserFromContext(r.Context()); ok {
+		createdBy = user.ID
+	}
+	view, err := h.telegramPairingManager().Start(r.Context(), createdBy, accountID)
+	if err != nil {
+		h.writeTelegramPairingError(w, err)
+		return
+	}
+	h.recordAudit(r, audit.EventInput{
+		Action:       "delivery.telegram_pairing.started",
+		ResourceType: "vpn_account",
+		ResourceID:   accountID,
 		Result:       audit.ResultSuccess,
 		Metadata: map[string]any{
 			"provider":     "telegram",

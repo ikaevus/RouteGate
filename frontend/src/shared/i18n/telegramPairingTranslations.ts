@@ -27,6 +27,8 @@ export const telegramPairingEn = {
   'telegramPairing.selectRecipient': 'Telegram recipient',
   'telegramPairing.selectPlaceholder': 'Select a connected Telegram recipient',
   'telegramPairing.manageRecipients': 'Manage Telegram recipients',
+  'telegramPairing.linkNewRecipient': 'Link new Telegram recipient',
+  'telegramPairing.linkedToAccount': 'The paired chat will be linked to this VPN account and selected automatically.',
 } as const;
 
 export const telegramPairingRu: Record<keyof typeof telegramPairingEn, string> = {
@@ -58,6 +60,8 @@ export const telegramPairingRu: Record<keyof typeof telegramPairingEn, string> =
   'telegramPairing.selectRecipient': 'Получатель Telegram',
   'telegramPairing.selectPlaceholder': 'Выберите подключённого получателя Telegram',
   'telegramPairing.manageRecipients': 'Управление получателями Telegram',
+  'telegramPairing.linkNewRecipient': 'Привязать нового получателя Telegram',
+  'telegramPairing.linkedToAccount': 'Подключённый чат будет привязан к этому VPN-аккаунту и выбран автоматически.',
 };
 
 export type TelegramPairingTranslationKey = keyof typeof telegramPairingEn;

@@ -44,6 +44,8 @@ export function VpnAccountsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(searchParams.get('create') === '1');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [telegramUsername, setTelegramUsername] = useState('');
   const [serverId, setServerId] = useState('');
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
 
@@ -63,11 +65,15 @@ export function VpnAccountsPage() {
     mutationFn: () => createVpnAccount({
       displayName: displayName.trim(),
       email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
+      telegramUsername: telegramUsername.trim() || undefined,
       serverId: serverId || undefined,
     }),
     onSuccess: async (account) => {
       setDisplayName('');
       setEmail('');
+      setPhone('');
+      setTelegramUsername('');
       setServerId('');
       setIsCreateOpen(false);
       const nextParams = new URLSearchParams(searchParams);
@@ -142,6 +148,23 @@ export function VpnAccountsPage() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder={t('vpnAccounts.emailPlaceholder')}
+                />
+              </label>
+              <label className="field">
+                <span>{t('vpnAccounts.phone')}</span>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder={t('vpnAccounts.phonePlaceholder')}
+                />
+              </label>
+              <label className="field">
+                <span>{t('vpnAccounts.telegramUsername')}</span>
+                <input
+                  value={telegramUsername}
+                  onChange={(event) => setTelegramUsername(event.target.value)}
+                  placeholder={t('vpnAccounts.telegramUsernamePlaceholder')}
                 />
               </label>
               <label className="field">

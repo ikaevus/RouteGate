@@ -4,6 +4,9 @@ export interface VpnAccount {
   id: string;
   displayName: string;
   email?: string | null;
+  phone?: string | null;
+  telegramUsername?: string | null;
+  telegramRecipientId?: string | null;
   status: string;
   expiresAt?: string | null;
   maxDevices?: number | null;
@@ -98,6 +101,8 @@ export interface ListVpnAccountsResponse {
 export interface CreateVpnAccountRequest {
   displayName: string;
   email?: string;
+  phone?: string;
+  telegramUsername?: string;
   serverId?: string;
 }
 

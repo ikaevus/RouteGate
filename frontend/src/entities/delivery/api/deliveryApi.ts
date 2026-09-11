@@ -174,6 +174,12 @@ export function startTelegramPairing(): Promise<TelegramPairingSession> {
   return apiPost<undefined, TelegramPairingSession>('/api/v1/delivery/telegram/pairings');
 }
 
+export function startTelegramPairingForAccount(vpnAccountId: string): Promise<TelegramPairingSession> {
+  return apiPost<undefined, TelegramPairingSession>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/telegram-pairing`,
+  );
+}
+
 export function getTelegramPairing(pairingId: string): Promise<TelegramPairingSession> {
   return apiGet<TelegramPairingSession>(`/api/v1/delivery/telegram/pairings/${encodeURIComponent(pairingId)}`);
 }

@@ -57,7 +57,7 @@ func NewTelegramPairingManager(pool *pgxpool.Pool, settings *ProviderSettingsMan
 	return &TelegramPairingManager{pool: pool, settings: settings}
 }
 
-func (m *TelegramPairingManager) Start(ctx context.Context, createdBy string) (TelegramPairingResponse, error) {
+func (m *TelegramPairingManager) Start(ctx context.Context, createdBy string, vpnAccountID string) (TelegramPairingResponse, error) {
 	provider, code, err := m.provider(ctx)
 	if err != nil {
 		return TelegramPairingResponse{}, err
@@ -81,12 +81,16 @@ func (m *TelegramPairingManager) Start(ctx context.Context, createdBy string) (T
 	if strings.TrimSpace(createdBy) != "" {
 		userID = createdBy
 	}
+	var accountID any
+	if strings.TrimSpace(vpnAccountID) != "" {
+		accountID = vpnAccountID
+	}
 	if err := m.pool.QueryRow(ctx, `
 		INSERT INTO telegram_pairing_sessions (
-			start_parameter_hash, bot_username, created_by_user_id, expires_at
-		) VALUES ($1, $2, $3::uuid, $4)
+			start_parameter_hash, bot_username, created_by_user_id, expires_at, vpn_account_id
+		) VALUES ($1, $2, $3::uuid, $4, $5::uuid)
 		RETURNING id::text
-	`, hash[:], identity.Username, userID, expiresAt).Scan(&sessionID); err != nil {
+	`, hash[:], identity.Username, userID, expiresAt, accountID).Scan(&sessionID); err != nil {
 		return TelegramPairingResponse{}, err
 	}
 	_, _ = m.pool.Exec(ctx, `DELETE FROM telegram_pairing_sessions WHERE expires_at < NOW() - interval '1 day'`)
@@ -269,12 +273,13 @@ func (m *TelegramPairingManager) processUpdates(ctx context.Context) error {
 		hash := sha256.Sum256([]byte(parameter))
 		var sessionID string
 		var createdBy *string
+		var vpnAccountID *string
 		err := tx.QueryRow(ctx, `
-			SELECT id::text, created_by_user_id::text
+			SELECT id::text, created_by_user_id::text, vpn_account_id::text
 			FROM telegram_pairing_sessions
 			WHERE start_parameter_hash=$1 AND recipient_id IS NULL AND expires_at > NOW()
 			FOR UPDATE
-		`, hash[:]).Scan(&sessionID, &createdBy)
+		`, hash[:]).Scan(&sessionID, &createdBy, &vpnAccountID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			continue
 		}
@@ -307,6 +312,15 @@ func (m *TelegramPairingManager) processUpdates(ctx context.Context) error {
 			WHERE id=$1::uuid AND recipient_id IS NULL
 		`, sessionID, recipientID); err != nil {
 			return err
+		}
+		if vpnAccountID != nil && strings.TrimSpace(*vpnAccountID) != "" {
+			if _, err := tx.Exec(ctx, `
+				UPDATE vpn_accounts
+				SET telegram_recipient_id=$2::uuid
+				WHERE id=$1::uuid
+			`, *vpnAccountID, recipientID); err != nil {
+				return err
+			}
 		}
 	}
 	if nextOffset > offset {

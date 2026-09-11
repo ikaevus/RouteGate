@@ -28,10 +28,10 @@ func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput
 
 	return scanAccount(r.pool.QueryRow(ctx, `
 		INSERT INTO vpn_accounts (
-			username, protocol, display_name, email, status, expires_at, max_devices, server_id
+			username, protocol, display_name, email, phone, telegram_username, status, expires_at, max_devices, server_id
 		)
 		VALUES (
-			$1, 'sing-box', $1, NULLIF($2, ''), $3, $4, $5, NULLIF($6, '')::uuid
+			$1, 'sing-box', $1, NULLIF($2, ''), NULLIF($7, ''), NULLIF($8, ''), $3, $4, $5, NULLIF($6, '')::uuid
 		)
 		RETURNING
 			id::text,
@@ -44,8 +44,11 @@ func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput
 			COALESCE(vless_uuid::text, ''),
 			created_at,
 			updated_at,
-			config_updated_at
-	`, input.DisplayName, input.Email, status, input.ExpiresAt, input.MaxDevices, input.ServerID))
+			config_updated_at,
+			COALESCE(phone, ''),
+			COALESCE(telegram_username, ''),
+			COALESCE(telegram_recipient_id::text, '')
+	`, input.DisplayName, input.Email, status, input.ExpiresAt, input.MaxDevices, input.ServerID, input.Phone, input.TelegramUsername))
 }
 
 func (r *Repository) ListAccounts(ctx context.Context, filter AccountFilter) ([]Account, error) {
@@ -102,6 +105,9 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 				ELSE max_devices
 			END,
 			server_id = CASE WHEN $14 THEN NULLIF($15, '')::uuid ELSE server_id END,
+			phone = CASE WHEN $16 THEN NULLIF($17, '') ELSE phone END,
+			telegram_username = CASE WHEN $18 THEN NULLIF($19, '') ELSE telegram_username END,
+			telegram_recipient_id = CASE WHEN $20 THEN NULLIF($21, '')::uuid ELSE telegram_recipient_id END,
 			updated_at = now(),
 			config_updated_at = CASE
 				WHEN $2 OR $6 OR $14 THEN now()
@@ -119,7 +125,10 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 			COALESCE(vless_uuid::text, ''),
 			created_at,
 			updated_at,
-			config_updated_at
+			config_updated_at,
+			COALESCE(phone, ''),
+			COALESCE(telegram_username, ''),
+			COALESCE(telegram_recipient_id::text, '')
 	`,
 		id,
 		input.DisplayName != nil, stringValue(input.DisplayName),
@@ -128,6 +137,9 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 		input.ClearExpiresAt, input.ExpiresAt != nil, input.ExpiresAt,
 		input.ClearMaxDevices, input.MaxDevices != nil, input.MaxDevices,
 		input.ServerID != nil, stringValue(input.ServerID),
+		input.Phone != nil, stringValue(input.Phone),
+		input.TelegramUsername != nil, stringValue(input.TelegramUsername),
+		input.TelegramRecipientID != nil, stringValue(input.TelegramRecipientID),
 	))
 }
 
@@ -147,7 +159,10 @@ func (r *Repository) SetAccountStatus(ctx context.Context, id string, status str
 			COALESCE(vless_uuid::text, ''),
 			created_at,
 			updated_at,
-			config_updated_at
+			config_updated_at,
+			COALESCE(phone, ''),
+			COALESCE(telegram_username, ''),
+			COALESCE(telegram_recipient_id::text, '')
 	`, id, status))
 }
 
@@ -430,7 +445,10 @@ const accountSelect = `
 		COALESCE(vless_uuid::text, ''),
 		created_at,
 		updated_at,
-		config_updated_at
+		config_updated_at,
+		COALESCE(phone, ''),
+		COALESCE(telegram_username, ''),
+		COALESCE(telegram_recipient_id::text, '')
 	FROM vpn_accounts`
 
 const subscriptionTokenSelect = `
@@ -466,6 +484,9 @@ func scanAccount(row scanner) (Account, error) {
 		&account.CreatedAt,
 		&account.UpdatedAt,
 		&account.ConfigUpdatedAt,
+		&account.Phone,
+		&account.TelegramUsername,
+		&account.TelegramRecipientID,
 	)
 	if err != nil {
 		return Account{}, err
