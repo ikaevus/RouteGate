@@ -4,6 +4,8 @@
     sans-serif;
   color: #e5e7eb;
   background: #0f172a;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 * {
