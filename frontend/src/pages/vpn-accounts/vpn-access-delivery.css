@@ -9,8 +9,21 @@
   gap: 14px;
 }
 
-.vpn-access-delivery-channel-field {
-  max-width: 365px;
+.vpn-access-delivery-channel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.vpn-access-delivery-channel-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rg-text-secondary);
+}
+
+.vpn-access-delivery-channel-label strong {
+  color: var(--rg-text-primary);
 }
 
 .vpn-access-delivery-next-action {

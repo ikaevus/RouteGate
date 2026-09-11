@@ -197,8 +197,17 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
     }, { replace: true });
   }
 
-  function openComposer() {
+  function openComposer(nextChannel: DeliveryChannel) {
     setQueuedNotice(false);
+    setChannel(nextChannel);
+    setAttachQr(false);
+    setIdempotencyKey(null);
+    if (nextChannel === 'email') {
+      setRecipient(accountQuery.data?.email?.trim() ?? '');
+      setRecipientSeededFor(accountId);
+    } else {
+      setRecipient('');
+    }
     setIsComposerOpen(true);
     setIsOpen(true);
     setSearchParams((current) => {
@@ -220,18 +229,6 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
 
   function openTelegramRecipients() {
     navigate('/settings?focus=delivery&channel=telegram#telegram-recipients');
-  }
-
-  function updateChannel(value: DeliveryChannel) {
-    setChannel(value);
-    setAttachQr(false);
-    setIdempotencyKey(null);
-    if (value !== 'email') {
-      setRecipient('');
-      return;
-    }
-    setRecipient(accountQuery.data?.email?.trim() ?? '');
-    setRecipientSeededFor(accountId);
   }
 
   function updateRecipient(value: string) { setRecipient(value); setIdempotencyKey(null); }
@@ -264,9 +261,14 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
           onToggle={() => setIsOpen((value) => !value)}
         />
         {!isComposerOpen && (
-          <button className="primary-button" type="button" onClick={openComposer} disabled={providersQuery.isLoading}>
-            {t('delivery.openComposer')}
-          </button>
+          <div className="vpn-access-delivery-channel-actions">
+            <button className="primary-button" type="button" onClick={() => openComposer('email')} disabled={providersQuery.isLoading}>
+              {t('delivery.sendViaEmail')}
+            </button>
+            <button className="primary-button" type="button" onClick={() => openComposer('telegram')} disabled={providersQuery.isLoading}>
+              {t('delivery.sendViaTelegram')}
+            </button>
+          </div>
         )}
       </div>
 
@@ -277,13 +279,10 @@ export function VpnAccessDeliveryPanel({ accountId }: VpnAccessDeliveryPanelProp
 
       {isComposerOpen && (
         <div className="feature-subpanel vpn-access-delivery-composer">
-          <label className="field vpn-access-delivery-channel-field">
+          <div className="vpn-access-delivery-channel-label">
             <span>{t('delivery.channel')}</span>
-            <select value={channel} onChange={(event) => updateChannel(event.target.value as DeliveryChannel)}>
-              <option value="email">{t('delivery.email')}</option>
-              <option value="telegram">{t('delivery.telegram')}</option>
-            </select>
-          </label>
+            <strong>{channelLabel(channel)}</strong>
+          </div>
 
           {providersQuery.isLoading && <p className="empty-state">{t('delivery.providerLoading')}</p>}
 
