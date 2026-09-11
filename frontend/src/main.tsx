@@ -61,21 +61,32 @@ if (new URLSearchParams(window.location.search).get('debug') === '1') {
 
   function renderDebugOverlay() {
     const grid = document.querySelector('.vpn-account-edit-grid');
-    const small = document.querySelector('.vpn-account-edit-grid .field small');
-    const page = document.querySelector('.vpn-accounts-page');
-    const gridStyle = grid ? window.getComputedStyle(grid) : null;
-    const rect = (el: Element | null) => (el ? JSON.stringify(el.getBoundingClientRect()) : 'n/a');
+    const panel = grid?.closest('.panel') ?? null;
+    const input = document.querySelector('.vpn-account-edit-grid .field input');
+    const width = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().width) : NaN);
+
+    const gridWidth = width(grid);
+    const inputWidth = width(input);
+    const panelInner = panel
+      ? panel.clientWidth
+        - parseFloat(window.getComputedStyle(panel).paddingLeft)
+        - parseFloat(window.getComputedStyle(panel).paddingRight)
+      : NaN;
+    const overflow = Number.isNaN(gridWidth) || Number.isNaN(panelInner)
+      ? 'form not on screen'
+      : gridWidth > panelInner + 1
+        ? `YES, by ${Math.round(gridWidth - panelInner)}px`
+        : 'no';
+
     overlay.textContent = [
-      `UA: ${navigator.userAgent}`,
-      `devicePixelRatio: ${window.devicePixelRatio}`,
-      `window.innerWidth/innerHeight: ${window.innerWidth}/${window.innerHeight}`,
-      `documentElement.clientWidth: ${document.documentElement.clientWidth}`,
-      `visualViewport: ${window.visualViewport ? `width=${window.visualViewport.width} scale=${window.visualViewport.scale}` : 'n/a'}`,
+      `viewport: ${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio} scale=${window.visualViewport?.scale ?? '?'}`,
       `body.scrollWidth: ${document.body.scrollWidth}`,
-      `.vpn-accounts-page rect: ${rect(page)}`,
-      `.vpn-account-edit-grid grid-template-columns: ${gridStyle ? gridStyle.gridTemplateColumns : 'n/a'}`,
-      `.vpn-account-edit-grid rect: ${rect(grid)}`,
-      `.field small rect: ${rect(small)}`,
+      `panel inner width: ${Math.round(panelInner)}`,
+      `edit-grid width:   ${gridWidth}`,
+      `input width:       ${inputWidth}`,
+      `grid-template-columns: ${grid ? window.getComputedStyle(grid).gridTemplateColumns : 'n/a'}`,
+      `>>> FORM OVERFLOWS PANEL: ${overflow}`,
+      `UA: ${navigator.userAgent}`,
     ].join('\n');
   }
 
