@@ -11,6 +11,11 @@ import {
   type DevicePlatform,
   type VpnAccountDeviceAccess,
 } from '../../entities/vpnAccount/api/vpnAccountDeviceApi';
+import {
+  getVpnAccountLegacySubscriptionAccess,
+  revokeVpnAccountSubscriptionToken,
+  rotateVpnAccountSubscriptionToken,
+} from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
 import { clientCompatibilityGuidanceKey, clientCompatibilityLimitationKey } from '../../shared/i18n/clientCompatibilityTranslations';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
@@ -80,11 +85,15 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   const [sendDeviceId, setSendDeviceId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [legacyRevealed, setLegacyRevealed] = useState<RevealedAccess | null>(null);
+  const [legacyQrOpen, setLegacyQrOpen] = useState(false);
 
   useEffect(() => {
     setRevealed({});
     setRenamingId(null);
     setSendDeviceId(null);
+    setLegacyRevealed(null);
+    setLegacyQrOpen(false);
   }, [accountId]);
 
   useEffect(() => {
@@ -107,9 +116,39 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
     queryFn: () => listVpnAccountDevices(accountId),
   });
 
+  const legacyAccessQuery = useQuery({
+    queryKey: ['vpn-account-legacy-access', accountId],
+    queryFn: () => getVpnAccountLegacySubscriptionAccess(accountId),
+  });
+
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ['vpn-account-devices', accountId] });
   }
+
+  async function refreshLegacyAccess() {
+    await queryClient.invalidateQueries({ queryKey: ['vpn-account-legacy-access', accountId] });
+  }
+
+  const legacyRotateMutation = useMutation({
+    mutationFn: () => rotateVpnAccountSubscriptionToken(accountId),
+    onSuccess: async (response) => {
+      setLegacyRevealed({
+        subscriptionUrl: response.subscriptionUrl,
+        tokenPreview: '',
+        expiresAt: response.expiresAt,
+      });
+      await refreshLegacyAccess();
+    },
+  });
+
+  const legacyRevokeMutation = useMutation({
+    mutationFn: () => revokeVpnAccountSubscriptionToken(accountId),
+    onSuccess: async () => {
+      setLegacyRevealed(null);
+      setLegacyQrOpen(false);
+      await refreshLegacyAccess();
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: () => createVpnAccountDevice(accountId, {
@@ -196,6 +235,10 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
     if (window.confirm(t('accessDevices.revokeConfirm'))) revokeMutation.mutate(deviceId);
   }
 
+  function handleLegacyRevoke() {
+    if (window.confirm(t('accessDevices.legacyRevokeConfirm'))) legacyRevokeMutation.mutate();
+  }
+
   function toggleSend(deviceId: string) {
     setSendDeviceId((current) => (current === deviceId ? null : deviceId));
   }
@@ -221,6 +264,86 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
         {devicesQuery.isError && <div className="form-message form-message-error">{t('accessDevices.loadError')}</div>}
         {!devicesQuery.isLoading && !devicesQuery.isError && activeDevices.length === 0 && (
           <p className="empty-state">{t('accessDevices.empty')}</p>
+        )}
+
+        {legacyAccessQuery.isError && (
+          <div className="form-message form-message-error">{t('accessDevices.legacyLoadError')}</div>
+        )}
+        {legacyAccessQuery.data?.hasActiveToken && (
+          <section className="vpn-access-legacy-card">
+            <div className="vpn-access-device-card-header">
+              <strong>{t('accessDevices.legacyTitle')}</strong>
+              <span className="vpn-access-legacy-badge">{t('accessDevices.legacyBadge')}</span>
+            </div>
+            <p className="vpn-access-device-note">{t('accessDevices.legacyDescription')}</p>
+            <div className="vpn-access-device-meta">
+              <span>{t('accessDevices.legacyCreatedAt', { date: formatDate(legacyAccessQuery.data.createdAt) })}</span>
+              <span>·</span>
+              <span>{t('accessDevices.legacyExpiresAt', { date: formatDate(legacyAccessQuery.data.expiresAt) })}</span>
+              <span>·</span>
+              <span>
+                {legacyAccessQuery.data.lastUsedAt
+                  ? t('accessDevices.legacyLastUsedAt', { date: formatDate(legacyAccessQuery.data.lastUsedAt) })
+                  : t('accessDevices.legacyNeverUsed')}
+              </span>
+            </div>
+
+            {legacyRevealed ? (
+              <>
+                <div className="form-message form-message-success vpn-access-device-reveal">
+                  <strong>{t('accessDevices.newAccessTitle')}</strong>
+                  <span>{t('accessDevices.newAccessHint')}</span>
+                </div>
+                <code className="vpn-access-device-url">{legacyRevealed.subscriptionUrl}</code>
+              </>
+            ) : (
+              <div className="form-message form-message-warning vpn-access-device-hidden">
+                <strong>{t('accessDevices.hiddenLinkTitle')}</strong>
+                <span>{t('accessDevices.hiddenLinkHint')}</span>
+              </div>
+            )}
+
+            <div className="form-actions">
+              <button
+                className="small-button"
+                type="button"
+                disabled={!legacyRevealed}
+                onClick={() => setLegacyQrOpen(true)}
+              >
+                {t('accessDevices.showQr')}
+              </button>
+              <button
+                className="small-button"
+                type="button"
+                disabled={!legacyRevealed}
+                onClick={() => legacyRevealed && void copyLink('legacy', legacyRevealed.subscriptionUrl)}
+              >
+                {copiedId === 'legacy' ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
+              </button>
+              <button
+                className="small-button"
+                type="button"
+                disabled={legacyRotateMutation.isPending}
+                onClick={() => legacyRotateMutation.mutate()}
+              >
+                {legacyRotateMutation.isPending ? t('accessDevices.legacyRotating') : t('accessDevices.legacyRotate')}
+              </button>
+              <button
+                className="small-button danger-button"
+                type="button"
+                disabled={legacyRevokeMutation.isPending}
+                onClick={handleLegacyRevoke}
+              >
+                {legacyRevokeMutation.isPending ? t('accessDevices.legacyRevoking') : t('accessDevices.legacyRevoke')}
+              </button>
+            </div>
+            {legacyRotateMutation.isError && (
+              <div className="form-message form-message-error">{getErrorMessage(legacyRotateMutation.error, t('accessDevices.legacyRotateError'))}</div>
+            )}
+            {legacyRevokeMutation.isError && (
+              <div className="form-message form-message-error">{getErrorMessage(legacyRevokeMutation.error, t('accessDevices.legacyRevokeError'))}</div>
+            )}
+          </section>
         )}
 
         {activeDevices.length > 0 && (
@@ -273,7 +396,12 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                     <div className="form-message form-message-error">{getErrorMessage(renameMutation.error, t('accessDevices.renameError'))}</div>
                   )}
 
-                  {reveal ? (
+                  {!access.hasActiveToken ? (
+                    <div className="form-message form-message-warning vpn-access-device-empty">
+                      <strong>{t('accessDevices.noTokenTitle')}</strong>
+                      <span>{t('accessDevices.noTokenHint')}</span>
+                    </div>
+                  ) : reveal ? (
                     <>
                       <div className="form-message form-message-success vpn-access-device-reveal">
                         <strong>{t('accessDevices.newAccessTitle')}</strong>
@@ -282,60 +410,81 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                       <code className="vpn-access-device-url">{reveal.subscriptionUrl}</code>
                     </>
                   ) : (
-                    <>
-                      <div className="form-message form-message-warning vpn-access-device-hidden">
-                        <strong>{t('accessDevices.hiddenLinkTitle')}</strong>
-                        <span>{t('accessDevices.hiddenLinkHint')}</span>
-                      </div>
-                      {access.tokenPreview && <code className="vpn-access-device-token-preview">{t('accessDevices.tokenPreview')}: {access.tokenPreview}</code>}
-                    </>
+                    <div className="form-message form-message-warning vpn-access-device-hidden">
+                      <strong>{t('accessDevices.hiddenLinkTitle')}</strong>
+                      <span>{t('accessDevices.hiddenLinkHint')}</span>
+                    </div>
                   )}
 
-                  <div className="form-actions">
-                    <button
-                      className="small-button"
-                      type="button"
-                      disabled={!reveal}
-                      onClick={() => setQrDeviceId(device.id)}
-                    >
-                      {t('accessDevices.showQr')}
-                    </button>
-                    <button
-                      className="small-button"
-                      type="button"
-                      disabled={!reveal}
-                      onClick={() => reveal && void copyLink(device.id, reveal.subscriptionUrl)}
-                    >
-                      {copiedId === device.id ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
-                    </button>
-                    <button
-                      className="small-button"
-                      type="button"
-                      disabled={!reveal}
-                      onClick={() => toggleSend(device.id)}
-                    >
-                      {t('accessDevices.send')}
-                    </button>
-                    <button
-                      className="small-button"
-                      type="button"
-                      disabled={isRotatingThis}
-                      onClick={() => rotateMutation.mutate(device.id)}
-                    >
-                      {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
-                    </button>
-                    {!isRenaming && (
-                      <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
-                    )}
-                    <button
-                      className="small-button danger-button"
-                      type="button"
-                      disabled={isRevokingThis}
-                      onClick={() => handleRevoke(device.id)}
-                    >
-                      {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
-                    </button>
-                  </div>
+                  {!access.hasActiveToken ? (
+                    <div className="form-actions">
+                      <button
+                        className="primary-button"
+                        type="button"
+                        disabled={isRotatingThis}
+                        onClick={() => rotateMutation.mutate(device.id)}
+                      >
+                        {isRotatingThis ? t('accessDevices.creatingLink') : t('accessDevices.createLink')}
+                      </button>
+                      {!isRenaming && (
+                        <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
+                      )}
+                      <button
+                        className="small-button danger-button"
+                        type="button"
+                        disabled={isRevokingThis}
+                        onClick={() => handleRevoke(device.id)}
+                      >
+                        {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="form-actions">
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={!reveal}
+                        onClick={() => setQrDeviceId(device.id)}
+                      >
+                        {t('accessDevices.showQr')}
+                      </button>
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={!reveal}
+                        onClick={() => reveal && void copyLink(device.id, reveal.subscriptionUrl)}
+                      >
+                        {copiedId === device.id ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
+                      </button>
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={!reveal}
+                        onClick={() => toggleSend(device.id)}
+                      >
+                        {t('accessDevices.send')}
+                      </button>
+                      <button
+                        className="small-button"
+                        type="button"
+                        disabled={isRotatingThis}
+                        onClick={() => rotateMutation.mutate(device.id)}
+                      >
+                        {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
+                      </button>
+                      {!isRenaming && (
+                        <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
+                      )}
+                      <button
+                        className="small-button danger-button"
+                        type="button"
+                        disabled={isRevokingThis}
+                        onClick={() => handleRevoke(device.id)}
+                      >
+                        {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
+                      </button>
+                    </div>
+                  )}
                   {rotateMutation.isError && rotateMutation.variables === device.id && (
                     <div className="form-message form-message-error">{getErrorMessage(rotateMutation.error, t('accessDevices.rotateError'))}</div>
                   )}
@@ -427,6 +576,20 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
         copyQrLabel={t('accessDevices.copyLink')}
         copyCopiedLabel={t('clientCompatibility.copied')}
         copied={copiedId === qrDeviceId}
+        closeLabel={t('clientCompatibility.close')}
+      />
+
+      <SubscriptionQrDialog
+        isOpen={Boolean(legacyQrOpen && legacyRevealed)}
+        title={t('accessDevices.qrTitle')}
+        onClose={() => setLegacyQrOpen(false)}
+        qrText={legacyRevealed?.subscriptionUrl}
+        url={legacyRevealed?.subscriptionUrl}
+        urlLabel={t('accessDevices.copyLink')}
+        onCopyQrText={() => legacyRevealed && void copyLink('legacy', legacyRevealed.subscriptionUrl)}
+        copyQrLabel={t('accessDevices.copyLink')}
+        copyCopiedLabel={t('clientCompatibility.copied')}
+        copied={copiedId === 'legacy'}
         closeLabel={t('clientCompatibility.close')}
       />
     </div>

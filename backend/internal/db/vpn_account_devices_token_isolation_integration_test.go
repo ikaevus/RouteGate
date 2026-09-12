@@ -141,4 +141,24 @@ func TestLegacyAndDeviceSubscriptionTokensAreIsolated(t *testing.T) {
 	if portalTokenDeviceID != "" {
 		t.Fatalf("portal token device_id = %q, want empty (legacy/device_id IS NULL)", portalTokenDeviceID)
 	}
+
+	// 6. Revoking a device (not just rotating its token) must leave the
+	// legacy/Portal token and the other device's token untouched - this is
+	// the item-9 regression test for the Access & Devices legacy-visibility
+	// pass: revoking Device B must never look, from the legacy card's point
+	// of view, like anything happened to account-level access.
+	if _, err := accounts.RevokeDevice(ctx, account.ID, deviceB.ID); err != nil {
+		t.Fatalf("revoke device B: %v", err)
+	}
+	assertTokenStatus(t, deviceBToken.ID, "revoked")
+	assertTokenStatus(t, portalToken.ID, "active")
+	assertTokenStatus(t, rotatedDeviceAToken.ID, "active")
+
+	legacyAccess, err := accounts.GetActiveLegacySubscriptionToken(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("legacy access must remain resolvable after revoking a device: %v", err)
+	}
+	if legacyAccess.ID != portalToken.ID {
+		t.Fatalf("legacy access read model returned %q, want the still-active portal-issued legacy token %q", legacyAccess.ID, portalToken.ID)
+	}
 }

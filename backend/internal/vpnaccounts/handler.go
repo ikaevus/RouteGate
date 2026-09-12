@@ -31,6 +31,7 @@ type accountRepository interface {
 	RevokeActiveSubscriptionTokens(context.Context, string) error
 	GetActiveSubscriptionTokenByHash(context.Context, string, string) (SubscriptionToken, error)
 	FindActiveSubscriptionTokenByHash(context.Context, string) (SubscriptionToken, error)
+	GetActiveLegacySubscriptionToken(context.Context, string) (SubscriptionToken, error)
 	GetSubscriptionProfileByAccountID(context.Context, string) (SubscriptionProfile, error)
 	MarkSubscriptionTokenUsed(context.Context, string) error
 	GetDeviceByID(context.Context, string) (Device, error)
@@ -247,6 +248,54 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		Result:       audit.ResultSuccess,
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// LegacySubscriptionAccess is the read-only, safe-metadata view of a VPN
+// account's legacy (device_id IS NULL) account-level subscription token -
+// the credential that predates RG-116 Access & Devices and is still used by
+// the pre-existing account-level endpoints and the Portal's self-service
+// subscription. It is shown in the Access & Devices UI so an administrator
+// can see, and act on, this credential independently of any device: it
+// never exposes the token hash, and it never reconstructs plaintext from
+// storage (RG-115 tokens are hash-only; the plaintext is only ever known at
+// the moment of Create/Rotate).
+type LegacySubscriptionAccess struct {
+	VPNAccountID   string     `json:"vpnAccountId"`
+	HasActiveToken bool       `json:"hasActiveToken"`
+	CreatedAt      *time.Time `json:"createdAt,omitempty"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	LastUsedAt     *time.Time `json:"lastUsedAt,omitempty"`
+}
+
+// GetLegacySubscriptionAccess exposes only the safe metadata needed for the
+// Access & Devices UI to show legacy account-level access as visible and
+// distinct from any device: whether it is currently active, and (if so)
+// when it was issued/rotated, when it expires, and when it was last used.
+func (h *Handler) GetLegacySubscriptionAccess(w http.ResponseWriter, r *http.Request) {
+	accountID := r.PathValue("id")
+	if _, err := h.accounts.GetAccountByID(r.Context(), accountID); errors.Is(err, pgx.ErrNoRows) {
+		writeAccountNotFound(w)
+		return
+	} else if err != nil {
+		h.databaseError(w, "get vpn account for legacy subscription access", err)
+		return
+	}
+
+	access := LegacySubscriptionAccess{VPNAccountID: accountID}
+	token, err := h.accounts.GetActiveLegacySubscriptionToken(r.Context(), accountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, http.StatusOK, access)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "get legacy subscription access", err)
+		return
+	}
+	access.HasActiveToken = true
+	access.CreatedAt = &token.CreatedAt
+	access.ExpiresAt = token.ExpiresAt
+	access.LastUsedAt = token.LastUsedAt
+	httpx.WriteJSON(w, http.StatusOK, access)
 }
 
 func (h *Handler) CreateSubscriptionToken(w http.ResponseWriter, r *http.Request) {

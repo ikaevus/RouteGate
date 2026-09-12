@@ -175,6 +175,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/suspend", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.Suspend))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/activate", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.Activate))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/revoke", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.Revoke))))
+	mux.Handle("GET /api/v1/vpn-accounts/{id}/subscription-token", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetLegacySubscriptionAccess))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/subscription-token", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.CreateSubscriptionToken))))
 	mux.Handle("POST /api/v1/vpn-accounts/{id}/subscription-token/rotate", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.RotateSubscriptionToken))))
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/subscription-token", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.RevokeSubscriptionToken))))

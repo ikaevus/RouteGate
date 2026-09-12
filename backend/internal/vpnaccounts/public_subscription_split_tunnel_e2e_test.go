@@ -146,6 +146,10 @@ func (r *publicSubscriptionSplitTunnelE2ERepository) MarkSubscriptionTokenUsed(_
 	return nil
 }
 
+func (r *publicSubscriptionSplitTunnelE2ERepository) GetActiveLegacySubscriptionToken(context.Context, string) (SubscriptionToken, error) {
+	return SubscriptionToken{}, pgx.ErrNoRows
+}
+
 func (r *publicSubscriptionSplitTunnelE2ERepository) GetDeviceByID(context.Context, string) (Device, error) {
 	return Device{}, pgx.ErrNoRows
 }

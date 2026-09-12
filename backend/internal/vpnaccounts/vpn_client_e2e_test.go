@@ -197,6 +197,10 @@ func (r *vpnClientE2ERepository) MarkSubscriptionTokenUsed(_ context.Context, id
 	return nil
 }
 
+func (r *vpnClientE2ERepository) GetActiveLegacySubscriptionToken(context.Context, string) (SubscriptionToken, error) {
+	return SubscriptionToken{}, pgx.ErrNoRows
+}
+
 func (r *vpnClientE2ERepository) GetDeviceByID(context.Context, string) (Device, error) {
 	return Device{}, pgx.ErrNoRows
 }

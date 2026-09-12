@@ -46,10 +46,56 @@ func (f *fakeDeviceRepository) SetAccountStatus(context.Context, string, string)
 	return Account{}, nil
 }
 func (f *fakeDeviceRepository) DeleteAccount(context.Context, string) error { return nil }
-func (f *fakeDeviceRepository) CreateSubscriptionToken(context.Context, CreateSubscriptionTokenInput) (SubscriptionToken, error) {
-	return SubscriptionToken{}, nil
+
+// CreateSubscriptionToken is the fake's minimal legacy (device_id empty)
+// token issuance, mirroring the real Repository's revoke-then-insert
+// semantics scoped to device_id IS NULL: it must never touch a device's own
+// token, which is exactly what device_access_read_model_test.go relies on.
+func (f *fakeDeviceRepository) CreateSubscriptionToken(_ context.Context, input CreateSubscriptionTokenInput) (SubscriptionToken, error) {
+	for id, token := range f.tokensByID {
+		if token.DeviceID == "" && token.Status == SubscriptionTokenStatusActive {
+			token.Status = SubscriptionTokenStatusRevoked
+			f.tokensByID[id] = token
+		}
+	}
+	f.nextTokenID++
+	token := SubscriptionToken{
+		ID:           "legacy-token-" + strconv.Itoa(f.nextTokenID),
+		VPNAccountID: input.VPNAccountID,
+		TokenHash:    input.TokenHash,
+		Status:       SubscriptionTokenStatusActive,
+		ExpiresAt:    input.ExpiresAt,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	f.tokensByID[token.ID] = token
+	return token, nil
 }
-func (f *fakeDeviceRepository) RevokeActiveSubscriptionTokens(context.Context, string) error { return nil }
+
+func (f *fakeDeviceRepository) RevokeActiveSubscriptionTokens(_ context.Context, vpnAccountID string) error {
+	revoked := false
+	for id, token := range f.tokensByID {
+		if token.DeviceID == "" && token.VPNAccountID == vpnAccountID && token.Status == SubscriptionTokenStatusActive {
+			token.Status = SubscriptionTokenStatusRevoked
+			f.tokensByID[id] = token
+			revoked = true
+		}
+	}
+	if !revoked {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (f *fakeDeviceRepository) GetActiveLegacySubscriptionToken(_ context.Context, vpnAccountID string) (SubscriptionToken, error) {
+	for _, token := range f.tokensByID {
+		if token.DeviceID == "" && token.VPNAccountID == vpnAccountID && token.Status == SubscriptionTokenStatusActive {
+			return token, nil
+		}
+	}
+	return SubscriptionToken{}, pgx.ErrNoRows
+}
+
 func (f *fakeDeviceRepository) GetActiveSubscriptionTokenByHash(context.Context, string, string) (SubscriptionToken, error) {
 	return SubscriptionToken{}, pgx.ErrNoRows
 }

@@ -252,6 +252,20 @@ func (r *Repository) GetActiveSubscriptionTokenByHash(ctx context.Context, vpnAc
 	`, vpnAccountID, tokenHash))
 }
 
+// GetActiveLegacySubscriptionToken looks up the account's current legacy
+// (device_id IS NULL) active token without requiring the caller to already
+// know its hash - the read-only counterpart to
+// GetActiveDeviceSubscriptionToken (device.go), used only to show safe,
+// non-secret metadata (active state, expiry, last-used) in the Access &
+// Devices UI. It never returns the token hash to a caller that could log or
+// persist it insecurely; callers should rely on SubscriptionToken.TokenHash
+// staying JSON-excluded (see model.go).
+func (r *Repository) GetActiveLegacySubscriptionToken(ctx context.Context, vpnAccountID string) (SubscriptionToken, error) {
+	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
+		WHERE vpn_account_id = $1::uuid AND status = 'active' AND device_id IS NULL AND (expires_at IS NULL OR expires_at > now())
+	`, vpnAccountID))
+}
+
 func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, tokenHash string) (SubscriptionToken, error) {
 	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
 		WHERE token_hash = $1

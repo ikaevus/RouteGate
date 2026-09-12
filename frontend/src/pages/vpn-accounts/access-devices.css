@@ -80,9 +80,31 @@
 }
 
 .vpn-access-device-reveal,
-.vpn-access-device-hidden {
+.vpn-access-device-hidden,
+.vpn-access-device-empty {
   display: grid;
   gap: 2px;
+}
+
+.vpn-access-legacy-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.vpn-access-legacy-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.11);
+  color: #fde68a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .vpn-access-device-url {
