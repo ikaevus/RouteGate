@@ -12,6 +12,7 @@ NGINX_SITE=${ROUTEGATE_NGINX_SITE:-/etc/nginx/sites-available/routegate}
 NGINX_BIN=${ROUTEGATE_NGINX_BIN:-/usr/sbin/nginx}
 WORK_DIR=$(mktemp -d /tmp/routegate-production-like.XXXXXX)
 BACKUP_DIR=""
+BACKUP_SCHEMA=""
 NGINX_BACKUP=""
 NGINX_MUTATED=0
 DB_URL=""
@@ -207,6 +208,149 @@ SELECT
   done
 }
 
+capture_manager_failure_diagnostics() {
+  local active_state sub_state result restarts exec_code exec_status
+  local journal_file failure_class migration_version
+
+  active_state=$(systemctl show --property=ActiveState --value "$RG_UPDATE_MANAGER_SERVICE" 2>/dev/null || true)
+  sub_state=$(systemctl show --property=SubState --value "$RG_UPDATE_MANAGER_SERVICE" 2>/dev/null || true)
+  result=$(systemctl show --property=Result --value "$RG_UPDATE_MANAGER_SERVICE" 2>/dev/null || true)
+  restarts=$(systemctl show --property=NRestarts --value "$RG_UPDATE_MANAGER_SERVICE" 2>/dev/null || true)
+  exec_code=$(systemctl show --property=ExecMainCode --value "$RG_UPDATE_MANAGER_SERVICE" 2>/dev/null || true)
+  exec_status=$(systemctl show --property=ExecMainStatus --value "$RG_UPDATE_MANAGER_SERVICE" 2>/dev/null || true)
+  log "manager failure active=${active_state:-unknown} sub=${sub_state:-unknown} result=${result:-unknown} restarts=${restarts:-unknown} exec-code=${exec_code:-unknown} exec-status=${exec_status:-unknown}"
+
+  [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]] || return 0
+  command -v journalctl >/dev/null 2>&1 || {
+    log "manager failure journal=unavailable"
+    return 0
+  }
+
+  journal_file="$BACKUP_DIR/manager-failure.log"
+  journalctl -u "$RG_UPDATE_MANAGER_SERVICE" -n 120 --no-pager -o cat >"$journal_file" 2>/dev/null || true
+  chmod 0600 "$journal_file" 2>/dev/null || true
+
+  failure_class=startup
+  migration_version=""
+  if grep -Eqi 'apply migration|record migration|commit migration' "$journal_file"; then
+    failure_class=migration
+    migration_version=$(grep -Eio 'migration[[:space:]]+[A-Za-z0-9._-]+' "$journal_file" | tail -n 1 | awk '{print $2}' || true)
+  elif grep -Eqi 'SQLSTATE|postgres|database|pgx' "$journal_file"; then
+    failure_class=database
+  elif grep -Eqi 'address already in use|bind:' "$journal_file"; then
+    failure_class=listener-conflict
+  elif grep -Eqi 'permission denied|operation not permitted' "$journal_file"; then
+    failure_class=permission
+  fi
+
+  if [[ -n "$migration_version" ]]; then
+    log "manager failure class=${failure_class} migration=${migration_version} raw-journal=retained-on-host"
+  else
+    log "manager failure class=${failure_class} raw-journal=retained-on-host"
+  fi
+}
+
+rollback_database_to_backup() {
+  local backup_dir=$1
+  local db_url=$2
+  local target_schema current_schema migrations_dir version down_file
+  local target_seen=0
+  local restore_rc=0
+
+  RG_UPDATE_DB_RESTORE_RC=0
+
+  [[ -n "$db_url" && -s "$backup_dir/routegate.pgdump" ]] || {
+    RG_UPDATE_DB_RESTORE_RC=1
+    printf '[production-like] WARNING: database restore requested but database backup is unavailable\n' >&2
+    return 1
+  }
+
+  target_schema=$(sed -n 's/^DATABASE_SCHEMA=//p' "$backup_dir/backup.meta" | head -n 1)
+  [[ "$target_schema" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    RG_UPDATE_DB_RESTORE_RC=1
+    printf '[production-like] WARNING: backup database schema metadata is missing or invalid\n' >&2
+    return 1
+  }
+
+  migrations_dir=$(rg_update_path /opt/routegate-manager/migrations) || {
+    RG_UPDATE_DB_RESTORE_RC=1
+    return 1
+  }
+
+  current_schema=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1") || {
+    RG_UPDATE_DB_RESTORE_RC=1
+    return 1
+  }
+
+  if [[ "$current_schema" != "$target_schema" ]]; then
+    log "database rollback schema current=${current_schema:-missing} target=${target_schema}"
+    while IFS= read -r version; do
+      [[ -n "$version" ]] || continue
+      if [[ "$version" == "$target_schema" ]]; then
+        target_seen=1
+        break
+      fi
+      [[ "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+        RG_UPDATE_DB_RESTORE_RC=1
+        printf '[production-like] WARNING: unsafe migration identifier during rollback\n' >&2
+        return 1
+      }
+      down_file="$migrations_dir/${version}.down.sql"
+      [[ -f "$down_file" && ! -L "$down_file" ]] || {
+        RG_UPDATE_DB_RESTORE_RC=1
+        printf '[production-like] WARNING: missing safe down migration for %s; database rollback stopped\n' "$version" >&2
+        return 1
+      }
+
+      log "database rollback migration=${version}"
+      if ! psql "$db_url" -v ON_ERROR_STOP=1 -f "$down_file" >/dev/null; then
+        RG_UPDATE_DB_RESTORE_RC=1
+        printf '[production-like] WARNING: down migration failed for %s; database rollback stopped\n' "$version" >&2
+        return 1
+      fi
+      if ! psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "DELETE FROM schema_migrations WHERE version = '$version';" >/dev/null; then
+        RG_UPDATE_DB_RESTORE_RC=1
+        printf '[production-like] WARNING: failed to record rollback of %s\n' "$version" >&2
+        return 1
+      fi
+    done < <(psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC")
+
+    if ((target_seen == 0)); then
+      RG_UPDATE_DB_RESTORE_RC=1
+      printf '[production-like] WARNING: backup schema %s is not present in current migration history\n' "$target_schema" >&2
+      return 1
+    fi
+
+    current_schema=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1") || {
+      RG_UPDATE_DB_RESTORE_RC=1
+      return 1
+    }
+    [[ "$current_schema" == "$target_schema" ]] || {
+      RG_UPDATE_DB_RESTORE_RC=1
+      printf '[production-like] WARNING: database down-migration stopped at %s instead of %s\n' "${current_schema:-missing}" "$target_schema" >&2
+      return 1
+    }
+  fi
+
+  pg_restore \
+    --clean \
+    --if-exists \
+    --no-owner \
+    --no-privileges \
+    --exit-on-error \
+    --dbname="$db_url" \
+    "$backup_dir/routegate.pgdump" >/dev/null || restore_rc=$?
+
+  RG_UPDATE_DB_RESTORE_RC=$restore_rc
+  if ((restore_rc != 0)); then
+    printf '[production-like] WARNING: database restore failed after schema rollback (exit %d)\n' "$restore_rc" >&2
+    return "$restore_rc"
+  fi
+
+  log "database rollback restored backup schema=${target_schema}"
+  return 0
+}
+
 cleanup() {
   rm -rf "$WORK_DIR"
   rm -f "$BUNDLE_FILE" "$VALIDATION_SCRIPT" "$UPDATE_CORE"
@@ -215,21 +359,31 @@ cleanup() {
 rollback() {
   local rc=$?
   local rollback_rc=0
+  local db_rollback_rc=0
   trap - ERR
   set +e
 
   if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" ]]; then
     log "Failure at stage=${STAGE}; restoring production-like baseline."
-    rg_update_restore_backup "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" || rollback_rc=$?
+
+    if [[ "$DB_MAY_BE_MUTATED" == "1" ]]; then
+      rollback_database_to_backup "$BACKUP_DIR" "$DB_URL" || db_rollback_rc=$?
+    else
+      RG_UPDATE_DB_RESTORE_RC=0
+    fi
+
+    rg_update_restore_backup "$BACKUP_DIR" "$DB_URL" 0 || rollback_rc=$?
     set +e
     if [[ "$NGINX_MUTATED" == "1" && -n "$NGINX_BACKUP" && -f "$NGINX_BACKUP" ]]; then
       cp -a -- "$NGINX_BACKUP" "$NGINX_SITE" || rollback_rc=1
       "$NGINX_BIN" -t >/dev/null 2>&1 || rollback_rc=1
       systemctl reload nginx >/dev/null 2>&1 || rollback_rc=1
     fi
+    if ((db_rollback_rc != 0)); then
+      rollback_rc=1
+    fi
     if ((rollback_rc != 0)); then
-      printf '[production-like] WARNING: file/service rollback reported exit %d. Backup retained at %s\n' \
-        "$rollback_rc" "$BACKUP_DIR" >&2
+      printf '[production-like] WARNING: rollback reported an incomplete restore. Backup retained at %s\n' "$BACKUP_DIR" >&2
     fi
     if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
       printf '[production-like] WARNING: database restore reported exit %d. Backup retained at %s\n' \
@@ -270,8 +424,14 @@ set +a
 DB_URL=${ROUTEGATE_DATABASE_URL:?ROUTEGATE_DATABASE_URL is required}
 
 STAGE=backup
+BACKUP_SCHEMA=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc "SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1")
+[[ "$BACKUP_SCHEMA" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+  || { printf '[production-like] invalid current database schema before backup: %s\n' "${BACKUP_SCHEMA:-missing}" >&2; exit 1; }
 BACKUP_DIR="/root/routegate-backups/rg96-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
 rg_update_create_backup "$BACKUP_DIR" "$DB_URL"
+printf 'DATABASE_SCHEMA=%s\n' "$BACKUP_SCHEMA" >>"$BACKUP_DIR/backup.meta"
+chmod 0600 "$BACKUP_DIR/backup.meta"
+log "backup database schema=${BACKUP_SCHEMA}"
 
 # The production-like deploy replaces and restarts Manager and Agent binaries.
 # Do not interrupt a protocol activation or runtime operation that is already
@@ -293,7 +453,10 @@ chmod 0600 /etc/routegate/manager.env
 
 STAGE=manager_start
 DB_MAY_BE_MUTATED=1
-rg_update_wait_manager 45
+if ! rg_update_wait_manager 45; then
+  capture_manager_failure_diagnostics
+  false
+fi
 
 STAGE=schema_validation
 rg_update_validate_database_schema "$DB_URL" "$EXPECTED_SCHEMA"
