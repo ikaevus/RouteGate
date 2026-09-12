@@ -1,7 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { getServers } from '../../entities/server/api/serverApi';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   activateVpnAccountManagement,
   deleteVpnAccount,
@@ -11,7 +10,6 @@ import {
   suspendVpnAccount,
   updateVpnAccount,
   updateVpnAccountNotes,
-  type VpnAccountStatus,
 } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
@@ -19,6 +17,9 @@ import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 
+// Identity/administrative data only. Status changes go through the explicit
+// Activate/Suspend/Revoke actions below (never a status dropdown), and server
+// placement lives in Routing & Placement, not here.
 export function VpnAccountManagementPanel({ accountId }: { accountId?: string }) {
   const copy = getVpnAccountManagementCopy();
   const navigate = useNavigate();
@@ -29,12 +30,9 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [telegramUsername, setTelegramUsername] = useState('');
-  const [status, setStatus] = useState<VpnAccountStatus>('active');
-  const [serverId, setServerId] = useState('');
   const [notes, setNotes] = useState('');
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [configurationChanged, setConfigurationChanged] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
 
   const accountQuery = useQuery({
@@ -49,8 +47,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     enabled: Boolean(accountId),
   });
 
-  const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
-
   useEffect(() => {
     const account = accountQuery.data;
     if (!account) return;
@@ -58,11 +54,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     setEmail(account.email ?? '');
     setPhone(account.phone ?? '');
     setTelegramUsername(account.telegramUsername ?? '');
-    setStatus(account.status as VpnAccountStatus);
-    setServerId(account.serverId ?? '');
     setMessage('');
     setErrorMessage('');
-    setConfigurationChanged(false);
   }, [accountQuery.data]);
 
   useEffect(() => {
@@ -76,7 +69,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-notes', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
-      queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
     ]);
   }
 
@@ -89,20 +81,12 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       const nextEmail = email.trim();
       const nextPhone = phone.trim();
       const nextTelegramUsername = telegramUsername.trim();
-      const nextServerId = serverId;
-      const previousServerId = previous.serverId ?? '';
       const previousNotes = notesQuery.data?.notes ?? '';
 
       const accountChanged = previous.displayName !== nextDisplayName
         || (previous.email ?? '') !== nextEmail
         || (previous.phone ?? '') !== nextPhone
-        || (previous.telegramUsername ?? '') !== nextTelegramUsername
-        || previous.status !== status
-        || previousServerId !== nextServerId;
-      const configFieldsChanged = previous.displayName !== nextDisplayName
-        || previous.status !== status
-        || previousServerId !== nextServerId;
-      const affectsConfig = configFieldsChanged && Boolean(previousServerId || nextServerId);
+        || (previous.telegramUsername ?? '') !== nextTelegramUsername;
       const notesChanged = previousNotes !== notes;
 
       const accountPromise = accountChanged
@@ -111,22 +95,17 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
             email: nextEmail,
             phone: nextPhone,
             telegramUsername: nextTelegramUsername,
-            status,
-            serverId: nextServerId,
           })
         : Promise.resolve(previous);
       const notesPromise = notesChanged
         ? updateVpnAccountNotes(accountId ?? '', notes)
         : Promise.resolve(notesQuery.data);
 
-      const [updated] = await Promise.all([accountPromise, notesPromise]);
-      return { updated, affectsConfig };
+      await Promise.all([accountPromise, notesPromise]);
     },
-    onSuccess: async ({ updated, affectsConfig }) => {
-      setStatus(updated.status as VpnAccountStatus);
+    onSuccess: async () => {
       setMessage(copy.editSuccess);
       setErrorMessage('');
-      setConfigurationChanged(affectsConfig);
       await refreshAccountData();
     },
     onError: () => {
@@ -142,11 +121,9 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       if (nextStatus === 'suspended') return suspendVpnAccount(accountId);
       return revokeVpnAccount(accountId);
     },
-    onSuccess: async (updated) => {
-      setStatus(updated.status as VpnAccountStatus);
+    onSuccess: async () => {
       setMessage(copy.editSuccess);
       setErrorMessage('');
-      setConfigurationChanged(Boolean(updated.serverId));
       await refreshAccountData();
     },
     onError: () => {
@@ -238,25 +215,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
             />
             <small>{t('vpnAccounts.telegramUsernameHint')}</small>
           </label>
-          <label className="field">
-            <span>{t('vpnAccounts.status')}</span>
-            <select value={status} onChange={(event) => setStatus(event.target.value as VpnAccountStatus)}>
-              <option value="active">{copy.statusActive}</option>
-              <option value="created">{copy.statusCreated}</option>
-              <option value="suspended">{copy.statusSuspended}</option>
-              <option value="expired">{copy.statusExpired}</option>
-              <option value="revoked">{copy.statusRevoked}</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>{t('vpnAccounts.serverAssignment')}</span>
-            <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
-              <option value="">{t('vpnAccounts.noServerAssignment')}</option>
-              {(serversQuery.data?.items ?? []).map((server) => (
-                <option key={server.id} value={server.id}>{server.name || server.id}</option>
-              ))}
-            </select>
-          </label>
           <label className="field vpn-account-notes-field">
             <span>{copy.notes}</span>
             <textarea
@@ -281,17 +239,10 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
       {message && <div className="form-message form-message-success">{message}</div>}
       {errorMessage && <div className="form-message form-message-error">{errorMessage}</div>}
-      {configurationChanged && (
-        <div className="form-message vpn-account-config-notice">
-          <span>{copy.configNotice}</span>
-          <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
-        </div>
-      )}
 
       <div className="vpn-account-access-actions">
         <div>
           <strong>{copy.accessActions}</strong>
-          <p className="panel-subtitle">{account.serverId ? copy.configNotice : copy.unassignedConfigNotice}</p>
         </div>
         <div className="form-actions">
           <button className="small-button" type="button" disabled={actionPending || account.status === 'active'} onClick={() => statusMutation.mutate('active')}>{copy.activate}</button>

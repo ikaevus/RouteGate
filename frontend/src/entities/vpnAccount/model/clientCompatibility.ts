@@ -27,8 +27,10 @@ export interface ClientCompatibilityAssessment {
   preferredDeliveryFormat: string;
   requiresClientSetup: boolean;
   capabilities: ClientCapabilities;
-  guidance?: string[];
-  limitations?: string[];
+  // Stable, machine-readable codes - never localized prose from the backend.
+  // Map each through clientCompatibilityGuidanceKey/clientCompatibilityLimitationKey.
+  guidanceCodes?: string[];
+  limitationCodes?: string[];
 }
 
 type CompatibilityCarrier = {

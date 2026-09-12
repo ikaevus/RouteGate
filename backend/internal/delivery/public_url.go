@@ -2,25 +2,28 @@ package delivery
 
 import (
 	"encoding/base64"
+	"errors"
 	"net/url"
 	"strings"
+
+	"github.com/ikaevus/routegate/backend/internal/publicurl"
 )
 
+// NormalizePublicURL validates and normalizes RouteGate's configured public
+// origin. This delegates to the shared internal/publicurl policy - the same
+// one RG-116 device access URL issuance (vpnaccounts) uses - so there is one
+// canonical definition of "RouteGate's own public URL" across packages;
+// this wrapper only translates the shared package's plain errors into
+// delivery's own Failure error type for existing callers.
 func NormalizePublicURL(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", Failure{Class: ErrorClassPermanent, Code: "public_url_missing"}
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	normalized, err := publicurl.Normalize(value)
+	if err != nil {
+		if errors.Is(err, publicurl.ErrMissing) {
+			return "", Failure{Class: ErrorClassPermanent, Code: "public_url_missing"}
+		}
 		return "", Failure{Class: ErrorClassPermanent, Code: "public_url_invalid"}
 	}
-	if parsed.Path != "" && parsed.Path != "/" {
-		return "", Failure{Class: ErrorClassPermanent, Code: "public_url_invalid"}
-	}
-	parsed.Path = ""
-	parsed.RawPath = ""
-	return strings.TrimRight(parsed.String(), "/"), nil
+	return normalized, nil
 }
 
 func BuildConnectURL(publicURL, vlessLink string) (string, error) {

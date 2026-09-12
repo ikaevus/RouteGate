@@ -146,6 +146,18 @@ func (r *publicSubscriptionSplitTunnelE2ERepository) MarkSubscriptionTokenUsed(_
 	return nil
 }
 
+func (r *publicSubscriptionSplitTunnelE2ERepository) GetActiveLegacySubscriptionToken(context.Context, string) (SubscriptionToken, error) {
+	return SubscriptionToken{}, pgx.ErrNoRows
+}
+
+func (r *publicSubscriptionSplitTunnelE2ERepository) GetDeviceByID(context.Context, string) (Device, error) {
+	return Device{}, pgx.ErrNoRows
+}
+
+func (r *publicSubscriptionSplitTunnelE2ERepository) MarkDeviceUsed(context.Context, string) error {
+	return nil
+}
+
 func TestPublicSubscriptionSplitTunnelE2ERendersRoutingProfileRules(t *testing.T) {
 	repo := newPublicSubscriptionSplitTunnelE2ERepository(&RoutingProfile{
 		ID:          "profile-split-tunnel",

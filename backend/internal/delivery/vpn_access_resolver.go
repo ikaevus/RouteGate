@@ -11,10 +11,31 @@ import (
 type VPNAccessResolver struct {
 	source    vpnaccounts.ClientConnectionSource
 	publicURL string
+	devices   *deviceAccessMaterialStore
 }
 
 func NewVPNAccessResolver(source vpnaccounts.ClientConnectionSource, publicURL string) *VPNAccessResolver {
-	return &VPNAccessResolver{source: source, publicURL: strings.TrimSpace(publicURL)}
+	return &VPNAccessResolver{source: source, publicURL: strings.TrimSpace(publicURL), devices: globalDeviceAccessMaterialStore}
+}
+
+// StashDeviceAccess makes a device's freshly-issued (or freshly-rotated)
+// plaintext RG-115 access URL available to Resolve for exactly one
+// device-scoped delivery, without ever persisting it. Call this once, right
+// after creating the Delivery row, so its ID is known.
+func (r *VPNAccessResolver) StashDeviceAccess(deliveryID, accessURL, profileName string) {
+	r.devices.put(deliveryID, accessURL, profileName)
+}
+
+// ReleaseDeviceAccess drops a device's stashed plaintext access material as
+// soon as it is no longer needed, rather than leaving it in memory for the
+// rest of its TTL. The worker calls this once a delivery reaches a terminal
+// outcome (sent, delivered, permanently failed, or uncertain) - never for a
+// delivery that is merely being retried, since a later attempt still needs
+// the material. Safe to call for a delivery that never had anything
+// stashed (account-level deliveries, or a device delivery whose material
+// already expired).
+func (r *VPNAccessResolver) ReleaseDeviceAccess(deliveryID string) {
+	r.devices.delete(deliveryID)
 }
 
 func (r *VPNAccessResolver) Resolve(ctx context.Context, delivery Delivery) (ResolvedMaterial, error) {
@@ -25,6 +46,10 @@ func (r *VPNAccessResolver) Resolve(ctx context.Context, delivery Delivery) (Res
 	}
 	if strings.TrimSpace(delivery.VPNAccountID) == "" {
 		return ResolvedMaterial{}, Failure{Class: ErrorClassPermanent, Code: "vpn_account_missing"}
+	}
+
+	if strings.TrimSpace(delivery.DeviceID) != "" {
+		return r.resolveDeviceAccess(delivery)
 	}
 
 	connection, err := vpnaccounts.BuildClientConnection(ctx, r.source, delivery.VPNAccountID)
@@ -53,6 +78,38 @@ func (r *VPNAccessResolver) Resolve(ctx context.Context, delivery Delivery) (Res
 		}
 		material.Attachments = []Attachment{{
 			Filename:    qrAttachmentFilename(connection.Profile.Name),
+			ContentType: "image/png",
+			Content:     png,
+		}}
+	}
+	return material, nil
+}
+
+// resolveDeviceAccess renders the material for a device-scoped delivery from
+// the plaintext access URL stashed by StashDeviceAccess. It never touches
+// the database and never reconstructs a bearer URL from a hash: if the
+// entry is gone (expired, or the process restarted before the worker got to
+// it), this fails permanently with a clear "rotate and resend" signal
+// instead of guessing.
+func (r *VPNAccessResolver) resolveDeviceAccess(delivery Delivery) (ResolvedMaterial, error) {
+	entry, ok := r.devices.get(delivery.ID)
+	if !ok {
+		return ResolvedMaterial{}, Failure{Class: ErrorClassPermanent, Code: "device_access_link_unavailable"}
+	}
+
+	material := ResolvedMaterial{
+		TemplateData: TemplateData{
+			ProfileName: entry.profileName,
+			ConnectURL:  entry.accessURL,
+		},
+	}
+	if delivery.AttachQR {
+		png, err := RenderQRCodePNG(entry.accessURL)
+		if err != nil {
+			return ResolvedMaterial{}, err
+		}
+		material.Attachments = []Attachment{{
+			Filename:    qrAttachmentFilename(entry.profileName),
 			ContentType: "image/png",
 			Content:     png,
 		}}

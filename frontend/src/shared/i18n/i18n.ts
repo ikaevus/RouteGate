@@ -21,6 +21,11 @@ import {
   clientCompatibilityRu,
   type ClientCompatibilityTranslationKey,
 } from './clientCompatibilityTranslations';
+import {
+  accessDevicesEn,
+  accessDevicesRu,
+  type AccessDevicesTranslationKey,
+} from './accessDevicesTranslations';
 
 export type Locale = 'en' | 'ru';
 export type TranslationKey =
@@ -33,7 +38,8 @@ export type TranslationKey =
   | PortalV2TranslationKey
   | NodeGroupTranslationKey
   | RolloutTranslationKey
-  | ClientCompatibilityTranslationKey;
+  | ClientCompatibilityTranslationKey
+  | AccessDevicesTranslationKey;
 type LocaleListener = () => void;
 
 const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
@@ -48,6 +54,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...nodeGroupsEn,
     ...rolloutEn,
     ...clientCompatibilityEn,
+    ...accessDevicesEn,
     // Server Details decides the next action from the deployment role.
     // Keep the generic creation banner true for Management, VPN, and Hybrid nodes.
     'servers.createSuccess': 'Server created successfully.',
@@ -63,6 +70,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
     ...nodeGroupsRu,
     ...rolloutRu,
     ...clientCompatibilityRu,
+    ...accessDevicesRu,
     'servers.createSuccess': 'Сервер успешно создан.',
   },
 };

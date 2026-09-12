@@ -205,6 +205,19 @@ export interface SubscriptionTokenResponse {
   expiresAt?: string | null;
 }
 
+// LegacySubscriptionAccess is the safe, non-secret read model for the
+// account-level ("legacy") subscription token that predates RG-116 Access &
+// Devices - it never carries the token hash or plaintext, only whether an
+// active legacy credential currently exists and, if so, when it was
+// issued/rotated, when it expires, and when it was last used.
+export interface LegacySubscriptionAccess {
+  vpnAccountId: string;
+  hasActiveToken: boolean;
+  createdAt?: string | null;
+  expiresAt?: string | null;
+  lastUsedAt?: string | null;
+}
+
 export interface SubscriptionQRCodeResponse {
   vpnAccountId: string;
   subscriptionUrl: string;
@@ -530,6 +543,20 @@ export function rotateVpnAccountSubscriptionToken(
 ): Promise<SubscriptionTokenResponse> {
   return apiPost<undefined, SubscriptionTokenResponse>(
     `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/subscription-token/rotate`,
+  );
+}
+
+export function getVpnAccountLegacySubscriptionAccess(
+  vpnAccountId: string,
+): Promise<LegacySubscriptionAccess> {
+  return apiGet<LegacySubscriptionAccess>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/subscription-token`,
+  );
+}
+
+export function revokeVpnAccountSubscriptionToken(vpnAccountId: string): Promise<void> {
+  return apiDelete<void>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/subscription-token`,
   );
 }
 

@@ -41,6 +41,7 @@ type Account struct {
 type SubscriptionToken struct {
 	ID           string     `json:"id"`
 	VPNAccountID string     `json:"vpnAccountId"`
+	DeviceID     string     `json:"deviceId,omitempty"`
 	TokenHash    string     `json:"-"`
 	Status       string     `json:"status"`
 	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`

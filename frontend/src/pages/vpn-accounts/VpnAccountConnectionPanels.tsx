@@ -2,29 +2,26 @@ import { useQuery } from '@tanstack/react-query';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { VpnAccountProtocolPreferencePanel } from './VpnAccountProtocolPreferencePanel';
-import { VpnMultiProtocolAccessPanel } from './VpnMultiProtocolAccessPanel';
-import { VpnClientConnectionPanel } from './VpnClientConnectionPanel';
-import './multi-protocol-access.css';
 
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
-      title: 'Подключение VPN-клиента',
+      title: 'Протоколы',
       loading: 'Проверяем назначение VPN-узла...',
       unavailable: 'Не удалось загрузить назначение VPN-узла.',
       nodeRequiredTitle: 'Сначала назначьте VPN-узел',
-      nodeRequiredDescription: 'Этот VPN-аккаунт ещё не назначен серверу. Выберите VPN-узел в блоке управления аккаунтом выше. После назначения здесь появятся выбор протоколов, QR-коды и готовые конфигурации клиента.',
-      assignNodeAction: 'Перейти к назначению VPN-узла',
+      nodeRequiredDescription: 'Этот VPN-аккаунт ещё не назначен серверу. Назначьте VPN-узел в разделе «Маршрутизация и размещение» ниже. После назначения здесь появятся выбор протоколов и данные для ручного подключения.',
+      assignNodeAction: 'Перейти к маршрутизации и размещению',
     } as const;
   }
 
   return {
-    title: 'Connect VPN client',
+    title: 'Protocols',
     loading: 'Checking VPN node assignment...',
     unavailable: 'Could not load the VPN node assignment.',
     nodeRequiredTitle: 'Assign a VPN node first',
-    nodeRequiredDescription: 'This VPN account is not assigned to a server yet. Choose a VPN node in the account management panel above. After assignment, protocol selection, QR codes, and ready client configurations will appear here.',
-    assignNodeAction: 'Go to VPN node assignment',
+    nodeRequiredDescription: 'This VPN account is not assigned to a server yet. Assign a VPN node in the Routing & Placement section below. After assignment, protocol selection and manual connection data will appear here.',
+    assignNodeAction: 'Go to Routing & Placement',
   } as const;
 }
 
@@ -36,7 +33,7 @@ export function VpnAccountConnectionPanels({ accountId }: { accountId: string })
   });
 
   const scrollToAssignment = () => {
-    document.querySelector('.vpn-account-management-panel')?.scrollIntoView({
+    document.querySelector('.vpn-account-routing-policy-panel')?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
     });
@@ -77,11 +74,5 @@ export function VpnAccountConnectionPanels({ accountId }: { accountId: string })
     );
   }
 
-  return (
-    <>
-      <VpnAccountProtocolPreferencePanel accountId={accountId} />
-      <VpnMultiProtocolAccessPanel accountId={accountId} />
-      <VpnClientConnectionPanel accountId={accountId} />
-    </>
-  );
+  return <VpnAccountProtocolPreferencePanel accountId={accountId} />;
 }

@@ -13,6 +13,8 @@ import (
 const deliveryColumns = `
 	id::text,
 	COALESCE(vpn_account_id::text, ''),
+	COALESCE(device_id::text, ''),
+	COALESCE(subscription_token_id::text, ''),
 	channel,
 	provider,
 	recipient,
@@ -37,6 +39,8 @@ const deliveryColumns = `
 const deliveryColumnsD = `
 	d.id::text,
 	COALESCE(d.vpn_account_id::text, ''),
+	COALESCE(d.device_id::text, ''),
+	COALESCE(d.subscription_token_id::text, ''),
 	d.channel,
 	d.provider,
 	d.recipient,
@@ -81,6 +85,8 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Delivery, b
 	delivery, err := scanDelivery(tx.QueryRow(ctx, `
 		INSERT INTO deliveries (
 			vpn_account_id,
+			device_id,
+			subscription_token_id,
 			channel,
 			provider,
 			recipient,
@@ -93,20 +99,24 @@ func (r *Repository) Create(ctx context.Context, input CreateInput) (Delivery, b
 		)
 		VALUES (
 			NULLIF($1, '')::uuid,
-			$2,
-			$3,
+			NULLIF($2, '')::uuid,
+			NULLIF($3, '')::uuid,
 			$4,
 			$5,
 			$6,
 			$7,
 			$8,
-			NULLIF($9, ''),
-			NULLIF($10, '')::uuid
+			$9,
+			$10,
+			NULLIF($11, ''),
+			NULLIF($12, '')::uuid
 		)
 		ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
 		RETURNING `+deliveryColumns+`
 	`,
 		input.VPNAccountID,
+		input.DeviceID,
+		input.SubscriptionTokenID,
 		input.Channel,
 		input.Provider,
 		input.Recipient,
@@ -286,6 +296,8 @@ func (r *Repository) RecoverSendingAfterRestart(ctx context.Context) ([]Delivery
 
 func normalizeCreateInput(input CreateInput) CreateInput {
 	input.VPNAccountID = strings.TrimSpace(input.VPNAccountID)
+	input.DeviceID = strings.TrimSpace(input.DeviceID)
+	input.SubscriptionTokenID = strings.TrimSpace(input.SubscriptionTokenID)
 	input.Channel = strings.TrimSpace(input.Channel)
 	input.Provider = strings.TrimSpace(input.Provider)
 	input.Recipient = strings.TrimSpace(input.Recipient)
@@ -314,6 +326,8 @@ func scanDelivery(row scanner) (Delivery, error) {
 	if err := row.Scan(
 		&delivery.ID,
 		&delivery.VPNAccountID,
+		&delivery.DeviceID,
+		&delivery.SubscriptionTokenID,
 		&delivery.Channel,
 		&delivery.Provider,
 		&delivery.Recipient,

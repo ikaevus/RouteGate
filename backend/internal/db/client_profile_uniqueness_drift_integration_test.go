@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000148_vpn_account_telegram_contact" {
-		t.Fatalf("applied schema version = %q, want 000148_vpn_account_telegram_contact", version)
+	if version != "000151_delivery_token_generation" {
+		t.Fatalf("applied schema version = %q, want 000151_delivery_token_generation", version)
 	}
 }

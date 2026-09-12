@@ -97,8 +97,9 @@ Development on `main` now extends the original MVP in several major areas:
 | Verified RouteGate platform updates | Release manifest, provenance verification, recoverable host update engine, and explicit Admin workflow implemented on `main` |
 | Multi-node RouteGate update rollout | Durable ordered, proof-gated, one-node-at-a-time rollout with explicit Admin controls implemented on `main`; unattended updates are disabled |
 | Opaque client subscription delivery | Implemented on `main` with hash-only token storage, rotation/revocation, no-store handling, and protected `/sub/` delivery |
-| Client capability-aware delivery | Implemented for Hiddify, sing-box, v2rayN, V2Box, V2RayTun, and conservative unknown-client fallback |
+| Client capability-aware delivery | Implemented for Hiddify (recommended), sing-box, v2rayN, v2rayNG, and Generic (best-effort) fallback for other clients |
 | Named online VPN users | Implemented across managed protocol presence collectors and grouped by account/server/node in the Admin UI |
+| Per-device access (Access & Devices) | One VPN account may have multiple devices, each with its own opaque subscription link and independent revoke/rotate lifecycle |
 
 Implementation support and production-like validation are deliberately treated as different claims. A detected binary, upstream feature, or client capability is not considered a RouteGate-managed capability until the relevant settings, credentials, render, validation, apply, rollback, health, delivery, redaction, and compatibility boundaries are controlled and tested by RouteGate.
 
@@ -164,10 +165,9 @@ Routing Profiles remain the **single routing-policy source of truth**. The clien
 |---|---|---|---|
 | **Hiddify** | sing-box JSON on supported VLESS path | Routing Profile embedded in the same config | Full on validated VLESS path |
 | **sing-box** | sing-box JSON on supported VLESS path | Routing Profile embedded in the same config | Full on validated VLESS path |
-| **v2rayN** | Standard Base64 share-link subscription | Separate native custom-rules URL through the same opaque token | Supported with client-side setup |
-| **V2Box** | Standard Base64 share-link subscription | Native route-object import helper / deep link | Supported with client-side setup; manual-validation gated |
-| **V2RayTun** | Active protocol URI through native import flow | Native subscription routing metadata | Partial compatibility on validated VLESS path; client TUN/DNS remains local |
-| **Other / unknown** | Conservative RG-115 auto delivery | Not assumed | Connection only |
+| **v2rayN** | Standard Base64 share-link subscription | Separate native custom-rules URL through the same opaque token (adapter implemented, automated tests; manual real-client validation remains pending, historically tracked in #392) | Supported with client-side setup |
+| **v2rayNG** | Standard Base64 share-link subscription | Not offered — native routing import is not independently validated on this client | Connection only (not inherited from v2rayN) |
+| **Generic** (any other client) | Conservative RG-115 auto delivery | Not assumed | Connection only |
 
 RouteGate follows a **no silent downgrade** rule: successful protocol connectivity never implies that a client can faithfully reproduce the assigned Routing Profile. The Admin UI surfaces the selected client's compatibility state and remaining limitations.
 
@@ -269,11 +269,12 @@ In the canonical Hybrid layout, nginx/HTTPS owns TCP `443`; the recommended VLES
 ### VPN accounts, subscriptions, and client access
 
 - scalable VPN-account lifecycle, search, filtering, and management;
+- Access & Devices: multiple devices per account, each with its own opaque subscription link and independent revoke/rotate lifecycle;
 - persistent client profiles with explicit client identity;
 - account-level protocol selection;
 - QR codes, share/client representations, and subscription access;
 - opaque HTTPS subscription credentials with hash-only storage, rotation, revocation, and optional expiry;
-- capability-aware delivery for Hiddify, sing-box, v2rayN, V2Box, V2RayTun, and conservative unknown-client fallback;
+- capability-aware delivery for Hiddify (recommended), sing-box, v2rayN, v2rayNG, and a Generic best-effort fallback for other clients;
 - client-specific routing representations and import helpers where the target client supports them;
 - compatibility state and limitations surfaced instead of silently falling back to ordinary connectivity;
 - User Portal and self-service foundations;

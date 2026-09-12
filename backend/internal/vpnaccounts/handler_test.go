@@ -36,6 +36,10 @@ type fakeAccountRepository struct {
 	profileErr        error
 	usedTokenID       string
 	markUsedErr       error
+
+	legacyAccessAccountID string
+	legacyAccessToken     SubscriptionToken
+	legacyAccessErr       error
 }
 
 func (f *fakeAccountRepository) CreateAccount(_ context.Context, input CreateAccountInput) (Account, error) {
@@ -141,6 +145,25 @@ func (f *fakeAccountRepository) MarkSubscriptionTokenUsed(_ context.Context, id 
 	return f.markUsedErr
 }
 
+func (f *fakeAccountRepository) GetActiveLegacySubscriptionToken(_ context.Context, vpnAccountID string) (SubscriptionToken, error) {
+	f.legacyAccessAccountID = vpnAccountID
+	if f.legacyAccessErr != nil {
+		return SubscriptionToken{}, f.legacyAccessErr
+	}
+	if f.legacyAccessToken.ID == "" {
+		return SubscriptionToken{}, pgx.ErrNoRows
+	}
+	return f.legacyAccessToken, nil
+}
+
+func (f *fakeAccountRepository) GetDeviceByID(context.Context, string) (Device, error) {
+	return Device{}, pgx.ErrNoRows
+}
+
+func (f *fakeAccountRepository) MarkDeviceUsed(context.Context, string) error {
+	return nil
+}
+
 func newTestHandler(repo *fakeAccountRepository) *Handler {
 	return &Handler{
 		logger:                    slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -241,6 +264,85 @@ func TestCreateSubscriptionTokenReturnsRawTokenOnce(t *testing.T) {
 	}
 	if body.SubscriptionURL != "https://routegate.example/sub/fixed-token" {
 		t.Fatalf("unexpected subscription URL %q", body.SubscriptionURL)
+	}
+}
+
+// TestGetLegacySubscriptionAccessReportsNoActiveToken is the item-2/5
+// regression test: when the account has no active legacy (device_id IS
+// NULL) subscription token, the read model must say so plainly -
+// hasActiveToken false, no fabricated timestamps - so the Access & Devices
+// UI never implies a legacy credential exists when it doesn't.
+func TestGetLegacySubscriptionAccessReportsNoActiveToken(t *testing.T) {
+	repo := &fakeAccountRepository{}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/vpn-accounts/account-1/subscription-token", nil)
+	request.SetPathValue("id", "account-1")
+	response := httptest.NewRecorder()
+
+	handler.GetLegacySubscriptionAccess(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var body LegacySubscriptionAccess
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.HasActiveToken {
+		t.Fatalf("expected hasActiveToken=false, got %+v", body)
+	}
+	if body.CreatedAt != nil || body.ExpiresAt != nil || body.LastUsedAt != nil {
+		t.Fatalf("expected no timestamps without an active token, got %+v", body)
+	}
+}
+
+// TestGetLegacySubscriptionAccessReportsActiveTokenMetadata proves the read
+// model surfaces only safe metadata for an active legacy token - never a
+// hash, never reconstructed plaintext - while still giving the admin enough
+// to act on: when it was issued/rotated, when it expires, when it was last
+// used.
+func TestGetLegacySubscriptionAccessReportsActiveTokenMetadata(t *testing.T) {
+	issued := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	lastUsed := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	repo := &fakeAccountRepository{
+		legacyAccessToken: SubscriptionToken{
+			ID:           "legacy-token-1",
+			VPNAccountID: "account-1",
+			TokenHash:    "should-never-be-serialized",
+			Status:       SubscriptionTokenStatusActive,
+			CreatedAt:    issued,
+			LastUsedAt:   &lastUsed,
+		},
+	}
+	handler := newTestHandler(repo)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/vpn-accounts/account-1/subscription-token", nil)
+	request.SetPathValue("id", "account-1")
+	response := httptest.NewRecorder()
+
+	handler.GetLegacySubscriptionAccess(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	rawBody := response.Body.String()
+	if strings.Contains(rawBody, "should-never-be-serialized") {
+		t.Fatalf("response must never contain the token hash: %s", rawBody)
+	}
+	var body LegacySubscriptionAccess
+	if err := json.Unmarshal([]byte(rawBody), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.HasActiveToken {
+		t.Fatalf("expected hasActiveToken=true, got %+v", body)
+	}
+	if body.CreatedAt == nil || !body.CreatedAt.Equal(issued) {
+		t.Fatalf("createdAt = %v, want %v", body.CreatedAt, issued)
+	}
+	if body.LastUsedAt == nil || !body.LastUsedAt.Equal(lastUsed) {
+		t.Fatalf("lastUsedAt = %v, want %v", body.LastUsedAt, lastUsed)
+	}
+	if repo.legacyAccessAccountID != "account-1" {
+		t.Fatalf("expected lookup scoped to account-1, got %q", repo.legacyAccessAccountID)
 	}
 }
 

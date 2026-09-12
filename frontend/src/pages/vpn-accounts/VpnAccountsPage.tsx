@@ -8,12 +8,13 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
 import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
+import { AccessDevicesPanel } from './AccessDevicesPanel';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
-import { VpnAccessDeliveryPanel } from './VpnAccessDeliveryPanel';
 import { VpnAccountConnectionPanels } from './VpnAccountConnectionPanels';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnAccountRoutingPolicyPanel } from './VpnAccountRoutingPolicyPanel';
+import { VpnMultiProtocolAccessPanel } from './VpnMultiProtocolAccessPanel';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 import './vpnAccountManagement.css';
 import './vpnAccountNotes.css';
@@ -79,7 +80,7 @@ export function VpnAccountsPage() {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('create');
       nextParams.delete('page');
-      nextParams.set('sendAccess', '1');
+      nextParams.set('addDevice', '1');
       await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
       const query = nextParams.toString();
       navigate(`/vpn-accounts/${account.id}${query ? `?${query}` : ''}`);
@@ -197,9 +198,13 @@ export function VpnAccountsPage() {
 
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
-          {accountId && <VpnAccountConnectionPanels accountId={accountId} />}
+          {accountId && <AccessDevicesPanel accountId={accountId} />}
           {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
-          {accountId && <VpnAccessDeliveryPanel accountId={accountId} />}
+          {accountId && <VpnAccountConnectionPanels accountId={accountId} />}
+          {accountId && <TrafficStatsPanel accountId={accountId} />}
+
+          {accountId && <h2 className="vpn-account-advanced-heading">{copy.advancedHeading}</h2>}
+          {accountId && <VpnMultiProtocolAccessPanel accountId={accountId} />}
 
           {accountId && (
             <div className="panel credentials-panel feature-detail-panel">
@@ -212,6 +217,7 @@ export function VpnAccountsPage() {
                 />
               </div>
               <div className="panel-collapsible-body" hidden={!isCredentialsOpen}>
+              <div className="form-message form-message-warning">{copy.credentialsWarning}</div>
               {credentialsQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingCredentials')}</p>}
               {credentialsQuery.isError && <div className="form-message form-message-error">{t('vpnAccounts.credentialsLoadError')}</div>}
               {credentials && (
@@ -267,8 +273,6 @@ export function VpnAccountsPage() {
               </div>
             </div>
           )}
-
-          {accountId && <TrafficStatsPanel accountId={accountId} />}
         </div>
       </div>
     </section>

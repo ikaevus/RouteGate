@@ -71,8 +71,17 @@ func validateCreateInput(input CreateInput) error {
 	return nil
 }
 
+// sameCreateRequest decides whether a repeated Idempotency-Key is a genuine
+// replay of the same request or must be rejected as a conflict.
+// SubscriptionTokenID is included so that, for a device-scoped delivery, a
+// reused key against a since-rotated token generation is treated as a
+// conflict rather than silently replaying stale device-access material
+// against the new delivery attempt: the caller must mint a fresh key after
+// rotating.
 func sameCreateRequest(delivery Delivery, input CreateInput) bool {
 	return delivery.VPNAccountID == input.VPNAccountID &&
+		delivery.DeviceID == input.DeviceID &&
+		delivery.SubscriptionTokenID == input.SubscriptionTokenID &&
 		delivery.Channel == input.Channel &&
 		delivery.Provider == input.Provider &&
 		delivery.Recipient == input.Recipient &&
