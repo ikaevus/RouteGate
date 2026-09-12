@@ -77,6 +77,27 @@ jobs:
     name: Clean VPS installer checks
     runs-on: ubuntu-24.04
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: routegate_installer_ci
+          POSTGRES_USER: routegate
+          POSTGRES_PASSWORD: routegate_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U routegate -d routegate_installer_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Used only by scripts/test-production-like-rollback.sh's live-database
+      # reproduction; it creates and drops its own scratch database per run
+      # and never touches routegate_installer_ci itself.
+      ROUTEGATE_TEST_DATABASE_URL: postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_installer_ci?sslmode=disable
+
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -136,6 +157,7 @@ jobs:
             scripts/test-attestation-verifier-runtime.sh \
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
+            scripts/test-production-like-rollback.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-bootstrap.sh \
             scripts/test-update-core.sh \
@@ -161,6 +183,7 @@ jobs:
             scripts/routegate-update-verified.sh \
             scripts/test-attestation-verifier-runtime.sh \
             scripts/test-grafana-installer.sh \
+            scripts/test-production-like-rollback.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-bootstrap.sh \
             scripts/test-update-core.sh \
@@ -178,6 +201,7 @@ jobs:
           bash scripts/test-agent-installer.sh
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
+          bash scripts/test-production-like-rollback.sh
           bash scripts/test-recovery-tool.sh
           sudo bash scripts/test-attestation-verifier-runtime.sh
           bash scripts/test-update-bootstrap.sh

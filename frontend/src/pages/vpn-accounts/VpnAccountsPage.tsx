@@ -198,7 +198,13 @@ export function VpnAccountsPage() {
 
         <div className="vpn-account-management-detail-stack">
           <VpnAccountManagementPanel accountId={accountId} />
-          {accountId && <AccessDevicesPanel accountId={accountId} />}
+          {/* key={accountId} forces a full remount on account switch: without
+              it, this component re-renders with the new accountId prop for
+              one frame before its own reset effect runs, during which
+              query-cache-warm legacy/device data plus stale, still-revealed
+              plaintext access material from the previous account could both
+              be visible together. */}
+          {accountId && <AccessDevicesPanel accountId={accountId} key={accountId} />}
           {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
           {accountId && <VpnAccountConnectionPanels accountId={accountId} />}
           {accountId && <TrafficStatsPanel accountId={accountId} />}

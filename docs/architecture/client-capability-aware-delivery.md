@@ -40,7 +40,7 @@ Officially supported values (RouteGate supports protocols broadly, but clients s
 - `sing-box`
 - `generic`
 
-Legacy values `v2raytun`, `v2box`, and `other` remain accepted on existing persisted rows for backward compatibility but normalize to `generic` — RouteGate does not maintain bespoke adapters for them. No database migration was required for this vocabulary because the field is already textual.
+Legacy values `v2raytun`, `v2box`, and `other` remain part of this field's accepted vocabulary - both on existing persisted rows and for new writes to this account-level endpoint, which predates RG-116 and was never narrowed by it - but always normalize to `generic` for capability purposes, since RouteGate does not maintain bespoke adapters for them. RG-116's own, separate Access & Devices allow-list (`hiddify`, `v2rayn`, `v2rayng`, `generic`) is narrower and is what new device rows and their migration backfill are validated against; see `access-devices.md`. No database migration was required for this account-level vocabulary because the field is already textual.
 
 Automatic detection is deliberately conservative. If the saved profile is `other`, RouteGate may recognize an unambiguous client `User-Agent`. Explicit administrator selection always wins over automatic detection.
 

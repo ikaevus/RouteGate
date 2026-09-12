@@ -87,6 +87,25 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   const [renameValue, setRenameValue] = useState('');
   const [legacyRevealed, setLegacyRevealed] = useState<RevealedAccess | null>(null);
   const [legacyQrOpen, setLegacyQrOpen] = useState(false);
+  // rotateMutation/revokeMutation below are each a single shared useMutation
+  // instance reused by every device row via .mutate(deviceId). TanStack
+  // Query's own reactive `isPending`/`variables` reflect only the most
+  // recently invoked call, not every in-flight call - so tracking "is THIS
+  // device's rotate/revoke in flight" via those two fields breaks the moment
+  // two different devices are rotated/revoked in overlapping windows (the
+  // first device's button would incorrectly re-enable while its own request
+  // is still in flight). Track pending device IDs explicitly instead, via
+  // onMutate/onSettled, which fire per-call with that call's own variables
+  // regardless of what else is in flight.
+  const [pendingRotateIds, setPendingRotateIds] = useState<ReadonlySet<string>>(new Set());
+  const [pendingRevokeIds, setPendingRevokeIds] = useState<ReadonlySet<string>>(new Set());
+  // Same reasoning as above: per-device error state, since the shared
+  // mutation's own `.error`/`.isError` only ever reflect the most recently
+  // invoked call and would otherwise make one device's failure vanish (or
+  // appear to belong to a different device) the moment another device's
+  // rotate/revoke is invoked.
+  const [rotateErrors, setRotateErrors] = useState<Record<string, unknown>>({});
+  const [revokeErrors, setRevokeErrors] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     setRevealed({});
@@ -94,6 +113,8 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
     setSendDeviceId(null);
     setLegacyRevealed(null);
     setLegacyQrOpen(false);
+    setRotateErrors({});
+    setRevokeErrors({});
   }, [accountId]);
 
   useEffect(() => {
@@ -176,7 +197,25 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
 
   const rotateMutation = useMutation({
     mutationFn: (deviceId: string) => rotateVpnAccountDeviceToken(accountId, deviceId),
+    onMutate: (deviceId) => {
+      setPendingRotateIds((previous) => new Set(previous).add(deviceId));
+    },
+    onSettled: (_data, _error, deviceId) => {
+      setPendingRotateIds((previous) => {
+        const next = new Set(previous);
+        next.delete(deviceId);
+        return next;
+      });
+    },
+    onError: (error, deviceId) => {
+      setRotateErrors((previous) => ({ ...previous, [deviceId]: error }));
+    },
     onSuccess: async (response) => {
+      setRotateErrors((previous) => {
+        const next = { ...previous };
+        delete next[response.device.id];
+        return next;
+      });
       setRevealed((previous) => ({
         ...previous,
         [response.device.id]: {
@@ -191,7 +230,25 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
 
   const revokeMutation = useMutation({
     mutationFn: (deviceId: string) => revokeVpnAccountDevice(accountId, deviceId),
+    onMutate: (deviceId) => {
+      setPendingRevokeIds((previous) => new Set(previous).add(deviceId));
+    },
+    onSettled: (_data, _error, deviceId) => {
+      setPendingRevokeIds((previous) => {
+        const next = new Set(previous);
+        next.delete(deviceId);
+        return next;
+      });
+    },
+    onError: (error, deviceId) => {
+      setRevokeErrors((previous) => ({ ...previous, [deviceId]: error }));
+    },
     onSuccess: async (response) => {
+      setRevokeErrors((previous) => {
+        const next = { ...previous };
+        delete next[response.device.id];
+        return next;
+      });
       setRevealed((previous) => {
         const next = { ...previous };
         delete next[response.device.id];
@@ -353,8 +410,8 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
               const reveal = revealed[device.id];
               const isRenaming = renamingId === device.id;
               const isSending = sendDeviceId === device.id;
-              const isRotatingThis = rotateMutation.isPending && rotateMutation.variables === device.id;
-              const isRevokingThis = revokeMutation.isPending && revokeMutation.variables === device.id;
+              const isRotatingThis = pendingRotateIds.has(device.id);
+              const isRevokingThis = pendingRevokeIds.has(device.id);
 
               return (
                 <section className="vpn-access-device-card" key={device.id}>
@@ -485,11 +542,11 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                       </button>
                     </div>
                   )}
-                  {rotateMutation.isError && rotateMutation.variables === device.id && (
-                    <div className="form-message form-message-error">{getErrorMessage(rotateMutation.error, t('accessDevices.rotateError'))}</div>
+                  {device.id in rotateErrors && (
+                    <div className="form-message form-message-error">{getErrorMessage(rotateErrors[device.id], t('accessDevices.rotateError'))}</div>
                   )}
-                  {revokeMutation.isError && revokeMutation.variables === device.id && (
-                    <div className="form-message form-message-error">{getErrorMessage(revokeMutation.error, t('accessDevices.revokeError'))}</div>
+                  {device.id in revokeErrors && (
+                    <div className="form-message form-message-error">{getErrorMessage(revokeErrors[device.id], t('accessDevices.revokeError'))}</div>
                   )}
 
                   {isSending && reveal && (

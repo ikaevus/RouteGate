@@ -303,7 +303,7 @@ rollback_database_to_backup() {
       }
 
       log "database rollback migration=${version}"
-      if ! psql "$db_url" -v ON_ERROR_STOP=1 -f "$down_file" >/dev/null; then
+      if ! psql "$db_url" -v ON_ERROR_STOP=1 --single-transaction -f "$down_file" >/dev/null; then
         RG_UPDATE_DB_RESTORE_RC=1
         printf '[production-like] WARNING: down migration failed for %s; database rollback stopped\n' "$version" >&2
         return 1
@@ -332,7 +332,16 @@ rollback_database_to_backup() {
     }
   fi
 
+  # --single-transaction is load-bearing: without it, a pg_restore that dies
+  # partway through (for example because the live schema still carries an
+  # FK-bearing object the backup's dump predates - exactly the class of drift
+  # that motivated 000150a/000150b) can already have dropped/emptied real
+  # tables before hitting the fatal statement, silently destroying live data
+  # while this function still reports the failure. With it, Postgres runs the
+  # whole restore as one transaction, so a failure rolls back everything
+  # pg_restore itself did and leaves the database exactly as it was going in.
   pg_restore \
+    --single-transaction \
     --clean \
     --if-exists \
     --no-owner \
