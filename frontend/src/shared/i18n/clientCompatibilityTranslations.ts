@@ -4,6 +4,7 @@ export const clientCompatibilityEn = {
   'clientCompatibility.setup': 'Compatible',
   'clientCompatibility.connectionOnly': 'Generic',
   'clientCompatibility.hiddify': 'Hiddify',
+  'clientCompatibility.happ': 'HAPP',
   'clientCompatibility.copySubscriptionUrl': 'Copy link',
   'clientCompatibility.close': 'Close',
   'clientCompatibility.copied': 'Copied',
@@ -13,6 +14,8 @@ export const clientCompatibilityEn = {
   // messages are written out, in both languages.
   'clientCompatibility.guidance.hiddify_import_access_link':
     'Import the RouteGate access link. Keep Hiddify routing/TUN settings compatible with the imported profile when using smart routing.',
+  'clientCompatibility.guidance.happ_standard_subscription':
+    'Import the RouteGate access link as a standard HAPP subscription. RouteGate has manually validated VLESS/Reality and Shadowsocks profiles from one subscription.',
   'clientCompatibility.guidance.v2rayn_routing_mode':
     'Use a routing mode that preserves DIRECT/VPN intent (for example a whitelist/custom rules mode rather than Global when DIRECT rules are required).',
   'clientCompatibility.guidance.v2rayn_tun_mode':
@@ -21,6 +24,10 @@ export const clientCompatibilityEn = {
     'v2rayNG is the Android member of the 2dust client family and supports standard subscription import.',
   'clientCompatibility.guidance.generic_standard_connection':
     'Standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto connection material only. For RouteGate-managed routing, use Hiddify (full) or v2rayN (with client-side setup).',
+  'clientCompatibility.limitation.happ_routing_not_validated':
+    'RouteGate-managed DIRECT/VPN/BLOCK routing has not yet been independently validated in HAPP; the current compatibility claim covers connection delivery only.',
+  'clientCompatibility.limitation.happ_protocol_not_validated':
+    'This HAPP protocol path has not yet completed RouteGate real-client acceptance; use it as a connectivity fallback until validated.',
   'clientCompatibility.limitation.v2rayn_no_routing_rules':
     'Standard URI subscriptions do not carry RouteGate sing-box routing rules; matching routing/DNS behavior must be configured in v2rayN.',
   'clientCompatibility.limitation.v2rayng_routing_not_validated':
@@ -41,11 +48,14 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
   'clientCompatibility.setup': 'Совместим',
   'clientCompatibility.connectionOnly': 'Универсальный',
   'clientCompatibility.hiddify': 'Hiddify',
+  'clientCompatibility.happ': 'HAPP',
   'clientCompatibility.copySubscriptionUrl': 'Копировать ссылку',
   'clientCompatibility.close': 'Закрыть',
   'clientCompatibility.copied': 'Скопировано',
   'clientCompatibility.guidance.hiddify_import_access_link':
     'Импортируйте ссылку доступа RouteGate. При использовании умной маршрутизации настройки Hiddify (роутинг/TUN) должны быть совместимы с импортированным профилем.',
+  'clientCompatibility.guidance.happ_standard_subscription':
+    'Импортируйте ссылку доступа RouteGate как стандартную подписку HAPP. RouteGate вручную проверен с профилями VLESS/Reality и Shadowsocks из одной подписки.',
   'clientCompatibility.guidance.v2rayn_routing_mode':
     'Используйте режим маршрутизации, сохраняющий намерение DIRECT/VPN (например, режим со своими правилами, а не Global, если требуются правила DIRECT).',
   'clientCompatibility.guidance.v2rayn_tun_mode':
@@ -54,6 +64,10 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
     'v2rayNG - Android-клиент семейства 2dust, поддерживает стандартный импорт подписки.',
   'clientCompatibility.guidance.generic_standard_connection':
     'Только стандартные данные подключения VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto. Для управляемой RouteGate маршрутизации используйте Hiddify (полностью) или v2rayN (с ручной настройкой).',
+  'clientCompatibility.limitation.happ_routing_not_validated':
+    'Маршрутизация DIRECT/VPN/BLOCK под управлением RouteGate пока отдельно не проверена в HAPP; текущая гарантия совместимости относится к подключению.',
+  'clientCompatibility.limitation.happ_protocol_not_validated':
+    'Этот протокольный сценарий HAPP ещё не прошёл реальную клиентскую проверку RouteGate; до проверки он считается резервным вариантом базового подключения.',
   'clientCompatibility.limitation.v2rayn_no_routing_rules':
     'Стандартные URI-подписки не содержат правила маршрутизации sing-box от RouteGate; соответствующее поведение нужно настроить в v2rayN.',
   'clientCompatibility.limitation.v2rayng_routing_not_validated':
@@ -72,6 +86,7 @@ export type ClientCompatibilityTranslationKey = keyof typeof clientCompatibility
 
 const guidanceKeyByCode: Record<string, ClientCompatibilityTranslationKey> = {
   hiddify_import_access_link: 'clientCompatibility.guidance.hiddify_import_access_link',
+  happ_standard_subscription: 'clientCompatibility.guidance.happ_standard_subscription',
   v2rayn_routing_mode: 'clientCompatibility.guidance.v2rayn_routing_mode',
   v2rayn_tun_mode: 'clientCompatibility.guidance.v2rayn_tun_mode',
   v2rayng_standard_subscription: 'clientCompatibility.guidance.v2rayng_standard_subscription',
@@ -79,6 +94,8 @@ const guidanceKeyByCode: Record<string, ClientCompatibilityTranslationKey> = {
 };
 
 const limitationKeyByCode: Record<string, ClientCompatibilityTranslationKey> = {
+  happ_routing_not_validated: 'clientCompatibility.limitation.happ_routing_not_validated',
+  happ_protocol_not_validated: 'clientCompatibility.limitation.happ_protocol_not_validated',
   v2rayn_no_routing_rules: 'clientCompatibility.limitation.v2rayn_no_routing_rules',
   v2rayng_routing_not_validated: 'clientCompatibility.limitation.v2rayng_routing_not_validated',
   generic_no_routing_policy: 'clientCompatibility.limitation.generic_no_routing_policy',
