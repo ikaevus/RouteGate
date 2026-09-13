@@ -666,11 +666,11 @@ rg_update_restore_backup() {
   install -m 0600 "$backup_dir/manager.env" "$manager_env" || rollback_rc=1
 
   systemctl daemon-reload || rollback_rc=1
-  if ! rg_update_wait_manager; then
+  if ! rg_update_wait_manager 45; then
     rollback_rc=1
     rg_update_log "rollback readiness manager=failed"
   fi
-  if ! rg_update_wait_agent; then
+  if ! rg_update_wait_agent 30; then
     rollback_rc=1
     rg_update_log "rollback readiness agent=failed"
   fi
