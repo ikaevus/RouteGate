@@ -162,11 +162,27 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 	_, _ = io.WriteString(w, payload.Body)
 }
 
-func clientSubscriptionHeaders(clientType, _ string, _ SubscriptionProfile) (map[string]string, error) {
+func clientSubscriptionHeaders(clientType, protocol string, profile SubscriptionProfile) (map[string]string, error) {
 	headers := map[string]string{}
 	switch clientType {
 	case ClientTypeHiddify:
 		headers["Profile-Update-Interval"] = "12"
+	case ClientTypeHAPP:
+		// HAPP supports provider-managed routing via the `routing` response
+		// header. Keep the already validated Base64 share-link body unchanged
+		// and attach the resolved RouteGate RoutingProfile orthogonally. Only
+		// HAPP protocols represented by standard share links receive this
+		// header; protocol-native WireGuard/MTProto fallback must not pretend to
+		// be a HAPP subscription.
+		if protocolSupportsShareLinkSubscription(protocol) && profile.RoutingProfile != nil {
+			routingLink, ok, err := renderHAPPRoutingLink(profile.RoutingProfile)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				headers["Routing"] = routingLink
+			}
+		}
 	}
 	return headers, nil
 }
