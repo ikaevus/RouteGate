@@ -1,6 +1,6 @@
 # RouteGate VPN Client Compatibility Matrix
 
-Reviewed: 2026-09-11
+Reviewed: 2026-09-13
 
 This matrix distinguishes connection compatibility from Routing Profile compatibility.
 
@@ -11,6 +11,7 @@ RouteGate supports protocols broadly, but officially supports VPN clients select
 | Client | Connection delivery | RouteGate routing delivery | Smart Routing state | Remaining client-side requirement |
 | --- | --- | --- | --- | --- |
 | Hiddify (recommended) | sing-box JSON for VLESS | Routing Profile embedded in the same sing-box config | Full smart routing on validated VLESS path | Keep client TUN/routing behavior compatible with imported profile |
+| HAPP | Standard Base64/share-link subscription; real-client validated for VLESS/Reality + Shadowsocks from one opaque RouteGate URL | Not claimed | Compatible connection delivery; Smart Routing not yet validated | No extra setup for the validated connection path; real-client DIRECT/VPN/BLOCK validation is still required before any Smart Routing claim |
 | sing-box | sing-box JSON for VLESS | Routing Profile embedded in the same sing-box config | Full smart routing on validated VLESS path | Normal client/runtime setup |
 | v2rayN (desktop) | Base64 standard share links | Separate native custom-rules URL: `/sub/<token>?format=v2rayn-routing` (adapter implemented, automated tests; manual real-client marketplace validation remains pending, historically tracked in #392) | Supported with client-side setup | Import/refresh the RouteGate rules source, activate the intended routing mode/profile, and verify DNS/TUN behavior |
 | v2rayNG (Android) | Base64 standard share links | Not offered — routing-rules import has **not** been independently validated on this client | Connection only (Smart Routing not claimed) | Standard subscription import/refresh only; select Hiddify or v2rayN for RouteGate-managed routing |
@@ -18,23 +19,39 @@ RouteGate supports protocols broadly, but officially supports VPN clients select
 
 ## Capability detail
 
-| Capability | Hiddify | v2rayN | v2rayNG | Generic |
-| --- | :---: | :---: | :---: | :---: |
-| URI/subscription import | Yes | Yes | Yes | Yes |
-| Full sing-box config import used by RouteGate | Yes | No | No | No |
-| TUN functionality | Yes | Yes | Yes | Client-dependent |
-| DIRECT/VPN/BLOCK capability | Yes | Yes | Client-dependent (not validated by RouteGate) | Client-dependent |
-| RouteGate routing-policy artifact | Embedded config | Native custom-rules JSON URL | Not offered | Not offered |
-| DNS/split-DNS capability | Yes | Yes | Client-dependent | Client-dependent |
-| Connection subscription refresh | Yes | Yes | Yes | Client-dependent |
-| Routing-policy refresh/import | Same config refresh | Separate routing URL refresh | N/A | N/A |
-| Imported RouteGate routing precedence known | RouteGate config | Client routing profile governs once selected | N/A | N/A |
+| Capability | Hiddify | HAPP | v2rayN | v2rayNG | Generic |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| URI/subscription import | Yes | Yes — real-client validated | Yes | Yes | Yes |
+| Full sing-box config import used by RouteGate | Yes | No | No | No | No |
+| TUN functionality | Yes | Client feature; RouteGate routing not validated | Yes | Yes | Client-dependent |
+| DIRECT/VPN/BLOCK capability | Yes | Not claimed by RouteGate yet | Yes | Client-dependent (not validated by RouteGate) | Client-dependent |
+| RouteGate routing-policy artifact | Embedded config | Not offered | Native custom-rules JSON URL | Not offered | Not offered |
+| DNS/split-DNS capability | Yes | Not claimed by RouteGate yet | Yes | Client-dependent | Client-dependent |
+| Connection subscription refresh | Yes | Yes | Yes | Yes | Client-dependent |
+| Routing-policy refresh/import | Same config refresh | N/A | Separate routing URL refresh | N/A | N/A |
+| Imported RouteGate routing precedence known | RouteGate config | Unknown | Client routing profile governs once selected | N/A | N/A |
+
+## HAPP real-client acceptance
+
+HAPP is a first-class RouteGate **connection client**, not a Generic guess. On 2026-09-13 a real HAPP iOS client successfully imported one opaque RouteGate HTTPS subscription URL and exposed two independent selectable profiles from the same VPN account:
+
+- VLESS / TCP / Reality;
+- Shadowsocks / TCP.
+
+Both protocol paths were manually confirmed working. This validates the multi-profile subscription behavior RouteGate expects: one stable access URL can represent more than one active protocol without requiring the user to create separate subscriptions.
+
+This does **not** mean HAPP sends traffic through both protocols simultaneously. They are independent profiles presented by the client, and the user selects the active one.
+
+RouteGate therefore treats HAPP as `partial_compatibility` for the manually validated VLESS/Reality and Shadowsocks paths. HAPP's own protocol support may include additional share-link protocols, but those are not promoted to a RouteGate-validated state until they complete the same real-client acceptance. WireGuard and MTProto are not represented as HAPP Base64 share-link paths by RouteGate and fall back to protocol-native delivery rather than receiving a false HAPP compatibility claim.
+
+Most importantly, subscription/connectivity success is **not** evidence of Smart Routing. HAPP remains unvalidated for RouteGate-managed DIRECT/VPN/BLOCK, DNS and split-routing precedence. A future HAPP Smart Routing acceptance pass must prove those behaviors on a real client before its routing tier can be promoted.
 
 ## Protocol-aware fallback rule
 
 RouteGate must never derive a strong routing status from client name alone — including inferring it from *client family* (2dust) rather than the exact client.
 
 - Hiddify and sing-box are `full_smart_routing` only when the effective protocol is VLESS and RouteGate can deliver the full sing-box representation.
+- HAPP is `partial_compatibility` only on the real-client validated VLESS/Reality and Shadowsocks connection paths. Hysteria2 remains `connection_only` until RouteGate real-client acceptance is performed, even if the client itself supports it. WireGuard/MTProto use protocol-native fallback rather than an invented HAPP share-link representation. HAPP never implies RouteGate Smart Routing until that is independently validated.
 - v2rayN uses its standard share-link subscription path for compatible protocols, with the native routing-rules URL as an additional client-side import: the adapter and its rule-mapping are implemented and covered by automated tests, but real-client runtime routing behavior (does the imported profile actually make Ozon/Wildberries DIRECT on a real device) has not yet been independently validated — manual runtime validation remains pending (historically tracked in #392); see "Manual marketplace validation" below.
 - v2rayNG uses the same standard share-link subscription path, but the native routing-rules import is **not** offered to it and its Smart Routing state stays `connection_only` until that is independently validated on a real v2rayNG client — it is not inherited from v2rayN just because both are 2dust clients.
 - If a client/protocol pair has no validated representation, compatibility must fall back to `connection_only` rather than claiming Smart Routing enforcement. This is the default for Generic and, currently, for v2rayNG.
@@ -92,16 +109,18 @@ The motivating regression scenario is a RouteGate Routing Profile in which Russi
 Validation must use the same account/profile and check at minimum:
 
 1. Hiddify baseline: Ozon and Wildberries open with the full RouteGate sing-box profile.
-2. v2rayN: import/refresh the RouteGate `v2rayn-routing` URL, activate the corresponding routing profile, then verify both Ozon and Wildberries.
-3. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
-4. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
+2. HAPP candidate: use the same RouteGate account/subscription and verify DIRECT/VPN/BLOCK plus DNS/TUN behavior without assuming that successful VLESS/Shadowsocks connectivity proves routing-policy enforcement.
+3. v2rayN: import/refresh the RouteGate `v2rayn-routing` URL, activate the corresponding routing profile, then verify both Ozon and Wildberries.
+4. Confirm ordinary VPN-routed sites still use the VPN; fixing DIRECT marketplaces must not accidentally turn the client into global DIRECT mode.
+5. If routing rules match but a marketplace still fails, inspect client DNS/TUN behavior separately before changing the shared RouteGate policy.
 
-A client may only be promoted to a stronger compatibility state after this real-client validation passes deterministically. **Neither v2rayN nor v2rayNG has completed this validation yet** (for v2rayN, manual runtime validation remains pending — historically tracked in #392, which is closed; the validation itself is the open item, not the issue). v2rayN's adapter, mapping, and automated tests are implemented and keep it at `client_setup_required` on that basis; v2rayNG additionally lacks even an adapter/native-import claim and stays `connection_only`. Neither may be promoted further, and v2rayN's existing tier must not be read as evidence that its real-client routing behavior has been confirmed.
+A client may only be promoted to a stronger compatibility state after this real-client validation passes deterministically. **HAPP has completed connection/multi-profile acceptance but not Smart Routing acceptance. Neither v2rayN nor v2rayNG has completed Smart Routing validation yet** (for v2rayN, manual runtime validation remains pending — historically tracked in #392, which is closed; the validation itself is the open item, not the issue). v2rayN's adapter, mapping, and automated tests are implemented and keep it at `client_setup_required` on that basis; v2rayNG additionally lacks even an adapter/native-import claim and stays `connection_only`.
 
 ## Validation sources
 
 The matrix combines RouteGate automated tests, current client source/documentation, and observed manual behavior. Client releases may change behavior, so capability changes must be reviewed before promoting a compatibility state.
 
+- HAPP: real RouteGate iOS validation on 2026-09-13 confirmed one opaque subscription importing working VLESS/Reality and Shadowsocks profiles. HAPP's published client documentation supports standard URL subscriptions/share links; additional RouteGate protocol/routing claims remain intentionally unpromoted until manually validated.
 - v2rayN current source models custom routing as an ordered `RulesItem` list and supports importing that list from a configured subscription URL; RouteGate's adapter and its automated tests are built against that documented format, but real-client marketplace behavior has **not** been independently validated yet (manual runtime validation remains pending, historically tracked in #392 - the issue itself is closed).
 - v2rayNG's equivalent behavior is believed similar (same upstream engine) but has **not** been validated by RouteGate at all — no adapter is offered and no claim beyond `connection_only` is made; treat this as unverified, not as evidence of compatibility.
 - Hiddify is the current full-config baseline for this Smart Routing scenario.

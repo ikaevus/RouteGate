@@ -1,7 +1,7 @@
 import { apiGet, apiPatch, apiPost } from '../../../shared/api/client';
 import type { ClientCompatibilityAssessment } from '../model/clientCompatibility';
 
-export type DeviceClientType = 'hiddify' | 'v2rayn' | 'v2rayng' | 'generic';
+export type DeviceClientType = 'hiddify' | 'happ' | 'v2rayn' | 'v2rayng' | 'generic';
 export type DevicePlatform = 'windows' | 'ios' | 'android' | 'macos' | 'linux' | 'other';
 export type DeviceStatus = 'active' | 'revoked';
 
