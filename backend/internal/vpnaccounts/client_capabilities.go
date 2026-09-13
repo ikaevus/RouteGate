@@ -8,11 +8,13 @@ import (
 const (
 	// Officially supported client identities. RouteGate supports protocols
 	// broadly, but officially supports VPN clients selectively: Hiddify is the
-	// primary/recommended client, v2rayN/v2rayNG are the officially supported
+	// primary/recommended client, HAPP is a manually validated standard-
+	// subscription client, v2rayN/v2rayNG are the officially supported
 	// desktop/Android members of the 2dust client family, and everything else
 	// (V2RayTun, V2Box, Streisand, FoXray, Amnezia, ...) uses Generic
 	// best-effort connectivity rather than a bespoke adapter.
 	ClientTypeHiddify = "hiddify"
+	ClientTypeHAPP    = "happ"
 	ClientTypeV2RayN  = "v2rayn"
 	ClientTypeV2RayNG = "v2rayng"
 	ClientTypeSingBox = "sing-box"
@@ -41,11 +43,14 @@ const (
 	// code to t('clientCompatibility.guidance.<code>') /
 	// t('clientCompatibility.limitation.<code>').
 	GuidanceHiddifyImportAccessLink     = "hiddify_import_access_link"
+	GuidanceHAPPStandardSubscription    = "happ_standard_subscription"
 	GuidanceV2RayNRoutingMode           = "v2rayn_routing_mode"
 	GuidanceV2RayNTunMode               = "v2rayn_tun_mode"
 	GuidanceV2RayNGStandardSubscription = "v2rayng_standard_subscription"
 	GuidanceGenericStandardConnection   = "generic_standard_connection"
 
+	LimitationHAPPRoutingNotValidated    = "happ_routing_not_validated"
+	LimitationHAPPProtocolNotValidated   = "happ_protocol_not_validated"
 	LimitationV2RayNNoRoutingRules       = "v2rayn_no_routing_rules"
 	LimitationV2RayNGRoutingNotValidated = "v2rayng_routing_not_validated"
 	LimitationGenericNoRoutingPolicy     = "generic_no_routing_policy"
@@ -87,6 +92,7 @@ func init() {
 	// textual. Keep legacy values accepted for existing rows while devices
 	// (RG-116) use their own, narrower allow-list.
 	allowedClientTypes[ClientTypeHiddify] = struct{}{}
+	allowedClientTypes[ClientTypeHAPP] = struct{}{}
 	allowedClientTypes[ClientTypeV2RayNG] = struct{}{}
 	allowedClientTypes[ClientTypeGeneric] = struct{}{}
 }
@@ -120,6 +126,22 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 				ImportedRulePrecedence: ImportedRulePrecedenceRouteGate,
 			},
 			GuidanceCodes: []string{GuidanceHiddifyImportAccessLink},
+		}
+	case ClientTypeHAPP:
+		// HAPP is a first-class standard-subscription client. RouteGate has
+		// manually validated an opaque HTTPS subscription on iOS with both
+		// VLESS/Reality and Shadowsocks profiles and successful connectivity.
+		// Smart Routing is deliberately not claimed until DIRECT/VPN/BLOCK
+		// behavior is independently validated on the real client.
+		return ClientCompatibilityAssessment{
+			ClientType: ClientTypeHAPP, DisplayName: "HAPP", Status: ClientCompatibilityPartial,
+			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64,
+			Capabilities: ClientCapabilities{
+				URISubscriptionImport: true, SubscriptionRefresh: true,
+				ImportedRulePrecedence: ImportedRulePrecedenceUnknown,
+			},
+			GuidanceCodes:   []string{GuidanceHAPPStandardSubscription},
+			LimitationCodes: []string{LimitationHAPPRoutingNotValidated},
 		}
 	case ClientTypeSingBox:
 		return ClientCompatibilityAssessment{
@@ -192,6 +214,22 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		return assessment
 	}
 
+	if normalizedClient == ClientTypeHAPP {
+		// Manual RouteGate acceptance currently covers VLESS/Reality and
+		// Shadowsocks on HAPP. Hysteria2 is supported by the client itself, but
+		// RouteGate does not promote that path until a real-client test passes.
+		if protocol != ClientProtocolVLESS && protocol != ClientProtocolShadowsocks {
+			assessment.Status = ClientCompatibilityConnectionOnly
+			assessment.RequiresClientSetup = true
+			assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationHAPPProtocolNotValidated)
+		}
+		if !protocolSupportsShareLinkSubscription(protocol) {
+			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
+			assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolNoShareLinkFormat)
+		}
+		return assessment
+	}
+
 	// v2rayN and v2rayNG both only have a valid Base64 share-link
 	// representation for protocols protocolSupportsShareLinkSubscription
 	// recognizes (VLESS/Hysteria2/Shadowsocks). Without this check, a
@@ -254,7 +292,7 @@ func protocolSupportsShareLinkSubscription(protocol string) bool {
 func normalizeClientType(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch value {
-	case ClientTypeHiddify, ClientTypeV2RayN, ClientTypeV2RayNG, ClientTypeSingBox:
+	case ClientTypeHiddify, ClientTypeHAPP, ClientTypeV2RayN, ClientTypeV2RayNG, ClientTypeSingBox:
 		return value
 	default:
 		return ClientTypeGeneric
