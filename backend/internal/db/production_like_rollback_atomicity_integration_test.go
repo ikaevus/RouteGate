@@ -20,10 +20,10 @@ func TestProductionLikeDownMigrationIsAtomicWithHistoryRemoval(t *testing.T) {
 		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
 	}
 	if _, err := exec.LookPath("psql"); err != nil {
-		t.Skip("psql is not available")
+		t.Fatalf("psql is required when ROUTEGATE_TEST_DATABASE_URL is set: %v", err)
 	}
 	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 is not available")
+		t.Fatalf("python3 is required when ROUTEGATE_TEST_DATABASE_URL is set: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
