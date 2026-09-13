@@ -134,10 +134,10 @@ jobs:
           bash -n scripts/deploy-production-like-bundle.sh
           bash -n scripts/validate-production-like-deploy.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck scripts/production-like-ops.sh
-            shellcheck scripts/production-like-task-diagnostics.sh
-            shellcheck scripts/deploy-production-like-bundle.sh
-            shellcheck scripts/validate-production-like-deploy.sh
+            shellcheck -x scripts/production-like-ops.sh
+            shellcheck -x scripts/production-like-task-diagnostics.sh
+            shellcheck -x scripts/deploy-production-like-bundle.sh
+            shellcheck -x scripts/validate-production-like-deploy.sh
           fi
 
       - name: Configure SSH
