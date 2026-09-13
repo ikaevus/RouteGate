@@ -131,14 +131,17 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 		// HAPP is a first-class standard-subscription client. RouteGate has
 		// manually validated an opaque HTTPS subscription on iOS with both
 		// VLESS/Reality and Shadowsocks profiles and successful connectivity.
-		// Smart Routing is deliberately not claimed until DIRECT/VPN/BLOCK
-		// behavior is independently validated on the real client.
+		// The provider-managed routing artifact is now delivered automatically
+		// with the same subscription, but full Smart Routing remains unclaimed
+		// until real-client DIRECT/VPN/BLOCK behavior and cross-action ordering
+		// are independently validated.
 		return ClientCompatibilityAssessment{
 			ClientType: ClientTypeHAPP, DisplayName: "HAPP", Status: ClientCompatibilityPartial,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64,
 			Capabilities: ClientCapabilities{
-				URISubscriptionImport: true, SubscriptionRefresh: true,
-				ImportedRulePrecedence: ImportedRulePrecedenceUnknown,
+				URISubscriptionImport: true, DirectRouting: true, VPNRouting: true,
+				BlockRouting: true, RemoteRuleSets: true, SubscriptionRefresh: true,
+				SubscriptionRoutingPolicy: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown,
 			},
 			GuidanceCodes:   []string{GuidanceHAPPStandardSubscription},
 			LimitationCodes: []string{LimitationHAPPRoutingNotValidated},
@@ -215,9 +218,11 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 	}
 
 	if normalizedClient == ClientTypeHAPP {
-		// Manual RouteGate acceptance currently covers VLESS/Reality and
-		// Shadowsocks on HAPP. Hysteria2 is supported by the client itself, but
-		// RouteGate does not promote that path until a real-client test passes.
+		// Manual RouteGate connection acceptance currently covers VLESS/Reality
+		// and Shadowsocks on HAPP. Hysteria2 has a share-link representation and
+		// receives the same provider-managed routing artifact, but neither that
+		// protocol path nor Smart Routing itself is promoted until real-client
+		// acceptance passes.
 		if protocol != ClientProtocolVLESS && protocol != ClientProtocolShadowsocks {
 			assessment.Status = ClientCompatibilityConnectionOnly
 			assessment.RequiresClientSetup = true
@@ -225,6 +230,7 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		}
 		if !protocolSupportsShareLinkSubscription(protocol) {
 			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
+			assessment.Capabilities.SubscriptionRoutingPolicy = false
 			assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolNoShareLinkFormat)
 		}
 		return assessment
