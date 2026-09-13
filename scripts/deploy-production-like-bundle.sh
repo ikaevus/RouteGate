@@ -2,6 +2,104 @@
 set -Eeuo pipefail
 umask 077
 
+prepare_atomic_down_migration() {
+  local source_file=$1
+  local output_file=$2
+
+  python3 - "$source_file" "$output_file" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+source_path = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+lines = source_path.read_text().splitlines(keepends=True)
+
+
+def meaningful_indices(items):
+    result = []
+    for index, line in enumerate(items):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        result.append(index)
+    return result
+
+
+indices = meaningful_indices(lines)
+if not indices:
+    raise SystemExit("down migration is empty")
+
+begin_re = re.compile(r"^BEGIN(?:\s+TRANSACTION)?;$", re.IGNORECASE)
+commit_re = re.compile(r"^COMMIT;$", re.IGNORECASE)
+first = indices[0]
+last = indices[-1]
+has_begin = bool(begin_re.fullmatch(lines[first].strip()))
+has_commit = bool(commit_re.fullmatch(lines[last].strip()))
+
+if has_begin != has_commit:
+    raise SystemExit("down migration has an unmatched outer transaction boundary")
+if has_begin:
+    del lines[last]
+    del lines[first]
+
+for line in lines:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("--"):
+        continue
+    if begin_re.fullmatch(stripped) or commit_re.fullmatch(stripped) or stripped.upper() == "ROLLBACK;":
+        raise SystemExit("down migration contains transaction control that the atomic rollback runner cannot safely own")
+
+output_path.write_text("".join(lines))
+PY
+}
+
+run_atomic_down_migration() {
+  local db_url=$1
+  local down_file=$2
+  local version=$3
+  local transaction_file
+  local rc=0
+
+  [[ "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    printf '[production-like] invalid rollback migration identifier\n' >&2
+    return 1
+  }
+  [[ -f "$down_file" && ! -L "$down_file" ]] || {
+    printf '[production-like] unsafe rollback migration file: %s\n' "$down_file" >&2
+    return 1
+  }
+
+  transaction_file=$(mktemp /tmp/routegate-down-migration.XXXXXX.sql) || return 1
+  if ! prepare_atomic_down_migration "$down_file" "$transaction_file"; then
+    rm -f -- "$transaction_file"
+    return 1
+  fi
+  cat >>"$transaction_file" <<'SQL'
+
+DELETE FROM schema_migrations
+WHERE version = :'rg_migration_version';
+SQL
+
+  psql "$db_url" \
+    -X \
+    -v ON_ERROR_STOP=1 \
+    -v rg_migration_version="$version" \
+    --single-transaction \
+    -f "$transaction_file" >/dev/null || rc=$?
+  rm -f -- "$transaction_file"
+  return "$rc"
+}
+
+if [[ ${1:-} == "--run-down-migration" ]]; then
+  [[ $# -eq 4 ]] || {
+    printf 'usage: %s --run-down-migration <database-url> <down-file> <version>\n' "$0" >&2
+    exit 2
+  }
+  run_atomic_down_migration "$2" "$3" "$4"
+  exit $?
+fi
+
 EXPECTED_COMMIT=${1:?expected commit is required}
 BUNDLE_FILE=${2:?bundle path is required}
 EXPECTED_BUNDLE_SHA=${3:?bundle sha256 is required}
@@ -303,14 +401,9 @@ rollback_database_to_backup() {
       }
 
       log "database rollback migration=${version}"
-      if ! psql "$db_url" -v ON_ERROR_STOP=1 -f "$down_file" >/dev/null; then
+      if ! run_atomic_down_migration "$db_url" "$down_file" "$version"; then
         RG_UPDATE_DB_RESTORE_RC=1
-        printf '[production-like] WARNING: down migration failed for %s; database rollback stopped\n' "$version" >&2
-        return 1
-      fi
-      if ! psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "DELETE FROM schema_migrations WHERE version = '$version';" >/dev/null; then
-        RG_UPDATE_DB_RESTORE_RC=1
-        printf '[production-like] WARNING: failed to record rollback of %s\n' "$version" >&2
+        printf '[production-like] WARNING: atomic down migration failed for %s; database rollback stopped\n' "$version" >&2
         return 1
       fi
     done < <(psql "$db_url" -v ON_ERROR_STOP=1 -qAtc "SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC")
