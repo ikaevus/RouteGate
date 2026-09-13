@@ -18,7 +18,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+.vpn-access-device-card-header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The shared .status-pill style is white-space: nowrap, which gives
+   multi-word labels (e.g. "Полностью RouteGate") a min-content width that
+   can push past the card edge on phone screens; let this one wrap. */
+.vpn-access-device-card-header .status-pill {
+  white-space: normal;
 }
 
 .vpn-access-device-rename-form {
