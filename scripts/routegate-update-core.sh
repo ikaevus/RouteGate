@@ -666,8 +666,20 @@ rg_update_restore_backup() {
   install -m 0600 "$backup_dir/manager.env" "$manager_env" || rollback_rc=1
 
   systemctl daemon-reload || rollback_rc=1
-  systemctl start "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || rollback_rc=1
-  systemctl start "$RG_UPDATE_AGENT_SERVICE" >/dev/null 2>&1 || rollback_rc=1
+  if ! rg_update_wait_manager 45; then
+    rollback_rc=1
+    rg_update_log "rollback readiness manager=failed"
+  fi
+  if ! rg_update_wait_agent 30; then
+    rollback_rc=1
+    rg_update_log "rollback readiness agent=failed"
+  fi
+  if ((rollback_rc == 0)); then
+    rg_update_log "rollback readiness control-plane=healthy"
+  else
+    printf '%s WARNING: rollback restored files/database but control-plane readiness is incomplete\n' \
+      "$RG_UPDATE_LOG_PREFIX" >&2
+  fi
   rg_update_log "rollback attempt completed; VPN runtimes were left untouched; backup retained at $backup_dir"
   return "$rollback_rc"
 }

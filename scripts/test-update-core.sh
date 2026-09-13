@@ -133,6 +133,20 @@ case "$action" in
 esac
 EOF_SYSTEMCTL
 
+  cat >"$stub_dir/curl" <<'EOF_CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ${RG_TEST_CURL_FAIL:-0} != 1 ]] || exit 7
+exit 0
+EOF_CURL
+
+  cat >"$stub_dir/sleep" <<'EOF_SLEEP'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ${RG_TEST_SLEEP_FAIL:-0} != 1 ]] || exit 76
+exit 0
+EOF_SLEEP
+
   cat >"$stub_dir/chown" <<'EOF_CHOWN'
 #!/usr/bin/env bash
 exit 0
@@ -282,11 +296,41 @@ test_restore_reports_database_failure_after_restoring_files() {
   RG_UPDATE_ROOT=""
 }
 
+test_restore_reports_manager_readiness_failure() {
+  local fake_root="$TMP_DIR/root-manager-readiness"
+  local backup="$TMP_DIR/backups/manager-readiness"
+  local stub_dir="$TMP_DIR/stubs-manager-readiness"
+  local old_path=$PATH
+
+  populate_fake_host "$fake_root"
+  install_command_stubs "$stub_dir"
+  PATH="$stub_dir:$PATH"
+  RG_UPDATE_ROOT="$fake_root"
+  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
+
+  rg_update_create_backup "$backup" "postgres://example/test"
+  mutate_fake_host "$fake_root"
+
+  export RG_TEST_CURL_FAIL=1
+  export RG_TEST_SLEEP_FAIL=1
+  if rg_update_restore_backup "$backup" "postgres://example/test" 1 >/dev/null 2>&1; then
+    fail "shared rollback unexpectedly reported success before Manager readiness"
+  fi
+  unset RG_TEST_CURL_FAIL RG_TEST_SLEEP_FAIL
+
+  assert_file_content "$fake_root/usr/local/bin/routegate-manager" "manager-old"
+  assert_file_content "$fake_root/usr/local/bin/routegate-agent" "agent-old"
+
+  PATH=$old_path
+  RG_UPDATE_ROOT=""
+}
+
 test_bundle_verification
 test_metadata_is_never_evaluated
 test_unsafe_archive_is_rejected
 test_backup_restore_round_trip
 test_restore_reports_systemd_failure_after_restoring_files
 test_restore_reports_database_failure_after_restoring_files
+test_restore_reports_manager_readiness_failure
 
 printf 'RouteGate host update core tests passed.\n'
