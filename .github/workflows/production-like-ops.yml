@@ -15,6 +15,7 @@ on:
           - diagnose-sing-box
           - diagnose-agent-task
           - validate
+          - validate-deploy-rollback-cycle
           - restart-control-plane
           - restart-sing-box
           - restart-wireguard
@@ -40,7 +41,7 @@ jobs:
        github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-24.04
     environment: production-like
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout trusted main
@@ -66,6 +67,7 @@ jobs:
               'operation=diagnose-sing-box') operation=diagnose-sing-box ;;
               'operation=diagnose-agent-task') operation=diagnose-agent-task ;;
               'operation=validate') operation=validate ;;
+              'operation=validate-deploy-rollback-cycle') operation=validate-deploy-rollback-cycle ;;
               'operation=restart-control-plane') operation=restart-control-plane ;;
               'operation=restart-sing-box') operation=restart-sing-box ;;
               'operation=restart-wireguard') operation=restart-wireguard ;;
@@ -81,10 +83,47 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|diagnose-sing-box|diagnose-agent-task|validate|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate) ;;
+            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate) ;;
             *) exit 2 ;;
           esac
           printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go for rollback-cycle validation
+        if: steps.request.outputs.operation == 'validate-deploy-rollback-cycle'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Setup Node.js for rollback-cycle validation
+        if: steps.request.outputs.operation == 'validate-deploy-rollback-cycle'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build rollback-cycle validation bundle
+        if: steps.request.outputs.operation == 'validate-deploy-rollback-cycle'
+        id: rollback_bundle
+        shell: bash
+        env:
+          VERSION: rollback-validation
+          ARCHITECTURES: amd64
+          OUTPUT_DIR: ${{ runner.temp }}/routegate-rollback-validation-dist
+        run: |
+          set -euo pipefail
+          target_sha=$(git rev-parse HEAD)
+          export COMMIT="$target_sha"
+          ./scripts/build-release-bundle.sh
+          bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
+          test -s "$bundle"
+          bundle_sha=$(sha256sum "$bundle" | awk '{print $1}')
+          printf 'target_sha=%s\n' "$target_sha" >> "$GITHUB_OUTPUT"
+          printf 'bundle=%s\n' "$bundle" >> "$GITHUB_OUTPUT"
+          printf 'bundle_sha=%s\n' "$bundle_sha" >> "$GITHUB_OUTPUT"
 
       - name: Validate ops scripts locally
         shell: bash
@@ -92,9 +131,13 @@ jobs:
           set -euo pipefail
           bash -n scripts/production-like-ops.sh
           bash -n scripts/production-like-task-diagnostics.sh
+          bash -n scripts/deploy-production-like-bundle.sh
+          bash -n scripts/validate-production-like-deploy.sh
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck scripts/production-like-ops.sh
             shellcheck scripts/production-like-task-diagnostics.sh
+            shellcheck scripts/deploy-production-like-bundle.sh
+            shellcheck scripts/validate-production-like-deploy.sh
           fi
 
       - name: Configure SSH
@@ -117,31 +160,129 @@ jobs:
           ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
           ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
           OPERATION: ${{ steps.request.outputs.operation }}
+          TARGET_SHA: ${{ steps.rollback_bundle.outputs.target_sha }}
+          BUNDLE_FILE: ${{ steps.rollback_bundle.outputs.bundle }}
+          BUNDLE_SHA: ${{ steps.rollback_bundle.outputs.bundle_sha }}
         run: |
           set -euo pipefail
           SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
           SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
-          remote_script="/tmp/routegate-ops-${GITHUB_RUN_ID}.sh"
           output_file="${RUNNER_TEMP}/routegate-ops-output.txt"
 
-          if [[ "$OPERATION" == "diagnose-agent-task" ]]; then
-            local_script="scripts/production-like-task-diagnostics.sh"
-            remote_operation=""
-          else
-            local_script="scripts/production-like-ops.sh"
-            remote_operation="$OPERATION"
+          if [[ "$OPERATION" == "validate-deploy-rollback-cycle" ]]; then
+            test -n "$TARGET_SHA"
+            test -s "$BUNDLE_FILE"
+            test -n "$BUNDLE_SHA"
+
+            remote_prefix="/tmp/routegate-rollback-cycle-${GITHUB_RUN_ID}"
+            remote_bundle_fail="${remote_prefix}-fail.tar.gz"
+            remote_bundle_redeploy="${remote_prefix}-redeploy.tar.gz"
+            remote_deploy="${remote_prefix}-deploy.sh"
+            remote_fail_validate="${remote_prefix}-fail-validate.sh"
+            remote_validate="${remote_prefix}-validate.sh"
+            remote_core_fail="${remote_prefix}-core-fail.sh"
+            remote_core_redeploy="${remote_prefix}-core-redeploy.sh"
+            remote_ops="${remote_prefix}-ops.sh"
+            remote_cycle="${remote_prefix}-cycle.sh"
+            local_fail_validate="${RUNNER_TEMP}/routegate-forced-validation-failure.sh"
+            local_cycle="${RUNNER_TEMP}/routegate-rollback-cycle.sh"
+
+            cat >"$local_fail_validate" <<'FAIL_VALIDATE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          printf '[rollback-cycle] intentional validation failure reached\n' >&2
+          exit 42
+          FAIL_VALIDATE
+
+            cat >"$local_cycle" <<'CYCLE'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          target_sha=$1
+          bundle_fail=$2
+          bundle_redeploy=$3
+          bundle_sha=$4
+          deploy_script=$5
+          fail_validate=$6
+          validate_script=$7
+          core_fail=$8
+          core_redeploy=$9
+          ops_script=${10}
+          forced_log=$(mktemp /tmp/routegate-forced-rollback.XXXXXX.log)
+          trap 'rm -f "$forced_log"' EXIT
+
+          printf '[rollback-cycle] baseline validation starting\n'
+          bash "$ops_script" validate
+
+          set +e
+          bash "$deploy_script" "$target_sha" "$bundle_fail" "$bundle_sha" "$fail_validate" "$core_fail" >"$forced_log" 2>&1
+          forced_rc=$?
+          set -e
+          cat "$forced_log"
+          if ((forced_rc == 0)); then
+            printf '[rollback-cycle] expected forced deployment failure but deploy succeeded\n' >&2
+            exit 1
+          fi
+          grep -Fq '[rollback-cycle] intentional validation failure reached' "$forced_log" \
+            || { printf '[rollback-cycle] forced failure did not reach validation stage\n' >&2; exit 1; }
+          grep -Fq 'Failure at stage=observability_validation; restoring production-like baseline.' "$forced_log" \
+            || { printf '[rollback-cycle] deploy rollback trap was not observed\n' >&2; exit 1; }
+          grep -Fq 'database rollback restored backup schema=' "$forced_log" \
+            || { printf '[rollback-cycle] database restore success marker was not observed\n' >&2; exit 1; }
+          if grep -Fq 'rollback reported an incomplete restore' "$forced_log"; then
+            printf '[rollback-cycle] rollback reported an incomplete restore\n' >&2
+            exit 1
           fi
 
-          "${SCP[@]}" "$local_script" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
-          set +e
-          if [[ -n "$remote_operation" ]]; then
-            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script' '$remote_operation'" >"$output_file" 2>&1
+          printf '[rollback-cycle] post-rollback validation starting\n'
+          bash "$ops_script" validate
+
+          printf '[rollback-cycle] clean redeploy starting\n'
+          bash "$deploy_script" "$target_sha" "$bundle_redeploy" "$bundle_sha" "$validate_script" "$core_redeploy"
+
+          printf '[rollback-cycle] post-redeploy validation starting\n'
+          bash "$ops_script" validate
+          printf '[rollback-cycle] deploy-forced-failure-rollback-redeploy PASSED\n'
+          CYCLE
+            chmod 0700 "$local_fail_validate" "$local_cycle"
+
+            "${SCP[@]}" "$BUNDLE_FILE" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle_fail"
+            "${SCP[@]}" "$BUNDLE_FILE" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle_redeploy"
+            "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
+            "${SCP[@]}" "$local_fail_validate" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_fail_validate"
+            "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
+            "${SCP[@]}" scripts/routegate-update-core.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_core_fail"
+            "${SCP[@]}" scripts/routegate-update-core.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_core_redeploy"
+            "${SCP[@]}" scripts/production-like-ops.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_ops"
+            "${SCP[@]}" "$local_cycle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_cycle"
+
+            set +e
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+              "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_cycle' '$TARGET_SHA' '$remote_bundle_fail' '$remote_bundle_redeploy' '$BUNDLE_SHA' '$remote_deploy' '$remote_fail_validate' '$remote_validate' '$remote_core_fail' '$remote_core_redeploy' '$remote_ops'" >"$output_file" 2>&1
+            rc=$?
+            set -e
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+              "rm -f '$remote_bundle_fail' '$remote_bundle_redeploy' '$remote_deploy' '$remote_fail_validate' '$remote_validate' '$remote_core_fail' '$remote_core_redeploy' '$remote_ops' '$remote_cycle'" || true
           else
-            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script'" >"$output_file" 2>&1
+            remote_script="/tmp/routegate-ops-${GITHUB_RUN_ID}.sh"
+            if [[ "$OPERATION" == "diagnose-agent-task" ]]; then
+              local_script="scripts/production-like-task-diagnostics.sh"
+              remote_operation=""
+            else
+              local_script="scripts/production-like-ops.sh"
+              remote_operation="$OPERATION"
+            fi
+
+            "${SCP[@]}" "$local_script" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
+            set +e
+            if [[ -n "$remote_operation" ]]; then
+              "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script' '$remote_operation'" >"$output_file" 2>&1
+            else
+              "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_script'" >"$output_file" 2>&1
+            fi
+            rc=$?
+            set -e
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true
           fi
-          rc=$?
-          set -e
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true
 
           cat "$output_file"
           printf 'rc=%s\n' "$rc" >> "$GITHUB_OUTPUT"
