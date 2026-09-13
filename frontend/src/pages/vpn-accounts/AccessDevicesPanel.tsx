@@ -36,6 +36,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 function clientTypeLabel(clientType: DeviceClientType): string {
   switch (clientType) {
     case 'hiddify': return 'Hiddify';
+    case 'happ': return 'HAPP';
     case 'v2rayn': return 'v2rayN';
     case 'v2rayng': return 'v2rayNG';
     default: return t('accessDevices.genericClient');
@@ -531,6 +532,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                 <span>{t('accessDevices.client')}</span>
                 <select value={clientType} onChange={(event) => setClientType(event.target.value as DeviceClientType)}>
                   <option value="hiddify">Hiddify · {t('accessDevices.recommended')}</option>
+                  <option value="happ">HAPP</option>
                   <option value="v2rayn">v2rayN</option>
                   <option value="v2rayng">v2rayNG</option>
                   <option value="generic">{t('accessDevices.genericClient')}</option>
