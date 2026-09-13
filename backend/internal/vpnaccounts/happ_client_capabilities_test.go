@@ -16,8 +16,14 @@ func TestHAPPCompatibilityUsesValidatedStandardSubscription(t *testing.T) {
 	if !assessment.Capabilities.URISubscriptionImport || !assessment.Capabilities.SubscriptionRefresh {
 		t.Fatalf("HAPP standard subscription capabilities missing: %+v", assessment.Capabilities)
 	}
-	if assessment.Capabilities.SubscriptionRoutingPolicy {
-		t.Fatal("HAPP must not claim RouteGate routing-policy enforcement before real-client validation")
+	if !assessment.Capabilities.SubscriptionRoutingPolicy {
+		t.Fatal("HAPP must advertise the provider-managed routing artifact once the adapter exists")
+	}
+	if !assessment.Capabilities.DirectRouting || !assessment.Capabilities.VPNRouting || !assessment.Capabilities.BlockRouting {
+		t.Fatalf("HAPP routing action capabilities missing: %+v", assessment.Capabilities)
+	}
+	if assessment.Capabilities.ImportedRulePrecedence != ImportedRulePrecedenceUnknown {
+		t.Fatalf("HAPP precedence = %q, want unknown until real-client overlap validation", assessment.Capabilities.ImportedRulePrecedence)
 	}
 }
 
@@ -30,6 +36,9 @@ func TestHAPPManualAcceptanceIsLimitedToVLESSAndShadowsocks(t *testing.T) {
 		if assessment.PreferredDeliveryFormat != SubscriptionDeliveryFormatBase64 {
 			t.Fatalf("HAPP %s format = %q, want base64", protocol, assessment.PreferredDeliveryFormat)
 		}
+		if !assessment.Capabilities.SubscriptionRoutingPolicy {
+			t.Fatalf("HAPP %s should carry provider-managed routing", protocol)
+		}
 	}
 
 	hysteria := clientCompatibilityForProtocol(ClientTypeHAPP, ClientProtocolHysteria2)
@@ -39,6 +48,9 @@ func TestHAPPManualAcceptanceIsLimitedToVLESSAndShadowsocks(t *testing.T) {
 	if hysteria.PreferredDeliveryFormat != SubscriptionDeliveryFormatBase64 {
 		t.Fatalf("HAPP Hysteria2 format = %q, want base64 client-supported fallback", hysteria.PreferredDeliveryFormat)
 	}
+	if !hysteria.Capabilities.SubscriptionRoutingPolicy {
+		t.Fatal("HAPP Hysteria2 share-link path may carry the routing artifact even though runtime acceptance is pending")
+	}
 
 	for _, protocol := range []string{ClientProtocolWireGuard, ClientProtocolMTProto} {
 		assessment := clientCompatibilityForProtocol(ClientTypeHAPP, protocol)
@@ -47,6 +59,9 @@ func TestHAPPManualAcceptanceIsLimitedToVLESSAndShadowsocks(t *testing.T) {
 		}
 		if assessment.PreferredDeliveryFormat != SubscriptionDeliveryFormatAuto {
 			t.Fatalf("HAPP %s format = %q, want auto protocol-native fallback", protocol, assessment.PreferredDeliveryFormat)
+		}
+		if assessment.Capabilities.SubscriptionRoutingPolicy {
+			t.Fatalf("HAPP %s must not claim a HAPP routing artifact on protocol-native fallback", protocol)
 		}
 	}
 }
