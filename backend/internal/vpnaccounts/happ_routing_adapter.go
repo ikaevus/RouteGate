@@ -6,36 +6,32 @@ import (
 	"strings"
 )
 
-const (
-	happRoutingLinkPrefix = "happ://routing/onadd/"
-	happRemoteDNSType = "DoH"
-	happRemoteDNSDomain = "https://cloudflare-dns.com/dns-query"
-	happRemoteDNSIP = "1.1.1.1"
-	happDomesticDNSType = "DoH"
-	happDomesticDNSDomain = "https://dns.google/dns-query"
-	happDomesticDNSIP = "8.8.8.8"
-)
+const happRoutingLinkPrefix = "happ://routing/onadd/"
 
+var happBaselineDirectIP = []string{
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"169.254.0.0/16",
+	"224.0.0.0/4",
+	"255.255.255.255",
+}
+
+// happRoutingProfile intentionally carries only routing policy plus HAPP's
+// baseline local-network safety routes. Tunnel DNS is client-local state in
+// HAPP and is deliberately omitted so the app can apply its own platform
+// defaults instead of RouteGate overriding DNS/bootstrap behaviour on iOS.
 type happRoutingProfile struct {
-	Name              string            `json:"Name"`
-	GlobalProxy       string            `json:"GlobalProxy"`
-	RemoteDNSType     string            `json:"RemoteDNSType"`
-	RemoteDNSDomain   string            `json:"RemoteDNSDomain"`
-	RemoteDNSIP       string            `json:"RemoteDNSIP"`
-	DomesticDNSType   string            `json:"DomesticDNSType"`
-	DomesticDNSDomain string            `json:"DomesticDNSDomain"`
-	DomesticDNSIP     string            `json:"DomesticDNSIP"`
-	GeoIPURL          string            `json:"Geoipurl"`
-	GeoSiteURL        string            `json:"Geositeurl"`
-	DNSHosts          map[string]string `json:"DnsHosts"`
-	DirectSites       []string          `json:"DirectSites"`
-	DirectIP          []string          `json:"DirectIp"`
-	ProxySites        []string          `json:"ProxySites"`
-	ProxyIP           []string          `json:"ProxyIp"`
-	BlockSites        []string          `json:"BlockSites"`
-	BlockIP           []string          `json:"BlockIp"`
-	DomainStrategy    string            `json:"DomainStrategy"`
-	FakeDNS           string            `json:"FakeDNS"`
+	Name           string   `json:"Name"`
+	GlobalProxy    string   `json:"GlobalProxy"`
+	DirectSites    []string `json:"DirectSites,omitempty"`
+	DirectIP       []string `json:"DirectIp,omitempty"`
+	ProxySites     []string `json:"ProxySites,omitempty"`
+	ProxyIP        []string `json:"ProxyIp,omitempty"`
+	BlockSites     []string `json:"BlockSites,omitempty"`
+	BlockIP        []string `json:"BlockIp,omitempty"`
+	DomainStrategy string   `json:"DomainStrategy"`
+	FakeDNS        string   `json:"FakeDNS"`
 }
 
 func renderHAPPRoutingLink(profile *RoutingProfile) (string, bool, error) {
@@ -44,45 +40,38 @@ func renderHAPPRoutingLink(profile *RoutingProfile) (string, bool, error) {
 	}
 
 	rendered := happRoutingProfile{
-		Name:              "RouteGate",
-		GlobalProxy:       "true",
-		RemoteDNSType:     happRemoteDNSType,
-		RemoteDNSDomain:   happRemoteDNSDomain,
-		RemoteDNSIP:       happRemoteDNSIP,
-		DomesticDNSType:   happDomesticDNSType,
-		DomesticDNSDomain: happDomesticDNSDomain,
-		DomesticDNSIP:     happDomesticDNSIP,
-		DNSHosts: map[string]string{
-			"cloudflare-dns.com": happRemoteDNSIP,
-			"dns.google":         happDomesticDNSIP,
-		},
-		DirectSites:    []string{},
-		DirectIP:       []string{},
-		ProxySites:     []string{},
-		ProxyIP:        []string{},
-		BlockSites:     []string{},
-		BlockIP:        []string{},
+		Name:           "RouteGate",
+		GlobalProxy:    "true",
+		DirectIP:       append([]string(nil), happBaselineDirectIP...),
 		DomainStrategy: "IPIfNonMatch",
 		FakeDNS:        "false",
 	}
 
+	hasRouteGateMatcher := false
 	for _, rule := range profile.Rules {
 		domains := routingRuleDomainConditions(rule)
 		ips := routingRuleIPConditions(rule)
+		if len(domains) == 0 && len(ips) == 0 {
+			continue
+		}
+
 		switch strings.TrimSpace(rule.Action) {
 		case RoutingActionDirect:
 			rendered.DirectSites = appendUniqueStrings(rendered.DirectSites, domains...)
 			rendered.DirectIP = appendUniqueStrings(rendered.DirectIP, ips...)
+			hasRouteGateMatcher = true
 		case RoutingActionVPN:
 			rendered.ProxySites = appendUniqueStrings(rendered.ProxySites, domains...)
 			rendered.ProxyIP = appendUniqueStrings(rendered.ProxyIP, ips...)
+			hasRouteGateMatcher = true
 		case RoutingActionBlock:
 			rendered.BlockSites = appendUniqueStrings(rendered.BlockSites, domains...)
 			rendered.BlockIP = appendUniqueStrings(rendered.BlockIP, ips...)
+			hasRouteGateMatcher = true
 		}
 	}
 
-	if len(rendered.DirectSites)+len(rendered.DirectIP)+len(rendered.ProxySites)+len(rendered.ProxyIP)+len(rendered.BlockSites)+len(rendered.BlockIP) == 0 {
+	if !hasRouteGateMatcher {
 		return "", false, nil
 	}
 
