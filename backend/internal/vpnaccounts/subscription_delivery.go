@@ -168,21 +168,12 @@ func clientSubscriptionHeaders(clientType, protocol string, profile Subscription
 	case ClientTypeHiddify:
 		headers["Profile-Update-Interval"] = "12"
 	case ClientTypeHAPP:
-		// HAPP supports provider-managed routing via the `routing` response
-		// header. Keep the already validated Base64 share-link body unchanged
-		// and attach the resolved RouteGate RoutingProfile orthogonally. Only
-		// HAPP protocols represented by standard share links receive this
-		// header; protocol-native WireGuard/MTProto fallback must not pretend to
-		// be a HAPP subscription.
-		if protocolSupportsShareLinkSubscription(protocol) && profile.RoutingProfile != nil {
-			routingLink, ok, err := renderHAPPRoutingLink(profile.RoutingProfile)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				headers["Routing"] = routingLink
-			}
-		}
+		// Provider-managed HAPP routing is intentionally disabled after real iOS
+		// acceptance showed that importing the routing profile could leave client
+		// traffic unusable even though the underlying VLESS subscription remained
+		// valid. Preserve HAPP as a standard multi-profile subscription client,
+		// but do not mutate client-local routing/DNS state until a safe contract is
+		// independently validated.
 	}
 	return headers, nil
 }
