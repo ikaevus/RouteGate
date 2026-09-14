@@ -15,7 +15,7 @@ export const clientCompatibilityEn = {
   'clientCompatibility.guidance.hiddify_import_access_link':
     'Import the RouteGate access link. Keep Hiddify routing/TUN settings compatible with the imported profile when using smart routing.',
   'clientCompatibility.guidance.happ_standard_subscription':
-    'Import the RouteGate access link as a standard HAPP subscription. RouteGate has manually validated VLESS/Reality and Shadowsocks profiles from one subscription.',
+    'Import the RouteGate access link as a standard HAPP subscription. The same subscription carries RouteGate’s provider-managed routing profile automatically; VLESS/Reality and Shadowsocks connection delivery are already manually validated.',
   'clientCompatibility.guidance.v2rayn_routing_mode':
     'Use a routing mode that preserves DIRECT/VPN intent (for example a whitelist/custom rules mode rather than Global when DIRECT rules are required).',
   'clientCompatibility.guidance.v2rayn_tun_mode':
@@ -25,7 +25,7 @@ export const clientCompatibilityEn = {
   'clientCompatibility.guidance.generic_standard_connection':
     'Standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto connection material only. For RouteGate-managed routing, use Hiddify (full) or v2rayN (with client-side setup).',
   'clientCompatibility.limitation.happ_routing_not_validated':
-    'RouteGate-managed DIRECT/VPN/BLOCK routing has not yet been independently validated in HAPP; the current compatibility claim covers connection delivery only.',
+    'RouteGate now delivers DIRECT/VPN/BLOCK policy to HAPP through its provider-managed routing profile, but real-client routing/DNS behavior and precedence for overlapping action rules are not yet independently validated.',
   'clientCompatibility.limitation.happ_protocol_not_validated':
     'This HAPP protocol path has not yet completed RouteGate real-client acceptance; use it as a connectivity fallback until validated.',
   'clientCompatibility.limitation.v2rayn_no_routing_rules':
@@ -55,7 +55,7 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
   'clientCompatibility.guidance.hiddify_import_access_link':
     'Импортируйте ссылку доступа RouteGate. При использовании умной маршрутизации настройки Hiddify (роутинг/TUN) должны быть совместимы с импортированным профилем.',
   'clientCompatibility.guidance.happ_standard_subscription':
-    'Импортируйте ссылку доступа RouteGate как стандартную подписку HAPP. RouteGate вручную проверен с профилями VLESS/Reality и Shadowsocks из одной подписки.',
+    'Импортируйте ссылку доступа RouteGate как стандартную подписку HAPP. Та же подписка автоматически доставляет управляемый RouteGate профиль маршрутизации; подключение VLESS/Reality и Shadowsocks уже проверено вручную.',
   'clientCompatibility.guidance.v2rayn_routing_mode':
     'Используйте режим маршрутизации, сохраняющий намерение DIRECT/VPN (например, режим со своими правилами, а не Global, если требуются правила DIRECT).',
   'clientCompatibility.guidance.v2rayn_tun_mode':
@@ -65,7 +65,7 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
   'clientCompatibility.guidance.generic_standard_connection':
     'Только стандартные данные подключения VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto. Для управляемой RouteGate маршрутизации используйте Hiddify (полностью) или v2rayN (с ручной настройкой).',
   'clientCompatibility.limitation.happ_routing_not_validated':
-    'Маршрутизация DIRECT/VPN/BLOCK под управлением RouteGate пока отдельно не проверена в HAPP; текущая гарантия совместимости относится к подключению.',
+    'RouteGate уже доставляет правила DIRECT/VPN/BLOCK в HAPP через управляемый профиль маршрутизации, но реальное поведение маршрутизации/DNS и приоритет пересекающихся правил разных действий ещё не подтверждены отдельным клиентским тестом.',
   'clientCompatibility.limitation.happ_protocol_not_validated':
     'Этот протокольный сценарий HAPP ещё не прошёл реальную клиентскую проверку RouteGate; до проверки он считается резервным вариантом базового подключения.',
   'clientCompatibility.limitation.v2rayn_no_routing_rules':
