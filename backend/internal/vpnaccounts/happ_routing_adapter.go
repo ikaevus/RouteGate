@@ -6,52 +6,56 @@ import (
 	"strings"
 )
 
-const happRoutingLinkPrefix = "happ://routing/onadd/"
+const (
+	happRoutingLinkPrefix = "happ://routing/onadd/"
+	happRemoteDNSType = "DoH"
+	happRemoteDNSDomain = "https://cloudflare-dns.com/dns-query"
+	happRemoteDNSIP = "1.1.1.1"
+	happDomesticDNSType = "DoH"
+	happDomesticDNSDomain = "https://dns.google/dns-query"
+	happDomesticDNSIP = "8.8.8.8"
+)
 
-// happRoutingProfile is the provider-managed routing profile format documented
-// by HAPP. RouteGate deliberately emits only policy it can derive from its own
-// resolved RoutingProfile. Empty GeoIP/GeoSite URLs tell HAPP to use its
-// built-in/default datasets, while GlobalProxy=true preserves RouteGate's
-// unmatched-traffic -> VPN default.
-//
-// HAPP's published format groups matchers by action rather than exposing
-// RouteGate's arbitrary cross-action rule priorities. Until real-client
-// acceptance proves equivalent precedence for overlapping rules, compatibility
-// remains partial rather than full Smart Routing.
 type happRoutingProfile struct {
-	Name           string            `json:"Name"`
-	GlobalProxy    string            `json:"GlobalProxy"`
-	RemoteDNS      string            `json:"RemoteDns"`
-	DomesticDNS    string            `json:"DomesticDns"`
-	GeoIPURL       string            `json:"Geoipurl"`
-	GeoSiteURL     string            `json:"Geositeurl"`
-	DNSHosts       map[string]string `json:"DnsHosts"`
-	DirectSites    []string          `json:"DirectSites"`
-	DirectIP       []string          `json:"DirectIp"`
-	ProxySites     []string          `json:"ProxySites"`
-	ProxyIP        []string          `json:"ProxyIp"`
-	BlockSites     []string          `json:"BlockSites"`
-	BlockIP        []string          `json:"BlockIp"`
-	DomainStrategy string            `json:"DomainStrategy"`
-	FakeDNS        string            `json:"FakeDNS"`
+	Name              string            `json:"Name"`
+	GlobalProxy       string            `json:"GlobalProxy"`
+	RemoteDNSType     string            `json:"RemoteDNSType"`
+	RemoteDNSDomain   string            `json:"RemoteDNSDomain"`
+	RemoteDNSIP       string            `json:"RemoteDNSIP"`
+	DomesticDNSType   string            `json:"DomesticDNSType"`
+	DomesticDNSDomain string            `json:"DomesticDNSDomain"`
+	DomesticDNSIP     string            `json:"DomesticDNSIP"`
+	GeoIPURL          string            `json:"Geoipurl"`
+	GeoSiteURL        string            `json:"Geositeurl"`
+	DNSHosts          map[string]string `json:"DnsHosts"`
+	DirectSites       []string          `json:"DirectSites"`
+	DirectIP          []string          `json:"DirectIp"`
+	ProxySites        []string          `json:"ProxySites"`
+	ProxyIP           []string          `json:"ProxyIp"`
+	BlockSites        []string          `json:"BlockSites"`
+	BlockIP           []string          `json:"BlockIp"`
+	DomainStrategy    string            `json:"DomainStrategy"`
+	FakeDNS           string            `json:"FakeDNS"`
 }
 
-// renderHAPPRoutingLink serializes an already resolved RouteGate RoutingProfile
-// into HAPP's provider-managed routing deeplink. It makes no policy decisions:
-// DIRECT/VPN/BLOCK are mechanically mapped into HAPP's corresponding matcher
-// buckets and the same RouteGate profile remains the single policy source.
 func renderHAPPRoutingLink(profile *RoutingProfile) (string, bool, error) {
 	if profile == nil || len(profile.Rules) == 0 {
 		return "", false, nil
 	}
 
 	rendered := happRoutingProfile{
-		// A stable name is intentional. HAPP updates an existing subscription-
-		// bound profile when it receives the same name; using the mutable
-		// RouteGate display name here would leave stale profiles after renames.
-		Name:           "RouteGate",
-		GlobalProxy:    "true",
-		DNSHosts:       map[string]string{},
+		Name:              "RouteGate",
+		GlobalProxy:       "true",
+		RemoteDNSType:     happRemoteDNSType,
+		RemoteDNSDomain:   happRemoteDNSDomain,
+		RemoteDNSIP:       happRemoteDNSIP,
+		DomesticDNSType:   happDomesticDNSType,
+		DomesticDNSDomain: happDomesticDNSDomain,
+		DomesticDNSIP:     happDomesticDNSIP,
+		DNSHosts: map[string]string{
+			"cloudflare-dns.com": happRemoteDNSIP,
+			"dns.google":         happDomesticDNSIP,
+		},
 		DirectSites:    []string{},
 		DirectIP:       []string{},
 		ProxySites:     []string{},
