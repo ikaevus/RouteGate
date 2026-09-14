@@ -51,6 +51,7 @@ const (
 
 	LimitationHAPPRoutingNotValidated    = "happ_routing_not_validated"
 	LimitationHAPPProtocolNotValidated   = "happ_protocol_not_validated"
+	LimitationHiddifyRoutingClientLocal  = "hiddify_routing_client_local"
 	LimitationV2RayNNoRoutingRules       = "v2rayn_no_routing_rules"
 	LimitationV2RayNGRoutingNotValidated = "v2rayng_routing_not_validated"
 	LimitationGenericNoRoutingPolicy     = "generic_no_routing_policy"
@@ -116,16 +117,22 @@ func (response ClientConnectionResponse) MarshalJSON() ([]byte, error) {
 func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 	switch normalizeClientType(clientType) {
 	case ClientTypeHiddify:
+		// Hiddify reliably consumes RouteGate's standard Base64 share-link
+		// subscription. Its regular profile import does not preserve a complete
+		// provider-owned sing-box route/DNS configuration, so do not claim full
+		// RouteGate routing or make full JSON the default delivery contract.
+		// Explicit ?format=sing-box remains available as an Advanced export.
 		return ClientCompatibilityAssessment{
-			ClientType: ClientTypeHiddify, DisplayName: "Hiddify", Status: ClientCompatibilityFullSmartRouting,
-			PreferredDeliveryFormat: SubscriptionDeliveryFormatSingBox,
+			ClientType: ClientTypeHiddify, DisplayName: "Hiddify", Status: ClientCompatibilitySetupRequired,
+			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64, RequiresClientSetup: true,
 			Capabilities: ClientCapabilities{
-				FullSingBoxConfigImport: true, URISubscriptionImport: true, TUNMode: true,
+				URISubscriptionImport: true, TUNMode: true,
 				DirectRouting: true, VPNRouting: true, BlockRouting: true, RemoteRuleSets: true,
 				DNSRouting: true, SplitDNS: true, ClientLocalRules: true, SubscriptionRefresh: true,
-				ImportedRulePrecedence: ImportedRulePrecedenceRouteGate,
+				ImportedRulePrecedence: ImportedRulePrecedenceClient,
 			},
-			GuidanceCodes: []string{GuidanceHiddifyImportAccessLink},
+			GuidanceCodes:   []string{GuidanceHiddifyImportAccessLink},
+			LimitationCodes: []string{LimitationHiddifyRoutingClientLocal},
 		}
 	case ClientTypeHAPP:
 		// HAPP remains a first-class standard-subscription client: an opaque
@@ -184,8 +191,8 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 		}
 	default:
 		// Generic must not recommend v2rayNG (or any connection_only client)
-		// for RouteGate-managed routing; only Hiddify (full) and v2rayN
-		// (with client-side setup) have a validated routing path.
+		// for RouteGate-managed routing. Hiddify and v2rayN both require
+		// client-side routing setup with the portable subscription contract.
 		return ClientCompatibilityAssessment{
 			ClientType: ClientTypeGeneric, DisplayName: "Generic", Status: ClientCompatibilityConnectionOnly,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatAuto, RequiresClientSetup: true,
@@ -207,11 +214,22 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 	}
 
 	normalizedClient := normalizeClientType(clientType)
-	if (normalizedClient == ClientTypeHiddify || normalizedClient == ClientTypeSingBox) && protocol != ClientProtocolVLESS {
+	if normalizedClient == ClientTypeSingBox && protocol != ClientProtocolVLESS {
 		assessment.Status = ClientCompatibilityConnectionOnly
 		assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
 		assessment.RequiresClientSetup = true
 		assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolValidatedVLESSOnly)
+		return assessment
+	}
+
+	if normalizedClient == ClientTypeHiddify {
+		if !protocolSupportsShareLinkSubscription(protocol) {
+			assessment.Status = ClientCompatibilityConnectionOnly
+			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
+			assessment.RequiresClientSetup = true
+			assessment.Capabilities.SubscriptionRoutingPolicy = false
+			assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolNoShareLinkFormat)
+		}
 		return assessment
 	}
 

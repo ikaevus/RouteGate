@@ -35,6 +35,7 @@ The persisted `client_type` value is the primary source of client identity — o
 Officially supported values (RouteGate supports protocols broadly, but clients selectively; see [RG-116](access-devices.md)):
 
 - `hiddify` (recommended)
+- `happ`
 - `v2rayn`
 - `v2rayng`
 - `sing-box`
@@ -85,13 +86,19 @@ Only protocol-level connectivity is assumed. RouteGate does not claim routing-po
 
 When `format` is omitted or `auto`, RG-115A selects a representation from the resolved client identity (device client type, falling back to the account-level profile and then User-Agent detection):
 
-- Hiddify / sing-box on VLESS: full sing-box JSON rendered by the existing `RenderSingBoxClientConfig` path;
-- v2rayN / v2rayNG: standard Base64 share-link subscription;
+- Hiddify / HAPP / v2rayN / v2rayNG on share-link-capable protocols: standard Base64 share-link subscription;
+- sing-box on VLESS: full sing-box JSON rendered by the existing `RenderSingBoxClientConfig` path;
 - Generic / unknown clients: conservative RG-115 `auto` behavior.
 
 An explicit `?format=` request still overrides automatic representation selection for compatibility and diagnostics.
 
-## Hiddify / sing-box adapter
+## Hiddify
+
+Hiddify receives the same portable standard subscription contract that is interoperable with v2rayN and other share-link clients. This fixes the failure mode where a Hiddify-labelled device received a full sing-box JSON document that its normal remote-profile path did not import as RouteGate expected.
+
+The primary subscription carries connection profiles only. Hiddify routing, DNS, and TUN behavior remains client-local, so the compatibility state is `client_setup_required`, not `full_smart_routing`. `?format=sing-box` remains an explicit Advanced/diagnostic export and is not promised as the default Hiddify contract.
+
+## sing-box adapter
 
 The adapter reuses `RenderSingBoxClientConfig`.
 

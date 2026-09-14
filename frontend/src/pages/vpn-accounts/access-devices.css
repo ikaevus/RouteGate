@@ -8,10 +8,16 @@
 
 .vpn-access-device-card {
   display: grid;
+  align-content: start;
   gap: 10px;
   padding: 16px;
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
   border-radius: 12px;
+}
+
+.vpn-access-device-actions {
+  align-self: end;
+  margin-top: auto;
 }
 
 .vpn-access-device-card-header {

@@ -51,12 +51,15 @@ new `/vpn-accounts/{id}/devices` endpoints.
 
 Backfill normalizes the legacy `vpn_client_profiles.client_type`/`device_type`
 vocabulary onto the RG-116 device allow-list rather than copying it verbatim:
-`hiddify`/`v2rayn`/`v2rayng` (and `windows`/`ios`/`android`/`macos`/`linux`)
-pass through unchanged, and everything else - `v2raytun`, `v2box`, `other`,
-`sing-box`, or any older/unknown value - normalizes to `generic`/`other`,
+The original migration passes `hiddify`/`v2rayn`/`v2rayng` (and
+`windows`/`ios`/`android`/`macos`/`linux`) through unchanged and normalizes
+everything else - `v2raytun`, `v2box`, `other`, `sing-box`, or any
+older/unknown value - to `generic`/`other`,
 matching `normalizeClientType` in `client_capabilities.go`. A backfilled
 device is never created with a `client_type` the device API's own validation
 (`allowedDeviceClientTypes`) would then reject on the next rename/rotate.
+HAPP was added later as a first-class device type and is accepted for newly
+created or updated devices; it had no legacy rows for that original backfill.
 
 ## Token isolation: legacy, device, and Portal tokens never cross
 
@@ -165,22 +168,27 @@ is never visible on another device's card.
 
 RouteGate supports protocols broadly, but supports VPN clients selectively:
 
-1. **Hiddify** — primary/recommended client. Full RouteGate experience
-   (sing-box config + Routing Profile) where the effective protocol is VLESS.
-2. **v2rayN** — officially supported desktop client (2dust family).
+1. **Hiddify** — primary/recommended client for broad platform coverage and
+   standard subscription import. RouteGate delivers portable Base64 share links;
+   routing, DNS, and TUN behavior requires client-side setup and is not claimed
+   as an embedded RouteGate Routing Profile.
+2. **HAPP** — first-class standard-subscription connection client. VLESS/Reality
+   and Shadowsocks were validated on a real iOS client; provider-managed routing
+   remains safety-disabled after failed real-device acceptance.
+3. **v2rayN** — officially supported desktop client (2dust family).
    Connection/subscription support, plus an implemented, automated-test-covered
    native routing-rules import (`format=v2rayn-routing`); routing requires
    local client setup, and manual real-client runtime validation (historically
    tracked in issue #392, which is closed - the validation itself is what
    remains pending) is still outstanding, so this is not yet claimed as
    independently confirmed.
-3. **v2rayNG** — officially selectable Android client (2dust family) for
+4. **v2rayNG** — officially selectable Android client (2dust family) for
    standard connection/subscription delivery. **Not** promoted to the same
    routing tier as v2rayN merely because it shares a client family: its
    native routing-rules import has not been independently validated on a
    real client, so it stays `connection_only` (see
    `client-compatibility-matrix.md`) until that validation happens.
-4. **Generic** — standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto
+5. **Generic** — standard VLESS/WireGuard/Shadowsocks/Hysteria2/MTProto
    connection material. Best-effort connectivity only; no RouteGate
    routing/DNS policy guarantee.
 
@@ -188,10 +196,10 @@ V2RayTun, V2Box, Streisand, FoXray, Amnezia, and similar clients are not
 first-class RouteGate clients and use Generic compatibility. See
 "RG-115B retirement" below.
 
-Compatibility is exposed to the Admin UI in the existing RG-115A three-state
-model (`full_smart_routing`, `client_setup_required`, `connection_only`),
-simplified in the Access & Devices UI to **Full RouteGate / Compatible /
-Generic**.
+Compatibility is exposed to the Admin UI in the RG-115A state model
+(`full_smart_routing`, `client_setup_required`, `partial_compatibility`,
+`connection_only`), simplified in Access & Devices to **Full RouteGate /
+Compatible / Basic connection**.
 
 ## RG-115B retirement
 

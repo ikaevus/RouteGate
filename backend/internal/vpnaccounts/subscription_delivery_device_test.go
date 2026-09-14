@@ -2,10 +2,12 @@ package vpnaccounts
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,11 +101,60 @@ func TestDeviceScopedClientSubscriptionResolvesCorrectAccountAndMarksUsage(t *te
 	if response.Header().Get("X-RouteGate-Client") != ClientTypeHiddify {
 		t.Fatalf("X-RouteGate-Client = %q, want the device's own client type", response.Header().Get("X-RouteGate-Client"))
 	}
+	if response.Header().Get("X-RouteGate-Delivery-Format") != SubscriptionDeliveryFormatBase64 {
+		t.Fatalf("X-RouteGate-Delivery-Format = %q, want portable Base64 subscription", response.Header().Get("X-RouteGate-Delivery-Format"))
+	}
+	if got := response.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Fatalf("Content-Type = %q, want text/plain Base64 subscription", got)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(response.Body.String()))
+	if err != nil {
+		t.Fatalf("decode Hiddify subscription body: %v; body=%q", err, response.Body.String())
+	}
+	if !strings.HasPrefix(string(decoded), "vless://") {
+		t.Fatalf("decoded Hiddify subscription = %q, want standard VLESS share link", decoded)
+	}
 	if repo.markedUsedTokenID != repo.token.ID {
 		t.Fatalf("marked token used = %q, want %q", repo.markedUsedTokenID, repo.token.ID)
 	}
 	if len(repo.markDeviceUsedIDs) != 1 || repo.markDeviceUsedIDs[0] != repo.device.ID {
 		t.Fatalf("marked devices used = %+v, want exactly [%q]", repo.markDeviceUsedIDs, repo.device.ID)
+	}
+}
+
+// TestShareLinkClientsReceiveTheSamePortableSubscriptionContract prevents
+// client labels from changing a broadly compatible VLESS subscription back
+// into a client-specific document. This is the interoperability contract that
+// lets the same RouteGate access link import in Hiddify, HAPP, and 2dust
+// clients; client-specific routing remains a separate concern.
+func TestShareLinkClientsReceiveTheSamePortableSubscriptionContract(t *testing.T) {
+	for _, clientType := range []string{ClientTypeHiddify, ClientTypeHAPP, ClientTypeV2RayN, ClientTypeV2RayNG} {
+		t.Run(clientType, func(t *testing.T) {
+			repo, handler := newDeviceScopedSubscriptionFixture(t)
+			repo.device.ClientType = clientType
+
+			request := httptest.NewRequest(http.MethodGet, "/sub/"+vpnClientE2EToken, nil)
+			request.SetPathValue("token", vpnClientE2EToken)
+			response := httptest.NewRecorder()
+			handler.GetClientSubscription(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if got := response.Header().Get("X-RouteGate-Client"); got != clientType {
+				t.Fatalf("X-RouteGate-Client = %q, want %q", got, clientType)
+			}
+			if got := response.Header().Get("X-RouteGate-Delivery-Format"); got != SubscriptionDeliveryFormatBase64 {
+				t.Fatalf("X-RouteGate-Delivery-Format = %q, want base64", got)
+			}
+			decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(response.Body.String()))
+			if err != nil {
+				t.Fatalf("decode subscription body: %v", err)
+			}
+			if !strings.HasPrefix(string(decoded), "vless://") {
+				t.Fatalf("decoded subscription = %q, want standard VLESS share link", decoded)
+			}
+		})
 	}
 }
 
