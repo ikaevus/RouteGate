@@ -122,28 +122,18 @@ func TestRenderHAPPRoutingLinkRequiresUsableRules(t *testing.T) {
 	}
 }
 
-func TestHAPPSubscriptionHeadersAttachRoutingOrthogonally(t *testing.T) {
-	profile := SubscriptionProfile{RoutingProfile: &RoutingProfile{Rules: []RoutingProfileRule{
-		{Action: RoutingActionDirect, Domains: []string{"ozon.ru"}},
-	}}}
+func TestHAPPSubscriptionHeadersDoNotAttachProviderRouting(t *testing.T) {
+	profile := SubscriptionProfile{RoutingProfile: &RoutingProfile{Rules: []RoutingProfileRule{{
+		Action: RoutingActionDirect, Domains: []string{"ozon.ru"},
+	}}}}
 
-	for _, protocol := range []string{ClientProtocolVLESS, ClientProtocolShadowsocks, ClientProtocolHysteria2} {
-		headers, err := clientSubscriptionHeaders(ClientTypeHAPP, protocol, profile)
-		if err != nil {
-			t.Fatalf("%s headers: %v", protocol, err)
-		}
-		if !strings.HasPrefix(headers["Routing"], happRoutingLinkPrefix) {
-			t.Fatalf("%s Routing header = %q", protocol, headers["Routing"])
-		}
-	}
-
-	for _, protocol := range []string{ClientProtocolWireGuard, ClientProtocolMTProto} {
+	for _, protocol := range []string{ClientProtocolVLESS, ClientProtocolShadowsocks, ClientProtocolHysteria2, ClientProtocolWireGuard, ClientProtocolMTProto} {
 		headers, err := clientSubscriptionHeaders(ClientTypeHAPP, protocol, profile)
 		if err != nil {
 			t.Fatalf("%s headers: %v", protocol, err)
 		}
 		if _, ok := headers["Routing"]; ok {
-			t.Fatalf("%s must not receive HAPP routing header with protocol-native fallback", protocol)
+			t.Fatalf("%s must not receive provider-managed HAPP routing while safety disable is active", protocol)
 		}
 	}
 }
@@ -165,7 +155,7 @@ func assertStringsEqual(t *testing.T, name string, got, want []string) {
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("%s[%d]=%q want %q; got=%v", name, i, got[i], want[i], got)
+			t.Fatalf("%s[%d]=%q want %q; got=%v", name, i, want[i], got)
 		}
 	}
 }
