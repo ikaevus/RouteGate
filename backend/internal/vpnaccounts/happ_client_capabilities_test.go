@@ -16,14 +16,14 @@ func TestHAPPCompatibilityUsesValidatedStandardSubscription(t *testing.T) {
 	if !assessment.Capabilities.URISubscriptionImport || !assessment.Capabilities.SubscriptionRefresh {
 		t.Fatalf("HAPP standard subscription capabilities missing: %+v", assessment.Capabilities)
 	}
-	if !assessment.Capabilities.SubscriptionRoutingPolicy {
-		t.Fatal("HAPP must advertise the provider-managed routing artifact once the adapter exists")
+	if assessment.Capabilities.SubscriptionRoutingPolicy {
+		t.Fatal("HAPP must not advertise provider-managed routing while the safety disable is active")
 	}
-	if !assessment.Capabilities.DirectRouting || !assessment.Capabilities.VPNRouting || !assessment.Capabilities.BlockRouting {
-		t.Fatalf("HAPP routing action capabilities missing: %+v", assessment.Capabilities)
+	if assessment.Capabilities.DirectRouting || assessment.Capabilities.VPNRouting || assessment.Capabilities.BlockRouting {
+		t.Fatalf("HAPP must not advertise RouteGate-managed routing actions while disabled: %+v", assessment.Capabilities)
 	}
 	if assessment.Capabilities.ImportedRulePrecedence != ImportedRulePrecedenceUnknown {
-		t.Fatalf("HAPP precedence = %q, want unknown until real-client overlap validation", assessment.Capabilities.ImportedRulePrecedence)
+		t.Fatalf("HAPP precedence = %q, want unknown while managed routing is disabled", assessment.Capabilities.ImportedRulePrecedence)
 	}
 }
 
@@ -36,8 +36,8 @@ func TestHAPPManualAcceptanceIsLimitedToVLESSAndShadowsocks(t *testing.T) {
 		if assessment.PreferredDeliveryFormat != SubscriptionDeliveryFormatBase64 {
 			t.Fatalf("HAPP %s format = %q, want base64", protocol, assessment.PreferredDeliveryFormat)
 		}
-		if !assessment.Capabilities.SubscriptionRoutingPolicy {
-			t.Fatalf("HAPP %s should carry provider-managed routing", protocol)
+		if assessment.Capabilities.SubscriptionRoutingPolicy {
+			t.Fatalf("HAPP %s must not carry provider-managed routing while disabled", protocol)
 		}
 	}
 
@@ -48,8 +48,8 @@ func TestHAPPManualAcceptanceIsLimitedToVLESSAndShadowsocks(t *testing.T) {
 	if hysteria.PreferredDeliveryFormat != SubscriptionDeliveryFormatBase64 {
 		t.Fatalf("HAPP Hysteria2 format = %q, want base64 client-supported fallback", hysteria.PreferredDeliveryFormat)
 	}
-	if !hysteria.Capabilities.SubscriptionRoutingPolicy {
-		t.Fatal("HAPP Hysteria2 share-link path may carry the routing artifact even though runtime acceptance is pending")
+	if hysteria.Capabilities.SubscriptionRoutingPolicy {
+		t.Fatal("HAPP Hysteria2 must not claim provider-managed routing while disabled")
 	}
 
 	for _, protocol := range []string{ClientProtocolWireGuard, ClientProtocolMTProto} {
