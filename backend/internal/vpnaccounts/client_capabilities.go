@@ -128,20 +128,18 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 			GuidanceCodes: []string{GuidanceHiddifyImportAccessLink},
 		}
 	case ClientTypeHAPP:
-		// HAPP is a first-class standard-subscription client. RouteGate has
-		// manually validated an opaque HTTPS subscription on iOS with both
-		// VLESS/Reality and Shadowsocks profiles and successful connectivity.
-		// The provider-managed routing artifact is now delivered automatically
-		// with the same subscription, but full Smart Routing remains unclaimed
-		// until real-client DIRECT/VPN/BLOCK behavior and cross-action ordering
-		// are independently validated.
+		// HAPP remains a first-class standard-subscription client: an opaque
+		// RouteGate HTTPS subscription with VLESS/Reality and Shadowsocks has
+		// been manually validated on iOS. Provider-managed routing is deliberately
+		// disabled after real-device acceptance exposed an unsafe client network
+		// state. Do not advertise RouteGate-managed routing capabilities until a
+		// safe HAPP contract has been independently validated.
 		return ClientCompatibilityAssessment{
 			ClientType: ClientTypeHAPP, DisplayName: "HAPP", Status: ClientCompatibilityPartial,
 			PreferredDeliveryFormat: SubscriptionDeliveryFormatBase64,
 			Capabilities: ClientCapabilities{
-				URISubscriptionImport: true, DirectRouting: true, VPNRouting: true,
-				BlockRouting: true, RemoteRuleSets: true, SubscriptionRefresh: true,
-				SubscriptionRoutingPolicy: true, ImportedRulePrecedence: ImportedRulePrecedenceUnknown,
+				URISubscriptionImport: true, SubscriptionRefresh: true,
+				ImportedRulePrecedence: ImportedRulePrecedenceUnknown,
 			},
 			GuidanceCodes:   []string{GuidanceHAPPStandardSubscription},
 			LimitationCodes: []string{LimitationHAPPRoutingNotValidated},
@@ -219,10 +217,8 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 
 	if normalizedClient == ClientTypeHAPP {
 		// Manual RouteGate connection acceptance currently covers VLESS/Reality
-		// and Shadowsocks on HAPP. Hysteria2 has a share-link representation and
-		// receives the same provider-managed routing artifact, but neither that
-		// protocol path nor Smart Routing itself is promoted until real-client
-		// acceptance passes.
+		// and Shadowsocks. Managed HAPP routing is safety-disabled for every
+		// protocol, so this branch only narrows protocol-level connectivity.
 		if protocol != ClientProtocolVLESS && protocol != ClientProtocolShadowsocks {
 			assessment.Status = ClientCompatibilityConnectionOnly
 			assessment.RequiresClientSetup = true
@@ -230,7 +226,6 @@ func clientCompatibilityForProtocol(clientType, protocol string) ClientCompatibi
 		}
 		if !protocolSupportsShareLinkSubscription(protocol) {
 			assessment.PreferredDeliveryFormat = SubscriptionDeliveryFormatAuto
-			assessment.Capabilities.SubscriptionRoutingPolicy = false
 			assessment.LimitationCodes = append(assessment.LimitationCodes, LimitationProtocolNoShareLinkFormat)
 		}
 		return assessment
