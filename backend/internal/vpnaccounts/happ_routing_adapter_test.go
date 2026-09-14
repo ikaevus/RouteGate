@@ -13,22 +13,22 @@ func TestRenderHAPPRoutingLinkMapsResolvedRouteGatePolicy(t *testing.T) {
 		Name: "RU split",
 		Rules: []RoutingProfileRule{
 			{
-				Action: RoutingActionDirect,
-				Domains: []string{"ozon.ru"},
+				Action:         RoutingActionDirect,
+				Domains:        []string{"ozon.ru"},
 				DomainSuffixes: []string{"wildberries.ru"},
 				DomainKeywords: []string{"marketplace"},
-				IPCIDRs: []string{"10.0.0.0/8"},
-				GeoSites: []string{"ru"},
-				GeoIPs: []string{"ru"},
+				IPCIDRs:        []string{"10.0.0.0/8"},
+				GeoSites:       []string{"ru"},
+				GeoIPs:         []string{"ru"},
 			},
 			{
-				Action: RoutingActionVPN,
-				Domains: []string{"example.com"},
+				Action:   RoutingActionVPN,
+				Domains:  []string{"example.com"},
 				GeoSites: []string{"youtube"},
-				GeoIPs: []string{"telegram"},
+				GeoIPs:   []string{"telegram"},
 			},
 			{
-				Action: RoutingActionBlock,
+				Action:  RoutingActionBlock,
 				Domains: []string{"ads.example"},
 				IPCIDRs: []string{"203.0.113.0/24"},
 			},
@@ -69,7 +69,15 @@ func TestRenderHAPPRoutingLinkMapsResolvedRouteGatePolicy(t *testing.T) {
 	assertStringsEqual(t, "DirectSites", got.DirectSites, []string{
 		"full:ozon.ru", "domain:wildberries.ru", "keyword:marketplace", "geosite:ru",
 	})
-	assertStringsEqual(t, "DirectIp", got.DirectIP, []string{"10.0.0.0/8", "geoip:ru"})
+	assertStringsEqual(t, "DirectIp", got.DirectIP, []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"224.0.0.0/4",
+		"255.255.255.255",
+		"geoip:ru",
+	})
 	assertStringsEqual(t, "ProxySites", got.ProxySites, []string{"full:example.com", "geosite:youtube"})
 	assertStringsEqual(t, "ProxyIp", got.ProxyIP, []string{"geoip:telegram"})
 	assertStringsEqual(t, "BlockSites", got.BlockSites, []string{"full:ads.example"})
@@ -91,6 +99,7 @@ func TestRenderHAPPRoutingLinkSkipsUnknownAndDeduplicates(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertStringsEqual(t, "DirectSites", got.DirectSites, []string{"full:example.com"})
+	assertStringsEqual(t, "DirectIp", got.DirectIP, happBaselineDirectIP)
 	if len(got.ProxySites) != 0 || len(got.BlockSites) != 0 {
 		t.Fatalf("unexpected rules in other action buckets: %+v", got)
 	}

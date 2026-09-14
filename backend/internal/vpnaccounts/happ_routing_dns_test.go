@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestHAPPRoutingProfileCarriesCurrentDNSBootstrap(t *testing.T) {
+func TestHAPPRoutingProfileLeavesTunnelDNSToClient(t *testing.T) {
 	link, ok, err := renderHAPPRoutingLink(&RoutingProfile{Rules: []RoutingProfileRule{{
 		Action:  RoutingActionDirect,
 		Domains: []string{"ozon.ru"},
@@ -21,28 +21,31 @@ func TestHAPPRoutingProfileCarriesCurrentDNSBootstrap(t *testing.T) {
 		t.Fatalf("decode HAPP routing payload: %v", err)
 	}
 
-	var got happRoutingProfile
-	if err := json.Unmarshal(payload, &got); err != nil {
-		t.Fatalf("unmarshal HAPP routing payload: %v", err)
-	}
-	if got.RemoteDNSType != happRemoteDNSType || got.RemoteDNSDomain != happRemoteDNSDomain || got.RemoteDNSIP != happRemoteDNSIP {
-		t.Fatalf("remote DNS = type:%q domain:%q ip:%q", got.RemoteDNSType, got.RemoteDNSDomain, got.RemoteDNSIP)
-	}
-	if got.DomesticDNSType != happDomesticDNSType || got.DomesticDNSDomain != happDomesticDNSDomain || got.DomesticDNSIP != happDomesticDNSIP {
-		t.Fatalf("domestic DNS = type:%q domain:%q ip:%q", got.DomesticDNSType, got.DomesticDNSDomain, got.DomesticDNSIP)
-	}
-	if got.DNSHosts["cloudflare-dns.com"] != happRemoteDNSIP || got.DNSHosts["dns.google"] != happDomesticDNSIP {
-		t.Fatalf("DNS bootstrap hosts = %#v", got.DNSHosts)
-	}
-
 	var raw map[string]any
 	if err := json.Unmarshal(payload, &raw); err != nil {
 		t.Fatalf("unmarshal raw HAPP profile: %v", err)
 	}
-	if _, exists := raw["RemoteDns"]; exists {
-		t.Fatal("legacy RemoteDns field must not be emitted")
+	for _, key := range []string{
+		"RemoteDns",
+		"DomesticDns",
+		"RemoteDNSType",
+		"RemoteDNSDomain",
+		"RemoteDNSIP",
+		"DomesticDNSType",
+		"DomesticDNSDomain",
+		"DomesticDNSIP",
+		"DnsHosts",
+		"Geoipurl",
+		"Geositeurl",
+	} {
+		if _, exists := raw[key]; exists {
+			t.Fatalf("client-owned HAPP field %q must not be emitted", key)
+		}
 	}
-	if _, exists := raw["DomesticDns"]; exists {
-		t.Fatal("legacy DomesticDns field must not be emitted")
+
+	var got happRoutingProfile
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("unmarshal HAPP routing payload: %v", err)
 	}
+	assertStringsEqual(t, "DirectIp", got.DirectIP, happBaselineDirectIP)
 }
