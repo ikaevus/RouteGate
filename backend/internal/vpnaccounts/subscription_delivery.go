@@ -237,7 +237,7 @@ func renderSubscriptionDeliveryPayload(connection ClientConnectionResponse, prof
 		return subscriptionDeliveryPayload{}, fmt.Errorf("%w: WireGuard config is not available", errSubscriptionDeliveryFormatUnavailable)
 	case SubscriptionDeliveryFormatSingBox:
 		if connection.Protocol != ClientProtocolVLESS {
-			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: sing-box remote profile is currently available for VLESS profiles only", errSubscriptionDeliveryFormatUnavailable, connection.Protocol)
+			return subscriptionDeliveryPayload{}, fmt.Errorf("%w: sing-box remote profile is currently available for VLESS profiles only", errSubscriptionDeliveryFormatUnavailable)
 		}
 		config, err := RenderSingBoxClientConfig(profile)
 		if err != nil {
