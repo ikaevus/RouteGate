@@ -13,7 +13,7 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 		format     string
 		setup      bool
 	}{
-		{ClientTypeHiddify, ClientCompatibilityFullSmartRouting, SubscriptionDeliveryFormatSingBox, false},
+		{ClientTypeHiddify, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
 		{ClientTypeV2RayN, ClientCompatibilitySetupRequired, SubscriptionDeliveryFormatBase64, true},
 	}
 	for _, test := range tests {
@@ -29,6 +29,25 @@ func TestClientCompatibilityMatrixInitialClients(t *testing.T) {
 	}
 	if got := clientCompatibilityFor(ClientTypeGeneric).Status; got != ClientCompatibilityConnectionOnly {
 		t.Fatalf("generic status = %q, want connection_only", got)
+	}
+}
+
+func TestHiddifyDoesNotClaimRoutingPolicyInStandardSubscription(t *testing.T) {
+	assessment := clientCompatibilityFor(ClientTypeHiddify)
+	if assessment.Capabilities.FullSingBoxConfigImport || assessment.Capabilities.SubscriptionRoutingPolicy {
+		t.Fatalf("Hiddify standard delivery must not claim a complete RouteGate policy import: %+v", assessment.Capabilities)
+	}
+	if assessment.Capabilities.ImportedRulePrecedence != ImportedRulePrecedenceClient {
+		t.Fatalf("Hiddify imported rule precedence = %q, want client_local", assessment.Capabilities.ImportedRulePrecedence)
+	}
+	foundLimitation := false
+	for _, code := range assessment.LimitationCodes {
+		if code == LimitationHiddifyRoutingClientLocal {
+			foundLimitation = true
+		}
+	}
+	if !foundLimitation {
+		t.Fatalf("Hiddify assessment must explain client-local routing: %+v", assessment.LimitationCodes)
 	}
 }
 
@@ -65,12 +84,18 @@ func TestRetiredClientTypesNormalizeToGeneric(t *testing.T) {
 	}
 }
 
-func TestPreferredDeliveryFormatUsesFullConfigOnlyForVLESS(t *testing.T) {
-	if got := preferredDeliveryFormatForClient(ClientTypeHiddify, ClientProtocolVLESS); got != SubscriptionDeliveryFormatSingBox {
+func TestPreferredDeliveryFormatUsesPortableSubscriptionForHiddify(t *testing.T) {
+	if got := preferredDeliveryFormatForClient(ClientTypeHiddify, ClientProtocolVLESS); got != SubscriptionDeliveryFormatBase64 {
 		t.Fatalf("Hiddify VLESS format = %q", got)
+	}
+	if got := preferredDeliveryFormatForClient(ClientTypeHiddify, ClientProtocolHysteria2); got != SubscriptionDeliveryFormatBase64 {
+		t.Fatalf("Hiddify Hysteria2 format = %q", got)
 	}
 	if got := preferredDeliveryFormatForClient(ClientTypeHiddify, ClientProtocolWireGuard); got != SubscriptionDeliveryFormatAuto {
 		t.Fatalf("Hiddify WireGuard format = %q", got)
+	}
+	if got := preferredDeliveryFormatForClient(ClientTypeSingBox, ClientProtocolVLESS); got != SubscriptionDeliveryFormatSingBox {
+		t.Fatalf("sing-box VLESS format = %q", got)
 	}
 	if got := preferredDeliveryFormatForClient(ClientTypeV2RayN, ClientProtocolVLESS); got != SubscriptionDeliveryFormatBase64 {
 		t.Fatalf("v2rayN VLESS format = %q", got)
@@ -107,7 +132,7 @@ func TestCompatibilityDowngradesWhenProtocolCannotCarryPolicy(t *testing.T) {
 }
 
 func TestCompatibilityKeepsValidatedProtocolBehavior(t *testing.T) {
-	if got := clientCompatibilityForProtocol(ClientTypeHiddify, ClientProtocolVLESS).Status; got != ClientCompatibilityFullSmartRouting {
+	if got := clientCompatibilityForProtocol(ClientTypeHiddify, ClientProtocolVLESS).Status; got != ClientCompatibilitySetupRequired {
 		t.Fatalf("Hiddify VLESS status = %q", got)
 	}
 	if got := clientCompatibilityForProtocol(ClientTypeV2RayN, ClientProtocolShadowsocks).Status; got != ClientCompatibilitySetupRequired {

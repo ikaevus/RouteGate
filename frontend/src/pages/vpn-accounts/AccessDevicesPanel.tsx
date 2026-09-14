@@ -54,6 +54,12 @@ function platformLabel(deviceType: DevicePlatform): string {
   }
 }
 
+function deviceNameLabel(name: string): string {
+  if (name === 'Default device') return t('accessDevices.defaultDeviceName');
+  if (name === 'Device') return t('accessDevices.unnamedDevice');
+  return name;
+}
+
 function compatibilityLabel(status: string): string {
   if (status === 'full_smart_routing') return t('clientCompatibility.full');
   if (status === 'client_setup_required' || status === 'partial_compatibility') return t('clientCompatibility.setup');
@@ -153,7 +159,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
 
   const createMutation = useMutation({
     mutationFn: () => createVpnAccountDevice(accountId, {
-      name: name.trim() || 'Device',
+      name: name.trim(),
       clientType,
       deviceType,
     }),
@@ -206,7 +212,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
 
   const renameMutation = useMutation({
     mutationFn: (deviceId: string) => updateVpnAccountDevice(accountId, deviceId, {
-      name: renameValue.trim() || 'Device',
+      name: renameValue.trim(),
     }),
     onSuccess: async () => {
       setRenamingId(null);
@@ -223,17 +229,18 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (createMutation.isPending) return;
+    if (createMutation.isPending || name.trim() === '') return;
     createMutation.mutate();
   }
 
   function startRename(access: VpnAccountDeviceAccess) {
     setRenamingId(access.device.id);
-    setRenameValue(access.device.name);
+    setRenameValue(deviceNameLabel(access.device.name));
   }
 
-  function handleRevoke(deviceId: string) {
-    if (window.confirm(t('accessDevices.revokeConfirm'))) revokeMutation.mutate(deviceId);
+  function handleRevoke(deviceId: string, hasActiveToken: boolean) {
+    const confirmationKey = hasActiveToken ? 'accessDevices.revokeConfirm' : 'accessDevices.removeConfirm';
+    if (window.confirm(t(confirmationKey))) revokeMutation.mutate(deviceId);
   }
 
   function handleLegacyRevoke() {
@@ -363,14 +370,17 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                     {isRenaming ? (
                       <form
                         className="vpn-access-device-rename-form"
-                        onSubmit={(event) => { event.preventDefault(); renameMutation.mutate(device.id); }}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          if (renameValue.trim() !== '') renameMutation.mutate(device.id);
+                        }}
                       >
-                        <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={100} autoFocus />
-                        <button className="small-button" type="submit" disabled={renameMutation.isPending}>{t('accessDevices.save')}</button>
+                        <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={100} required autoFocus />
+                        <button className="small-button" type="submit" disabled={renameMutation.isPending || renameValue.trim() === ''}>{t('accessDevices.save')}</button>
                         <button className="small-button" type="button" onClick={() => setRenamingId(null)}>{t('common.cancel')}</button>
                       </form>
                     ) : (
-                      <strong>{device.name}</strong>
+                      <strong>{deviceNameLabel(device.name)}</strong>
                     )}
                     <span className={`status-pill ${compatibilityClass(compatibility.status)}`}>
                       {compatibilityLabel(compatibility.status)}
@@ -418,7 +428,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                   )}
 
                   {!access.hasActiveToken ? (
-                    <div className="form-actions">
+                    <div className="form-actions vpn-access-device-actions">
                       <button
                         className="primary-button"
                         type="button"
@@ -434,17 +444,38 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                         className="small-button danger-button"
                         type="button"
                         disabled={isRevokingThis}
-                        onClick={() => handleRevoke(device.id)}
+                        onClick={() => handleRevoke(device.id, false)}
+                      >
+                        {isRevokingThis ? t('accessDevices.removing') : t('accessDevices.remove')}
+                      </button>
+                    </div>
+                  ) : !reveal ? (
+                    <div className="form-actions vpn-access-device-actions">
+                      <button
+                        className="primary-button"
+                        type="button"
+                        disabled={isRotatingThis}
+                        onClick={() => rotateMutation.mutate(device.id)}
+                      >
+                        {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
+                      </button>
+                      {!isRenaming && (
+                        <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
+                      )}
+                      <button
+                        className="small-button danger-button"
+                        type="button"
+                        disabled={isRevokingThis}
+                        onClick={() => handleRevoke(device.id, true)}
                       >
                         {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
                       </button>
                     </div>
                   ) : (
-                    <div className="form-actions">
+                    <div className="form-actions vpn-access-device-actions">
                       <button
                         className="small-button"
                         type="button"
-                        disabled={!reveal}
                         onClick={() => setQrDeviceId(device.id)}
                       >
                         {t('accessDevices.showQr')}
@@ -452,7 +483,6 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                       <button
                         className="small-button"
                         type="button"
-                        disabled={!reveal}
                         onClick={() => reveal && void copyLink(device.id, reveal.subscriptionUrl)}
                       >
                         {copiedId === device.id ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
@@ -460,7 +490,6 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                       <button
                         className="small-button"
                         type="button"
-                        disabled={!reveal}
                         onClick={() => toggleSend(device.id)}
                       >
                         {t('accessDevices.send')}
@@ -480,7 +509,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                         className="small-button danger-button"
                         type="button"
                         disabled={isRevokingThis}
-                        onClick={() => handleRevoke(device.id)}
+                        onClick={() => handleRevoke(device.id, true)}
                       >
                         {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
                       </button>
@@ -490,14 +519,16 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                     <div className="form-message form-message-error">{getErrorMessage(rotateMutation.error, t('accessDevices.rotateError'))}</div>
                   )}
                   {revokeMutation.isError && revokeMutation.variables === device.id && (
-                    <div className="form-message form-message-error">{getErrorMessage(revokeMutation.error, t('accessDevices.revokeError'))}</div>
+                    <div className="form-message form-message-error">
+                      {getErrorMessage(revokeMutation.error, t(access.hasActiveToken ? 'accessDevices.revokeError' : 'accessDevices.removeError'))}
+                    </div>
                   )}
 
                   {isSending && reveal && (
                     <DeviceSendComposer
                       accountId={accountId}
                       deviceId={device.id}
-                      deviceName={device.name}
+                      deviceName={deviceNameLabel(device.name)}
                       accessUrl={reveal.subscriptionUrl}
                       onClose={() => setSendDeviceId(null)}
                     />
@@ -513,7 +544,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
             <summary>{t('accessDevices.revokedSummary', { count: revokedDevices.length })}</summary>
             {revokedDevices.map((access) => (
               <div className="vpn-access-device-revoked-row" key={access.device.id}>
-                <span>{access.device.name}</span>
+                <span>{deviceNameLabel(access.device.name)}</span>
                 <span>{clientTypeLabel(access.device.clientType)}</span>
                 <span>{t('accessDevices.revokedAt', { date: formatDate(access.device.revokedAt) })}</span>
               </div>
@@ -526,7 +557,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
             <div className="vpn-account-create-grid">
               <label className="field">
                 <span>{t('accessDevices.deviceName')}</span>
-                <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t('accessDevices.deviceNamePlaceholder')} maxLength={100} />
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t('accessDevices.deviceNamePlaceholder')} maxLength={100} required />
               </label>
               <label className="field">
                 <span>{t('accessDevices.client')}</span>
@@ -554,7 +585,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
               <div className="form-message form-message-error">{getErrorMessage(createMutation.error, t('accessDevices.createError'))}</div>
             )}
             <div className="form-actions">
-              <button className="primary-button" type="submit" disabled={createMutation.isPending}>
+              <button className="primary-button" type="submit" disabled={createMutation.isPending || name.trim() === ''}>
                 {createMutation.isPending ? t('accessDevices.creating') : t('accessDevices.create')}
               </button>
               <button className="small-button" type="button" onClick={() => { setIsAddOpen(false); clearAddDeviceParam(); }}>{t('common.cancel')}</button>

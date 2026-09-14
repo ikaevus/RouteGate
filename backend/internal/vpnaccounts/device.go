@@ -39,7 +39,7 @@ const (
 // V2Box, and anything else use Generic best-effort compatibility instead of a
 // bespoke adapter.
 var allowedDeviceClientTypes = map[string]struct{}{
-	ClientTypeHiddify: {}, ClientTypeV2RayN: {}, ClientTypeV2RayNG: {}, ClientTypeGeneric: {},
+	ClientTypeHiddify: {}, ClientTypeHAPP: {}, ClientTypeV2RayN: {}, ClientTypeV2RayNG: {}, ClientTypeGeneric: {},
 }
 
 var allowedDevicePlatforms = map[string]struct{}{
@@ -87,7 +87,7 @@ type UpdateDeviceRequest struct {
 
 // DeviceAccess is the read model for the Access & Devices panel: the device
 // plus its current subscription URL and a product-simplified compatibility
-// assessment (Full RouteGate / Compatible / Generic), never the raw token.
+// assessment (Full RouteGate / Compatible / Basic connection), never the raw token.
 type DeviceAccess struct {
 	Device          Device                        `json:"device"`
 	SubscriptionURL string                        `json:"subscriptionUrl,omitempty"`

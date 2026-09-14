@@ -71,10 +71,10 @@ func TestDeviceCompatibilityIsProtocolAware(t *testing.T) {
 		wantStatus   string
 	}{
 		{
-			name: "Hiddify on VLESS account is full smart routing", clientType: ClientTypeHiddify,
+			name: "Hiddify on VLESS account uses portable subscription and client setup", clientType: ClientTypeHiddify,
 			subscription: vlessDeviceTestSubscription(),
 			profile:      ClientProfile{Protocol: ClientProtocolVLESS, FingerprintMode: FingerprintModeAuto, Fingerprint: DefaultAutoFingerprint, SpiderX: "/"},
-			wantStatus:   ClientCompatibilityFullSmartRouting,
+			wantStatus:   ClientCompatibilitySetupRequired,
 		},
 		{
 			name: "Hiddify on WireGuard account downgrades to connection only", clientType: ClientTypeHiddify,
