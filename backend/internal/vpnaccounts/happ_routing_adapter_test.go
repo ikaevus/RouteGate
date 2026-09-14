@@ -155,7 +155,7 @@ func assertStringsEqual(t *testing.T, name string, got, want []string) {
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("%s[%d]=%q want %q; got=%v", name, i, want[i], got)
+			t.Fatalf("%s[%d]=%q want %q; got=%v", name, i, got[i], want[i], got)
 		}
 	}
 }
