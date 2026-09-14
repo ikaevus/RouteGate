@@ -99,6 +99,14 @@
   color: #fde68a;
 }
 
+.vpn-access-device-note-action {
+  padding: 10px 12px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.08);
+  color: var(--rg-text-primary, #e2e8f0);
+}
+
 .vpn-access-device-reveal,
 .vpn-access-device-hidden,
 .vpn-access-device-empty {

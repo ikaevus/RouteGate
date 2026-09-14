@@ -44,6 +44,7 @@ const (
 	// t('clientCompatibility.limitation.<code>').
 	GuidanceHiddifyImportAccessLink     = "hiddify_import_access_link"
 	GuidanceHAPPStandardSubscription    = "happ_standard_subscription"
+	GuidanceV2RayNImportSubscription    = "v2rayn_import_subscription"
 	GuidanceV2RayNRoutingMode           = "v2rayn_routing_mode"
 	GuidanceV2RayNTunMode               = "v2rayn_tun_mode"
 	GuidanceV2RayNGStandardSubscription = "v2rayng_standard_subscription"
@@ -171,7 +172,7 @@ func clientCompatibilityFor(clientType string) ClientCompatibilityAssessment {
 				BlockRouting: true, RemoteRuleSets: true, DNSRouting: true, SplitDNS: true,
 				ClientLocalRules: true, SubscriptionRefresh: true, ImportedRulePrecedence: ImportedRulePrecedenceClient,
 			},
-			GuidanceCodes:   []string{GuidanceV2RayNRoutingMode, GuidanceV2RayNTunMode},
+			GuidanceCodes:   []string{GuidanceV2RayNImportSubscription, GuidanceV2RayNRoutingMode, GuidanceV2RayNTunMode},
 			LimitationCodes: []string{LimitationV2RayNNoRoutingRules},
 		}
 	case ClientTypeV2RayNG:

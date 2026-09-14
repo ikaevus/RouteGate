@@ -396,7 +396,10 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
 
                   {(compatibility.guidanceCodes ?? []).map((code) => {
                     const key = clientCompatibilityGuidanceKey(code);
-                    return key ? <p className="vpn-access-device-note" key={code}>{t(key)}</p> : null;
+                    const classes = code === 'v2rayn_import_subscription'
+                      ? 'vpn-access-device-note vpn-access-device-note-action'
+                      : 'vpn-access-device-note';
+                    return key ? <p className={classes} key={code}>{t(key)}</p> : null;
                   })}
                   {(compatibility.limitationCodes ?? []).map((code) => {
                     const key = clientCompatibilityLimitationKey(code);
