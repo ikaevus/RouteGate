@@ -73,6 +73,19 @@ func TestV2RayNGRoutingCompatibilityStaysConservativeUntilValidated(t *testing.T
 	}
 }
 
+func TestV2RayNGuidanceExplainsSubscriptionImportWorkflow(t *testing.T) {
+	assessment := clientCompatibilityFor(ClientTypeV2RayN)
+	found := false
+	for _, code := range assessment.GuidanceCodes {
+		if code == GuidanceV2RayNImportSubscription {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("v2rayN guidance must include %q: %+v", GuidanceV2RayNImportSubscription, assessment.GuidanceCodes)
+	}
+}
+
 func TestRetiredClientTypesNormalizeToGeneric(t *testing.T) {
 	for _, legacy := range []string{ClientTypeV2RayTun, ClientTypeV2Box, ClientTypeOther, "unknown-client"} {
 		if got := normalizeClientType(legacy); got != ClientTypeGeneric {

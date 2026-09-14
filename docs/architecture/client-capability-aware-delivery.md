@@ -116,6 +116,13 @@ v2rayN exposes strong local routing and DNS functionality, but RouteGate current
 
 v2rayN is therefore classified as `client_setup_required` on the strength of the implemented, tested adapter, not on a claim that its real-client routing behavior has already been confirmed. Admin UI guidance must make this visible rather than silently degrading to ordinary VPN connectivity.
 
+The v2rayN onboarding guidance must also distinguish two client operations:
+
+- **Import Share Links from clipboard** parses share links and may register an HTTPS URL as a subscription, but it does not immediately fetch that subscription's servers;
+- **Subscription group → Subscription group settings → Add**, followed by **Update subscription**, is the complete HTTPS subscription workflow (labels vary slightly between v2rayN releases).
+
+RouteGate keeps the opaque HTTPS URL as the primary credential and explains the required update step instead of replacing it with a raw URI. Raw protocol URIs remain Advanced/manual fallback material.
+
 ## v2rayNG
 
 v2rayNG (the Android member of the same 2dust client family) also receives standard share-link subscriptions by default, but RouteGate does **not** offer it the `v2rayn-routing` native adapter and does not claim `client_setup_required` for it: that would assume v2rayNG's native routing-rules import behaves like v2rayN's without having independently validated it on a real client. Per RG-116's "no silent downgrade" rule, family membership is not evidence of compatibility.

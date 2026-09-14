@@ -16,6 +16,8 @@ export const clientCompatibilityEn = {
     'Import the RouteGate access link as a standard Hiddify subscription. The same portable link can also be imported by other compatible clients.',
   'clientCompatibility.guidance.happ_standard_subscription':
     'Import the RouteGate access link as a standard HAPP subscription. VLESS/Reality and Shadowsocks connection delivery are manually validated. Provider-managed RouteGate routing is temporarily disabled for HAPP after a failed real-device safety acceptance test.',
+  'clientCompatibility.guidance.v2rayn_import_subscription':
+    'In v2rayN, open Subscription group → Subscription group settings → Add, paste this link into URL, and save. Then open Subscription group → Update subscription without proxy (or via proxy if RouteGate is only reachable through the current VPN). “Import Share Links from clipboard” only registers the HTTPS subscription; it does not download its servers immediately.',
   'clientCompatibility.guidance.v2rayn_routing_mode':
     'Use a routing mode that preserves DIRECT/VPN intent (for example a whitelist/custom rules mode rather than Global when DIRECT rules are required).',
   'clientCompatibility.guidance.v2rayn_tun_mode':
@@ -58,6 +60,8 @@ export const clientCompatibilityRu: Record<keyof typeof clientCompatibilityEn, s
     'Импортируйте ссылку доступа RouteGate как стандартную подписку Hiddify. Эту же переносимую ссылку можно импортировать и в другие совместимые клиенты.',
   'clientCompatibility.guidance.happ_standard_subscription':
     'Импортируйте ссылку доступа RouteGate как стандартную подписку HAPP. Подключение VLESS/Reality и Shadowsocks проверено вручную. Управляемая маршрутизация RouteGate для HAPP временно отключена после неуспешной проверки безопасности на реальном устройстве.',
+  'clientCompatibility.guidance.v2rayn_import_subscription':
+    'В v2rayN откройте «Группа подписки» → «Настройки группы подписки» → «Добавить», вставьте эту ссылку в поле URL и сохраните. Затем выберите «Группа подписки» → «Обновить подписку без прокси» (или «с прокси», если RouteGate доступен только через текущий VPN). Пункт «Импорт массива URL из буфера обмена» только регистрирует HTTPS-подписку и не загружает серверы сразу.',
   'clientCompatibility.guidance.v2rayn_routing_mode':
     'Используйте режим маршрутизации, сохраняющий намерение DIRECT/VPN (например, режим со своими правилами, а не Global, если требуются правила DIRECT).',
   'clientCompatibility.guidance.v2rayn_tun_mode':
@@ -91,6 +95,7 @@ export type ClientCompatibilityTranslationKey = keyof typeof clientCompatibility
 const guidanceKeyByCode: Record<string, ClientCompatibilityTranslationKey> = {
   hiddify_import_access_link: 'clientCompatibility.guidance.hiddify_import_access_link',
   happ_standard_subscription: 'clientCompatibility.guidance.happ_standard_subscription',
+  v2rayn_import_subscription: 'clientCompatibility.guidance.v2rayn_import_subscription',
   v2rayn_routing_mode: 'clientCompatibility.guidance.v2rayn_routing_mode',
   v2rayn_tun_mode: 'clientCompatibility.guidance.v2rayn_tun_mode',
   v2rayng_standard_subscription: 'clientCompatibility.guidance.v2rayng_standard_subscription',
