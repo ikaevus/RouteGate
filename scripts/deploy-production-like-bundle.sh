@@ -118,6 +118,13 @@ EXPECTED_SCHEMA=""
 MUTATED=0
 DB_MAY_BE_MUTATED=0
 STAGE=initializing
+MAINTENANCE_DISPATCH_STATE=""
+MAINTENANCE_DISPATCH_ENABLED=0
+MAINTENANCE_DISPATCH_ACTIVE=0
+MAINTENANCE_DISPATCH_MUTATED=0
+MAINTENANCE_DISPATCHER=/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py
+MAINTENANCE_SOCKET_UNIT=/etc/systemd/system/routegate-maintenance-dispatch.socket
+MAINTENANCE_SERVICE_UNIT=/etc/systemd/system/routegate-maintenance-dispatch@.service
 
 [[ -r "$UPDATE_CORE" ]] || { printf 'Update core is not readable.\n' >&2; exit 1; }
 RG_UPDATE_LOG_PREFIX='[production-like]'
@@ -126,6 +133,108 @@ source "$UPDATE_CORE"
 
 log() {
   rg_update_log "$*"
+}
+
+backup_maintenance_dispatch() {
+  local backup_dir=$1
+  local backup_files="$backup_dir/maintenance-dispatch"
+  local path present=0
+
+  for path in "$MAINTENANCE_DISPATCHER" "$MAINTENANCE_SOCKET_UNIT" "$MAINTENANCE_SERVICE_UNIT"; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      present=$((present + 1))
+    fi
+  done
+
+  if ((present == 0)); then
+    MAINTENANCE_DISPATCH_STATE=absent
+  elif ((present == 3)) \
+    && [[ -f "$MAINTENANCE_DISPATCHER" && ! -L "$MAINTENANCE_DISPATCHER" && -x "$MAINTENANCE_DISPATCHER" ]] \
+    && [[ -f "$MAINTENANCE_SOCKET_UNIT" && ! -L "$MAINTENANCE_SOCKET_UNIT" ]] \
+    && [[ -f "$MAINTENANCE_SERVICE_UNIT" && ! -L "$MAINTENANCE_SERVICE_UNIT" ]]; then
+    MAINTENANCE_DISPATCH_STATE=complete
+    systemctl is-enabled --quiet routegate-maintenance-dispatch.socket >/dev/null 2>&1 \
+      && MAINTENANCE_DISPATCH_ENABLED=1
+    systemctl is-active --quiet routegate-maintenance-dispatch.socket >/dev/null 2>&1 \
+      && MAINTENANCE_DISPATCH_ACTIVE=1
+    install -d -m 0700 "$backup_files" || return 1
+    cp -a -- "$MAINTENANCE_DISPATCHER" "$backup_files/routegate-maintenance-dispatch.py" || return 1
+    cp -a -- "$MAINTENANCE_SOCKET_UNIT" "$backup_files/routegate-maintenance-dispatch.socket" || return 1
+    cp -a -- "$MAINTENANCE_SERVICE_UNIT" "$backup_files/routegate-maintenance-dispatch@.service" || return 1
+  else
+    printf '[production-like] privileged maintenance dispatch state is partial or unsafe\n' >&2
+    return 1
+  fi
+
+  cat >"$backup_dir/maintenance-dispatch.meta" <<EOF_MAINTENANCE_DISPATCH
+FORMAT_VERSION=1
+STATE=$MAINTENANCE_DISPATCH_STATE
+ENABLED=$MAINTENANCE_DISPATCH_ENABLED
+ACTIVE=$MAINTENANCE_DISPATCH_ACTIVE
+EOF_MAINTENANCE_DISPATCH
+  chmod 0600 "$backup_dir/maintenance-dispatch.meta" || return 1
+  log "maintenance dispatch backup state=$MAINTENANCE_DISPATCH_STATE"
+}
+
+install_maintenance_dispatch() {
+  local candidate_dispatcher="$WORK_DIR/tools/routegate-maintenance-dispatch.py"
+  local candidate_socket="$WORK_DIR/systemd/routegate-maintenance-dispatch.socket"
+  local candidate_service="$WORK_DIR/systemd/routegate-maintenance-dispatch@.service"
+  local path
+
+  for path in "$candidate_dispatcher" "$candidate_socket" "$candidate_service"; do
+    [[ -f "$path" && ! -L "$path" ]] || {
+      printf '[production-like] release bundle is missing a safe maintenance dispatch component: %s\n' "$path" >&2
+      return 1
+    }
+  done
+  python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())' \
+    "$candidate_dispatcher" || return 1
+
+  MAINTENANCE_DISPATCH_MUTATED=1
+  install -d -m 0755 "$(dirname "$MAINTENANCE_DISPATCHER")" || return 1
+  install -m 0755 "$candidate_dispatcher" "$MAINTENANCE_DISPATCHER" || return 1
+  install -m 0644 "$candidate_socket" "$MAINTENANCE_SOCKET_UNIT" || return 1
+  install -m 0644 "$candidate_service" "$MAINTENANCE_SERVICE_UNIT" || return 1
+  systemctl daemon-reload || return 1
+  systemctl enable --now routegate-maintenance-dispatch.socket || return 1
+  systemctl is-active --quiet routegate-maintenance-dispatch.socket || return 1
+  [[ -S /run/routegate/maintenance-dispatch.sock ]] || return 1
+  log "maintenance dispatch socket=active"
+}
+
+restore_maintenance_dispatch() {
+  local backup_dir=$1
+  local backup_files="$backup_dir/maintenance-dispatch"
+  local rollback_rc=0
+
+  ((MAINTENANCE_DISPATCH_MUTATED == 1)) || return 0
+  systemctl disable --now routegate-maintenance-dispatch.socket >/dev/null 2>&1 || true
+  rm -f -- "$MAINTENANCE_DISPATCHER" "$MAINTENANCE_SOCKET_UNIT" "$MAINTENANCE_SERVICE_UNIT" \
+    || rollback_rc=1
+
+  if [[ "$MAINTENANCE_DISPATCH_STATE" == complete ]]; then
+    install -m 0755 "$backup_files/routegate-maintenance-dispatch.py" "$MAINTENANCE_DISPATCHER" \
+      || rollback_rc=1
+    install -m 0644 "$backup_files/routegate-maintenance-dispatch.socket" "$MAINTENANCE_SOCKET_UNIT" \
+      || rollback_rc=1
+    install -m 0644 "$backup_files/routegate-maintenance-dispatch@.service" "$MAINTENANCE_SERVICE_UNIT" \
+      || rollback_rc=1
+  elif [[ "$MAINTENANCE_DISPATCH_STATE" != absent ]]; then
+    rollback_rc=1
+  fi
+
+  systemctl daemon-reload || rollback_rc=1
+  if [[ "$MAINTENANCE_DISPATCH_STATE" == complete ]]; then
+    if ((MAINTENANCE_DISPATCH_ENABLED == 1)); then
+      systemctl enable routegate-maintenance-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+    fi
+    if ((MAINTENANCE_DISPATCH_ACTIVE == 1)); then
+      systemctl start routegate-maintenance-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+    fi
+  fi
+  log "maintenance dispatch rollback restored state=$MAINTENANCE_DISPATCH_STATE"
+  return "$rollback_rc"
 }
 
 reconcile_subscription_proxy_route() {
@@ -465,6 +574,7 @@ rollback() {
       RG_UPDATE_DB_RESTORE_RC=0
     fi
 
+    restore_maintenance_dispatch "$BACKUP_DIR" || rollback_rc=$?
     rg_update_restore_backup "$BACKUP_DIR" "$DB_URL" 0 || rollback_rc=$?
     set +e
     if [[ "$NGINX_MUTATED" == "1" && -n "$NGINX_BACKUP" && -f "$NGINX_BACKUP" ]]; then
@@ -522,6 +632,7 @@ BACKUP_SCHEMA=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAtc "SELECT version FROM sch
   || { printf '[production-like] invalid current database schema before backup: %s\n' "${BACKUP_SCHEMA:-missing}" >&2; exit 1; }
 BACKUP_DIR="/root/routegate-backups/rg96-${EXPECTED_COMMIT}-$(date -u +%Y%m%dT%H%M%SZ)"
 rg_update_create_backup "$BACKUP_DIR" "$DB_URL"
+backup_maintenance_dispatch "$BACKUP_DIR"
 printf 'DATABASE_SCHEMA=%s\n' "$BACKUP_SCHEMA" >>"$BACKUP_DIR/backup.meta"
 chmod 0600 "$BACKUP_DIR/backup.meta"
 log "backup database schema=${BACKUP_SCHEMA}"
@@ -536,6 +647,9 @@ wait_for_active_agent_jobs "$DB_URL" 360 2
 STAGE=deploy_files
 MUTATED=1
 rg_update_apply_platform_files "$WORK_DIR"
+
+STAGE=maintenance_dispatch
+install_maintenance_dispatch
 
 if grep -q '^ROUTEGATE_PUBLIC_URL=' /etc/routegate/manager.env; then
   sed -i "s#^ROUTEGATE_PUBLIC_URL=.*#ROUTEGATE_PUBLIC_URL=\"${PUBLIC_URL}\"#" /etc/routegate/manager.env
@@ -567,6 +681,8 @@ chmod 0700 "$VALIDATION_SCRIPT"
 STAGE=final_health
 systemctl is-active --quiet routegate-manager
 systemctl is-active --quiet routegate-agent
+systemctl is-active --quiet routegate-maintenance-dispatch.socket
+[[ -S /run/routegate/maintenance-dispatch.sock ]]
 public_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")
 [[ "$public_status" == 200 ]]
 subscription_probe_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/sub/routegate-deploy-probe")
