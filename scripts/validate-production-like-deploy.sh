@@ -30,6 +30,37 @@ for service in routegate-manager routegate-agent; do
   log "control-plane ${service}=active"
 done
 
+systemctl is-active --quiet routegate-maintenance-dispatch.socket
+[[ -x /usr/local/lib/routegate/update/routegate-maintenance-dispatch.py ]]
+[[ -S /run/routegate/maintenance-dispatch.sock ]]
+python3 - <<'PY'
+import json
+import re
+import socket
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+client.settimeout(10)
+client.connect("/run/routegate/maintenance-dispatch.sock")
+client.sendall(b"analyze:platform_rollback_backups\n")
+client.shutdown(socket.SHUT_WR)
+response = bytearray()
+while True:
+    chunk = client.recv(4097 - len(response))
+    if not chunk:
+        break
+    response.extend(chunk)
+    if len(response) > 4096:
+        raise SystemExit("maintenance dispatch response exceeded 4096 bytes")
+payload = json.loads(response)
+if payload.get("ok") is not True:
+    raise SystemExit("maintenance dispatch analysis failed")
+if not re.fullmatch(r"[0-9a-f]{32}", payload.get("token", "")):
+    raise SystemExit("maintenance dispatch returned an invalid plan token")
+if not isinstance(payload.get("candidateCount"), int) or payload["candidateCount"] < 0:
+    raise SystemExit("maintenance dispatch returned an invalid candidate count")
+PY
+log "maintenance dispatch socket=active probe=ok"
+
 runtime_status sing-box sing-box
 runtime_status wireguard wg-quick@routegate-wg0
 runtime_status hysteria2 hysteria-server
