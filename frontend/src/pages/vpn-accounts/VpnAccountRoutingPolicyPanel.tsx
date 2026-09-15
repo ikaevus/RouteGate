@@ -224,7 +224,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
           onToggle={() => setIsOpen((value) => !value)}
         />
       </div>
-      <div className="panel-collapsible-body" hidden={!isOpen}>
+      <div className="panel-collapsible-body vpn-account-routing-policy-content" hidden={!isOpen}>
       {hasError && <div className="form-message form-message-error">{t('routingPolicy.loadError')}</div>}
       {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
 

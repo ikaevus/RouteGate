@@ -25,7 +25,6 @@ import './vpn-access-delivery.css';
 type DeviceSendComposerProps = {
   accountId: string;
   deviceId: string;
-  deviceName: string;
   accessUrl: string;
   onClose: () => void;
 };
@@ -51,6 +50,13 @@ function errorMessage(error: unknown, fallback: string): string {
       case 'device_access_url_stale': return t('delivery.deviceAccessUrlStale');
       case 'device_revoked': return t('delivery.deviceRevoked');
       case 'device_not_found': return t('delivery.deviceRevoked');
+      case 'invalid_recipient': return t('delivery.invalidRecipient');
+      case 'delivery_provider_unavailable':
+      case 'delivery_provider_not_configured': return t('delivery.providerUnavailable');
+      case 'delivery_attachment_unsupported': return t('delivery.attachmentUnsupported');
+      case 'idempotency_key_required':
+      case 'idempotency_conflict': return t('delivery.requestConflict');
+      case 'delivery_storage_error': return t('delivery.storageError');
       case 'smtp_not_configured':
       case 'smtp_configuration_invalid': return t('delivery.configureSmtp');
       case 'telegram_not_configured':
@@ -79,7 +85,7 @@ function newIdempotencyKey(): string {
 // backend delivery queue/history/providers/Telegram-pairing as the rest of
 // RouteGate delivery - there is deliberately no separate device-level
 // delivery stack.
-export function DeviceSendComposer({ accountId, deviceId, deviceName, accessUrl, onClose }: DeviceSendComposerProps) {
+export function DeviceSendComposer({ accountId, deviceId, accessUrl, onClose }: DeviceSendComposerProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [channel, setChannel] = useState<DeliveryChannel>('email');
@@ -217,14 +223,31 @@ export function DeviceSendComposer({ accountId, deviceId, deviceName, accessUrl,
 
   return (
     <div className="feature-subpanel vpn-access-delivery-composer vpn-device-send-composer">
-      <div className="vpn-access-delivery-channel-actions">
-        <button className={`small-button${channel === 'email' ? ' vpn-device-send-channel-active' : ''}`} type="button" onClick={() => selectChannel('email')} disabled={providersQuery.isLoading}>
-          {t('delivery.sendViaEmail')}
-        </button>
-        <button className={`small-button${channel === 'telegram' ? ' vpn-device-send-channel-active' : ''}`} type="button" onClick={() => selectChannel('telegram')} disabled={providersQuery.isLoading}>
-          {t('delivery.sendViaTelegram')}
-        </button>
-        <button className="small-button" type="button" onClick={onClose}>{t('delivery.cancel')}</button>
+      <div className="vpn-access-delivery-toolbar">
+        <div className="vpn-access-delivery-channel-picker">
+          <span className="vpn-access-delivery-channel-label">{t('delivery.channel')}</span>
+          <div className="vpn-access-delivery-channel-actions" role="group" aria-label={t('delivery.channel')}>
+            <button
+              aria-pressed={channel === 'email'}
+              className={`small-button${channel === 'email' ? ' vpn-device-send-channel-active' : ''}`}
+              type="button"
+              onClick={() => selectChannel('email')}
+              disabled={providersQuery.isLoading}
+            >
+              {t('delivery.email')}
+            </button>
+            <button
+              aria-pressed={channel === 'telegram'}
+              className={`small-button${channel === 'telegram' ? ' vpn-device-send-channel-active' : ''}`}
+              type="button"
+              onClick={() => selectChannel('telegram')}
+              disabled={providersQuery.isLoading}
+            >
+              {t('delivery.telegram')}
+            </button>
+          </div>
+        </div>
+        <button className="small-button vpn-access-delivery-close" type="button" onClick={onClose}>{t('delivery.cancel')}</button>
       </div>
 
       {providersQuery.isLoading && <p className="empty-state">{t('delivery.providerLoading')}</p>}
@@ -355,10 +378,26 @@ export function DeviceSendComposer({ accountId, deviceId, deviceName, accessUrl,
             )}
           </div>
 
-          {sendMutation.isError && <div className="form-message form-message-error">{errorMessage(sendMutation.error, t('delivery.sendError'))}</div>}
+          {sendMutation.isError && (
+            <div className="form-message form-message-error">
+              <span>{errorMessage(sendMutation.error, t('delivery.sendError'))}</span>
+              {sendMutation.error instanceof ApiError && (sendMutation.error.code || sendMutation.error.requestId) && (
+                <small className="vpn-access-delivery-error-evidence">
+                  {sendMutation.error.code && (
+                    <span>{t('delivery.errorCodeLabel')}: <code>{sendMutation.error.code}</code></span>
+                  )}
+                  {sendMutation.error.requestId && (
+                    <span>{t('delivery.requestIdLabel')}: <code>{sendMutation.error.requestId}</code></span>
+                  )}
+                </small>
+              )}
+            </div>
+          )}
           <div className="form-actions">
             <button className="primary-button" type="button" disabled={!canSend} onClick={queueDelivery}>
-              {sendMutation.isPending ? t('delivery.sendingRequest') : t('delivery.sendForDevice', { device: deviceName })}
+              {sendMutation.isPending
+                ? t('delivery.sendingRequest')
+                : t(channel === 'telegram' ? 'delivery.sendViaTelegram' : 'delivery.sendViaEmail')}
             </button>
           </div>
         </>

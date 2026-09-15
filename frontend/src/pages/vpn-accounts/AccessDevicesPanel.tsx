@@ -531,7 +531,6 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
                     <DeviceSendComposer
                       accountId={accountId}
                       deviceId={device.id}
-                      deviceName={deviceNameLabel(device.name)}
                       accessUrl={reveal.subscriptionUrl}
                       onClose={() => setSendDeviceId(null)}
                     />

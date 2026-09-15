@@ -14,6 +14,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -62,11 +63,12 @@ function buildHeaders(extraHeaders?: HeadersInit): HeadersInit {
 
 async function buildApiError(response: Response, method: string, path: string): Promise<ApiError> {
   const fallback = `API request failed: ${method} ${path} returned ${response.status}`;
+  const requestId = response.headers.get('X-Request-ID')?.trim() || undefined;
 
   try {
     const text = await response.text();
     if (!text) {
-      return new ApiError(fallback, response.status);
+      return new ApiError(fallback, response.status, undefined, requestId);
     }
 
     try {
@@ -77,12 +79,12 @@ async function buildApiError(response: Response, method: string, path: string): 
       const code = typeof payload.status === 'string' && payload.status.trim() !== ''
         ? payload.status
         : undefined;
-      return new ApiError(message, response.status, code);
+      return new ApiError(message, response.status, code, requestId);
     } catch {
-      return new ApiError(text, response.status);
+      return new ApiError(text, response.status, undefined, requestId);
     }
   } catch {
-    return new ApiError(fallback, response.status);
+    return new ApiError(fallback, response.status, undefined, requestId);
   }
 }
 
