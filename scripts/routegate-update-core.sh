@@ -249,7 +249,7 @@ rg_update_verify_and_extract_bundle() {
 }
 
 rg_update_toolchain_state() {
-  local tool_dir entrypoint file path unexpected=0
+  local tool_dir entrypoint maintenance_dispatcher file path unexpected=0
   tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
   entrypoint=$(rg_update_path "$RG_UPDATE_ENTRYPOINT") || return 1
 
@@ -275,9 +275,17 @@ rg_update_toolchain_state() {
     }
   done < <(rg_update_toolchain_files)
 
+  maintenance_dispatcher="$tool_dir/routegate-maintenance-dispatch.py"
+  if [[ -e "$maintenance_dispatcher" || -L "$maintenance_dispatcher" ]]; then
+    [[ -f "$maintenance_dispatcher" && ! -L "$maintenance_dispatcher" ]] || {
+      rg_update_die "trusted updater maintenance dispatcher is unsafe: $maintenance_dispatcher"
+      return 1
+    }
+  fi
+
   while IFS= read -r path; do
     case "$(basename -- "$path")" in
-      release_manifest.py|routegate-update-core.sh|routegate-update-role.sh|routegate-update-transaction.sh|routegate-update-verified.sh|routegate-update-dispatch.py) ;;
+      release_manifest.py|routegate-update-core.sh|routegate-update-role.sh|routegate-update-transaction.sh|routegate-update-verified.sh|routegate-update-dispatch.py|routegate-maintenance-dispatch.py) ;;
       *) unexpected=1 ;;
     esac
   done < <(find "$tool_dir" -mindepth 1 -maxdepth 1 -print)

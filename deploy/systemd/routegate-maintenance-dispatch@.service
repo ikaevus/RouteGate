@@ -1,0 +1,25 @@
+[Unit]
+Description=RouteGate privileged maintenance dispatcher
+Documentation=https://github.com/ikaevus/RouteGate
+After=local-fs.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+ExecStart=/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=5min
+KillMode=control-group
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=-/root/routegate-backups -/etc/systemd/system/prometheus.service.d /run/routegate
+ReadOnlyPaths=-/etc/routegate -/etc/prometheus -/var/lib/prometheus/routegate
+IPAddressDeny=any
+IPAddressAllow=localhost

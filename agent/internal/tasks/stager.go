@@ -12,6 +12,7 @@ const (
 	TaskKindConfigApply     = "config_apply"
 	TaskKindVPNCoreService  = "vpn_core_service"
 	TaskKindVPNCoreInstall  = "vpn_core_install"
+	TaskKindMaintenance     = "maintenance"
 	InstallOperationSingBox = "install_sing_box"
 )
 

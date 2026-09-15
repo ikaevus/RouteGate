@@ -108,7 +108,14 @@ make_transaction_bundle() {
   printf '[Unit]\nDescription=Agent %s\n' "$label" >"$stage/systemd/routegate-agent.service"
   printf '[Unit]\nDescription=Dispatch socket %s\n' "$label" >"$stage/systemd/routegate-update-dispatch.socket"
   printf '[Unit]\nDescription=Dispatch service %s\n' "$label" >"$stage/systemd/routegate-update-dispatch@.service"
+  printf '[Unit]\nDescription=Maintenance socket %s\n' "$label" >"$stage/systemd/routegate-maintenance-dispatch.socket"
+  printf '[Unit]\nDescription=Maintenance service %s\n' "$label" >"$stage/systemd/routegate-maintenance-dispatch@.service"
   make_toolchain_candidate "$stage" "$label" "$verified_mode"
+  cat >"$stage/tools/routegate-maintenance-dispatch.py" <<EOF_MAINTENANCE_DISPATCH
+#!/usr/bin/env python3
+ROUTEGATE_MAINTENANCE_DISPATCH_FIXTURE = ${label@Q}
+EOF_MAINTENANCE_DISPATCH
+  chmod 0755 "$stage/tools/routegate-maintenance-dispatch.py"
 
   cat >"$stage/metadata/manifest.env" <<EOF_MANIFEST
 FORMAT_VERSION=1
@@ -343,6 +350,7 @@ test_transaction_promotes_toolchain_after_vpn_health() {
   [[ -x "$root/usr/local/sbin/routegate-update" ]] || fail "successful transaction did not install updater entrypoint"
   [[ ! -e "$root/etc/systemd/system/routegate-update-dispatch.socket" ]] || fail "VPN-only transaction installed Manager-facing dispatch socket"
   [[ ! -e "$root/etc/systemd/system/routegate-update-dispatch@.service" ]] || fail "VPN-only transaction installed Manager-facing dispatch service"
+  [[ ! -e "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" ]] || fail "VPN-only transaction installed Manager-facing maintenance socket"
 }
 
 test_management_transaction_promotes_dispatch_units() {
@@ -359,6 +367,9 @@ test_management_transaction_promotes_dispatch_units() {
   assert_file_contains "$root/usr/local/bin/routegate-manager" 'manager-management-new'
   assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch.socket" 'management-new'
   assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch@.service" 'management-new'
+  assert_file_contains "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" 'management-new'
+  assert_file_contains "$root/etc/systemd/system/routegate-maintenance-dispatch@.service" 'management-new'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py" 'management-new'
 }
 
 test_management_transaction_restores_dispatch_units_on_toolchain_validation_failure() {
@@ -383,6 +394,37 @@ test_management_transaction_restores_dispatch_units_on_toolchain_validation_fail
   assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch.socket" 'trusted'
   assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch@.service" 'trusted'
   assert_file_contains "$root/usr/local/lib/routegate/update/routegate-update-dispatch.py" 'trusted'
+  assert_file_contains "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" 'trusted'
+  assert_file_contains "$root/etc/systemd/system/routegate-maintenance-dispatch@.service" 'trusted'
+  assert_file_contains "$root/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py" 'trusted'
+}
+
+test_management_transaction_restores_legacy_update_only_boundary() {
+  local root="$TMP_DIR/management-legacy-root"
+  local trusted_bundle="$TMP_DIR/management-legacy-trusted.tar.gz"
+  local broken_bundle="$TMP_DIR/management-legacy-broken.tar.gz"
+  local stubs="$TMP_DIR/management-legacy-stubs"
+  populate_management_host "$root"
+  make_management_stubs "$stubs"
+  make_transaction_bundle "$trusted_bundle" legacy-trusted valid
+  make_transaction_bundle "$broken_bundle" legacy-broken invalid
+
+  run_management_transaction "$root" "$trusted_bundle" "$TMP_DIR/management-legacy-trusted-backups" "$stubs" >/dev/null
+  rm -f \
+    "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" \
+    "$root/etc/systemd/system/routegate-maintenance-dispatch@.service" \
+    "$root/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py"
+
+  if run_management_transaction "$root" "$broken_bundle" "$TMP_DIR/management-legacy-broken-backups" "$stubs" >/dev/null 2>&1; then
+    fail "Management transaction with legacy update-only boundary unexpectedly succeeded"
+  fi
+
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch.socket" 'legacy-trusted'
+  assert_file_contains "$root/etc/systemd/system/routegate-update-dispatch@.service" 'legacy-trusted'
+  [[ ! -e "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" ]] \
+    || fail "legacy update-only rollback retained the new maintenance socket"
+  [[ ! -e "$root/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py" ]] \
+    || fail "legacy update-only rollback retained the new maintenance dispatcher"
 }
 
 test_transaction_rolls_back_platform_and_absent_toolchain_on_validation_failure() {
@@ -440,6 +482,7 @@ test_missing_candidate_component_fails
 test_transaction_promotes_toolchain_after_vpn_health
 test_management_transaction_promotes_dispatch_units
 test_management_transaction_restores_dispatch_units_on_toolchain_validation_failure
+test_management_transaction_restores_legacy_update_only_boundary
 test_transaction_rolls_back_platform_and_absent_toolchain_on_validation_failure
 test_transaction_rejects_writable_trusted_verifier_before_mutation
 

@@ -95,6 +95,8 @@ build_architecture() {
   cp "$ROOT_DIR/deploy/systemd/routegate-mtproto.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/systemd/routegate-update-dispatch.socket" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/systemd/routegate-update-dispatch@.service" "$stage_dir/systemd/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-maintenance-dispatch.socket" "$stage_dir/systemd/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-maintenance-dispatch@.service" "$stage_dir/systemd/"
   cp "$ROOT_DIR/deploy/nginx/routegate.conf.example" "$stage_dir/nginx/"
   cp "$ROOT_DIR/scripts/routegate-recovery" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/release_manifest.py" "$stage_dir/tools/"
@@ -104,6 +106,7 @@ build_architecture() {
   cp "$ROOT_DIR/scripts/routegate-update-transaction.sh" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-verified.sh" "$stage_dir/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-dispatch.py" "$stage_dir/tools/"
+  cp "$ROOT_DIR/scripts/routegate-maintenance-dispatch.py" "$stage_dir/tools/"
 
   cat >"$stage_dir/metadata/manifest.env" <<EOF_MANIFEST
 FORMAT_VERSION=1
@@ -129,7 +132,8 @@ EOF_MANIFEST
     "$stage_dir/tools/routegate-update-bootstrap.sh" \
     "$stage_dir/tools/routegate-update-transaction.sh" \
     "$stage_dir/tools/routegate-update-verified.sh" \
-    "$stage_dir/tools/routegate-update-dispatch.py"
+    "$stage_dir/tools/routegate-update-dispatch.py" \
+    "$stage_dir/tools/routegate-maintenance-dispatch.py"
 
   tar -C "$stage_dir" \
     --sort=name \

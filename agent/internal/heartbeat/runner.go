@@ -9,8 +9,9 @@ import (
 
 	"github.com/ikaevus/routegate/agent/internal/client"
 	"github.com/ikaevus/routegate/agent/internal/config"
-	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/presence"
+	"github.com/ikaevus/routegate/agent/internal/runtimecleanup"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
@@ -30,16 +31,17 @@ type Runner struct {
 	hysteria2Adapter   tasks.VPNCoreAdapter
 	shadowsocksAdapter tasks.VPNCoreAdapter
 	mtprotoAdapter     tasks.VPNCoreAdapter
+	runtimeCleaner     runtimecleanup.Cleaner
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
 	runner := &Runner{
-		cfg:              cfg,
-		configPath:       configPath,
-		client:           client.New(cfg.ManagerURL),
-		logger:           logger,
-		trafficCollector: traffic.NoopCollector{},
-		trafficTracker:   traffic.NewDeltaTracker(),
+		cfg:               cfg,
+		configPath:        configPath,
+		client:            client.New(cfg.ManagerURL),
+		logger:            logger,
+		trafficCollector:  traffic.NoopCollector{},
+		trafficTracker:    traffic.NewDeltaTracker(),
 		presenceCollector: presence.NoopCollector{},
 		vpnCoreAdapter: tasks.NewSingBoxVLESSAdapter(
 			cfg.ConfigStagingDir,
@@ -69,6 +71,7 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 			cfg.MTGPath,
 			cfg.MTProtoServiceName,
 		),
+		runtimeCleaner: runtimecleanup.New(cfg),
 	}
 	if cfg.TrafficCollectionEnabled {
 		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
@@ -100,7 +103,9 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 		if err := r.reportTrafficUsage(ctx); err != nil {
 			r.logger.Warn("report traffic usage failed", "error", err)
 		}
-		if err := r.reportClientPresence(ctx); err != nil { r.logger.Warn("report client presence failed", "error", err) }
+		if err := r.reportClientPresence(ctx); err != nil {
+			r.logger.Warn("report client presence failed", "error", err)
+		}
 		return nil
 	}
 	if err := r.sendHeartbeat(ctx); err != nil {
@@ -112,7 +117,9 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 	if err := r.reportTrafficUsage(ctx); err != nil {
 		r.logger.Warn("report traffic usage failed", "error", err)
 	}
-	if err := r.reportClientPresence(ctx); err != nil { r.logger.Warn("report client presence failed", "error", err) }
+	if err := r.reportClientPresence(ctx); err != nil {
+		r.logger.Warn("report client presence failed", "error", err)
+	}
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval())
 	defer ticker.Stop()
 	for {
@@ -129,19 +136,29 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 			if err := r.reportTrafficUsage(ctx); err != nil {
 				r.logger.Warn("report traffic usage failed", "error", err)
 			}
-			if err := r.reportClientPresence(ctx); err != nil { r.logger.Warn("report client presence failed", "error", err) }
+			if err := r.reportClientPresence(ctx); err != nil {
+				r.logger.Warn("report client presence failed", "error", err)
+			}
 		}
 	}
 }
 
 func (r *Runner) reportClientPresence(ctx context.Context) error {
-	if !r.cfg.ClientPresenceEnabled { return nil }
+	if !r.cfg.ClientPresenceEnabled {
+		return nil
+	}
 	now := time.Now().UTC()
-	if !r.lastPresenceReport.IsZero() && now.Sub(r.lastPresenceReport) < r.cfg.ClientPresenceInterval() { return nil }
+	if !r.lastPresenceReport.IsZero() && now.Sub(r.lastPresenceReport) < r.cfg.ClientPresenceInterval() {
+		return nil
+	}
 	snapshot, err := r.presenceCollector.Collect(ctx)
-	if err != nil { return fmt.Errorf("collect client presence: %w", err) }
+	if err != nil {
+		return fmt.Errorf("collect client presence: %w", err)
+	}
 	res, err := r.client.ReportClientPresence(ctx, r.cfg.AgentToken, snapshot)
-	if err != nil { return fmt.Errorf("submit client presence: %w", err) }
+	if err != nil {
+		return fmt.Errorf("submit client presence: %w", err)
+	}
 	r.lastPresenceReport = now
 	r.logger.Info("client presence report accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "accepted", res.Accepted)
 	return nil
@@ -227,6 +244,8 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return r.processDiagnosticTask(ctx, *task)
 	case tasks.TaskKindPlatformUpdate:
 		return r.processPlatformUpdateReconciliationTask(ctx, *task)
+	case tasks.TaskKindMaintenance:
+		return r.processMaintenanceTask(ctx, *task)
 	case tasks.TaskKindConfigApply:
 		return r.processConfigApplyTask(ctx, *task)
 	default:

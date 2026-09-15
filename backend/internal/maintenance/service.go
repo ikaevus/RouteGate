@@ -31,10 +31,9 @@ func NewService(pool *pgxpool.Pool, recorder auditRecorder) *Service {
 	providers := databaseProviders(pool)
 	providers = append(providers,
 		managerPartialProvider(),
-		unavailableProvider{Category{ID: "raw_traffic_history", Scope: "postgresql", BlockedReason: "rollup_archive_boundary_required"}},
-		unavailableProvider{Category{ID: "platform_rollback_backups", Scope: "manager", BlockedReason: "privileged_cleanup_contract_required"}},
-		unavailableProvider{Category{ID: "agent_runtime_artifacts", Scope: "agent", BlockedReason: "agent_cleanup_contract_required"}},
-		unavailableProvider{Category{ID: "prometheus_tsdb_retention", Scope: "prometheus", BlockedReason: "retention_configuration_only"}},
+		newPlatformRollbackProvider(),
+		newAgentRuntimeProvider(pool),
+		newPrometheusRetentionProvider(),
 	)
 	return &Service{repo: NewRepository(pool), audit: recorder, providers: providers, now: time.Now}
 }
@@ -53,7 +52,13 @@ func (s *Service) Inventory(ctx context.Context) InventoryResponse {
 			response.Categories = append(response.Categories, analysis)
 			continue
 		}
-		item, err := provider.Analyze(ctx, cutoffFor(now, category.RetentionDays))
+		var item PlanItem
+		var err error
+		if inventory, ok := provider.(inventoryProvider); ok {
+			item, err = inventory.Inventory(ctx, cutoffFor(now, category.RetentionDays))
+		} else {
+			item, err = provider.Analyze(ctx, cutoffFor(now, category.RetentionDays))
+		}
 		if err != nil {
 			analysis.Selectable = false
 			analysis.BlockedReason = providerErrorCode(err, "analysis_failed")
@@ -235,6 +240,9 @@ func totalCandidates(items []PlanItem) int64 {
 func providerErrorCode(err error, fallback string) string {
 	if errors.Is(err, ErrUnsafeOwnership) {
 		return "unsafe_ownership"
+	}
+	if errors.Is(err, ErrCategoryUnavailable) {
+		return "provider_unavailable"
 	}
 	if err == nil {
 		return fallback

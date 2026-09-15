@@ -64,6 +64,8 @@ jobs:
           tar -tzf "$bundle" > "$listing"
           grep -Fxq './metadata/manifest.env' "$listing"
           grep -Fxq './tools/routegate-update-core.sh' "$listing"
+          grep -Fxq './tools/routegate-maintenance-dispatch.py' "$listing"
+          grep -Fxq './systemd/routegate-maintenance-dispatch.socket' "$listing"
 
       - name: Validate deploy scripts locally
         shell: bash

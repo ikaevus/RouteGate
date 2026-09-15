@@ -185,6 +185,7 @@ jobs:
           bash scripts/test-update-role.sh
           bash scripts/test-update-toolchain.sh
           bash scripts/test-update-verified.sh
+          python3 -m unittest scripts/test_maintenance_dispatch.py
           bash scripts/routegate-update-transaction.sh --help >/dev/null
           bash scripts/routegate-update-verified.sh --help >/dev/null
 
@@ -216,6 +217,9 @@ jobs:
           grep -Fxq './tools/routegate-update-role.sh' bundle-files.txt
           grep -Fxq './tools/routegate-update-transaction.sh' bundle-files.txt
           grep -Fxq './tools/routegate-update-verified.sh' bundle-files.txt
+          grep -Fxq './tools/routegate-maintenance-dispatch.py' bundle-files.txt
+          grep -Fxq './systemd/routegate-maintenance-dispatch.socket' bundle-files.txt
+          grep -Fxq './systemd/routegate-maintenance-dispatch@.service' bundle-files.txt
           grep -Fxq './metadata/manifest.env' bundle-files.txt
           test -s release-manifest.json
 

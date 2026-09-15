@@ -13,8 +13,9 @@ import (
 
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/diagnostics"
-	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/presence"
+	"github.com/ikaevus/routegate/agent/internal/runtimecleanup"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 	"github.com/ikaevus/routegate/agent/internal/traffic"
 )
@@ -98,10 +99,10 @@ type ReportTrafficUsageResponse struct {
 }
 
 type ReportPresenceResponse struct {
-	OK bool `json:"ok"`
-	AgentID string `json:"agentId"`
+	OK       bool   `json:"ok"`
+	AgentID  string `json:"agentId"`
 	ServerID string `json:"serverId"`
-	Accepted int `json:"accepted"`
+	Accepted int    `json:"accepted"`
 }
 
 func (c *Client) Register(ctx context.Context, cfg config.Config, info systeminfo.Info) (RegisterResponse, error) {
@@ -131,7 +132,7 @@ func (c *Client) Heartbeat(ctx context.Context, agentToken string, info systemin
 }
 
 func advertisedCapabilities(info systeminfo.Info) map[string]any {
-	capabilities := make(map[string]any, len(info.Capabilities)+2)
+	capabilities := make(map[string]any, len(info.Capabilities)+3)
 	for key, value := range info.Capabilities {
 		capabilities[key] = value
 	}
@@ -141,6 +142,11 @@ func advertisedCapabilities(info systeminfo.Info) map[string]any {
 		diagnostics.ProfileManagerCertificate,
 	}
 	capabilities["softwareUpdate"] = softwareUpdateCapability(tasks.PlatformUpdateRuntimeReady())
+	capabilities["maintenanceOperations"] = []string{
+		runtimecleanup.OperationAnalyze,
+		runtimecleanup.OperationCleanup,
+		runtimecleanup.OperationVerify,
+	}
 	return capabilities
 }
 

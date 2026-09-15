@@ -179,10 +179,12 @@ validate_trusted_toolchain_security() {
 }
 
 dispatch_unit_paths() {
-  local socket_path service_path
-  socket_path=$(rg_update_path /etc/systemd/system/routegate-update-dispatch.socket) || return 1
-  service_path=$(rg_update_path /etc/systemd/system/routegate-update-dispatch@.service) || return 1
-  printf '%s\n%s\n' "$socket_path" "$service_path"
+  local update_socket update_service maintenance_socket maintenance_service
+  update_socket=$(rg_update_path /etc/systemd/system/routegate-update-dispatch.socket) || return 1
+  update_service=$(rg_update_path /etc/systemd/system/routegate-update-dispatch@.service) || return 1
+  maintenance_socket=$(rg_update_path /etc/systemd/system/routegate-maintenance-dispatch.socket) || return 1
+  maintenance_service=$(rg_update_path /etc/systemd/system/routegate-maintenance-dispatch@.service) || return 1
+  printf '%s\n%s\n%s\n%s\n' "$update_socket" "$update_service" "$maintenance_socket" "$maintenance_service"
 }
 
 validate_dispatch_candidate() {
@@ -190,87 +192,136 @@ validate_dispatch_candidate() {
   rg_update_role_has_management "$role" || return 0
   for source in \
     "$work_dir/systemd/routegate-update-dispatch.socket" \
-    "$work_dir/systemd/routegate-update-dispatch@.service"; do
+    "$work_dir/systemd/routegate-update-dispatch@.service" \
+    "$work_dir/systemd/routegate-maintenance-dispatch.socket" \
+    "$work_dir/systemd/routegate-maintenance-dispatch@.service" \
+    "$work_dir/tools/routegate-maintenance-dispatch.py"; do
     [[ -f "$source" && ! -L "$source" ]] || {
-      rg_update_die "release bundle is missing privileged dispatch unit: $source"
+      rg_update_die "release bundle is missing privileged dispatch component: $source"
       return 1
     }
   done
+  python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())' \
+    "$work_dir/tools/routegate-maintenance-dispatch.py" || {
+    rg_update_die "release bundle contains an invalid privileged maintenance dispatch executable"
+    return 1
+  }
 }
 
 dispatch_units_state() {
-  local socket_path service_path
-  local -a dispatch_paths
-  mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
-  socket_path=${dispatch_paths[0]}
-  service_path=${dispatch_paths[1]}
+  local update_socket update_service maintenance_socket maintenance_service maintenance_dispatcher
+  local -a paths
+  mapfile -t paths < <(dispatch_unit_paths) || return 1
+  update_socket=${paths[0]}
+  update_service=${paths[1]}
+  maintenance_socket=${paths[2]}
+  maintenance_service=${paths[3]}
+  maintenance_dispatcher=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR/routegate-maintenance-dispatch.py") || return 1
 
-  if [[ ! -e "$socket_path" && ! -L "$socket_path" && ! -e "$service_path" && ! -L "$service_path" ]]; then
+  if [[ ! -e "$update_socket" && ! -L "$update_socket" && ! -e "$update_service" && ! -L "$update_service" \
+    && ! -e "$maintenance_socket" && ! -L "$maintenance_socket" \
+    && ! -e "$maintenance_service" && ! -L "$maintenance_service" \
+    && ! -e "$maintenance_dispatcher" && ! -L "$maintenance_dispatcher" ]]; then
     printf 'absent\n'
     return 0
   fi
-  [[ -f "$socket_path" && ! -L "$socket_path" && -f "$service_path" && ! -L "$service_path" ]] || {
-    rg_update_die "privileged dispatch unit state is partial or unsafe"
+  [[ -f "$update_socket" && ! -L "$update_socket" && -f "$update_service" && ! -L "$update_service" ]] || {
+    rg_update_die "privileged update dispatch unit state is partial or unsafe"
     return 1
   }
-  trusted_path_is_secure "$socket_path" "privileged dispatch socket unit" || return 1
-  trusted_path_is_secure "$service_path" "privileged dispatch service unit" || return 1
+  trusted_path_is_secure "$update_socket" "privileged update dispatch socket unit" || return 1
+  trusted_path_is_secure "$update_service" "privileged update dispatch service unit" || return 1
+  if [[ ! -e "$maintenance_socket" && ! -L "$maintenance_socket" \
+    && ! -e "$maintenance_service" && ! -L "$maintenance_service" \
+    && ! -e "$maintenance_dispatcher" && ! -L "$maintenance_dispatcher" ]]; then
+    printf 'update_only\n'
+    return 0
+  fi
+  [[ -f "$maintenance_socket" && ! -L "$maintenance_socket" \
+    && -f "$maintenance_service" && ! -L "$maintenance_service" \
+    && -f "$maintenance_dispatcher" && ! -L "$maintenance_dispatcher" \
+    && -x "$maintenance_dispatcher" ]] || {
+    rg_update_die "privileged maintenance dispatch state is partial or unsafe"
+    return 1
+  }
+  trusted_path_is_secure "$maintenance_socket" "privileged maintenance dispatch socket unit" || return 1
+  trusted_path_is_secure "$maintenance_service" "privileged maintenance dispatch service unit" || return 1
+  trusted_path_is_secure "$maintenance_dispatcher" "privileged maintenance dispatch executable" || return 1
   printf 'complete\n'
 }
 
 create_dispatch_units_backup() {
-  local role=$1 backup_dir=$2 state enabled=0 active=0
-  local socket_path service_path backup_units
-  local -a dispatch_paths
+  local role=$1 backup_dir=$2 state update_enabled=0 update_active=0 maintenance_enabled=0 maintenance_active=0
+  local update_socket update_service maintenance_socket maintenance_service maintenance_dispatcher backup_units
+  local -a paths
   rg_update_role_has_management "$role" || return 0
 
   state=$(dispatch_units_state) || return 1
+  if [[ -z "$RG_UPDATE_ROOT" && ( "$state" == "complete" || "$state" == "update_only" ) ]]; then
+    systemctl is-enabled --quiet routegate-update-dispatch.socket >/dev/null 2>&1 && update_enabled=1
+    systemctl is-active --quiet routegate-update-dispatch.socket >/dev/null 2>&1 && update_active=1
+  fi
   if [[ -z "$RG_UPDATE_ROOT" && "$state" == "complete" ]]; then
-    if systemctl is-enabled --quiet routegate-update-dispatch.socket >/dev/null 2>&1; then
-      enabled=1
-    fi
-    if systemctl is-active --quiet routegate-update-dispatch.socket >/dev/null 2>&1; then
-      active=1
-    fi
+    systemctl is-enabled --quiet routegate-maintenance-dispatch.socket >/dev/null 2>&1 && maintenance_enabled=1
+    systemctl is-active --quiet routegate-maintenance-dispatch.socket >/dev/null 2>&1 && maintenance_active=1
   fi
   cat >"$backup_dir/dispatch-units.meta" <<EOF_DISPATCH_META
-FORMAT_VERSION=1
+FORMAT_VERSION=2
 STATE=$state
-ENABLED=$enabled
-ACTIVE=$active
+UPDATE_ENABLED=$update_enabled
+UPDATE_ACTIVE=$update_active
+MAINTENANCE_ENABLED=$maintenance_enabled
+MAINTENANCE_ACTIVE=$maintenance_active
 EOF_DISPATCH_META
   chmod 0600 "$backup_dir/dispatch-units.meta" || return 1
 
-  if [[ "$state" == "complete" ]]; then
-    mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
-    socket_path=${dispatch_paths[0]}
-    service_path=${dispatch_paths[1]}
+  if [[ "$state" == "complete" || "$state" == "update_only" ]]; then
+    mapfile -t paths < <(dispatch_unit_paths) || return 1
+    update_socket=${paths[0]}
+    update_service=${paths[1]}
+    maintenance_socket=${paths[2]}
+    maintenance_service=${paths[3]}
     backup_units="$backup_dir/dispatch-units"
     install -d -m 0700 "$backup_units" || return 1
-    cp -a -- "$socket_path" "$backup_units/routegate-update-dispatch.socket" || return 1
-    cp -a -- "$service_path" "$backup_units/routegate-update-dispatch@.service" || return 1
+    cp -a -- "$update_socket" "$backup_units/routegate-update-dispatch.socket" || return 1
+    cp -a -- "$update_service" "$backup_units/routegate-update-dispatch@.service" || return 1
+    if [[ "$state" == "complete" ]]; then
+      maintenance_dispatcher=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR/routegate-maintenance-dispatch.py") || return 1
+      cp -a -- "$maintenance_socket" "$backup_units/routegate-maintenance-dispatch.socket" || return 1
+      cp -a -- "$maintenance_service" "$backup_units/routegate-maintenance-dispatch@.service" || return 1
+      cp -a -- "$maintenance_dispatcher" "$backup_units/routegate-maintenance-dispatch.py" || return 1
+    fi
   fi
-  log "privileged dispatch unit backup state=$state"
+  log "privileged dispatch backup state=$state"
 }
 
 install_dispatch_units() {
-  local role=$1 work_dir=$2 socket_path service_path
-  local -a dispatch_paths
+  local role=$1 work_dir=$2 update_socket update_service maintenance_socket maintenance_service maintenance_dispatcher
+  local -a paths
   rg_update_role_has_management "$role" || return 0
   validate_dispatch_candidate "$role" "$work_dir" || return 1
-  mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
-  socket_path=${dispatch_paths[0]}
-  service_path=${dispatch_paths[1]}
+  mapfile -t paths < <(dispatch_unit_paths) || return 1
+  update_socket=${paths[0]}
+  update_service=${paths[1]}
+  maintenance_socket=${paths[2]}
+  maintenance_service=${paths[3]}
+  maintenance_dispatcher=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR/routegate-maintenance-dispatch.py") || return 1
 
-  install -d -m 0755 "$(dirname "$socket_path")" || return 1
-  install -m 0644 "$work_dir/systemd/routegate-update-dispatch.socket" "$socket_path" || return 1
-  install -m 0644 "$work_dir/systemd/routegate-update-dispatch@.service" "$service_path" || return 1
-  trusted_path_is_secure "$socket_path" "privileged dispatch socket unit" || return 1
-  trusted_path_is_secure "$service_path" "privileged dispatch service unit" || return 1
+  install -d -m 0755 "$(dirname "$update_socket")" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-update-dispatch.socket" "$update_socket" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-update-dispatch@.service" "$update_service" || return 1
+  install -m 0755 "$work_dir/tools/routegate-maintenance-dispatch.py" "$maintenance_dispatcher" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-maintenance-dispatch.socket" "$maintenance_socket" || return 1
+  install -m 0644 "$work_dir/systemd/routegate-maintenance-dispatch@.service" "$maintenance_service" || return 1
+  trusted_path_is_secure "$update_socket" "privileged update dispatch socket unit" || return 1
+  trusted_path_is_secure "$update_service" "privileged update dispatch service unit" || return 1
+  trusted_path_is_secure "$maintenance_dispatcher" "privileged maintenance dispatch executable" || return 1
+  trusted_path_is_secure "$maintenance_socket" "privileged maintenance dispatch socket unit" || return 1
+  trusted_path_is_secure "$maintenance_service" "privileged maintenance dispatch service unit" || return 1
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
     systemctl daemon-reload || return 1
   fi
-  log "privileged dispatch unit files promoted"
+  log "privileged update and maintenance dispatch components promoted"
 }
 
 activate_dispatch_units() {
@@ -278,74 +329,77 @@ activate_dispatch_units() {
   rg_update_role_has_management "$role" || return 0
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
     systemctl enable --now routegate-update-dispatch.socket || return 1
+    systemctl enable --now routegate-maintenance-dispatch.socket || return 1
   fi
-  log "privileged dispatch socket active"
+  log "privileged update and maintenance dispatch sockets active"
 }
 
 restore_dispatch_units_backup() {
-  local role=$1 backup_dir=$2 meta state enabled active rollback_rc=0
-  local socket_path service_path backup_units
-  local -a dispatch_paths
+  local role=$1 backup_dir=$2 meta state update_enabled update_active maintenance_enabled maintenance_active rollback_rc=0
+  local update_socket update_service maintenance_socket maintenance_service maintenance_dispatcher backup_units
+  local -a paths
   rg_update_role_has_management "$role" || return 0
 
   meta="$backup_dir/dispatch-units.meta"
   [[ -f "$meta" && ! -L "$meta" ]] || {
-    rg_update_die "privileged dispatch unit backup metadata is missing"
+    rg_update_die "privileged dispatch backup metadata is missing"
     return 1
   }
-  [[ "$(sed -n 's/^FORMAT_VERSION=//p' "$meta" | head -n1)" == "1" ]] || {
-    rg_update_die "unsupported privileged dispatch unit backup metadata"
-    return 1
-  }
+  [[ "$(sed -n 's/^FORMAT_VERSION=//p' "$meta" | head -n1)" == "2" ]] || return 1
   state=$(sed -n 's/^STATE=//p' "$meta" | head -n1) || return 1
-  enabled=$(sed -n 's/^ENABLED=//p' "$meta" | head -n1) || return 1
-  active=$(sed -n 's/^ACTIVE=//p' "$meta" | head -n1) || return 1
-  [[ "$state" == "absent" || "$state" == "complete" ]] || {
-    rg_update_die "invalid privileged dispatch unit backup state: ${state:-missing}"
-    return 1
-  }
-  [[ "$enabled" == "0" || "$enabled" == "1" ]] || return 1
-  [[ "$active" == "0" || "$active" == "1" ]] || return 1
+  update_enabled=$(sed -n 's/^UPDATE_ENABLED=//p' "$meta" | head -n1) || return 1
+  update_active=$(sed -n 's/^UPDATE_ACTIVE=//p' "$meta" | head -n1) || return 1
+  maintenance_enabled=$(sed -n 's/^MAINTENANCE_ENABLED=//p' "$meta" | head -n1) || return 1
+  maintenance_active=$(sed -n 's/^MAINTENANCE_ACTIVE=//p' "$meta" | head -n1) || return 1
+  [[ "$state" == "absent" || "$state" == "update_only" || "$state" == "complete" ]] || return 1
+  for value in "$update_enabled" "$update_active" "$maintenance_enabled" "$maintenance_active"; do
+    [[ "$value" == "0" || "$value" == "1" ]] || return 1
+  done
 
-  mapfile -t dispatch_paths < <(dispatch_unit_paths) || return 1
-  socket_path=${dispatch_paths[0]}
-  service_path=${dispatch_paths[1]}
+  mapfile -t paths < <(dispatch_unit_paths) || return 1
+  update_socket=${paths[0]}
+  update_service=${paths[1]}
+  maintenance_socket=${paths[2]}
+  maintenance_service=${paths[3]}
+  maintenance_dispatcher=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR/routegate-maintenance-dispatch.py") || return 1
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
     systemctl disable --now routegate-update-dispatch.socket >/dev/null 2>&1 || true
+    systemctl disable --now routegate-maintenance-dispatch.socket >/dev/null 2>&1 || true
   fi
+  rm -f -- "$update_socket" "$update_service" "$maintenance_socket" "$maintenance_service" "$maintenance_dispatcher" || rollback_rc=1
 
-  if [[ "$state" == "absent" ]]; then
-    rm -f -- "$socket_path" "$service_path" || rollback_rc=1
-  else
+  if [[ "$state" == "complete" || "$state" == "update_only" ]]; then
     backup_units="$backup_dir/dispatch-units"
-    [[ -f "$backup_units/routegate-update-dispatch.socket" \
-      && ! -L "$backup_units/routegate-update-dispatch.socket" \
-      && -f "$backup_units/routegate-update-dispatch@.service" \
-      && ! -L "$backup_units/routegate-update-dispatch@.service" ]] || {
-      rg_update_die "privileged dispatch unit backup is incomplete"
-      return 1
-    }
-    install -d -m 0755 "$(dirname "$socket_path")" || rollback_rc=1
-    install -m 0644 "$backup_units/routegate-update-dispatch.socket" "$socket_path" || rollback_rc=1
-    install -m 0644 "$backup_units/routegate-update-dispatch@.service" "$service_path" || rollback_rc=1
+    install -d -m 0755 "$(dirname "$update_socket")" || rollback_rc=1
+    install -m 0644 "$backup_units/routegate-update-dispatch.socket" "$update_socket" || rollback_rc=1
+    install -m 0644 "$backup_units/routegate-update-dispatch@.service" "$update_service" || rollback_rc=1
+    if [[ "$state" == "complete" ]]; then
+      install -m 0644 "$backup_units/routegate-maintenance-dispatch.socket" "$maintenance_socket" || rollback_rc=1
+      install -m 0644 "$backup_units/routegate-maintenance-dispatch@.service" "$maintenance_service" || rollback_rc=1
+      install -m 0755 "$backup_units/routegate-maintenance-dispatch.py" "$maintenance_dispatcher" || rollback_rc=1
+    fi
   fi
 
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
     systemctl daemon-reload || rollback_rc=1
-    if [[ "$state" == "complete" ]]; then
-      if [[ "$enabled" == "1" ]]; then
+    if [[ "$state" == "complete" || "$state" == "update_only" ]]; then
+      if [[ "$update_enabled" == "1" ]]; then
         systemctl enable routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
-      else
-        systemctl disable routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
       fi
-      if [[ "$active" == "1" ]]; then
+      if [[ "$update_active" == "1" ]]; then
         systemctl start routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
-      else
-        systemctl stop routegate-update-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+      fi
+    fi
+    if [[ "$state" == "complete" ]]; then
+      if [[ "$maintenance_enabled" == "1" ]]; then
+        systemctl enable routegate-maintenance-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
+      fi
+      if [[ "$maintenance_active" == "1" ]]; then
+        systemctl start routegate-maintenance-dispatch.socket >/dev/null 2>&1 || rollback_rc=1
       fi
     fi
   fi
-  log "privileged dispatch unit rollback restored state=$state"
+  log "privileged dispatch rollback restored state=$state"
   return "$rollback_rc"
 }
 
@@ -362,10 +416,10 @@ rollback() {
 
     rg_update_restore_role_backup "$ROLE" "$BACKUP_DIR" "$DB_URL" "$DB_MAY_BE_MUTATED" \
       || platform_rollback_rc=$?
-    restore_dispatch_units_backup "$ROLE" "$BACKUP_DIR" \
-      || dispatch_rollback_rc=$?
     rg_update_restore_toolchain_backup "$BACKUP_DIR" \
       || toolchain_rollback_rc=$?
+    restore_dispatch_units_backup "$ROLE" "$BACKUP_DIR" \
+      || dispatch_rollback_rc=$?
     if ((toolchain_rollback_rc == 0)); then
       validate_trusted_toolchain_security || toolchain_rollback_rc=$?
     fi

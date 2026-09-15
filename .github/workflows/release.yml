@@ -83,6 +83,9 @@ jobs:
             grep -Fxq './tools/routegate-update-role.sh' "$listing"
             grep -Fxq './tools/routegate-update-transaction.sh' "$listing"
             grep -Fxq './tools/routegate-update-verified.sh' "$listing"
+            grep -Fxq './tools/routegate-maintenance-dispatch.py' "$listing"
+            grep -Fxq './systemd/routegate-maintenance-dispatch.socket' "$listing"
+            grep -Fxq './systemd/routegate-maintenance-dispatch@.service' "$listing"
             grep -Fxq './metadata/manifest.env' "$listing"
           done
           test -s release-manifest.json
