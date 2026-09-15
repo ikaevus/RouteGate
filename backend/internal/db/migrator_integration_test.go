@@ -42,9 +42,11 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000152_maintenance_cleanup_plans" {
-		t.Fatalf("applied schema version = %q, want 000152_maintenance_cleanup_plans", version)
+	if version != "000154_agent_maintenance_operations" {
+		t.Fatalf("applied schema version = %q, want 000154_agent_maintenance_operations", version)
 	}
+	assertRawTrafficArchivalPreservesDailyRollup(t, ctx, pool)
+	assertAgentMaintenanceJobContract(t, ctx, pool)
 
 	var defaultRoleServerID, deploymentRoleDefault string
 	if err := pool.QueryRow(ctx, `
@@ -209,6 +211,137 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	}
 	if !pairingColumns["start_parameter_hash"] {
 		t.Fatal("telegram_pairing_sessions must store only the start parameter hash")
+	}
+}
+
+func assertRawTrafficArchivalPreservesDailyRollup(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var serverID, agentID, accountID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO servers (name, status)
+		VALUES ('raw retention fixture', 'active')
+		RETURNING id::text
+	`).Scan(&serverID); err != nil {
+		t.Fatalf("create raw retention server: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO agents (server_id, agent_version, token_hash, status)
+		VALUES ($1::uuid, 'test', 'raw-retention-agent', 'online')
+		RETURNING id::text
+	`, serverID).Scan(&agentID); err != nil {
+		t.Fatalf("create raw retention agent: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_accounts (username, protocol, display_name, status, server_id)
+		VALUES ('raw-retention', 'sing-box', 'Raw retention fixture', 'active', $1::uuid)
+		RETURNING id::text
+	`, serverID).Scan(&accountID); err != nil {
+		t.Fatalf("create raw retention account: %v", err)
+	}
+	observedAt := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO traffic_usage_events (server_id, agent_id, vpn_account_id, rx_bytes, tx_bytes, observed_at)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, 100, 50, $4)
+	`, serverID, agentID, accountID, observedAt); err != nil {
+		t.Fatalf("create raw retention event: %v", err)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin raw retention archival: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT set_config('routegate.preserve_traffic_rollup', 'on', true)`); err != nil {
+		t.Fatalf("mark archival transaction: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM traffic_usage_events WHERE vpn_account_id = $1::uuid`, accountID); err != nil {
+		t.Fatalf("archive raw retention event: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit raw retention archival: %v", err)
+	}
+
+	var eventCount, rxBytes, txBytes int64
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM traffic_usage_events WHERE vpn_account_id = $1::uuid`, accountID).Scan(&eventCount); err != nil {
+		t.Fatalf("count archived raw events: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT rx_bytes, tx_bytes
+		FROM traffic_usage_daily
+		WHERE server_id = $1::uuid AND usage_date = $2::date
+	`, serverID, observedAt).Scan(&rxBytes, &txBytes); err != nil {
+		t.Fatalf("read preserved daily rollup: %v", err)
+	}
+	if eventCount != 0 || rxBytes != 100 || txBytes != 50 {
+		t.Fatalf("raw archival result events=%d daily=(%d,%d), want 0 and (100,50)", eventCount, rxBytes, txBytes)
+	}
+
+	var ordinaryEventID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO traffic_usage_events (server_id, agent_id, vpn_account_id, rx_bytes, tx_bytes, observed_at)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, 30, 20, $4)
+		RETURNING id::text
+	`, serverID, agentID, accountID, observedAt).Scan(&ordinaryEventID); err != nil {
+		t.Fatalf("create ordinary-delete traffic event: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM traffic_usage_events WHERE id = $1::uuid`, ordinaryEventID); err != nil {
+		t.Fatalf("delete ordinary traffic event: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT rx_bytes, tx_bytes
+		FROM traffic_usage_daily
+		WHERE server_id = $1::uuid AND usage_date = $2::date
+	`, serverID, observedAt).Scan(&rxBytes, &txBytes); err != nil {
+		t.Fatalf("read daily rollup after ordinary delete: %v", err)
+	}
+	if rxBytes != 100 || txBytes != 50 {
+		t.Fatalf("transaction-local archival marker leaked: daily=(%d,%d), want (100,50)", rxBytes, txBytes)
+	}
+}
+
+func assertAgentMaintenanceJobContract(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var serverID, agentID string
+	if err := pool.QueryRow(ctx, `
+		SELECT server_id::text, id::text
+		FROM agents
+		WHERE token_hash = 'raw-retention-agent'
+	`).Scan(&serverID, &agentID); err != nil {
+		t.Fatalf("read Agent maintenance fixture: %v", err)
+	}
+	var schemaVersion int
+	var jobID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO agent_operation_jobs (server_id, agent_id, kind, operation, request_payload)
+		VALUES (
+			$1::uuid, $2::uuid, 'maintenance', 'analyze_runtime_artifacts',
+			'{"schemaVersion":1,"cutoff":"2026-01-01T00:00:00Z"}'::jsonb
+		)
+		RETURNING (request_payload ->> 'schemaVersion')::int, id::text
+	`, serverID, agentID).Scan(&schemaVersion, &jobID); err != nil {
+		t.Fatalf("create typed Agent maintenance job: %v", err)
+	}
+	if schemaVersion != 1 {
+		t.Fatalf("Agent maintenance request schema=%d, want 1", schemaVersion)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE agent_operation_jobs
+		SET status = 'succeeded', started_at = now(), completed_at = now(), updated_at = now()
+		WHERE id = $1::uuid
+	`, jobID); err != nil {
+		t.Fatalf("complete typed Agent maintenance fixture: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO agent_operation_jobs (server_id, agent_id, kind, operation)
+		VALUES ($1::uuid, $2::uuid, 'maintenance', 'shell')
+	`, serverID, agentID); err == nil {
+		t.Fatal("Agent maintenance job constraint accepted an arbitrary operation")
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO agent_operation_jobs (server_id, agent_id, kind, operation, request_payload)
+		VALUES ($1::uuid, $2::uuid, 'vpn_core_service', 'restart', '{"path":"/tmp"}'::jsonb)
+	`, serverID, agentID); err == nil {
+		t.Fatal("non-maintenance Agent operation accepted a request payload")
 	}
 }
 
@@ -397,8 +530,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000152_maintenance_cleanup_plans" {
-		t.Fatalf("applied schema version = %q, want 000152_maintenance_cleanup_plans", version)
+	if version != "000154_agent_maintenance_operations" {
+		t.Fatalf("applied schema version = %q, want 000154_agent_maintenance_operations", version)
 	}
 }
 

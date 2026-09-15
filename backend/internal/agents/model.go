@@ -24,16 +24,20 @@ const (
 	AgentTaskKindVPNCoreService = "vpn_core_service"
 	AgentTaskKindVPNCoreInstall = "vpn_core_install"
 	AgentTaskKindDiagnostic     = "diagnostic"
+	AgentTaskKindMaintenance    = "maintenance"
 )
 
 const (
-	VPNCoreOperationStart          = "start"
-	VPNCoreOperationStop           = "stop"
-	VPNCoreOperationRestart        = "restart"
-	VPNCoreOperationInstallSingBox = "install_sing_box"
+	VPNCoreOperationStart                 = "start"
+	VPNCoreOperationStop                  = "stop"
+	VPNCoreOperationRestart               = "restart"
+	VPNCoreOperationInstallSingBox        = "install_sing_box"
 	DiagnosticOperationHostOverview       = "host_overview"
 	DiagnosticOperationVPNCoreStatus      = "vpn_core_status"
 	DiagnosticOperationManagerCertificate = "manager_certificate"
+	MaintenanceOperationAnalyze           = "analyze_runtime_artifacts"
+	MaintenanceOperationCleanup           = "cleanup_runtime_artifacts"
+	MaintenanceOperationVerify            = "verify_runtime_artifacts"
 )
 
 type Capabilities map[string]any
@@ -103,7 +107,7 @@ type CreateOrReplaceAgentInput struct {
 	ProtocolVersion *int
 	TokenHash       string
 	Capabilities    Capabilities
-	Status           string
+	Status          string
 	RegisteredAt    *time.Time
 	LastSeenAt      *time.Time
 }

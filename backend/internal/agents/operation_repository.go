@@ -22,9 +22,10 @@ const (
 )
 
 type CreateAgentOperationJobInput struct {
-	ServerID  string
-	Kind      string
-	Operation string
+	ServerID       string
+	Kind           string
+	Operation      string
+	RequestPayload map[string]any
 }
 
 type CompleteAgentOperationJobInput struct {
@@ -53,7 +54,47 @@ func ValidDiagnosticOperation(operation string) bool {
 	}
 }
 
+func ValidMaintenanceOperation(operation string) bool {
+	switch strings.TrimSpace(operation) {
+	case MaintenanceOperationAnalyze, MaintenanceOperationCleanup, MaintenanceOperationVerify:
+		return true
+	default:
+		return false
+	}
+}
+
+type agentOperationQueryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAgentOperationJobInput) (AgentConfigTask, error) {
+	job, err := createAgentOperationJob(ctx, r.pool, input)
+	job.RenderedConfig = nil
+	return job, err
+}
+
+func (r *Repository) CreateAgentOperationJobs(ctx context.Context, inputs []CreateAgentOperationJobInput) ([]AgentConfigTask, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	jobs := make([]AgentConfigTask, 0, len(inputs))
+	for _, input := range inputs {
+		job, err := createAgentOperationJob(ctx, tx, input)
+		if err != nil {
+			return nil, err
+		}
+		job.RenderedConfig = nil
+		jobs = append(jobs, job)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func createAgentOperationJob(ctx context.Context, query agentOperationQueryRower, input CreateAgentOperationJobInput) (AgentConfigTask, error) {
 	kind := strings.TrimSpace(input.Kind)
 	if kind == "" {
 		kind = AgentTaskKindVPNCoreService
@@ -71,9 +112,21 @@ func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAg
 		return AgentConfigTask{}, err
 	}
 
-	return scanAgentOperationTask(r.pool.QueryRow(ctx, `
-		INSERT INTO agent_operation_jobs (server_id, agent_id, kind, operation)
-		SELECT $1::uuid, a.id, $2, $3
+	requestPayload := input.RequestPayload
+	if requestPayload == nil {
+		requestPayload = map[string]any{}
+	}
+	requestPayloadJSON, err := json.Marshal(requestPayload)
+	if err != nil {
+		return AgentConfigTask{}, err
+	}
+	if len(requestPayloadJSON) > maxAgentOperationResultPayloadBytes {
+		return AgentConfigTask{}, fmt.Errorf("agent operation request payload exceeds %d bytes", maxAgentOperationResultPayloadBytes)
+	}
+
+	return scanAgentOperationTask(query.QueryRow(ctx, `
+		INSERT INTO agent_operation_jobs (server_id, agent_id, kind, operation, request_payload)
+		SELECT $1::uuid, a.id, $2, $3, $5::jsonb
 		FROM agents a
 		WHERE a.server_id = $1::uuid
 		  AND a.status <> 'disabled'
@@ -86,10 +139,11 @@ func (r *Repository) CreateAgentOperationJob(ctx context.Context, input CreateAg
 			agent_id::text,
 			kind,
 			operation,
+			request_payload,
 			status,
 			created_at,
 			started_at
-	`, input.ServerID, kind, operation, capabilityJSON))
+	`, input.ServerID, kind, operation, capabilityJSON, requestPayloadJSON))
 }
 
 func operationCapability(kind, operation string) (string, error) {
@@ -100,6 +154,8 @@ func operationCapability(kind, operation string) (string, error) {
 		return "vpnCoreInstallationOperations", nil
 	case kind == AgentTaskKindDiagnostic && ValidDiagnosticOperation(operation):
 		return "diagnosticProfiles", nil
+	case kind == AgentTaskKindMaintenance && ValidMaintenanceOperation(operation):
+		return "maintenanceOperations", nil
 	default:
 		return "", fmt.Errorf("unsupported Agent operation kind %q operation %q", kind, operation)
 	}
@@ -294,6 +350,7 @@ func (r *Repository) ClaimNextAgentOperationTask(ctx context.Context, tokenHash 
 			j.agent_id::text,
 			j.kind,
 			j.operation,
+			j.request_payload,
 			j.status,
 			j.created_at,
 			j.started_at
@@ -571,6 +628,7 @@ func (r *Repository) completeInProgressPlatformUpdate(ctx context.Context, input
 
 func scanAgentOperationTask(row scanner) (AgentConfigTask, error) {
 	var task AgentConfigTask
+	var requestPayload []byte
 	var startedAt sql.NullTime
 	err := row.Scan(
 		&task.ID,
@@ -578,12 +636,16 @@ func scanAgentOperationTask(row scanner) (AgentConfigTask, error) {
 		&task.AgentID,
 		&task.Kind,
 		&task.Operation,
+		&requestPayload,
 		&task.Status,
 		&task.CreatedAt,
 		&startedAt,
 	)
 	if err != nil {
 		return AgentConfigTask{}, err
+	}
+	if len(requestPayload) > 0 {
+		task.RenderedConfig = append([]byte(nil), requestPayload...)
 	}
 	if startedAt.Valid {
 		task.StartedAt = &startedAt.Time

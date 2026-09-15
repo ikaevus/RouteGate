@@ -55,7 +55,7 @@ func (h *Handler) CreateVPNCoreOperation(w http.ResponseWriter, r *http.Request)
 
 	serverID := strings.TrimSpace(r.PathValue("server_id"))
 	job, err := repository.CreateAgentOperationJob(r.Context(), CreateAgentOperationJobInput{ServerID: serverID, Operation: request.Operation})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && job.Kind != AgentTaskKindVPNCoreService) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("server_or_agent_not_found", "A connected compatible Agent was not found."))
 		return
 	}
@@ -84,7 +84,7 @@ func (h *Handler) GetVPNCoreOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := repository.GetAgentOperationJob(r.Context(), strings.TrimSpace(r.PathValue("server_id")), strings.TrimSpace(r.PathValue("job_id")))
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && job.Kind != AgentTaskKindVPNCoreService) {
 		httpx.WriteJSON(w, http.StatusNotFound, httpx.Error("operation_not_found", "VPN Core operation was not found."))
 		return
 	}

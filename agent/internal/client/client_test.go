@@ -102,6 +102,10 @@ func TestAdvertisedCapabilitiesIncludeManagerCertificateDiagnostic(t *testing.T)
 	if !found {
 		t.Fatalf("manager certificate diagnostic is not advertised: %+v", profiles)
 	}
+	maintenance, ok := capabilities["maintenanceOperations"].([]string)
+	if !ok || len(maintenance) != 3 {
+		t.Fatalf("maintenanceOperations = %#v, want three typed operations", capabilities["maintenanceOperations"])
+	}
 }
 
 func TestNextTaskDecodesRenderedConfigLargerThanErrorBodyLimit(t *testing.T) {

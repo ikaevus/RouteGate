@@ -62,6 +62,17 @@ function formatBytes(value?: number): string {
   }).format(value / (value >= 1024 * 1024 ? 1024 * 1024 : 1024));
 }
 
+function categoryMetricLabel(id: string): string {
+  return id === 'prometheus_tsdb_retention' ? t('maintenance.policyChanges') : t('maintenance.items');
+}
+
+function previewAction(item: MaintenancePlan['payload']['items'][number]): string {
+  if (item.categoryId === 'prometheus_tsdb_retention') {
+    return item.candidateCount > 0 ? t('maintenance.applyRetention') : t('maintenance.retentionAlreadyApplied');
+  }
+  return t('maintenance.deleteItems', { count: item.candidateCount });
+}
+
 function CategoryRow({
   category,
   advanced,
@@ -94,7 +105,7 @@ function CategoryRow({
       </span>
       <span className="maintenance-category-metric">
         <strong>{category.candidateCount}</strong>
-        <span>{t('maintenance.items')}</span>
+        <span>{categoryMetricLabel(category.id)}</span>
         {category.retentionDays > 0 && <small>{t('maintenance.retention', { days: category.retentionDays })}</small>}
         {category.estimatedBytes ? <small>{formatBytes(category.estimatedBytes)}</small> : null}
       </span>
@@ -215,7 +226,7 @@ export function MaintenancePanel() {
             {preview.plan.payload.items.map((item) => (
               <div key={item.categoryId}>
                 <span>{categoryTitle(item.categoryId)}</span>
-                <strong>{t('maintenance.deleteItems', { count: item.candidateCount })}</strong>
+                <strong>{previewAction(item)}</strong>
               </div>
             ))}
           </div>

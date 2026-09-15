@@ -30,6 +30,10 @@ type Provider interface {
 	Verify(context.Context, PlanItem) (int64, error)
 }
 
+type inventoryProvider interface {
+	Inventory(context.Context, time.Time) (PlanItem, error)
+}
+
 type unavailableProvider struct{ category Category }
 
 func (p unavailableProvider) Category() Category { return p.category }

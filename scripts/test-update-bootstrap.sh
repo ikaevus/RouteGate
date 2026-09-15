@@ -27,8 +27,11 @@ make_bundle_fixture() {
   cp "$ROOT_DIR/scripts/routegate-update-role.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-transaction.sh" "$bundle/tools/"
   cp "$ROOT_DIR/scripts/routegate-update-dispatch.py" "$bundle/tools/"
+  cp "$ROOT_DIR/scripts/routegate-maintenance-dispatch.py" "$bundle/tools/"
   cp "$ROOT_DIR/deploy/systemd/routegate-update-dispatch.socket" "$bundle/systemd/"
   cp "$ROOT_DIR/deploy/systemd/routegate-update-dispatch@.service" "$bundle/systemd/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-maintenance-dispatch.socket" "$bundle/systemd/"
+  cp "$ROOT_DIR/deploy/systemd/routegate-maintenance-dispatch@.service" "$bundle/systemd/"
 
   cat >"$bundle/tools/routegate-update-verified.sh" <<'EOF_VERIFIED_FIXTURE'
 #!/usr/bin/env bash
@@ -50,7 +53,8 @@ EOF_VERIFIED_FIXTURE
   chmod 0755 \
     "$bundle/tools/routegate-update-bootstrap.sh" \
     "$bundle/tools/routegate-update-verified.sh" \
-    "$bundle/tools/routegate-update-dispatch.py"
+    "$bundle/tools/routegate-update-dispatch.py" \
+    "$bundle/tools/routegate-maintenance-dispatch.py"
 }
 
 populate_management_plane() {
@@ -94,6 +98,12 @@ test_fresh_bootstrap_and_preserve() {
     || fail "dispatch service unit was not installed"
   [[ $(stat -c '%a' "$root/etc/systemd/system/routegate-update-dispatch.socket") == 644 ]] \
     || fail "dispatch socket unit mode is not 0644"
+  [[ -x "$tool_dir/routegate-maintenance-dispatch.py" && ! -L "$tool_dir/routegate-maintenance-dispatch.py" ]] \
+    || fail "privileged maintenance dispatch executable was not installed"
+  [[ -f "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" ]] \
+    || fail "maintenance dispatch socket unit was not installed"
+  [[ -f "$root/etc/systemd/system/routegate-maintenance-dispatch@.service" ]] \
+    || fail "maintenance dispatch service unit was not installed"
   sudo test -f "$root/var/lib/routegate-test/verifier-runtime" \
     || fail "fresh bootstrap did not invoke verifier runtime installation"
 
@@ -118,6 +128,10 @@ test_vpn_only_bootstrap_skips_manager_socket() {
     || fail "VPN-only bootstrap installed a Manager-facing dispatch socket"
   [[ ! -e "$root/etc/systemd/system/routegate-update-dispatch@.service" ]] \
     || fail "VPN-only bootstrap installed a Manager-facing dispatch service"
+  [[ ! -e "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" ]] \
+    || fail "VPN-only bootstrap installed a Manager-facing maintenance socket"
+  [[ ! -e "$root/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py" ]] \
+    || fail "VPN-only bootstrap installed the Manager-only maintenance dispatcher"
 }
 
 test_rejects_writable_existing_verifier() {

@@ -185,10 +185,30 @@ func TestCreateVPNCoreInstallationAcceptsAllowListedRuntime(t *testing.T) {
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusAccepted, response.Body.String())
 	}
-	if repository.operationCreateInput != (CreateAgentOperationJobInput{
-		ServerID: "server-id", Kind: AgentTaskKindVPNCoreInstall, Operation: VPNCoreOperationInstallMTG,
-	}) {
+	if repository.operationCreateInput.ServerID != "server-id" ||
+		repository.operationCreateInput.Kind != AgentTaskKindVPNCoreInstall ||
+		repository.operationCreateInput.Operation != VPNCoreOperationInstallMTG ||
+		repository.operationCreateInput.RequestPayload != nil {
 		t.Fatalf("unexpected installation request: %+v", repository.operationCreateInput)
+	}
+}
+
+func TestGetVPNCoreOperationDoesNotExposeMaintenanceJob(t *testing.T) {
+	repository := newOperationAwareFakeRepository()
+	repository.operationQueryTask = AgentConfigTask{
+		ID: "maintenance-job", Kind: AgentTaskKindMaintenance, ServerID: "server-id",
+		Operation: MaintenanceOperationCleanup, Status: AgentOperationJobStatusSucceeded,
+	}
+	handler := testAgentHandler(repository)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/servers/server-id/vpn-core/operations/maintenance-job", nil)
+	request.SetPathValue("server_id", "server-id")
+	request.SetPathValue("job_id", "maintenance-job")
+	response := httptest.NewRecorder()
+
+	handler.GetVPNCoreOperation(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNotFound, response.Body.String())
 	}
 }
 

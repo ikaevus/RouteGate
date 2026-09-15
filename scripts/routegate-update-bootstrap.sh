@@ -149,8 +149,9 @@ install_attestation_verifier_runtime() {
 }
 
 install_dispatch_boundary() {
-  local manager_target dispatcher_target socket_source service_source
-  local socket_target service_target tool_dir
+  local manager_target dispatcher_target maintenance_dispatcher_target
+  local socket_source service_source maintenance_socket_source maintenance_service_source
+  local socket_target service_target maintenance_socket_target maintenance_service_target tool_dir source
 
   manager_target=$(rg_update_path /usr/local/bin/routegate-manager) || return 1
   if [[ ! -e "$manager_target" && ! -L "$manager_target" ]]; then
@@ -164,7 +165,9 @@ install_dispatch_boundary() {
 
   socket_source="$BUNDLE_ROOT/systemd/routegate-update-dispatch.socket"
   service_source="$BUNDLE_ROOT/systemd/routegate-update-dispatch@.service"
-  for source in "$socket_source" "$service_source"; do
+  maintenance_socket_source="$BUNDLE_ROOT/systemd/routegate-maintenance-dispatch.socket"
+  maintenance_service_source="$BUNDLE_ROOT/systemd/routegate-maintenance-dispatch@.service"
+  for source in "$socket_source" "$service_source" "$maintenance_socket_source" "$maintenance_service_source"; do
     [[ -f "$source" && ! -L "$source" ]] || {
       rg_update_die "release bundle is missing privileged dispatch component: $source"
       return 1
@@ -173,26 +176,46 @@ install_dispatch_boundary() {
 
   tool_dir=$(rg_update_path "$RG_UPDATE_TOOLCHAIN_DIR") || return 1
   dispatcher_target="$tool_dir/routegate-update-dispatch.py"
+  maintenance_dispatcher_target="$tool_dir/routegate-maintenance-dispatch.py"
   socket_target=$(rg_update_path /etc/systemd/system/routegate-update-dispatch.socket) || return 1
   service_target=$(rg_update_path /etc/systemd/system/routegate-update-dispatch@.service) || return 1
+  maintenance_socket_target=$(rg_update_path /etc/systemd/system/routegate-maintenance-dispatch.socket) || return 1
+  maintenance_service_target=$(rg_update_path /etc/systemd/system/routegate-maintenance-dispatch@.service) || return 1
 
   [[ -f "$dispatcher_target" && ! -L "$dispatcher_target" && -x "$dispatcher_target" ]] || {
     rg_update_die "canonical privileged dispatch executable is unavailable after updater bootstrap"
     return 1
   }
   trusted_path_is_secure "$dispatcher_target" "privileged dispatch executable" || return 1
+  [[ -f "$BUNDLE_ROOT/tools/routegate-maintenance-dispatch.py" \
+    && ! -L "$BUNDLE_ROOT/tools/routegate-maintenance-dispatch.py" ]] || {
+    rg_update_die "release bundle is missing privileged maintenance dispatch executable"
+    return 1
+  }
+  python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text())' \
+    "$BUNDLE_ROOT/tools/routegate-maintenance-dispatch.py" || {
+    rg_update_die "release bundle contains an invalid privileged maintenance dispatch executable"
+    return 1
+  }
+  install -m 0755 "$BUNDLE_ROOT/tools/routegate-maintenance-dispatch.py" "$maintenance_dispatcher_target" || return 1
+  trusted_path_is_secure "$maintenance_dispatcher_target" "privileged maintenance dispatch executable" || return 1
 
   install -d -m 0755 "$(dirname "$socket_target")" || return 1
   install -m 0644 "$socket_source" "$socket_target" || return 1
   install -m 0644 "$service_source" "$service_target" || return 1
+  install -m 0644 "$maintenance_socket_source" "$maintenance_socket_target" || return 1
+  install -m 0644 "$maintenance_service_source" "$maintenance_service_target" || return 1
   trusted_path_is_secure "$socket_target" "privileged dispatch socket unit" || return 1
   trusted_path_is_secure "$service_target" "privileged dispatch service unit" || return 1
+  trusted_path_is_secure "$maintenance_socket_target" "privileged maintenance dispatch socket unit" || return 1
+  trusted_path_is_secure "$maintenance_service_target" "privileged maintenance dispatch service unit" || return 1
 
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
     systemctl daemon-reload || return 1
     systemctl enable --now routegate-update-dispatch.socket || return 1
+    systemctl enable --now routegate-maintenance-dispatch.socket || return 1
   fi
-  log "privileged update dispatch boundary is ready"
+  log "privileged update and maintenance dispatch boundaries are ready"
 }
 
 main() {

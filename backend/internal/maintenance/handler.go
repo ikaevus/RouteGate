@@ -18,7 +18,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 )
 
-const maintenanceOperationTimeout = 2 * time.Minute
+const maintenanceOperationTimeout = 3 * time.Minute
 
 var canonicalPlanID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
@@ -59,13 +59,14 @@ func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusBadRequest, httpx.Error("invalid_maintenance_request", "Maintenance request is invalid."))
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 75*time.Second)
 	defer cancel()
 	response, err := h.service.CreatePlan(ctx, user.ID, request)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
+	response.Plan = publicPlan(response.Plan)
 	httpx.WriteJSON(w, http.StatusCreated, response)
 }
 
@@ -80,7 +81,7 @@ func (h *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, plan)
+	httpx.WriteJSON(w, http.StatusOK, publicPlan(plan))
 }
 
 func (h *Handler) Execute(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +107,16 @@ func (h *Handler) Execute(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, plan)
+	httpx.WriteJSON(w, http.StatusOK, publicPlan(plan))
+}
+
+func publicPlan(plan Plan) Plan {
+	items := append([]PlanItem(nil), plan.Payload.Items...)
+	for index := range items {
+		items[index].Metadata = nil
+	}
+	plan.Payload.Items = items
+	return plan
 }
 
 func (h *Handler) writeError(w http.ResponseWriter, err error) {
