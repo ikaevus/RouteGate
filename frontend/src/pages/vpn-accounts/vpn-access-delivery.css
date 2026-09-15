@@ -9,21 +9,33 @@
   gap: 14px;
 }
 
+.vpn-access-delivery-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.vpn-access-delivery-channel-picker {
+  display: grid;
+  gap: 6px;
+}
+
 .vpn-access-delivery-channel-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .vpn-access-delivery-channel-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   color: var(--rg-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.vpn-access-delivery-channel-label strong {
-  color: var(--rg-text-primary);
+.vpn-access-delivery-close {
+  margin-left: auto;
 }
 
 .vpn-access-delivery-next-action {
@@ -92,6 +104,14 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: inherit;
+}
+
+.vpn-access-delivery-error-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  opacity: 0.9;
 }
 
 .vpn-access-delivery-history-item {
