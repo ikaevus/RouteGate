@@ -196,6 +196,7 @@ install_maintenance_dispatch() {
   install -m 0755 "$candidate_dispatcher" "$MAINTENANCE_DISPATCHER" || return 1
   install -m 0644 "$candidate_socket" "$MAINTENANCE_SOCKET_UNIT" || return 1
   install -m 0644 "$candidate_service" "$MAINTENANCE_SERVICE_UNIT" || return 1
+  install -d -o root -g root -m 0755 /run/routegate || return 1
   systemctl daemon-reload || return 1
   systemctl enable --now routegate-maintenance-dispatch.socket || return 1
   systemctl is-active --quiet routegate-maintenance-dispatch.socket || return 1

@@ -7,7 +7,7 @@ ListenStream=/run/routegate/maintenance-dispatch.sock
 SocketUser=root
 SocketGroup=routegate
 SocketMode=0660
-DirectoryMode=0750
+DirectoryMode=0755
 Accept=yes
 RemoveOnStop=yes
 
