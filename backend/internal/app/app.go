@@ -12,6 +12,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/delivery"
 	"github.com/ikaevus/routegate/backend/internal/geoip"
 	routegatehttp "github.com/ikaevus/routegate/backend/internal/http"
+	"github.com/ikaevus/routegate/backend/internal/maintenance"
 	"github.com/ikaevus/routegate/backend/internal/observability"
 	"github.com/ikaevus/routegate/backend/internal/servers"
 	"github.com/ikaevus/routegate/backend/internal/updates"
@@ -45,6 +46,9 @@ func (a *App) Start(ctx context.Context) error {
 		return err
 	}
 	if err := updates.RecoverInterruptedJobs(ctx, a.logger, pool); err != nil {
+		return err
+	}
+	if err := maintenance.RecoverInterruptedPlans(ctx, a.logger, pool); err != nil {
 		return err
 	}
 	if err := delivery.EnsureProviderSecretStore(ctx, pool, a.cfg, a.logger); err != nil {

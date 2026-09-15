@@ -6,6 +6,7 @@ import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { DeliverySettingsPanel } from './DeliverySettingsPanel';
 import { FleetUpdateRolloutPanel } from './FleetUpdateRolloutPanel';
+import { MaintenancePanel } from './MaintenancePanel';
 import { TelegramRecipientsPanel } from './TelegramRecipientsPanel';
 import { UpdateWorkflowPanel } from './UpdateWorkflowPanel';
 import './SettingsPage.css';
@@ -176,6 +177,8 @@ export function SettingsPage() {
                 </section>
               </div>
             </section>
+
+            <MaintenancePanel />
 
             <DeliverySettingsPanel />
             <TelegramRecipientsPanel />
