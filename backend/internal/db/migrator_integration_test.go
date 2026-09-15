@@ -219,7 +219,7 @@ func assertRawTrafficArchivalPreservesDailyRollup(t *testing.T, ctx context.Cont
 	var serverID, agentID, accountID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO servers (name, status)
-		VALUES ('raw retention fixture', 'online')
+		VALUES ('raw retention fixture', 'active')
 		RETURNING id::text
 	`).Scan(&serverID); err != nil {
 		t.Fatalf("create raw retention server: %v", err)

@@ -410,7 +410,7 @@ test_management_transaction_restores_legacy_update_only_boundary() {
   make_transaction_bundle "$broken_bundle" legacy-broken invalid
 
   run_management_transaction "$root" "$trusted_bundle" "$TMP_DIR/management-legacy-trusted-backups" "$stubs" >/dev/null
-  rm -f \
+  sudo rm -f \
     "$root/etc/systemd/system/routegate-maintenance-dispatch.socket" \
     "$root/etc/systemd/system/routegate-maintenance-dispatch@.service" \
     "$root/usr/local/lib/routegate/update/routegate-maintenance-dispatch.py"
