@@ -328,6 +328,7 @@ activate_dispatch_units() {
   local role=$1
   rg_update_role_has_management "$role" || return 0
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    install -d -o root -g root -m 0755 /run/routegate || return 1
     systemctl enable --now routegate-update-dispatch.socket || return 1
     systemctl enable --now routegate-maintenance-dispatch.socket || return 1
   fi

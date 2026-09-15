@@ -211,6 +211,7 @@ install_dispatch_boundary() {
   trusted_path_is_secure "$maintenance_service_target" "privileged maintenance dispatch service unit" || return 1
 
   if [[ -z "$RG_UPDATE_ROOT" ]]; then
+    install -d -o root -g root -m 0755 /run/routegate || return 1
     systemctl daemon-reload || return 1
     systemctl enable --now routegate-update-dispatch.socket || return 1
     systemctl enable --now routegate-maintenance-dispatch.socket || return 1

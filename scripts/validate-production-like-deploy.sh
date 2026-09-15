@@ -33,33 +33,57 @@ done
 systemctl is-active --quiet routegate-maintenance-dispatch.socket
 [[ -x /usr/local/lib/routegate/update/routegate-maintenance-dispatch.py ]]
 [[ -S /run/routegate/maintenance-dispatch.sock ]]
-python3 - <<'PY'
+runuser -u routegate -- python3 - <<'PY'
 import json
 import re
+import socket
+
+def analyze(operation):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(10)
+    client.connect("/run/routegate/maintenance-dispatch.sock")
+    client.sendall(f"analyze:{operation}\n".encode("ascii"))
+    client.shutdown(socket.SHUT_WR)
+    response = bytearray()
+    while True:
+        chunk = client.recv(4097 - len(response))
+        if not chunk:
+            break
+        response.extend(chunk)
+        if len(response) > 4096:
+            raise SystemExit("maintenance dispatch response exceeded 4096 bytes")
+    payload = json.loads(response)
+    if payload.get("ok") is not True:
+        raise SystemExit(f"maintenance dispatch analysis failed for {operation}")
+    if not re.fullmatch(r"[0-9a-f]{32}", payload.get("token", "")):
+        raise SystemExit("maintenance dispatch returned an invalid plan token")
+    if not isinstance(payload.get("candidateCount"), int) or payload["candidateCount"] < 0:
+        raise SystemExit("maintenance dispatch returned an invalid candidate count")
+
+analyze("platform_rollback_backups")
+PY
+log "maintenance dispatch socket=active manager_probe=ok"
+
+if grep -Fxq 'PROMETHEUS_MANAGED=1' /etc/routegate/install-state.env; then
+  runuser -u routegate -- python3 - <<'PY'
+import json
 import socket
 
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.settimeout(10)
 client.connect("/run/routegate/maintenance-dispatch.sock")
-client.sendall(b"analyze:platform_rollback_backups\n")
+client.sendall(b"analyze:prometheus_tsdb_retention\n")
 client.shutdown(socket.SHUT_WR)
-response = bytearray()
-while True:
-    chunk = client.recv(4097 - len(response))
-    if not chunk:
-        break
-    response.extend(chunk)
-    if len(response) > 4096:
-        raise SystemExit("maintenance dispatch response exceeded 4096 bytes")
-payload = json.loads(response)
+payload = json.loads(client.makefile("rb", buffering=0).read(4097))
 if payload.get("ok") is not True:
-    raise SystemExit("maintenance dispatch analysis failed")
-if not re.fullmatch(r"[0-9a-f]{32}", payload.get("token", "")):
-    raise SystemExit("maintenance dispatch returned an invalid plan token")
-if not isinstance(payload.get("candidateCount"), int) or payload["candidateCount"] < 0:
-    raise SystemExit("maintenance dispatch returned an invalid candidate count")
+    raise SystemExit("managed Prometheus retention analysis failed")
+if payload.get("candidateCount") not in {0, 1}:
+    raise SystemExit("managed Prometheus retention candidate count is invalid")
 PY
-log "maintenance dispatch socket=active probe=ok"
+  log "managed Prometheus retention probe=ok"
+else
+  log "managed Prometheus retention probe=not-managed"
+fi
 
 runtime_status sing-box sing-box
 runtime_status wireguard wg-quick@routegate-wg0

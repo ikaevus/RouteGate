@@ -167,6 +167,7 @@ class DispatchTests(unittest.TestCase):
         service_unit = (ROOT / "deploy/systemd/routegate-update-dispatch@.service").read_text(encoding="utf-8")
         manager_unit = (ROOT / "deploy/systemd/routegate-manager.service").read_text(encoding="utf-8")
         self.assertIn("ListenStream=/run/routegate/update-dispatch.sock", socket_unit)
+        self.assertIn("DirectoryMode=0755", socket_unit)
         self.assertIn("SocketGroup=routegate", socket_unit)
         self.assertIn("SocketMode=0660", socket_unit)
         self.assertNotIn("ListenStream=0.0.0.0", socket_unit)

@@ -352,7 +352,8 @@ def main() -> int:
             reject("dispatcher must run as root")
         write_response(handle(read_request()))
         return 0
-    except (DispatchError, json.JSONDecodeError, OSError, ValueError, subprocess.SubprocessError):
+    except (DispatchError, json.JSONDecodeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        print(f"maintenance dispatch rejected request: {exc}", file=sys.stderr, flush=True)
         sys.stdout.write('{"ok":false}\n')
         sys.stdout.flush()
         return 1

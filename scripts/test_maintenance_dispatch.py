@@ -131,6 +131,7 @@ class MaintenanceDispatchTest(unittest.TestCase):
         service_unit = (ROOT / "deploy/systemd/routegate-maintenance-dispatch@.service").read_text(encoding="utf-8")
         self.assertIn("ListenStream=/run/routegate/maintenance-dispatch.sock", socket_unit)
         self.assertIn("SocketGroup=routegate", socket_unit)
+        self.assertIn("DirectoryMode=0755", socket_unit)
         self.assertIn("User=root", service_unit)
         self.assertIn("ProtectSystem=strict", service_unit)
         self.assertIn("IPAddressDeny=any", service_unit)
