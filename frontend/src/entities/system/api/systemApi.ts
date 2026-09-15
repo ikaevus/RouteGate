@@ -83,6 +83,65 @@ export interface UpdateStageResult {
   verification: string;
 }
 
+export interface MaintenanceCategory {
+  id: string;
+  scope: 'postgresql' | 'manager' | 'agent' | 'prometheus';
+  recommended: boolean;
+  selectable: boolean;
+  retentionDays: number;
+  blockedReason?: string;
+  candidateCount: number;
+  estimatedBytes?: number;
+}
+
+export interface MaintenanceInventory {
+  analyzedAt: string;
+  categories: MaintenanceCategory[];
+}
+
+export interface MaintenancePlanItem {
+  categoryId: string;
+  scope: string;
+  retentionDays: number;
+  cutoff: string;
+  candidateCount: number;
+  estimatedBytes?: number;
+}
+
+export interface MaintenanceProviderReport {
+  categoryId: string;
+  status: 'succeeded' | 'failed';
+  deletedCount: number;
+  reclaimedBytes?: number;
+  remainingCount: number;
+  errorCode?: string;
+}
+
+export interface MaintenanceReport {
+  schemaVersion: number;
+  status: 'succeeded' | 'failed';
+  startedAt: string;
+  completedAt: string;
+  providers: MaintenanceProviderReport[];
+}
+
+export interface MaintenancePlan {
+  id: string;
+  mode: 'recommended' | 'advanced';
+  status: 'planned' | 'running' | 'succeeded' | 'failed' | 'expired';
+  selectedCategories: string[];
+  payload: { schemaVersion: number; items: MaintenancePlanItem[] };
+  createdAt: string;
+  expiresAt: string;
+  report?: MaintenanceReport;
+  errorCode?: string;
+}
+
+export interface MaintenancePlanResponse {
+  plan: MaintenancePlan;
+  confirmationToken: string;
+}
+
 export function getSystemVersion(): Promise<SystemVersionResponse> {
   return apiGet<SystemVersionResponse>('/api/v1/system/version');
 }
@@ -101,4 +160,28 @@ export function createUpdateStage(discoveryJobId: string): Promise<UpdateJobCrea
 
 export function createUpdateApply(stageJobId: string): Promise<UpdateJobCreateResponse> {
   return apiPost<{ stageJobId: string }, UpdateJobCreateResponse>('/api/v1/system/update-jobs/apply', { stageJobId });
+}
+
+export function getMaintenanceInventory(): Promise<MaintenanceInventory> {
+  return apiGet<MaintenanceInventory>('/api/v1/system/maintenance');
+}
+
+export function createMaintenancePlan(
+  mode: 'recommended' | 'advanced',
+  categories: string[] = [],
+): Promise<MaintenancePlanResponse> {
+  return apiPost<{ mode: string; categories: string[] }, MaintenancePlanResponse>(
+    '/api/v1/system/maintenance/plans',
+    { mode, categories },
+  );
+}
+
+export function executeMaintenancePlan(
+  planId: string,
+  confirmationToken: string,
+): Promise<MaintenancePlan> {
+  return apiPost<{ confirmationToken: string }, MaintenancePlan>(
+    `/api/v1/system/maintenance/plans/${encodeURIComponent(planId)}/execute`,
+    { confirmationToken },
+  );
 }

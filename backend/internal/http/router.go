@@ -14,6 +14,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/dashboard"
 	"github.com/ikaevus/routegate/backend/internal/geoip"
 	"github.com/ikaevus/routegate/backend/internal/health"
+	"github.com/ikaevus/routegate/backend/internal/maintenance"
 	"github.com/ikaevus/routegate/backend/internal/nodegroups"
 	"github.com/ikaevus/routegate/backend/internal/portal"
 	"github.com/ikaevus/routegate/backend/internal/roles"
@@ -40,6 +41,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	usersHandler := users.NewHandler(logger, pool)
 	rolesHandler := roles.NewHandler(logger, pool)
 	systemHandler := system.NewHandler(logger, pool)
+	maintenanceHandler := maintenance.NewHandler(logger, pool)
 	setupHandler := setup.NewHandler(logger, pool, cfg.AuthSessionTTL)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool, cfg.PublicURL)
 	vpnAccountNotesHandler := vpnaccounts.NewNotesHandler(logger, pool)
@@ -197,6 +199,10 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/roles", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListRoles))))
 	mux.Handle("GET /api/v1/permissions", authn(auth.RequirePermission("roles:read")(stdhttp.HandlerFunc(rolesHandler.ListPermissions))))
 	mux.Handle("GET /api/v1/system/version", authn(auth.RequirePermission("agents:read")(stdhttp.HandlerFunc(systemHandler.Version))))
+	mux.Handle("GET /api/v1/system/maintenance", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(maintenanceHandler.Inventory))))
+	mux.Handle("POST /api/v1/system/maintenance/plans", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(maintenanceHandler.CreatePlan))))
+	mux.Handle("GET /api/v1/system/maintenance/plans/{plan_id}", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(maintenanceHandler.GetPlan))))
+	mux.Handle("POST /api/v1/system/maintenance/plans/{plan_id}/execute", authn(auth.RequirePermission("system:manage")(stdhttp.HandlerFunc(maintenanceHandler.Execute))))
 	mux.HandleFunc("POST /api/v1/agent/register", agentsHandler.Register)
 	mux.HandleFunc("POST /api/v1/agent/heartbeat", agentsHandler.Heartbeat)
 	mux.HandleFunc("GET /api/v1/agent/tasks/next", agentsHandler.NextTask)

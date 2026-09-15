@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000151_delivery_token_generation" {
-		t.Fatalf("applied schema version = %q, want 000151_delivery_token_generation", version)
+	if version != "000152_maintenance_cleanup_plans" {
+		t.Fatalf("applied schema version = %q, want 000152_maintenance_cleanup_plans", version)
 	}
 
 	var defaultRoleServerID, deploymentRoleDefault string
@@ -397,8 +397,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000151_delivery_token_generation" {
-		t.Fatalf("applied schema version = %q, want 000151_delivery_token_generation", version)
+	if version != "000152_maintenance_cleanup_plans" {
+		t.Fatalf("applied schema version = %q, want 000152_maintenance_cleanup_plans", version)
 	}
 }
 
