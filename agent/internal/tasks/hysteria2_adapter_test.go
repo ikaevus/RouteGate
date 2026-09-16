@@ -44,6 +44,47 @@ func TestHysteria2ParserRejectsUnknownFieldsAndUnsafeMasquerade(t *testing.T) {
 	if _, err := parseHysteria2Config(payload); err == nil { t.Fatal("expected unsafe masquerade rejection") }
 }
 
+func TestHysteria2ParserAcceptsFixedHybridACMEBridge(t *testing.T) {
+	config := testHysteria2Config(t)
+	config = strings.Replace(config, `"type":"http"`, `"type":"http","listenHost":"127.0.0.1","http":{"altPort":9080}`, 1)
+	parsed, err := parseHysteria2Config(config)
+	if err != nil {
+		t.Fatalf("parse Hybrid Hysteria2 config: %v", err)
+	}
+	if parsed.ACME.ListenHost != hysteria2ACMEBridgeHost || parsed.ACME.HTTP == nil || parsed.ACME.HTTP.AltPort != hysteria2ACMEBridgePort {
+		t.Fatalf("unexpected ACME bridge: %+v", parsed.ACME)
+	}
+	if _, err := parseHysteria2Config(strings.Replace(config, `"altPort":9080`, `"altPort":9081`, 1)); err == nil {
+		t.Fatal("expected non-RouteGate ACME bridge port rejection")
+	}
+}
+
+func TestHysteria2HealthCheckRetriesUntilUDPListenerAppears(t *testing.T) {
+	adapter := NewHysteria2Adapter(t.TempDir(), "hysteria-test", "ss-test", "hysteria-test").(hysteria2Adapter)
+	path := t.TempDir() + "/config.json"
+	if err := os.WriteFile(path, []byte(testHysteria2Config(t)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	adapter.run = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name != "ss-test" || len(args) != 2 || args[0] != "-H" || args[1] != "-lunp" {
+			t.Fatalf("unexpected command: %s %v", name, args)
+		}
+		calls++
+		if calls == 1 {
+			return nil, nil
+		}
+		return []byte(`UNCONN 0 0 *:443 *:* users:(("hysteria",pid=123,fd=7))`), nil
+	}
+	result, err := adapter.CheckHealth(context.Background(), path)
+	if err != nil {
+		t.Fatalf("health check: %v", err)
+	}
+	if result.Port != 443 || calls != 2 {
+		t.Fatalf("result=%+v calls=%d", result, calls)
+	}
+}
+
 func TestSelectVPNCoreAdapterUsesHysteria2Descriptor(t *testing.T) {
 	vless := NewSingBoxVLESSAdapter(t.TempDir(), "sing-box", "sing-box")
 	wireGuard := NewWireGuardAdapter(t.TempDir(), "wg-quick", "wg", "wg-quick@test", "test0")

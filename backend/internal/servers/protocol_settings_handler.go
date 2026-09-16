@@ -108,7 +108,7 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	}
 
 	serverID := r.PathValue("server_id")
-	if request.Protocol != nil {
+	if request.Protocol != nil || request.Hysteria2Domain != nil {
 		server, err := h.servers.GetServerByID(r.Context(), serverID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeServerNotFound(w)
@@ -119,13 +119,50 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		role := platform.EffectiveDeploymentRole(server.DeploymentRole)
-		if !platform.ProtocolSupportsDeploymentRole(*request.Protocol, role) {
-			if *request.Protocol == platform.VPNProtocolHysteria2 {
-				writeInvalidRequest(w, "Hysteria2 is supported only on a dedicated VPN Node because its current ACME lifecycle cannot share the Hybrid Manager/nginx topology.")
-				return
-			}
+		if request.Protocol != nil && !platform.ProtocolSupportsDeploymentRole(*request.Protocol, role) {
 			writeInvalidRequest(w, "The selected protocol is not supported on this node deployment role.")
 			return
+		}
+
+		effectiveProtocol := ""
+		if request.Protocol != nil {
+			effectiveProtocol = *request.Protocol
+		}
+		effectiveDomain := ""
+		if request.Hysteria2Domain != nil {
+			effectiveDomain = *request.Hysteria2Domain
+		}
+		if effectiveProtocol == "" || (effectiveProtocol == platform.VPNProtocolHysteria2 && request.Hysteria2Domain == nil) {
+			current, err := repository.GetProtocolSettings(r.Context(), serverID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeServerNotFound(w)
+				return
+			}
+			if err != nil {
+				h.databaseError(w, "get current protocol settings for topology validation", err)
+				return
+			}
+			if effectiveProtocol == "" {
+				effectiveProtocol = current.Protocol
+			}
+			if request.Hysteria2Domain == nil {
+				effectiveDomain = current.Hysteria2Domain
+			}
+		}
+
+		if effectiveProtocol == platform.VPNProtocolHysteria2 && role == platform.DeploymentRoleHybrid {
+			if strings.TrimSpace(effectiveDomain) == "" {
+				writeInvalidRequest(w, "Hysteria2 on a Hybrid Node requires a dedicated DNS hostname for its independent certificate.")
+				return
+			}
+			managerHostname := strings.TrimSpace(server.Hostname)
+			if managerHostname == "" && validHysteria2ServerName(server.Name) {
+				managerHostname = strings.TrimSpace(server.Name)
+			}
+			if managerHostname != "" && strings.EqualFold(strings.TrimSpace(effectiveDomain), managerHostname) {
+				writeInvalidRequest(w, "Hysteria2 on a Hybrid Node must use a DNS hostname different from the Manager hostname.")
+				return
+			}
 		}
 	}
 

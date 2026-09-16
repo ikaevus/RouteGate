@@ -5,7 +5,8 @@ the existing VLESS and WireGuard paths.
 
 ## Operator flow
 
-1. On a dedicated VPN Node, create a DNS record for the Hysteria2 domain.
+1. Create a DNS record for the Hysteria2 domain. On a Hybrid Node, it must be
+   different from the Manager hostname and resolve directly to the node.
 2. Allow inbound TCP 80 for ACME HTTP-01 and the selected UDP port for QUIC.
 3. In Protocol Settings select Hysteria2 and enter the domain and ACME email.
 4. Create or activate at least one VPN account.
@@ -23,8 +24,12 @@ Its ACME data never enters Manager storage or Agent telemetry. The first apply
 can fail until DNS and TCP 80 reachability are correct; after correction, a
 normal apply retry restarts the fixed service and repeats acquisition.
 
-RG-114F intentionally rejects Hybrid Nodes because their Manager nginx already
-owns the HTTP challenge listener. It never reuses that nginx private key.
+On a dedicated VPN Node, Hysteria owns the public TCP 80 HTTP-01 listener. On a
+Hybrid Node, it binds the fixed `127.0.0.1:9080` challenge listener and the
+RouteGate nginx default-host bridge forwards only
+`/.well-known/acme-challenge/` requests for the separate Hysteria hostname.
+The Manager certificate and private key are never reused or exposed to
+Hysteria. TCP 443 remains owned by nginx and UDP 443 can be owned by Hysteria.
 
 ## Client output
 

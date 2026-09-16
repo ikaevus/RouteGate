@@ -103,6 +103,7 @@ func (a mtprotoAdapter) Validate(ctx context.Context, configPath string) (Valida
 }
 
 func (a mtprotoAdapter) Restart(ctx context.Context) (ServiceResult, error) { return a.service.Restart(ctx) }
+func (a mtprotoAdapter) Stop(ctx context.Context) (ServiceResult, error) { return a.service.Stop(ctx) }
 func (a mtprotoAdapter) IsActive(ctx context.Context) (ServiceResult, error)  { return a.service.IsActive(ctx) }
 func (a mtprotoAdapter) IsEnabled(ctx context.Context) (ServiceResult, error) { return a.service.IsEnabled(ctx) }
 func (a mtprotoAdapter) ExecuteServiceTask(ctx context.Context, task ConfigTask) (ServiceTaskReport, error) {

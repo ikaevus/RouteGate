@@ -14,7 +14,11 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/platform"
 )
 
-const hysteria2ACMEDir = "/var/lib/hysteria/acme"
+const (
+	hysteria2ACMEDir        = "/var/lib/hysteria/acme"
+	hysteria2ACMEBridgeHost = "127.0.0.1"
+	hysteria2ACMEBridgePort = 9080
+)
 
 type hysteria2Adapter struct{}
 
@@ -28,11 +32,17 @@ type hysteria2ServerConfig struct {
 }
 
 type hysteria2ACMEConfig struct {
-	Domains []string `json:"domains"`
-	Email   string   `json:"email"`
-	CA      string   `json:"ca"`
-	Dir     string   `json:"dir"`
-	Type    string   `json:"type"`
+	Domains    []string                 `json:"domains"`
+	Email      string                   `json:"email"`
+	CA         string                   `json:"ca"`
+	Dir        string                   `json:"dir"`
+	Type       string                   `json:"type"`
+	ListenHost string                   `json:"listenHost,omitempty"`
+	HTTP       *hysteria2ACMEHTTPConfig `json:"http,omitempty"`
+}
+
+type hysteria2ACMEHTTPConfig struct {
+	AltPort int `json:"altPort"`
 }
 
 type hysteria2AuthConfig struct {
@@ -84,6 +94,10 @@ func (hysteria2Adapter) Render(config *RenderedConfig, info ServerConfigInfo) {
 			},
 		},
 	}
+	if platform.EffectiveDeploymentRole(info.DeploymentRole) == platform.DeploymentRoleHybrid {
+		payload.ACME.ListenHost = hysteria2ACMEBridgeHost
+		payload.ACME.HTTP = &hysteria2ACMEHTTPConfig{AltPort: hysteria2ACMEBridgePort}
+	}
 	for _, account := range info.VPNAccounts {
 		if !isHysteria2AccountRenderable(account) {
 			continue
@@ -102,15 +116,26 @@ func (hysteria2Adapter) Render(config *RenderedConfig, info ServerConfigInfo) {
 }
 
 func (hysteria2Adapter) Validate(config RenderedConfig, result *ValidationResult) {
-	if config.Server.DeploymentRole != string(platform.DeploymentRoleVPN) {
+	role := platform.EffectiveDeploymentRole(config.Server.DeploymentRole)
+	if role != platform.DeploymentRoleVPN && role != platform.DeploymentRoleHybrid {
 		result.Valid = false
-		result.Errors = append(result.Errors, "Hysteria2 ACME is supported only on a dedicated VPN Node in RG-114F.")
+		result.Errors = append(result.Errors, "Hysteria2 is supported only on VPN-capable nodes.")
 		return
 	}
 	parsed, err := parseHysteria2ServerConfig(config.Hysteria2)
 	if err != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	if role == platform.DeploymentRoleVPN && (parsed.ACME.ListenHost != "" || parsed.ACME.HTTP != nil) {
+		result.Valid = false
+		result.Errors = append(result.Errors, "Dedicated VPN Nodes must use direct Hysteria2 ACME HTTP-01.")
+		return
+	}
+	if role == platform.DeploymentRoleHybrid && !usesHysteria2ACMEBridge(parsed.ACME) {
+		result.Valid = false
+		result.Errors = append(result.Errors, "Hybrid Nodes must use the fixed RouteGate Hysteria2 ACME bridge.")
 		return
 	}
 	if len(parsed.Auth.Userpass) == 0 {
@@ -151,6 +176,9 @@ func parseHysteria2ServerConfig(payload string) (hysteria2ServerConfig, error) {
 	if config.ACME.CA != "letsencrypt" || config.ACME.Dir != hysteria2ACMEDir || config.ACME.Type != "http" {
 		return config, errors.New("Hysteria2 ACME settings must match the fixed RouteGate policy")
 	}
+	if !validHysteria2ACMEListener(config.ACME) {
+		return config, errors.New("Hysteria2 ACME listener must use direct HTTP-01 or the fixed RouteGate bridge")
+	}
 	if config.Auth.Type != "userpass" {
 		return config, errors.New("Hysteria2 authentication must use the fixed userpass mode")
 	}
@@ -164,6 +192,14 @@ func parseHysteria2ServerConfig(payload string) (hysteria2ServerConfig, error) {
 		return config, errors.New("Hysteria2 masquerade must match the fixed safe proxy policy")
 	}
 	return config, nil
+}
+
+func validHysteria2ACMEListener(config hysteria2ACMEConfig) bool {
+	return (config.ListenHost == "" && config.HTTP == nil) || usesHysteria2ACMEBridge(config)
+}
+
+func usesHysteria2ACMEBridge(config hysteria2ACMEConfig) bool {
+	return config.ListenHost == hysteria2ACMEBridgeHost && config.HTTP != nil && config.HTTP.AltPort == hysteria2ACMEBridgePort
 }
 
 func validHysteria2Domain(value string) bool {

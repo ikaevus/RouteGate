@@ -49,6 +49,8 @@ assert_equal "writes the one-time registration token" "$valid_token" "$(config_v
 
 assert_true "VPN installer explicitly installs Python for updater verification" \
   grep -Fq 'jq python3 tar wireguard-tools' "$ROOT_DIR/install-agent.sh"
+assert_true "VPN installer pins the supported Hysteria2 runtime" \
+  grep -Fq 'ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.2}"' "$ROOT_DIR/install-agent.sh"
 assert_true "VPN installer requires updater bootstrap helper in the release bundle" \
   grep -Fq 'routegate-update-bootstrap.sh' "$ROOT_DIR/install-agent.sh"
 assert_true "VPN installer clears RG_UPDATE_ROOT before privileged bootstrap" \

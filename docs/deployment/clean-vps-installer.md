@@ -26,8 +26,12 @@ RG-114F installs a pinned upstream Hysteria binary only after verifying its
 published SHA-256 value, installs a fixed hardened systemd unit, and creates
 mode-0700 config and ACME state directories. The unit is enabled but not
 started without a validated config. The Hysteria2 adapter itself is restricted
-to dedicated VPN Nodes because the All-in-One Hybrid Node's nginx already owns
-the HTTP-01 listener on TCP 80.
+to VPN-capable nodes. On the All-in-One Hybrid Node, Hysteria keeps an
+independent certificate by binding its HTTP-01 challenge service to
+`127.0.0.1:9080`; the RouteGate nginx default-host bridge forwards only the
+challenge path for a separate Hysteria DNS hostname. Production-like updates
+reconcile this bridge atomically on existing All-in-One installations, validate
+the complete nginx configuration, and restore the previous site on failure.
 
 ### RG-114G MTProto runtime
 

@@ -345,6 +345,115 @@ PY
   log "nginx subscription proxy route=reconciled"
 }
 
+reconcile_hysteria_acme_bridge() {
+  local template="$WORK_DIR/nginx/routegate.conf.example"
+  local candidate
+  local bridge_count
+
+  [[ -f "$template" && ! -L "$template" ]] \
+    || { printf '[production-like] release bundle is missing nginx route template.\n' >&2; return 1; }
+  [[ -f "$NGINX_SITE" && ! -L "$NGINX_SITE" ]] \
+    || { printf '[production-like] RouteGate nginx site is missing or unsafe: %s\n' "$NGINX_SITE" >&2; return 1; }
+  [[ -x "$NGINX_BIN" ]] \
+    || { printf '[production-like] nginx binary is unavailable: %s\n' "$NGINX_BIN" >&2; return 1; }
+
+  bridge_count=$(grep -Ec '^[[:space:]]*location[[:space:]]+\^~[[:space:]]+/\.well-known/acme-challenge/[[:space:]]*\{' "$NGINX_SITE" || true)
+  if [[ "$bridge_count" == "1" ]]; then
+    grep -Fq 'proxy_pass http://127.0.0.1:9080;' "$NGINX_SITE" \
+      || { printf '[production-like] existing Hysteria2 ACME bridge does not use the fixed loopback endpoint.\n' >&2; return 1; }
+    log "nginx Hysteria2 ACME bridge=present"
+    return 0
+  fi
+  [[ "$bridge_count" == "0" ]] \
+    || { printf '[production-like] expected at most one Hysteria2 ACME bridge, found %s.\n' "$bridge_count" >&2; return 1; }
+
+  grep -Eq '^[[:space:]]*location[[:space:]]+\^~[[:space:]]+/\.well-known/acme-challenge/[[:space:]]*\{' "$template" \
+    || { printf '[production-like] bundle nginx template has no Hysteria2 ACME bridge.\n' >&2; return 1; }
+  grep -Fq 'proxy_pass http://127.0.0.1:9080;' "$template" \
+    || { printf '[production-like] bundle Hysteria2 ACME bridge does not use the fixed loopback endpoint.\n' >&2; return 1; }
+
+  if [[ -z "$NGINX_BACKUP" ]]; then
+    NGINX_BACKUP="$BACKUP_DIR/nginx-routegate.conf"
+    cp -a -- "$NGINX_SITE" "$NGINX_BACKUP" || return 1
+  fi
+  candidate=$(mktemp "$(dirname "$NGINX_SITE")/.routegate-hysteria-acme-bridge.XXXXXX") || return 1
+
+  if ! python3 - "$NGINX_SITE" "$template" "$candidate" <<'PY'
+from pathlib import Path
+import sys
+
+live_path, template_path, output_path = map(Path, sys.argv[1:])
+live = live_path.read_text().splitlines(keepends=True)
+template = template_path.read_text().splitlines(keepends=True)
+marker = "location ^~ /.well-known/acme-challenge/ {"
+
+matches = [i for i, line in enumerate(template) if line.strip() == marker]
+if len(matches) != 1:
+    raise SystemExit(f"expected one Hysteria2 ACME bridge marker, found {len(matches)}")
+
+depth = 0
+server_start = None
+for index, line in enumerate(template[: matches[0] + 1]):
+    stripped = line.strip()
+    if depth == 0 and stripped == "server {":
+        server_start = index
+    depth += line.count("{") - line.count("}")
+if server_start is None:
+    raise SystemExit("Hysteria2 ACME bridge is not inside a server block")
+
+depth = 0
+server_block = []
+for line in template[server_start:]:
+    server_block.append(line)
+    depth += line.count("{") - line.count("}")
+    if depth == 0:
+        break
+if not server_block or depth != 0:
+    raise SystemExit("unterminated Hysteria2 ACME bridge server block")
+
+block_text = "".join(server_block)
+required = (
+    "listen 80 default_server;",
+    "server_name _;",
+    "proxy_pass http://127.0.0.1:9080;",
+    "return 404;",
+)
+for directive in required:
+    if directive not in block_text:
+        raise SystemExit(f"Hysteria2 ACME bridge is missing {directive!r}")
+
+rendered = "".join(live)
+if rendered and not rendered.endswith("\n"):
+    rendered += "\n"
+rendered += "\n" + block_text
+output_path.write_text(rendered)
+PY
+  then
+    rm -f -- "$candidate"
+    return 1
+  fi
+
+  cat -- "$candidate" > "$NGINX_SITE" || { rm -f -- "$candidate"; return 1; }
+  rm -f -- "$candidate"
+
+  if ! "$NGINX_BIN" -t; then
+    cp -a -- "$NGINX_BACKUP" "$NGINX_SITE"
+    "$NGINX_BIN" -t >/dev/null 2>&1 || true
+    printf '[production-like] nginx validation rejected the Hysteria2 ACME bridge; original site restored.\n' >&2
+    return 1
+  fi
+  if ! systemctl reload nginx; then
+    cp -a -- "$NGINX_BACKUP" "$NGINX_SITE"
+    "$NGINX_BIN" -t >/dev/null 2>&1 || true
+    systemctl reload nginx >/dev/null 2>&1 || true
+    printf '[production-like] nginx reload failed for the Hysteria2 ACME bridge; original site restored.\n' >&2
+    return 1
+  fi
+
+  NGINX_MUTATED=1
+  log "nginx Hysteria2 ACME bridge=reconciled"
+}
+
 runtime_status() {
   local label=$1
   local service=$2
@@ -674,6 +783,9 @@ rg_update_wait_agent 30
 
 STAGE=nginx_subscription_proxy
 reconcile_subscription_proxy_route
+
+STAGE=nginx_hysteria_acme_bridge
+reconcile_hysteria_acme_bridge
 
 STAGE=observability_validation
 chmod 0700 "$VALIDATION_SCRIPT"
