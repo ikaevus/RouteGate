@@ -19,8 +19,14 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/platform"
 )
 
-const hysteria2ValidationTimeout = 10 * time.Second
-const hysteria2ACMEDir = "/var/lib/hysteria/acme"
+const (
+	hysteria2ValidationTimeout           = 10 * time.Second
+	hysteria2ListenerHealthTimeout       = 30 * time.Second
+	hysteria2ListenerHealthRetryInterval = 500 * time.Millisecond
+	hysteria2ACMEDir                     = "/var/lib/hysteria/acme"
+	hysteria2ACMEBridgeHost              = "127.0.0.1"
+	hysteria2ACMEBridgePort              = 9080
+)
 
 type hysteria2Adapter struct {
 	stagingDir  string
@@ -40,11 +46,17 @@ type hysteria2ServerConfig struct {
 }
 
 type hysteria2ACMEConfig struct {
-	Domains []string `json:"domains"`
-	Email   string   `json:"email"`
-	CA      string   `json:"ca"`
-	Dir     string   `json:"dir"`
-	Type    string   `json:"type"`
+	Domains    []string                 `json:"domains"`
+	Email      string                   `json:"email"`
+	CA         string                   `json:"ca"`
+	Dir        string                   `json:"dir"`
+	Type       string                   `json:"type"`
+	ListenHost string                   `json:"listenHost,omitempty"`
+	HTTP       *hysteria2ACMEHTTPConfig `json:"http,omitempty"`
+}
+
+type hysteria2ACMEHTTPConfig struct {
+	AltPort int `json:"altPort"`
 }
 
 type hysteria2AuthConfig struct {
@@ -133,6 +145,7 @@ func (a hysteria2Adapter) Validate(ctx context.Context, configPath string) (Vali
 }
 
 func (a hysteria2Adapter) Restart(ctx context.Context) (ServiceResult, error) { return a.service.Restart(ctx) }
+func (a hysteria2Adapter) Stop(ctx context.Context) (ServiceResult, error) { return a.service.Stop(ctx) }
 func (a hysteria2Adapter) IsActive(ctx context.Context) (ServiceResult, error) { return a.service.IsActive(ctx) }
 func (a hysteria2Adapter) IsEnabled(ctx context.Context) (ServiceResult, error) { return a.service.IsEnabled(ctx) }
 func (a hysteria2Adapter) ExecuteServiceTask(ctx context.Context, task ConfigTask) (ServiceTaskReport, error) {
@@ -149,24 +162,29 @@ func (a hysteria2Adapter) CheckHealth(ctx context.Context, configPath string) (L
 		return ListenerHealthResult{}, err
 	}
 	port, _ := strconv.Atoi(strings.TrimPrefix(config.Listen, ":"))
-	checkCtx, cancel := context.WithTimeout(ctx, defaultListenerHealthTimeout)
+	checkCtx, cancel := context.WithTimeout(ctx, hysteria2ListenerHealthTimeout)
 	defer cancel()
-	output, err := a.run(checkCtx, a.ssPath, "-H", "-lunp")
 	result := ListenerHealthResult{Address: "udp", Port: port}
-	if err != nil {
-		return result, errors.New("Hysteria2 UDP listener health check failed")
-	}
-	lineMatch := false
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.Contains(line, ":"+strconv.Itoa(port)) && strings.Contains(strings.ToLower(line), "hysteria") {
-			lineMatch = true
-			break
+	retry := time.NewTicker(hysteria2ListenerHealthRetryInterval)
+	defer retry.Stop()
+	for {
+		output, runErr := a.run(checkCtx, a.ssPath, "-H", "-lunp")
+		if runErr == nil {
+			for _, line := range strings.Split(string(output), "\n") {
+				if strings.Contains(line, ":"+strconv.Itoa(port)) && strings.Contains(strings.ToLower(line), "hysteria") {
+					return result, nil
+				}
+			}
+		}
+		select {
+		case <-checkCtx.Done():
+			if runErr != nil {
+				return result, errors.New("Hysteria2 UDP listener health check failed")
+			}
+			return result, errors.New("Hysteria2 process did not report the configured UDP listener before the startup deadline")
+		case <-retry.C:
 		}
 	}
-	if !lineMatch {
-		return result, errors.New("Hysteria2 process did not report the configured UDP listener")
-	}
-	return result, nil
 }
 
 func parseHysteria2Config(payload string) (hysteria2ServerConfig, error) {
@@ -193,6 +211,9 @@ func parseHysteria2Config(payload string) (hysteria2ServerConfig, error) {
 	if config.ACME.CA != "letsencrypt" || config.ACME.Dir != hysteria2ACMEDir || config.ACME.Type != "http" {
 		return config, errors.New("Hysteria2 ACME settings must match the fixed RouteGate policy")
 	}
+	if !validHysteria2ACMEListener(config.ACME) {
+		return config, errors.New("Hysteria2 ACME listener must use direct HTTP-01 or the fixed RouteGate bridge")
+	}
 	if config.Auth.Type != "userpass" || len(config.Auth.Userpass) == 0 {
 		return config, errors.New("Hysteria2 userpass authentication requires at least one account")
 	}
@@ -206,6 +227,11 @@ func parseHysteria2Config(payload string) (hysteria2ServerConfig, error) {
 		return config, errors.New("Hysteria2 masquerade must match the fixed safe proxy policy")
 	}
 	return config, nil
+}
+
+func validHysteria2ACMEListener(config hysteria2ACMEConfig) bool {
+	return (config.ListenHost == "" && config.HTTP == nil) ||
+		(config.ListenHost == hysteria2ACMEBridgeHost && config.HTTP != nil && config.HTTP.AltPort == hysteria2ACMEBridgePort)
 }
 
 func validHysteria2Domain(value string) bool {

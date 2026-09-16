@@ -56,7 +56,7 @@ func TestProtocolSupportsDeploymentRole(t *testing.T) {
 		{name: "Shadowsocks on Hybrid", protocol: VPNProtocolShadowsocks, role: DeploymentRoleHybrid, want: true},
 		{name: "MTProto on Hybrid", protocol: VPNProtocolMTProto, role: DeploymentRoleHybrid, want: true},
 		{name: "Hysteria2 on dedicated VPN", protocol: VPNProtocolHysteria2, role: DeploymentRoleVPN, want: true},
-		{name: "Hysteria2 on Hybrid", protocol: VPNProtocolHysteria2, role: DeploymentRoleHybrid, want: false},
+		{name: "Hysteria2 on Hybrid", protocol: VPNProtocolHysteria2, role: DeploymentRoleHybrid, want: true},
 		{name: "Hysteria2 on Management", protocol: VPNProtocolHysteria2, role: DeploymentRoleManagement, want: false},
 		{name: "VLESS on Management", protocol: VPNProtocolVLESS, role: DeploymentRoleManagement, want: false},
 		{name: "unknown protocol", protocol: "future-protocol", role: DeploymentRoleVPN, want: false},

@@ -49,7 +49,6 @@ function getCopy() {
       auto: 'Auto — протокол узла по умолчанию',
       vless: 'VLESS / Reality', wireguard: 'WireGuard', hysteria2: 'Hysteria2',
       shadowsocks: 'Shadowsocks 2022', mtproto: 'MTProto / FakeTLS',
-      hysteria2Dedicated: 'Hysteria2 доступен только на отдельном VPN Node.',
       safety: 'Изменения применяются транзакционно: текущий рабочий набор остаётся активным до успешного render → validate → apply → healthcheck.',
       save: 'Применить набор протоколов', retry: 'Повторить применение', saving: 'Подготовка...',
       saved: 'Набор протоколов успешно применён.',
@@ -76,7 +75,6 @@ function getCopy() {
     active: 'Active now', desired: 'Active after apply', auto: 'Auto — inherit node default',
     vless: 'VLESS / Reality', wireguard: 'WireGuard', hysteria2: 'Hysteria2',
     shadowsocks: 'Shadowsocks 2022', mtproto: 'MTProto / FakeTLS',
-    hysteria2Dedicated: 'Hysteria2 is available only on a dedicated VPN Node.',
     safety: 'Changes are transactional: the current working set stays active until render → validate → apply → healthcheck succeeds.',
     save: 'Apply protocol set', retry: 'Retry apply', saving: 'Preparing...', saved: 'Protocol set applied successfully.',
     pending: 'The desired set is saved but not active yet. Previous working connections are preserved.',
@@ -143,7 +141,6 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   });
 
   const assignedServer = (serversQuery.data?.items ?? []).find((server) => server.id === assignedServerId);
-  const hysteria2Blocked = assignedServer?.deploymentRole === 'hybrid';
   const nodeDefault = (protocolSettingsQuery.data?.protocol ?? 'vless') as ClientProtocol;
 
   useEffect(() => {
@@ -171,13 +168,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const currentPrimary = profile?.protocol ?? 'auto';
   const changed = primary !== currentPrimary || !sameProtocols(enabledProtocols, storedDesired);
   const activationPending = !sameProtocols(storedDesired, activeProtocols);
-  const topologyBlocked = hysteria2Blocked && enabledProtocols.includes('hysteria2');
   const autoInvalid = primary === 'auto' && !enabledProtocols.includes(nodeDefault);
   const validationMessage = enabledProtocols.length === 0
     ? copy.selectOne
-    : topologyBlocked
-      ? copy.hysteria2Dedicated
-      : autoInvalid
+    : autoInvalid
         ? copy.autoNeedsDefault
         : '';
 
@@ -289,7 +283,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <span>{copy.enabled}</span>
             <div className="vpn-protocol-choice-grid">
               {protocolOrder.map((protocol) => {
-                const disabled = saveMutation.isPending || (protocol === 'hysteria2' && hysteria2Blocked);
+                const disabled = saveMutation.isPending;
                 return (
                   <label className="vpn-protocol-choice" key={protocol}>
                     <input

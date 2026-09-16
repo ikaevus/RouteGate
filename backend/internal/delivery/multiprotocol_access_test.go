@@ -102,7 +102,7 @@ func TestAccessMaterialErrorClassificationKeepsSpecificDiagnostics(t *testing.T)
 		t.Fatalf("endpoint classification = %+v", endpoint)
 	}
 
-	topology := classifyAccessMaterialError(fmt.Errorf("%w: Hysteria2 requires a dedicated VPN Node", vpnaccounts.ErrClientConnectionUnavailable))
+	topology := classifyAccessMaterialError(fmt.Errorf("%w: protocol is unavailable on this node topology", vpnaccounts.ErrClientConnectionUnavailable))
 	if topology.Class != ErrorClassPermanent || topology.Code != "vpn_access_incomplete" {
 		t.Fatalf("topology classification = %+v", topology)
 	}

@@ -119,7 +119,7 @@ function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       recommendedEyebrow: 'Рекомендуемая настройка',
-      configuredEyebrow: 'Протокол готов',
+      configuredEyebrow: 'Настройки заполнены',
       selectionEyebrow: 'Изменения не сохранены',
       selectionDescription: 'Настройки этого протокола уже готовы, но он ещё не сохранён как протокол узла по умолчанию. Сохраните выбор, чтобы VPN-аккаунты в режиме «Автоматически» начали наследовать его.',
       saveDefault: 'Сохранить как протокол по умолчанию',
@@ -135,7 +135,7 @@ function getCopy() {
       wireGuardAction: 'Настроить WireGuard',
       wireGuardPending: 'Настраиваем WireGuard…',
       manualDescription: 'Для этого протокола нет отдельной кнопки автонастройки. Заполните применимые поля ниже и сохраните настройки.',
-      configuredDescription: 'Настройки протокола готовы. Следующий шаг — назначить протокол VPN-аккаунту или отрендерить конфигурацию узла.',
+      configuredDescription: 'Обязательные настройки заполнены. Протокол станет активным только после назначения VPN-аккаунту и успешного применения конфигурации Agent.',
       continue: 'К VPN-аккаунтам →',
       protocol: 'Протокол узла по умолчанию',
       protocolHint: 'Используется VPN-аккаунтами в режиме «Автоматически». Выбор в этом списке применяется только после сохранения или успешной автонастройки протокола.',
@@ -169,7 +169,7 @@ function getCopy() {
 
   return {
     recommendedEyebrow: 'Recommended setup',
-    configuredEyebrow: 'Protocol ready',
+    configuredEyebrow: 'Settings complete',
     selectionEyebrow: 'Unsaved change',
     selectionDescription: 'This protocol is already prepared, but it is not yet saved as the node default. Save the selection so VPN accounts using Automatic start inheriting it.',
     saveDefault: 'Save as node default',
@@ -185,7 +185,7 @@ function getCopy() {
     wireGuardAction: 'Configure WireGuard',
     wireGuardPending: 'Configuring WireGuard…',
     manualDescription: 'This protocol has no separate automatic-setup action. Complete the applicable fields below and save the settings.',
-    configuredDescription: 'The protocol settings are ready. Next, assign the protocol to a VPN account or render the node configuration.',
+    configuredDescription: 'Required settings are complete. The protocol becomes active only after assignment to a VPN account and a successful Agent config apply.',
     continue: 'Open VPN accounts →',
     protocol: 'Node default protocol',
     protocolHint: 'Used by VPN accounts set to Automatic. A selection here takes effect only after you save it or complete the protocol automatic setup.',

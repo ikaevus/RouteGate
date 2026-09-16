@@ -331,6 +331,21 @@ test_all_in_one_role_contract() {
   assert_true \
     "All-in-One installer creates a Hybrid Node" \
     grep -Fq 'deploymentRole:"hybrid"' "$ROOT_DIR/install.sh"
+  assert_true \
+    "All-in-One installer pins the supported Hysteria2 runtime" \
+    grep -Fq 'ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.2}"' "$ROOT_DIR/install.sh"
+  assert_true \
+    "Hybrid nginx config exposes the loopback Hysteria2 ACME bridge" \
+    grep -Fq 'proxy_pass http://127.0.0.1:9080;' "$ROOT_DIR/deploy/nginx/routegate.conf.example"
+  assert_true \
+    "Hybrid nginx bridge handles only ACME challenge paths" \
+    grep -Fq 'location ^~ /.well-known/acme-challenge/' "$ROOT_DIR/deploy/nginx/routegate.conf.example"
+  assert_true \
+    "production-like updates reconcile the Hysteria2 ACME bridge" \
+    grep -Fq 'reconcile_hysteria_acme_bridge' "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
+  assert_true \
+    "production-like Hysteria2 bridge updates validate nginx before reload" \
+    grep -Fq "nginx validation rejected the Hysteria2 ACME bridge" "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
 }
 
 test_certificate_and_recovery_contract() {

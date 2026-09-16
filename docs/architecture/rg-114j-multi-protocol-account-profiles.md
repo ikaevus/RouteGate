@@ -69,9 +69,9 @@ next action. Protocol-specific VLESS/Reality controls are hidden when the
 selected profile does not use VLESS. Account-page and credentials copy is
 protocol-neutral rather than describing every account as VLESS/Reality.
 
-Hysteria2 keeps the RG-114F dedicated-VPN-node certificate constraint; selecting
-it on an incompatible node will not produce an apply-safe configuration until
-that node satisfies the adapter requirements.
+Hysteria2 keeps independent VPN-plane certificate ownership. Dedicated VPN
+Nodes expose its HTTP-01 listener directly; Hybrid Nodes use the fixed nginx
+loopback ACME bridge and require a separate Hysteria DNS hostname.
 
 ## Compatibility
 

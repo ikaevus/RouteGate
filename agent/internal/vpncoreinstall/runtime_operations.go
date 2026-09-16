@@ -24,7 +24,7 @@ const (
 	OperationInstallHysteria2 = "install_hysteria2"
 	OperationInstallMTG       = "install_mtg"
 
-	defaultHysteria2Version = "2.12.1"
+	defaultHysteria2Version = "2.12.2"
 	defaultMTGVersion       = "2.2.8"
 
 	defaultHysteria2Path    = "/usr/local/bin/hysteria"

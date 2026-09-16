@@ -16,6 +16,7 @@ type VPNCoreAdapter interface {
 	Stage(ConfigTask) (StageResult, error)
 	Validate(context.Context, string) (ValidationResult, error)
 	Restart(context.Context) (ServiceResult, error)
+	Stop(context.Context) (ServiceResult, error)
 	IsActive(context.Context) (ServiceResult, error)
 	IsEnabled(context.Context) (ServiceResult, error)
 	ExecuteServiceTask(context.Context, ConfigTask) (ServiceTaskReport, error)
@@ -151,6 +152,10 @@ func (a singBoxVLESSAdapter) Validate(ctx context.Context, configPath string) (V
 
 func (a singBoxVLESSAdapter) Restart(ctx context.Context) (ServiceResult, error) {
 	return a.service.Restart(ctx)
+}
+
+func (a singBoxVLESSAdapter) Stop(ctx context.Context) (ServiceResult, error) {
+	return a.service.Stop(ctx)
 }
 
 func (a singBoxVLESSAdapter) IsActive(ctx context.Context) (ServiceResult, error) {

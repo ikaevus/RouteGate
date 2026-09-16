@@ -129,6 +129,9 @@ func (r *Runner) rollbackPreparedRuntimes(ctx context.Context, prepared []prepar
 				status = "failed"
 				r.logger.Warn("restart restored VPN runtime failed", "core", item.adapter.Descriptor().Core, "protocol", item.adapter.Descriptor().Protocol, "error", err)
 			}
+		} else if _, err := item.adapter.Stop(ctx); err != nil {
+			status = "failed"
+			r.logger.Warn("stop newly-created VPN runtime after rollback failed", "core", item.adapter.Descriptor().Core, "protocol", item.adapter.Descriptor().Protocol, "error", err)
 		}
 	}
 	return status

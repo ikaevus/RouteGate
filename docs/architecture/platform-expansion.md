@@ -170,8 +170,10 @@ standard `hysteria2://` URIs.
 
 TLS ownership remains on the VPN plane: Hysteria performs Let's Encrypt
 HTTP-01 and stores its own ACME material locally. No Manager nginx private key
-is reused or distributed. This slice supports dedicated VPN Nodes only;
-Hybrid-node certificate coordination remains explicit future work.
+is reused or distributed. Dedicated VPN Nodes expose Hysteria's HTTP-01
+listener directly. Hybrid Nodes use a fixed loopback Hysteria challenge port
+behind an nginx default-host bridge and require a DNS hostname different from
+the Manager hostname.
 
 ## Delivery slices
 

@@ -35,17 +35,20 @@ the Hysteria2 username. Credentials are present only in the protected config
 apply payload and existing authenticated or token-protected client delivery
 paths. They are excluded from Agent telemetry and task results.
 
-The VPN node owns its Hysteria ACME state under `/var/lib/hysteria/acme`.
-Manager certificates and keys are never copied or referenced. Because HTTP-01
-must own TCP port 80, RG-114F permits this adapter only on a dedicated `vpn`
-node. Hybrid-node certificate coordination is deliberately deferred.
+The VPN plane owns its Hysteria ACME state under `/var/lib/hysteria/acme`.
+Manager certificates and keys are never copied or referenced. A dedicated VPN
+Node lets Hysteria own public TCP port 80 directly. A Hybrid Node instead binds
+the fixed loopback challenge endpoint `127.0.0.1:9080`; nginx forwards only
+HTTP-01 challenge requests for a separate Hysteria DNS hostname. This preserves
+independent certificate ownership while allowing nginx TCP 443 and Hysteria
+UDP 443 to coexist on one address.
 
 The Agent stages `/etc/hysteria/config.json` with mode 0600, validates an exact
 JSON grammar, verifies the fixed Hysteria binary, applies through the shared
 atomic promotion/rollback path, controls only `hysteria-server.service`, and
 requires the Hysteria process to own the configured UDP listener.
 
-Installers pin Hysteria 2.12.1 and verify its binary against the upstream
+Installers pin Hysteria 2.12.2 and verify its binary against the upstream
 release `hashes.txt` before installation. An existing unmanaged Hysteria
 installation is never overwritten.
 
@@ -53,10 +56,10 @@ installation is never overwritten.
 
 - Hysteria2 gets independent server, account, client, apply, health, and
   certificate lifecycles without changing Manager → Agent → VPN Core.
-- A dedicated DNS name must resolve to the VPN node, TCP 80 must be reachable
+- A dedicated DNS name must resolve directly to the VPN node, TCP 80 must be reachable
   for ACME, and the configured UDP port must be open at host and provider
   firewalls.
 - Hysteria2 remains a TCP/UDP proxy protocol; it is not presented as a generic
   layer-3 tunnel and does not promise ICMP forwarding.
-- Hybrid-node Hysteria2, alternate CAs, DNS-01, certificate import, obfuscation,
-  port hopping, and custom masquerade targets require later explicit designs.
+- Alternate CAs, DNS-01, certificate import, obfuscation, port hopping, and
+  custom masquerade targets require later explicit designs.

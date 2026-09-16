@@ -2,7 +2,6 @@ package vpnaccounts
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -56,12 +55,12 @@ func TestValidateClientProtocolDeploymentRole(t *testing.T) {
 	if err := validateClientProtocolDeploymentRole(ClientProtocolVLESS, "hybrid"); err != nil {
 		t.Fatalf("Hybrid node should support VLESS: %v", err)
 	}
-	if err := validateClientProtocolDeploymentRole(ClientProtocolHysteria2, "hybrid"); err == nil {
-		t.Fatal("Hybrid node must reject Hysteria2")
+	if err := validateClientProtocolDeploymentRole(ClientProtocolHysteria2, "hybrid"); err != nil {
+		t.Fatalf("Hybrid node should support Hysteria2 through the ACME bridge: %v", err)
 	}
 }
 
-func TestUpdateClientProfileRejectsHysteria2OnHybridBeforeSave(t *testing.T) {
+func TestUpdateClientProfileAllowsHysteria2OnHybrid(t *testing.T) {
 	repo := &topologyAccountRepository{
 		fakeAccountRepository: &fakeAccountRepository{
 			profile: SubscriptionProfile{
@@ -88,33 +87,30 @@ func TestUpdateClientProfileRejectsHysteria2OnHybridBeforeSave(t *testing.T) {
 
 	handler.UpdateClientProfile(response, request)
 
-	if response.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusConflict, response.Body.String())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
-	if repo.savedProfile {
-		t.Fatal("client profile must not be saved when topology is incompatible")
+	if !repo.savedProfile {
+		t.Fatal("client profile should be saved when Hybrid Hysteria2 is supported")
 	}
 	if repo.validatedServer != "server-1" || repo.validatedProto != ClientProtocolHysteria2 {
 		t.Fatalf("unexpected topology preflight server=%q protocol=%q", repo.validatedServer, repo.validatedProto)
 	}
-	var body struct {
-		Status  string `json:"status"`
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body.Status != "client_connection_unavailable" || !strings.Contains(body.Message, "dedicated VPN Node") {
-		t.Fatalf("unexpected domain error: %+v", body)
-	}
 }
 
-func TestGetClientConnectionRejectsPersistedHysteria2OnHybrid(t *testing.T) {
+func TestGetClientConnectionAllowsPersistedHysteria2OnHybrid(t *testing.T) {
 	repo := &topologyAccountRepository{
 		fakeAccountRepository: &fakeAccountRepository{
 			profile: SubscriptionProfile{
 				Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusActive, ServerID: "server-1"},
-				Server:  &SubscriptionServer{ID: "server-1", Name: "Hybrid", VPNProtocol: ClientProtocolVLESS},
+				Server: &SubscriptionServer{
+					ID: "server-1", Name: "Hybrid", VPNProtocol: ClientProtocolVLESS,
+					Hysteria2Domain: "hy2.example.com", Hysteria2Port: 443,
+				},
+				Credentials: SubscriptionCredentials{Hysteria2: Hysteria2Credentials{
+					Username: "22222222-2222-2222-2222-222222222222",
+					Password: "0123456789abcdef0123456789abcdef0123456789abcdef",
+				}},
 			},
 		},
 		clientProfile: ClientProfile{
@@ -131,8 +127,8 @@ func TestGetClientConnectionRejectsPersistedHysteria2OnHybrid(t *testing.T) {
 
 	handler.GetClientConnection(response, request)
 
-	if response.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusConflict, response.Body.String())
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
 	if repo.validatedProto != ClientProtocolHysteria2 {
 		t.Fatalf("validated protocol = %q, want hysteria2", repo.validatedProto)

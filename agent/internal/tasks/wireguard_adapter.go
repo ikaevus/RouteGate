@@ -123,6 +123,7 @@ func (a wireGuardAdapter) Validate(ctx context.Context, configPath string) (Vali
 }
 
 func (a wireGuardAdapter) Restart(ctx context.Context) (ServiceResult, error) { return a.service.Restart(ctx) }
+func (a wireGuardAdapter) Stop(ctx context.Context) (ServiceResult, error) { return a.service.Stop(ctx) }
 func (a wireGuardAdapter) IsActive(ctx context.Context) (ServiceResult, error) { return a.service.IsActive(ctx) }
 func (a wireGuardAdapter) IsEnabled(ctx context.Context) (ServiceResult, error) { return a.service.IsEnabled(ctx) }
 func (a wireGuardAdapter) ExecuteServiceTask(ctx context.Context, task ConfigTask) (ServiceTaskReport, error) {
