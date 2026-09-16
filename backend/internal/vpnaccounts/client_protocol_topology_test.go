@@ -65,7 +65,14 @@ func TestUpdateClientProfileAllowsHysteria2OnHybrid(t *testing.T) {
 		fakeAccountRepository: &fakeAccountRepository{
 			profile: SubscriptionProfile{
 				Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusActive, ServerID: "server-1"},
-				Server:  &SubscriptionServer{ID: "server-1", Name: "Hybrid", VPNProtocol: ClientProtocolVLESS},
+				Server: &SubscriptionServer{
+					ID: "server-1", Name: "Hybrid", VPNProtocol: ClientProtocolVLESS,
+					Hysteria2Domain: "hy2.example.com", Hysteria2Port: 443,
+				},
+				Credentials: SubscriptionCredentials{Hysteria2: Hysteria2Credentials{
+					Username: "22222222-2222-2222-2222-222222222222",
+					Password: "0123456789abcdef0123456789abcdef0123456789abcdef",
+				}},
 			},
 		},
 		deploymentRole: "hybrid",

@@ -11,7 +11,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 )
 
-func TestAutomaticSelectionSkipsHybridNodeForExplicitHysteria2(t *testing.T) {
+func TestAutomaticSelectionAllowsHybridNodeForExplicitHysteria2(t *testing.T) {
 	databaseURL := os.Getenv("ROUTEGATE_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("ROUTEGATE_TEST_DATABASE_URL is not set")
@@ -117,21 +117,21 @@ func TestAutomaticSelectionSkipsHybridNodeForExplicitHysteria2(t *testing.T) {
 	if preview.SelectedCandidate == nil {
 		t.Fatalf("preview did not select a topology-compatible candidate: %+v", preview)
 	}
-	if preview.SelectedCandidate.ServerID != serverIDs[2] {
-		t.Fatalf("selected server = %s, want dedicated VPN target %s; decision=%+v", preview.SelectedCandidate.ServerID, serverIDs[2], preview)
+	if preview.SelectedCandidate.ServerID != serverIDs[1] {
+		t.Fatalf("selected server = %s, want preferred Hybrid target %s; decision=%+v", preview.SelectedCandidate.ServerID, serverIDs[1], preview)
 	}
 	if preview.SelectedCandidate.Protocol != vpnaccounts.ClientProtocolHysteria2 {
 		t.Fatalf("selected protocol = %q, want hysteria2", preview.SelectedCandidate.Protocol)
 	}
-	if preview.EligibleCandidates != 2 {
-		t.Fatalf("eligible candidates = %d, want 2 dedicated VPN nodes", preview.EligibleCandidates)
+	if preview.EligibleCandidates != 3 {
+		t.Fatalf("eligible candidates = %d, want all 3 VPN-capable nodes", preview.EligibleCandidates)
 	}
 
 	result, err := repository.ApplyAutomaticSelection(ctx, accountID)
 	if err != nil {
 		t.Fatalf("apply automatic selection: %v", err)
 	}
-	if !result.Changed || result.SelectedServerID != serverIDs[2] {
+	if !result.Changed || result.SelectedServerID != serverIDs[1] {
 		t.Fatalf("unexpected topology-aware apply result: %+v", result)
 	}
 }
