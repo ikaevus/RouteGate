@@ -4,7 +4,6 @@ export function getVpnAccountManagementCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       pageSubtitle: 'Управляйте VPN-аккаунтами, протоколами подключения, доступом, маршрутами и лимитами трафика.',
-      advancedHeading: 'Дополнительно / диагностика',
       searchPlaceholder: 'Поиск по имени, email, заметкам, ID или VLESS UUID…',
       search: 'Найти',
       clear: 'Сбросить',
@@ -72,7 +71,6 @@ export function getVpnAccountManagementCopy() {
 
   return {
     pageSubtitle: 'Manage VPN accounts, connection protocols, access delivery, routing, and traffic limits.',
-    advancedHeading: 'Advanced / Diagnostics',
     searchPlaceholder: 'Search by account name, email, notes, ID, or VLESS UUID…',
     search: 'Search',
     clear: 'Reset',
