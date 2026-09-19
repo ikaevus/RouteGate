@@ -218,7 +218,6 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     onSuccess: async (connection) => {
       queryClient.setQueryData(queryKey, connection);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['servers'] }),

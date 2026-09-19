@@ -4,9 +4,6 @@ export function getVpnAccountManagementCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       pageSubtitle: 'Управляйте VPN-аккаунтами, протоколами подключения, доступом, маршрутами и лимитами трафика.',
-      credentialsTitle: 'Дополнительно · Сырые учётные данные',
-      credentialsSubtitle: 'Раскрытые ключи и секреты протокола для диагностики. Обычно они не нужны.',
-      credentialsWarning: 'Содержит чувствительные VPN-секреты (UUID, ключи Reality/WireGuard и т.п.). Не публикуйте и не пересылайте этот раздел.',
       advancedHeading: 'Дополнительно / диагностика',
       searchPlaceholder: 'Поиск по имени, email, заметкам, ID или VLESS UUID…',
       search: 'Найти',
@@ -75,9 +72,6 @@ export function getVpnAccountManagementCopy() {
 
   return {
     pageSubtitle: 'Manage VPN accounts, connection protocols, access delivery, routing, and traffic limits.',
-    credentialsTitle: 'Advanced · Raw credentials',
-    credentialsSubtitle: 'Exposed protocol keys and secrets for troubleshooting. You normally do not need this.',
-    credentialsWarning: 'Contains sensitive VPN secrets (UUID, Reality/WireGuard keys, and similar). Do not publish or forward this section.',
     advancedHeading: 'Advanced / Diagnostics',
     searchPlaceholder: 'Search by account name, email, notes, ID, or VLESS UUID…',
     search: 'Search',

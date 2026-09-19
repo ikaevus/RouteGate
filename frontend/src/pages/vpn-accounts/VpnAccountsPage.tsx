@@ -1,13 +1,9 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getServers } from '../../entities/server/api/serverApi';
-import {
-  createVpnAccount,
-  getVpnAccountCredentials,
-} from '../../entities/vpnAccount/api/vpnAccountApi';
+import { createVpnAccount } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
-import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { AccessDevicesPanel } from './AccessDevicesPanel';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
 import { VpnAccountConnectionPanels } from './VpnAccountConnectionPanels';
@@ -19,21 +15,8 @@ import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 import './vpnAccountManagement.css';
 import './vpnAccountNotes.css';
 
-function formatValue(value?: string | null): string {
-  return value && value.trim() !== '' ? value : t('common.notAvailable');
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
-}
-
-function DetailRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="detail-row">
-      <span>{label}</span>
-      <strong>{children}</strong>
-    </div>
-  );
 }
 
 export function VpnAccountsPage() {
@@ -48,19 +31,12 @@ export function VpnAccountsPage() {
   const [phone, setPhone] = useState('');
   const [telegramUsername, setTelegramUsername] = useState('');
   const [serverId, setServerId] = useState('');
-  const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('create') === '1') setIsCreateOpen(true);
   }, [searchParams]);
 
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
-
-  const credentialsQuery = useQuery({
-    queryKey: ['vpn-account-credentials', accountId],
-    queryFn: () => getVpnAccountCredentials(accountId ?? ''),
-    enabled: Boolean(accountId),
-  });
 
   const createAccountMutation = useMutation({
     mutationFn: () => createVpnAccount({
@@ -111,8 +87,6 @@ export function VpnAccountsPage() {
     event.preventDefault();
     if (canCreateAccount) createAccountMutation.mutate();
   }
-
-  const credentials = credentialsQuery.data;
 
   return (
     <section className="page vpn-accounts-page feature-screen-page vpn-account-management-page" style={{ overflowX: 'hidden' }}>
@@ -206,73 +180,6 @@ export function VpnAccountsPage() {
           {accountId && <h2 className="vpn-account-advanced-heading">{copy.advancedHeading}</h2>}
           {accountId && <VpnMultiProtocolAccessPanel accountId={accountId} />}
 
-          {accountId && (
-            <div className="panel credentials-panel feature-detail-panel">
-              <div className="panel-header">
-                <CollapsiblePanelHeaderTitles
-                  title={copy.credentialsTitle}
-                  subtitle={copy.credentialsSubtitle}
-                  open={isCredentialsOpen}
-                  onToggle={() => setIsCredentialsOpen((value) => !value)}
-                />
-              </div>
-              <div className="panel-collapsible-body" hidden={!isCredentialsOpen}>
-              <div className="form-message form-message-warning">{copy.credentialsWarning}</div>
-              {credentialsQuery.isLoading && <p className="empty-state">{t('vpnAccounts.loadingCredentials')}</p>}
-              {credentialsQuery.isError && <div className="form-message form-message-error">{t('vpnAccounts.credentialsLoadError')}</div>}
-              {credentials && (
-                <div className="detail-list credentials-detail-list feature-detail-list">
-                  <DetailRow label={t('vpnAccounts.accountId')}>{formatValue(credentials.vpnAccountId)}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.serverId')}>{formatValue(credentials.serverId)}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.protocol')}>{formatValue(credentials.protocol)}</DetailRow>
-                  <DetailRow label={t('vpnAccounts.endpoint')}>{formatValue(credentials.endpoint)}</DetailRow>
-                  {credentials.protocol === 'mtproto' ? (
-                    <>
-                      <DetailRow label={t('vpnAccounts.mtprotoSecret')}><code>{formatValue(credentials.mtproto.secret)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.mtprotoPort')}>{formatValue(credentials.mtproto.port ? String(credentials.mtproto.port) : undefined)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.mtprotoDomain')}>{formatValue(credentials.mtproto.frontingDomain)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.credentialScope')}>{credentials.mtproto.shared ? t('vpnAccounts.nodeShared') : t('vpnAccounts.accountSpecific')}</DetailRow>
-                    </>
-                  ) : credentials.protocol === 'shadowsocks' ? (
-                    <>
-                      <DetailRow label={t('vpnAccounts.shadowsocksUsername')}><code>{formatValue(credentials.shadowsocks.username)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.shadowsocksMethod')}>{formatValue(credentials.shadowsocks.method)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.shadowsocksServerKey')}><code>{formatValue(credentials.shadowsocks.serverKey)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.shadowsocksUserKey')}><code>{formatValue(credentials.shadowsocks.userKey)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.shadowsocksPort')}>{formatValue(credentials.shadowsocks.port ? String(credentials.shadowsocks.port) : undefined)}</DetailRow>
-                    </>
-                  ) : credentials.protocol === 'hysteria2' ? (
-                    <>
-                      <DetailRow label={t('vpnAccounts.hysteria2Username')}><code>{formatValue(credentials.hysteria2.username)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.hysteria2Password')}><code>{formatValue(credentials.hysteria2.password)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.hysteria2Domain')}>{formatValue(credentials.hysteria2.domain)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.hysteria2Port')}>{formatValue(credentials.hysteria2.port ? String(credentials.hysteria2.port) : undefined)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.hysteria2AcmeEmail')}>{formatValue(credentials.hysteria2.acmeEmail)}</DetailRow>
-                    </>
-                  ) : credentials.protocol === 'wireguard' ? (
-                    <>
-                      <DetailRow label={t('vpnAccounts.wireGuardAddress')}>{formatValue(credentials.wireGuard.address)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.wireGuardPublicKey')}><code>{formatValue(credentials.wireGuard.publicKey)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.wireGuardPrivateKey')}><code>{formatValue(credentials.wireGuard.privateKey)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.wireGuardServerKey')}><code>{formatValue(credentials.wireGuard.serverPublicKey)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.wireGuardDns')}>{formatValue(credentials.wireGuard.dns)}</DetailRow>
-                    </>
-                  ) : (
-                    <>
-                      <DetailRow label={t('vpnAccounts.vlessUuid')}><code>{formatValue(credentials.vless.uuid)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.flow')}>{formatValue(credentials.vless.flow)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.network')}>{formatValue(credentials.vless.network)}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.realityEnabled')}>{credentials.reality.enabled ? t('vpnAccounts.enabled') : t('vpnAccounts.disabled')}</DetailRow>
-                      <DetailRow label={t('vpnAccounts.realityPublicKey')}><code>{formatValue(credentials.reality.publicKey)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.realityShortId')}><code>{formatValue(credentials.reality.shortId)}</code></DetailRow>
-                      <DetailRow label={t('vpnAccounts.realityServerName')}>{formatValue(credentials.reality.serverName)}</DetailRow>
-                    </>
-                  )}
-                </div>
-              )}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </section>

@@ -68,7 +68,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-notes', accountId] }),
-      queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
     ]);
   }
 

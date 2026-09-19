@@ -139,7 +139,6 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
-      queryClient.invalidateQueries({ queryKey: ['vpn-account-credentials', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-automatic-selection-preview', accountId] }),
     ]);
