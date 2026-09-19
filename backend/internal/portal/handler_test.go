@@ -112,7 +112,7 @@ func TestListInstructionsReturnsRussianLocalizedPlatformDescriptions(t *testing.
 	if len(body.Items) == 0 {
 		t.Fatal("expected instructions payload")
 	}
-	if body.Items[0].Description != "Импортируйте ссылку подписки или QR-код на iPhone и iPad." {
+	if body.Items[0].Description != "Используйте прямой QR-профиль в приложении, совместимом с протоколом, указанным в RouteGate." {
 		t.Fatalf("expected Russian platform description, got %q", body.Items[0].Description)
 	}
 }
@@ -136,10 +136,10 @@ func TestGetInstructionReturnsRussianLocalizedContent(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	if body.Instruction.Steps[0] != "Установите совместимый клиент VLESS или sing-box." {
+	if body.Instruction.Steps[0] != "Откройте свой VPN-профиль RouteGate и посмотрите указанный для него протокол." {
 		t.Fatalf("expected Russian step 1, got %q", body.Instruction.Steps[0])
 	}
-	if body.Instruction.Notes[0] != "RouteGate не требует использования одного конкретного коммерческого клиента." {
+	if body.Instruction.Notes[0] != "RouteGate поддерживает несколько протоколов; совместимость клиента определяется протоколом, указанным в профиле." {
 		t.Fatalf("expected Russian note 1, got %q", body.Instruction.Notes[0])
 	}
 }
@@ -164,7 +164,7 @@ func TestGetSubscriptionReturnsRussianWarningForActiveProfile(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	want := "Создайте или обновите ссылку подписки, чтобы получить новый пользовательский URL. RouteGate хранит только хеш токена, поэтому существующие исходные токены нельзя показать повторно."
+	want := "Расширенный URL подписки RouteGate можно создать или обновить отдельно. Для обычного подключения используйте прямой QR-код профиля; исходные токены подписки RouteGate хранит только в виде хеша."
 	if body.Subscription.Message != want {
 		t.Fatalf("expected Russian warning, got %q", body.Subscription.Message)
 	}
@@ -218,7 +218,7 @@ func TestGenerateSubscriptionAccessReturnsURLAndQRForOwnedActiveProfile(t *testi
 		t.Fatalf("unexpected subscription response: %+v", body.Subscription)
 	}
 	if !body.QR.Available || body.QR.QRText != expectedURL || body.QR.Format != PortalQRFormat {
-		t.Fatalf("unexpected qr response: %+v", body.QR)
+		t.Fatalf("unexpected legacy qr fallback response: %+v", body.QR)
 	}
 }
 
