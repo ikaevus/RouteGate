@@ -1,13 +1,14 @@
-.vpn-account-protocol-preference-panel > .vpn-account-create-grid {
-  margin-top: 18px;
-  margin-bottom: 18px;
+.vpn-account-protocol-preference-content {
+  display: grid;
+  gap: 22px;
+  padding-top: 4px;
 }
 
-.vpn-account-protocol-preference-panel > .form-message {
-  margin-top: 12px;
+.vpn-account-protocol-preference-content > .vpn-account-create-grid {
+  gap: 14px;
 }
 
-.vpn-account-protocol-preference-panel > .vpn-account-create-grid + .form-message {
+.vpn-account-protocol-preference-content > .vpn-account-create-grid + .form-message {
   background: rgba(59, 130, 246, 0.07);
   border: 1px solid rgba(96, 165, 250, 0.16);
   color: var(--rg-text-secondary, #94a3b8);
@@ -15,39 +16,43 @@
   line-height: 1.5;
 }
 
-.vpn-account-protocol-preference-panel > .form-actions {
-  margin-top: 16px;
+.vpn-account-protocol-preference-content > .form-actions {
+  padding-top: 2px;
+}
+
+.vpn-account-protocol-options > span,
+.vpn-account-protocol-preference-content .vpn-account-create-grid > .field > span:first-child {
+  color: var(--rg-text-primary, #e5e7eb);
+  font-weight: 700;
 }
 
 .vpn-protocol-choice-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
-  margin-top: 8px;
-  margin-bottom: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 6px;
 }
 
 .vpn-protocol-choice {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 10px 12px;
+  gap: 12px;
+  min-height: 50px;
+  padding: 12px 14px;
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
-  border-radius: 10px;
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.3);
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.vpn-protocol-choice::after {
-  content: '';
-  width: 18px;
-  height: 18px;
+.vpn-protocol-choice:hover {
+  border-color: rgba(96, 165, 250, 0.48);
 }
 
 .vpn-protocol-choice:has(input:checked) {
   border-color: var(--accent-color, #60a5fa);
-  background: rgba(96, 165, 250, 0.08);
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .field .vpn-protocol-choice > input[type='checkbox'] {
@@ -57,15 +62,24 @@
   height: 18px;
   margin: 0;
   padding: 0;
-  justify-self: center;
+  flex: 0 0 18px;
   transform: none;
+  accent-color: #3b82f6;
 }
 
 .vpn-protocol-choice > span {
   min-width: 0;
   padding: 0;
-  text-align: center;
+  color: var(--rg-text-primary, #e5e7eb);
+  font-weight: 600;
+  text-align: left;
   line-height: 1.25;
+}
+
+.vpn-account-protocol-preference-content .field-hint {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.55;
 }
 
 .traffic-limit-form-grid .field input[type='number'] {

@@ -18,6 +18,7 @@ import {
   ensureProtocolRuntime,
   type ProtocolDeploymentStage,
 } from './protocolDeploymentWorkflow';
+import './multi-protocol-access.css';
 
 type Props = { accountId: string };
 
@@ -277,8 +278,8 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
       {connectionQuery.isError && <div className="form-message form-message-error">{copy.loadError}</div>}
 
       {connectionQuery.data && (
-        <>
-          <div className="field">
+        <div className="vpn-account-protocol-preference-content">
+          <div className="field vpn-account-protocol-options">
             <span>{copy.enabled}</span>
             <div className="vpn-protocol-choice-grid">
               {protocolOrder.map((protocol) => {
@@ -342,7 +343,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
               {saveMutation.isPending ? stageText ?? copy.saving : canRetry ? copy.retry : copy.save}
             </button>
           </div>
-        </>
+        </div>
       )}
       </div>
     </div>
