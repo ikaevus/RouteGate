@@ -10,7 +10,6 @@ import { VpnAccountConnectionPanels } from './VpnAccountConnectionPanels';
 import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnAccountRoutingPolicyPanel } from './VpnAccountRoutingPolicyPanel';
-import { VpnMultiProtocolAccessPanel } from './VpnMultiProtocolAccessPanel';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 import './vpnAccountManagement.css';
 import './vpnAccountNotes.css';
@@ -176,9 +175,6 @@ export function VpnAccountsPage() {
           {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
           {accountId && <VpnAccountConnectionPanels accountId={accountId} />}
           {accountId && <TrafficStatsPanel accountId={accountId} />}
-
-          {accountId && <h2 className="vpn-account-advanced-heading">{copy.advancedHeading}</h2>}
-          {accountId && <VpnMultiProtocolAccessPanel accountId={accountId} />}
 
         </div>
       </div>
