@@ -1,4 +1,10 @@
 export const portalV2En = {
+  'portalV2.connectionIntro': 'Choose your profile, copy its subscription link or scan the QR code in your VPN app.',
+  'portalV2.chooseProfile': 'Choose a VPN profile',
+  'portalV2.createConnection': 'Get connection link',
+  'portalV2.usageDetails': 'Usage and profile details',
+  'portalV2.openPortal': 'Open user portal',
+  'portalV2.copyError': 'Could not copy. Select and copy the link manually.',
   'portalV2.eyebrow': 'MY VPN ACCESS',
   'portalV2.readyTitle': 'Your VPN access is ready',
   'portalV2.attentionTitle': 'Your VPN access needs attention',
@@ -30,6 +36,12 @@ export const portalV2En = {
 export type PortalV2TranslationKey = keyof typeof portalV2En;
 
 export const portalV2Ru: Record<PortalV2TranslationKey, string> = {
+  'portalV2.connectionIntro': 'Выберите профиль, скопируйте ссылку подписки или отсканируйте QR-код в VPN-приложении.',
+  'portalV2.chooseProfile': 'Выберите VPN-профиль',
+  'portalV2.createConnection': 'Получить ссылку подключения',
+  'portalV2.usageDetails': 'Статистика и сведения о профиле',
+  'portalV2.openPortal': 'Открыть портал пользователя',
+  'portalV2.copyError': 'Не удалось скопировать. Выделите ссылку и скопируйте вручную.',
   'portalV2.eyebrow': 'МОЙ VPN-ДОСТУП',
   'portalV2.readyTitle': 'VPN-доступ готов к работе',
   'portalV2.attentionTitle': 'VPN-доступ требует внимания',

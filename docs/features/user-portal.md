@@ -110,3 +110,12 @@ Recommended next steps:
 ## Notes
 
 This foundation intentionally avoids new database migrations. It reuses existing users, roles, permissions, auth sessions, and VPN accounts.
+
+
+## Connection-first portal layout
+
+The administrator opens the portal from the account menu. The main sidebar is reserved for administrative work.
+
+The portal starts with device connection. A single assigned profile opens automatically; multiple profiles require explicit selection in a compact picker. Existing profile deep links remain supported. Subscription copy and QR actions precede platform instructions, while usage and technical metadata are collapsed below. Inactive profiles do not expose connection actions. Existing token refresh remains available in the expanded details.
+
+Validation: frontend production build and i18n checks passed. Server-rendered component checks cover single/multiple profiles, explicit deep links, disabled access, empty lists, unknown profile IDs, and collapsed supporting details. Live browser visual acceptance remains outstanding: the preview runtime failed with `uv_interface_addresses`, and the cloud browser rejected localhost navigation. No production deployment is included.
