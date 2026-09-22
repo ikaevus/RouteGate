@@ -105,3 +105,26 @@
   .portal-v2-next { padding: 18px; }
   .portal-v2-metrics { grid-template-columns: 1fr; }
 }
+
+/* The portal follows the connection flow; supporting information is disclosed below. */
+.portal-page.portal-connect-page { display: grid; width: 100%; max-width: 960px; margin-inline: auto; gap: 20px; }
+.portal-connect-heading h1 { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 38px); }
+.portal-connect-heading p, .portal-connect-details > p { color: var(--rg-text-secondary, #94a3b8); line-height: 1.6; }
+.portal-connect-page .panel { min-width: 0; }
+.portal-profile-picker { display: grid; gap: 10px; font-weight: 600; }
+.portal-profile-picker select { width: 100%; min-width: 0; min-height: 46px; padding: 10px; border: 1px solid var(--rg-border, #334155); border-radius: 8px; color: var(--rg-text-primary, #f8fafc); background: var(--rg-surface-main, #0c1a2e); font: inherit; }
+.portal-connect-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; overflow-wrap: anywhere; }
+.portal-profile-picker + .portal-connect-summary { margin-top: 18px; }
+.portal-connect-summary > span:not(.badge) { color: var(--rg-text-secondary, #94a3b8); }
+.portal-connect-details summary { cursor: pointer; padding: 4px 0; font-weight: 600; }
+.portal-connect-details[open] summary { margin-bottom: 20px; }
+.portal-connect-details .detail-list { margin-top: 20px; }
+.portal-connect-page .portal-v2-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.portal-connect-page .portal-instructions-layout { grid-template-columns: 1fr; }
+.portal-connect-page .portal-instruction-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.portal-connect-page .portal-instruction-button { flex: 1 1 130px; }
+.portal-connect-page .portal-v2-primary-action:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 640px) {
+  .portal-connect-page .portal-v2-metrics { grid-template-columns: 1fr; }
+  .portal-connect-page .panel-header { flex-direction: column; align-items: stretch; gap: 16px; }
+}

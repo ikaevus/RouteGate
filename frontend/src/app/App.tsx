@@ -294,6 +294,9 @@ function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
           >
             {t('security.profileMenu')}
           </Link>
+          <Link className="admin-profile-menu-item" role="menuitem" to="/portal" onClick={() => setIsOpen(false)}>
+            {t('portalV2.openPortal')}
+          </Link>
           <button
             className="admin-profile-menu-item"
             disabled={isLoggingOut}
@@ -345,7 +348,6 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
     { to: '/protocol-settings', label: t('navigation.configDeploy'), icon: 'deploy' as const },
     { to: '/routing-profiles', label: t('navigation.routingProfiles'), icon: 'routing' as const },
     { to: '/node-groups', label: t('navigation.nodeGroups'), icon: 'servers' as const },
-    { to: '/portal', label: t('navigation.userPortal'), icon: 'portal' as const },
   ];
   const secondaryNavigationItems = [
     { label: t('navigation.licensing'), icon: 'licensing' as const },
