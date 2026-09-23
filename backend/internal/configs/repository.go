@@ -237,7 +237,30 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			return ConfigVersion{}, err
 		}
 		if equivalent {
-			return latest, nil
+			// An identical config can be rendered after a protocol preference was
+			// saved again. The apply trigger only activates preferences whose
+			// updated_at is no later than the version's created_at. Reusing an
+			// older version would leave a successfully applied set pending.
+			var newerPreference bool
+			if err := tx.QueryRow(ctx, `
+				SELECT EXISTS (
+					SELECT 1 FROM vpn_accounts a
+					LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
+					WHERE a.server_id = $1::uuid
+					  AND (cp.updated_at > $2 OR EXISTS (
+						SELECT 1 FROM vpn_account_protocols pap
+						WHERE pap.vpn_account_id = a.id AND pap.updated_at > $2
+					  ))
+				) OR EXISTS (
+					SELECT 1 FROM servers s
+					WHERE s.id = $1::uuid AND s.protocol_updated_at > $2
+				)
+			`, input.ServerID, latest.CreatedAt).Scan(&newerPreference); err != nil {
+				return ConfigVersion{}, err
+			}
+			if !newerPreference {
+				return latest, nil
+			}
 		}
 	} else if !errors.Is(latestErr, pgx.ErrNoRows) {
 		return ConfigVersion{}, latestErr

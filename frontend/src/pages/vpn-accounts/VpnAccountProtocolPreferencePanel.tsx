@@ -233,7 +233,12 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
       };
 
       setDeploymentStage('saving_preference');
-      await updateVpnAccountClientProfile(accountId, request);
+      // A retry must preserve the original change timestamp. Re-saving the
+      // identical desired set makes an already rendered config version older
+      // than the preference, preventing successful apply from activating it.
+      if (changed) {
+        await updateVpnAccountClientProfile(accountId, request);
+      }
 
       for (const protocol of ordered(enabledProtocols)) {
         await ensureProtocolRuntime(assignedServer, protocol, setDeploymentStage);
