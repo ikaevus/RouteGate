@@ -168,6 +168,7 @@ function getCopy() {
       wireGuardAction: 'Настроить WireGuard',
       wireGuardPending: 'Настраиваем WireGuard…',
       manualDescription: 'Для этого протокола нет отдельной кнопки автонастройки. Заполните применимые поля ниже и сохраните настройки.',
+      setupRequiredEyebrow: 'Требуется настройка',
       configuredDescription: 'Обязательные настройки заполнены. Протокол станет активным только после назначения VPN-аккаунту и успешного применения конфигурации Agent.',
       continue: 'К VPN-аккаунтам →',
       protocol: 'Протокол узла по умолчанию',
@@ -195,8 +196,9 @@ function getCopy() {
       methodLabel: 'Метод',
       pending: 'Настраиваем…',
       error: 'Не удалось применить рекомендуемые настройки VLESS / Reality. Для автоматической настройки серверу нужен корректный hostname.',
-      advanced: 'Настройки выбранного протокола',
+      advanced: 'Параметры протокола',
       advancedDescription: 'Здесь отображаются только параметры, применимые к выбранному протоколу.',
+      hysteriaHybridNotice: 'Для Hysteria2 на гибридном узле нужен отдельный домен с прямой DNS-записью на этот узел. TCP 443 остаётся у RouteGate, а UDP 443 используется Hysteria2.',
       port443Warning: 'На All-in-One сервере порт 443 уже занят HTTPS-панелью RouteGate. Для VLESS рекомендуется 8443.',
       incompleteReality: 'Для Reality заполните весь набор: публичный ключ, Short ID и имя сервера — либо очистите все три поля.',
     } as const;
@@ -220,6 +222,7 @@ function getCopy() {
     wireGuardAction: 'Configure WireGuard',
     wireGuardPending: 'Configuring WireGuard…',
     manualDescription: 'This protocol has no separate automatic-setup action. Complete the applicable fields below and save the settings.',
+    setupRequiredEyebrow: 'Setup required',
     configuredDescription: 'Required settings are complete. The protocol becomes active only after assignment to a VPN account and a successful Agent config apply.',
     continue: 'Open VPN accounts →',
     protocol: 'Node default protocol',
@@ -247,8 +250,9 @@ function getCopy() {
     methodLabel: 'Method',
     pending: 'Configuring…',
     error: 'Could not apply recommended VLESS / Reality settings. Automatic setup requires a valid server hostname.',
-    advanced: 'Selected protocol settings',
+    advanced: 'Protocol parameters',
     advancedDescription: 'Only controls applicable to the selected protocol are shown here.',
+    hysteriaHybridNotice: 'Hysteria2 on a Hybrid Node requires a dedicated hostname with a direct DNS record to this node. TCP 443 remains assigned to RouteGate, while Hysteria2 uses UDP 443.',
     port443Warning: 'On an All-in-One server, port 443 is already used by RouteGate HTTPS. Port 8443 is recommended for VLESS.',
     incompleteReality: 'Reality requires the complete set: public key, Short ID, and server name — or all three fields must be empty.',
   } as const;
@@ -264,7 +268,13 @@ function protocolLabel(protocol: ManagedProtocol, copy: ReturnType<typeof getCop
   }
 }
 
-export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) {
+export function ServerProtocolSettingsPanel({
+  serverId,
+  deploymentRole,
+}: {
+  serverId: string;
+  deploymentRole?: string;
+}) {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const copy = getCopy();
@@ -391,6 +401,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   const selectedProtocolLabel = protocolLabel(editingProtocol, copy);
   const isVless = editingProtocol === 'vless';
   const isWireGuard = editingProtocol === 'wireguard';
+  const showRecommendedSetup = isVless || isWireGuard || protocolSelectionDirty;
 
   const recommendedTitle = protocolConfigured
     ? `${selectedProtocolLabel} — ${copy.configuredEyebrow}`
@@ -439,48 +450,56 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             <small>{copy.protocolHint}</small>
           </label>
 
-          <div className={`protocol-recommended-setup${protocolConfigured ? ' protocol-recommended-setup-ready' : ''}`}>
-            <div className="protocol-recommended-copy">
-              <span className="protocol-recommended-eyebrow">
-                {protocolConfigured ? copy.configuredEyebrow : selectionReadyToSave ? copy.selectionEyebrow : copy.recommendedEyebrow}
-              </span>
-              <div className="protocol-recommended-title">{recommendedTitle}</div>
-              <p>{recommendedDescription}</p>
-              {!selectedProtocolReady && recommendedValues && <div className="protocol-recommended-values">{recommendedValues}</div>}
-              {!selectedProtocolReady && recommendedReason && <p className="protocol-recommended-reason">{recommendedReason}</p>}
+          {showRecommendedSetup && (
+            <div className={`protocol-recommended-setup${protocolConfigured ? ' protocol-recommended-setup-ready' : ''}`}>
+              <div className="protocol-recommended-copy">
+                <span className="protocol-recommended-eyebrow">
+                  {protocolConfigured
+                    ? copy.configuredEyebrow
+                    : selectionReadyToSave
+                      ? copy.selectionEyebrow
+                      : isVless || isWireGuard
+                        ? copy.recommendedEyebrow
+                        : copy.setupRequiredEyebrow}
+                </span>
+                <div className="protocol-recommended-title">{recommendedTitle}</div>
+                <p>{recommendedDescription}</p>
+                {!selectedProtocolReady && recommendedValues && <div className="protocol-recommended-values">{recommendedValues}</div>}
+                {!selectedProtocolReady && recommendedReason && <p className="protocol-recommended-reason">{recommendedReason}</p>}
+              </div>
+              <div className="protocol-recommended-actions">
+                {protocolConfigured ? (
+                  <Link className="small-button" to="/vpn-accounts">{copy.continue}</Link>
+                ) : selectionReadyToSave ? (
+                  <button className="primary-button" type="submit" disabled={!canSave}>
+                    {updateSettingsMutation.isPending ? t('protocolSettings.saving') : copy.saveDefault}
+                  </button>
+                ) : isVless ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={mutationPending}
+                    onClick={() => recommendedSettingsMutation.mutate()}
+                  >
+                    {recommendedSettingsMutation.isPending ? copy.pending : copy.vlessAction}
+                  </button>
+                ) : isWireGuard ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={mutationPending}
+                    onClick={() => wireGuardSettingsMutation.mutate()}
+                  >
+                    {wireGuardSettingsMutation.isPending ? copy.wireGuardPending : copy.wireGuardAction}
+                  </button>
+                ) : (
+                  <button className="small-button" type="button" onClick={() => setAdvancedOpen(true)}>
+                    {copy.advanced}
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="protocol-recommended-actions">
-              {protocolConfigured ? (
-                <Link className="small-button" to="/vpn-accounts">{copy.continue}</Link>
-              ) : selectionReadyToSave ? (
-                <button className="primary-button" type="submit" disabled={!canSave}>
-                  {updateSettingsMutation.isPending ? t('protocolSettings.saving') : copy.saveDefault}
-                </button>
-              ) : isVless ? (
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={mutationPending}
-                  onClick={() => recommendedSettingsMutation.mutate()}
-                >
-                  {recommendedSettingsMutation.isPending ? copy.pending : copy.vlessAction}
-                </button>
-              ) : isWireGuard ? (
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={mutationPending}
-                  onClick={() => wireGuardSettingsMutation.mutate()}
-                >
-                  {wireGuardSettingsMutation.isPending ? copy.wireGuardPending : copy.wireGuardAction}
-                </button>
-              ) : (
-                <button className="small-button" type="button" onClick={() => setAdvancedOpen(true)}>
-                  {copy.advanced}
-                </button>
-              )}
-            </div>
-          </div>
+          )}
         </>
       )}
 
@@ -525,6 +544,9 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           <>
             {isVless && portNumber === 443 && <div className="protocol-port-warning">{copy.port443Warning}</div>}
             {isVless && realityTouched && !realityComplete && <div className="form-message form-message-error">{copy.incompleteReality}</div>}
+            {editingProtocol === 'hysteria2' && deploymentRole === 'hybrid' && (
+              <div className="protocol-port-warning">{copy.hysteriaHybridNotice}</div>
+            )}
 
             <div className="protocol-settings-grid">
               {editingProtocol === 'mtproto' ? (
@@ -550,7 +572,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
                   <label className="field"><span>{copy.hysteria2Port}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.hysteria2Port} onChange={(event) => updateField('hysteria2Port', event.target.value)} /></label>
                   <label className="field"><span>{copy.hysteria2Domain}</span><input value={form.hysteria2Domain} onChange={(event) => updateField('hysteria2Domain', event.target.value)} /></label>
                   <label className="field"><span>{copy.hysteria2AcmeEmail}</span><input type="email" value={form.hysteria2AcmeEmail} onChange={(event) => updateField('hysteria2AcmeEmail', event.target.value)} /></label>
-                  <label className="field"><span>{copy.hysteria2MasqueradeUrl}</span><input type="url" value={form.hysteria2MasqueradeUrl} readOnly /><small>{copy.hysteria2Hint}</small></label>
+                  <label className="field"><span>{copy.hysteria2MasqueradeUrl}</span><input type="url" value={form.hysteria2MasqueradeUrl} readOnly /></label>
                 </>
               ) : editingProtocol === 'wireguard' ? (
                 <>
@@ -571,6 +593,8 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
               )}
             </div>
 
+            {editingProtocol === 'hysteria2' && <p className="protocol-settings-hint">{copy.hysteria2Hint}</p>}
+
             <div className="protocol-advanced-actions">
               {isVless && (
                 <button
@@ -582,7 +606,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
                   {realityKeypairMutation.isPending ? t('protocolSettings.generating') : translatedKeypairActionLabel}
                 </button>
               )}
-              <button className="small-button" type="submit" disabled={!canSave}>
+              <button className="primary-button" type="submit" disabled={!canSave}>
                 {updateSettingsMutation.isPending ? t('protocolSettings.saving') : t('protocolSettings.saveSettings')}
               </button>
             </div>
