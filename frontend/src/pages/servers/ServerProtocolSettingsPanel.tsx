@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   configureRecommendedProtocolSettings,
   configureRecommendedWireGuard,
@@ -163,10 +163,9 @@ function getCopy() {
       manualDescription: 'Для этого протокола нет отдельной кнопки автонастройки. Заполните применимые поля ниже и сохраните настройки.',
       setupRequiredEyebrow: 'Требуется настройка',
       configuredDescription: 'Обязательные настройки заполнены. Протокол станет активным только после назначения VPN-аккаунту и успешного применения конфигурации Agent.',
-      continue: 'К VPN-аккаунтам →',
       protocol: 'Основной протокол узла',
       editingProtocol: 'Протокол для настройки',
-      editingProtocolHint: 'Выбор протокола показывает его параметры. Основной протокол меняется отдельной кнопкой.',
+      editingProtocolHint: 'Настройте любой протокол независимо от основного. «Сохранить настройки» не меняет основной протокол.',
       wireGuardPort: 'Порт WireGuard',
       wireGuardAddress: 'Адрес интерфейса WireGuard',
       wireGuardDns: 'DNS для клиентов',
@@ -216,10 +215,9 @@ function getCopy() {
     manualDescription: 'This protocol has no separate automatic-setup action. Complete the applicable fields below and save the settings.',
     setupRequiredEyebrow: 'Setup required',
     configuredDescription: 'Required settings are complete. The protocol becomes active only after assignment to a VPN account and a successful Agent config apply.',
-    continue: 'Open VPN accounts →',
     protocol: 'Node default protocol',
     editingProtocol: 'Protocol to configure',
-    editingProtocolHint: 'Selecting a protocol shows its settings. Change the node default with a separate button.',
+    editingProtocolHint: 'Configure any protocol independently of the node default. Saving settings does not change the default.',
     wireGuardPort: 'WireGuard port',
     wireGuardAddress: 'WireGuard interface address',
     wireGuardDns: 'Client DNS',
@@ -271,7 +269,6 @@ export function ServerProtocolSettingsPanel({
   const copy = getCopy();
   const [form, setForm] = useState<ProtocolSettingsFormState>(emptyFormState);
   const [editingProtocol, setEditingProtocol] = useState<ManagedProtocol>('vless');
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const requested = requestedProtocol(searchParams.get('protocol'));
   const selectionScope = useRef('');
 
@@ -288,7 +285,6 @@ export function ServerProtocolSettingsPanel({
     if (selectionScope.current !== scope) {
       selectionScope.current = scope;
       setEditingProtocol(requested ?? normalizeProtocol(settingsQuery.data.protocol));
-      if (requested) setAdvancedOpen(true);
     }
     setForm(next);
   }, [serverId, requested, settingsQuery.data]);
@@ -335,6 +331,14 @@ export function ServerProtocolSettingsPanel({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function selectProtocol(value: string) {
+    setEditingProtocol(normalizeProtocol(value));
+    defaultProtocolMutation.reset();
+    updateSettingsMutation.reset();
+    recommendedSettingsMutation.reset();
+    wireGuardSettingsMutation.reset();
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     updateSettingsMutation.mutate(toRequest(
@@ -374,12 +378,6 @@ export function ServerProtocolSettingsPanel({
           ? Boolean(settingsQuery.data?.wireGuard.ready) && Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
           : realityComplete && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
 
-  const protocolConfigured = selectedProtocolReady;
-
-  useEffect(() => {
-    if (settingsQuery.data && !selectedProtocolReady) setAdvancedOpen(true);
-  }, [editingProtocol, selectedProtocolReady, settingsQuery.data]);
-
   const mutationPending = updateSettingsMutation.isPending
     || realityKeypairMutation.isPending
     || recommendedSettingsMutation.isPending
@@ -405,22 +403,10 @@ export function ServerProtocolSettingsPanel({
   const selectedProtocolLabel = protocolLabel(editingProtocol, copy);
   const isVless = editingProtocol === 'vless';
   const isWireGuard = editingProtocol === 'wireguard';
-  const showRecommendedSetup = isVless || isWireGuard || !selectedProtocolReady;
+  const showRecommendedSetup = !selectedProtocolReady;
 
-  const recommendedTitle = protocolConfigured
-    ? `${selectedProtocolLabel} — ${copy.configuredEyebrow}`
-    : isVless
-        ? copy.vlessTitle
-        : isWireGuard
-          ? copy.wireGuardTitle
-          : `${selectedProtocolLabel}`;
-  const recommendedDescription = protocolConfigured
-    ? copy.configuredDescription
-    : isVless
-        ? copy.vlessDescription
-        : isWireGuard
-          ? copy.wireGuardDescription
-          : copy.manualDescription;
+  const recommendedTitle = isVless ? copy.vlessTitle : isWireGuard ? copy.wireGuardTitle : selectedProtocolLabel;
+  const recommendedDescription = isVless ? copy.vlessDescription : isWireGuard ? copy.wireGuardDescription : copy.manualDescription;
   const recommendedValues = isVless ? copy.vlessValues : isWireGuard ? copy.wireGuardValues : null;
   const recommendedReason = isVless ? copy.vlessReason : isWireGuard ? copy.wireGuardReason : null;
 
@@ -437,20 +423,22 @@ export function ServerProtocolSettingsPanel({
       {settingsQuery.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolLoadError')}</div>}
 
       {settingsQuery.data && (
-        <>
+        <section className="protocol-advanced-settings">
+          <h3>{copy.advanced}</h3>
+          <p className="panel-subtitle">{copy.advancedDescription}</p>
           <div className="protocol-choice">
-            <div className="protocol-current-default">{copy.protocol}: <strong>{protocolLabel(savedProtocol, copy)}</strong></div>
             <label className="field protocol-editing-selector">
               <span>{copy.editingProtocol}{isDefault && <span className="protocol-default-badge">{t('protocolSettings.default')}</span>}</span>
-              <select value={editingProtocol} onChange={(event) => setEditingProtocol(normalizeProtocol(event.target.value))}>
-              <option value="vless">VLESS / Reality</option>
-              <option value="wireguard">{copy.wireGuardProtocol}</option>
-              <option value="hysteria2">{copy.hysteria2Protocol}</option>
-              <option value="shadowsocks">{copy.shadowsocksProtocol}</option>
-              <option value="mtproto">{copy.mtprotoProtocol}</option>
+              <select value={editingProtocol} onChange={(event) => selectProtocol(event.target.value)}>
+                <option value="vless">VLESS / Reality</option>
+                <option value="wireguard">{copy.wireGuardProtocol}</option>
+                <option value="hysteria2">{copy.hysteria2Protocol}</option>
+                <option value="shadowsocks">{copy.shadowsocksProtocol}</option>
+                <option value="mtproto">{copy.mtprotoProtocol}</option>
               </select>
               <small>{copy.editingProtocolHint}</small>
             </label>
+            <div className="protocol-current-default">{copy.protocol}: <strong>{protocolLabel(savedProtocol, copy)}</strong></div>
             {!isDefault && selectedProtocolReady && (
               <>
                 <button className="small-button" type="button" disabled={mutationPending || selectedSettingsDirty} onClick={() => defaultProtocolMutation.mutate(editingProtocol)}>
@@ -460,28 +448,20 @@ export function ServerProtocolSettingsPanel({
               </>
             )}
             {defaultProtocolMutation.isError && <div className="form-message form-message-error">{mutationErrorMessage(defaultProtocolMutation.error, t('protocolSettings.protocolSaveError'))}</div>}
-            {defaultProtocolMutation.isSuccess && <div className="form-message">{copy.defaultSaved}</div>}
+            {defaultProtocolMutation.isSuccess && isDefault && <div className="form-message">{copy.defaultSaved}</div>}
           </div>
 
           {showRecommendedSetup && (
-            <div className={`protocol-recommended-setup${protocolConfigured ? ' protocol-recommended-setup-ready' : ''}`}>
+            <div className="protocol-recommended-setup">
               <div className="protocol-recommended-copy">
-                <span className="protocol-recommended-eyebrow">
-                  {protocolConfigured
-                    ? copy.configuredEyebrow
-                    : isVless || isWireGuard
-                        ? copy.recommendedEyebrow
-                        : copy.setupRequiredEyebrow}
-                </span>
+                <span className="protocol-recommended-eyebrow">{isVless || isWireGuard ? copy.recommendedEyebrow : copy.setupRequiredEyebrow}</span>
                 <div className="protocol-recommended-title">{recommendedTitle}</div>
                 <p>{recommendedDescription}</p>
                 {!selectedProtocolReady && recommendedValues && <div className="protocol-recommended-values">{recommendedValues}</div>}
                 {!selectedProtocolReady && recommendedReason && <p className="protocol-recommended-reason">{recommendedReason}</p>}
               </div>
               <div className="protocol-recommended-actions">
-                {protocolConfigured ? (
-                  <Link className="small-button" to="/vpn-accounts">{copy.continue}</Link>
-                ) : isVless ? (
+                {isVless ? (
                   <button
                     className="primary-button"
                     type="button"
@@ -499,29 +479,15 @@ export function ServerProtocolSettingsPanel({
                   >
                     {wireGuardSettingsMutation.isPending ? copy.wireGuardPending : copy.wireGuardAction}
                   </button>
-                ) : (
-                  <button className="small-button" type="button" onClick={() => setAdvancedOpen(true)}>
-                    {copy.advanced}
-                  </button>
-                )}
+                ) : null}
               </div>
             </div>
           )}
-        </>
-      )}
 
-      {recommendedSettingsMutation.isError && <div className="form-message form-message-error">{copy.error}</div>}
-      {recommendedSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
-      {wireGuardSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
-      {wireGuardSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
-
-      <details
-        className="protocol-advanced-settings"
-        open={advancedOpen}
-        onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-      >
-        <summary>{copy.advanced}</summary>
-        <p className="panel-subtitle">{copy.advancedDescription}</p>
+          {recommendedSettingsMutation.isError && <div className="form-message form-message-error">{copy.error}</div>}
+          {recommendedSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
+          {wireGuardSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
+          {wireGuardSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
 
         {updateSettingsMutation.isError && (
           <div className="form-message form-message-error protocol-settings-feedback">
@@ -611,7 +577,8 @@ export function ServerProtocolSettingsPanel({
             </div>
           </>
         )}
-      </details>
+        </section>
+      )}
     </form>
   );
 }

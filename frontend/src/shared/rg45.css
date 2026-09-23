@@ -94,22 +94,14 @@
 }
 
 .protocol-advanced-settings {
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
   margin-top: 18px;
-  padding-top: 16px;
 }
 
-.protocol-advanced-settings summary {
-  color: #cbd5e1;
-  cursor: pointer;
-  font-size: 14px;
+.protocol-advanced-settings h3 {
+  color: #e2e8f0;
+  font-size: 17px;
   font-weight: 800;
-  list-style-position: outside;
-  margin-left: 18px;
-}
-
-.protocol-advanced-settings[open] summary {
-  margin-bottom: 8px;
+  margin: 0 0 8px;
 }
 
 .protocol-advanced-settings > .panel-subtitle {
@@ -122,9 +114,9 @@
 
 .protocol-choice {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   justify-items: start;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .protocol-current-default {
