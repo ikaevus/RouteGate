@@ -140,14 +140,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-top: 16px;
+  max-width: 1040px;
 }
 
 .protocol-settings-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 1040px;
+}
+
+.protocol-settings-hint {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+  max-width: 1040px;
 }
 
 .protocol-settings-meta {
@@ -158,6 +168,7 @@
   font-size: 13px;
   gap: 14px;
   margin-top: 18px;
+  max-width: 1040px;
   padding-top: 14px;
 }
 

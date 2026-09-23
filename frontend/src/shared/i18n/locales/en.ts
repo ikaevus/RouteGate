@@ -611,8 +611,8 @@ export const en = {
   'serverDetails.deletePermissionError': 'Your account does not have permission to delete servers.',
   'serverDetails.deleteError': 'Could not delete the server. Try again.',
 
-  'protocolSettings.protocolSettingsTitle': 'VLESS / Reality protocol settings',
-  'protocolSettings.protocolSettingsSubtitle': 'Server-side public settings used when rendering account credentials and client configs. Reality private keys are stored server-side and are never displayed here.',
+  'protocolSettings.protocolSettingsTitle': 'Selected node protocols',
+  'protocolSettings.protocolSettingsSubtitle': 'Choose the node default or configure the parameters of any allowed protocol.',
   'protocolSettings.generateRealityKeypair': 'Generate Reality keypair',
   'protocolSettings.rotateRealityKeypair': 'Rotate Reality keypair',
   'protocolSettings.saveSettings': 'Save settings',

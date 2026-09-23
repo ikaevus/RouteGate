@@ -613,8 +613,8 @@ export const ru: Record<TranslationKey, string> = {
   'serverDetails.deletePermissionError': 'У вашей учётной записи нет права удалять серверы.',
   'serverDetails.deleteError': 'Не удалось удалить сервер. Повторите попытку.',
 
-  'protocolSettings.protocolSettingsTitle': 'Настройки протокола VLESS / Reality',
-  'protocolSettings.protocolSettingsSubtitle': 'Публичные серверные настройки для рендеринга учетных данных аккаунта и клиентских конфигов. Приватные ключи Reality хранятся на серверной стороне и здесь не показываются.',
+  'protocolSettings.protocolSettingsTitle': 'Протоколы выбранного узла',
+  'protocolSettings.protocolSettingsSubtitle': 'Выберите основной протокол узла или настройте параметры любого разрешённого протокола.',
   'protocolSettings.generateRealityKeypair': 'Создать ключи Reality',
   'protocolSettings.rotateRealityKeypair': 'Ротировать ключи Reality',
   'protocolSettings.saveSettings': 'Сохранить настройки',

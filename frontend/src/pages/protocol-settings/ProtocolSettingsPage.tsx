@@ -12,14 +12,12 @@ const copy = {
     emptyDescription: 'Add a VPN or Hybrid node before configuring managed VPN protocols.',
     selectDescription: 'Choose a VPN or Hybrid node to view and edit its managed protocol settings.',
     unavailable: 'This node cannot host VPN protocols. Management Nodes are control-plane only.',
-    hysteriaHybridNotice: 'On this Hybrid Node, Hysteria2 requires a dedicated hostname different from the Manager hostname and a direct DNS record to the node (no CDN/proxy). nginx forwards only its ACME HTTP-01 challenge to the loopback Hysteria service; TCP 443 remains owned by RouteGate and UDP 443 by Hysteria2.',
   },
   ru: {
     subtitle: 'Настраивайте VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto на VPN-узлах.',
     emptyDescription: 'Добавьте VPN-узел или гибридный узел, прежде чем настраивать управляемые VPN-протоколы.',
     selectDescription: 'Выберите VPN-узел или гибридный узел, чтобы просмотреть и изменить настройки протоколов.',
     unavailable: 'Этот узел не может размещать VPN-протоколы. Management Node относится только к плоскости управления.',
-    hysteriaHybridNotice: 'На этом Hybrid Node для Hysteria2 нужен отдельный домен, отличный от домена Manager, и прямая DNS-запись на узел без CDN/proxy. nginx передаёт Hysteria только ACME HTTP-01 challenge через loopback: TCP 443 остаётся у RouteGate, а UDP 443 используется Hysteria2.',
   },
 } as const;
 
@@ -119,10 +117,12 @@ export function ProtocolSettingsPage() {
             {serversQuery.isSuccess && !selectedServer && (
               <div className="form-message form-message-error">{text.unavailable}</div>
             )}
-            {selectedServer?.deploymentRole === 'hybrid' && (
-              <div className="form-message form-message-warning">{text.hysteriaHybridNotice}</div>
+            {selectedServer && (
+              <ServerProtocolSettingsPanel
+                deploymentRole={selectedServer.deploymentRole}
+                serverId={selectedServer.id}
+              />
             )}
-            {selectedServer && <ServerProtocolSettingsPanel serverId={selectedServer.id} />}
           </>
         ) : (
           <div className="panel">
