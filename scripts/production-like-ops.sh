@@ -245,6 +245,62 @@ protocol_activation_diagnostics() {
     [[ "$account_index" =~ ^[0-9]+$ ]] || continue
     log "protocol-activation account=${account_index} primary=${primary:-auto} desired=${desired:-none} active=${active:-none}"
   done <<<"$protocol_rows"
+
+  local trigger_state
+  trigger_state=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
+    SELECT
+      COALESCE(bool_or(position('vpn_account_protocols' IN p.prosrc) > 0), FALSE),
+      (SELECT count(*) FROM pg_trigger t
+        WHERE t.tgrelid = 'config_apply_jobs'::regclass
+          AND t.tgname = 'config_apply_jobs_mark_version_applied'
+          AND t.tgenabled <> 'D')
+    FROM pg_proc p
+    WHERE p.proname = 'routegate_mark_config_version_applied'
+  " 2>/dev/null || true)
+  log "protocol-activation trigger-promotes-protocol-sets|trigger-enabled=${trigger_state:-unavailable}"
+
+  # Timestamps are reported as seconds relative to the newest rendered and the
+  # newest successfully applied config version of the account's server. The
+  # apply trigger promotes a protocol only when its updated_at is not later
+  # than the applied version's created_at.
+  local timing_rows account_index protocol desired_flag active_flag vs_latest vs_applied latest_status
+  timing_rows=$(psql "$ROUTEGATE_DATABASE_URL" -qAt -F '|' -c "
+    WITH accounts AS (
+      SELECT a.id, a.server_id, row_number() OVER (ORDER BY a.created_at ASC, a.id ASC) AS account_index
+      FROM vpn_accounts a
+    ),
+    latest_version AS (
+      SELECT DISTINCT ON (cv.server_id) cv.server_id, cv.created_at, cv.status
+      FROM config_versions cv
+      ORDER BY cv.server_id, cv.version DESC
+    ),
+    latest_applied AS (
+      SELECT DISTINCT ON (j.server_id) j.server_id, cv.created_at
+      FROM config_apply_jobs j
+      JOIN config_versions cv ON cv.id = j.config_version_id
+      WHERE j.action = 'apply' AND j.status = 'succeeded'
+      ORDER BY j.server_id, COALESCE(j.completed_at, j.updated_at) DESC
+    )
+    SELECT
+      acc.account_index,
+      pap.protocol,
+      pap.desired_enabled,
+      pap.active_enabled,
+      COALESCE(round(extract(epoch FROM (pap.updated_at - lv.created_at)))::bigint::text, 'none'),
+      COALESCE(round(extract(epoch FROM (pap.updated_at - la.created_at)))::bigint::text, 'none'),
+      COALESCE(lv.status, 'none')
+    FROM accounts acc
+    JOIN vpn_account_protocols pap ON pap.vpn_account_id = acc.id
+    LEFT JOIN latest_version lv ON lv.server_id = acc.server_id
+    LEFT JOIN latest_applied la ON la.server_id = acc.server_id
+    WHERE acc.account_index <= 20
+      AND pap.desired_enabled IS DISTINCT FROM pap.active_enabled
+    ORDER BY acc.account_index, pap.protocol
+  " 2>/dev/null || true)
+  while IFS='|' read -r account_index protocol desired_flag active_flag vs_latest vs_applied latest_status; do
+    [[ "$account_index" =~ ^[0-9]+$ ]] || continue
+    log "protocol-activation pending account=${account_index} protocol=${protocol} desired=${desired_flag} active=${active_flag} updated-minus-latest-version-seconds=${vs_latest} updated-minus-applied-version-seconds=${vs_applied} latest-version-status=${latest_status}"
+  done <<<"$timing_rows"
 }
 
 diagnose() {
