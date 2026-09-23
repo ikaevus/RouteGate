@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getProtocolSettings, getServers } from '../../entities/server/api/serverApi';
+import type { ProtocolSettingsResponse } from '../../entities/server/api/serverApi';
 import {
   getVpnAccountClientConnection,
   updateVpnAccountClientProfile,
@@ -59,6 +61,12 @@ function getCopy() {
       noServer: 'Сначала назначьте аккаунту VPN-узел.',
       selectOne: 'Должен быть выбран хотя бы один протокол.',
       autoNeedsDefault: 'Для Auto протокол узла по умолчанию должен входить в разрешённый набор.',
+      setupRequired: 'Требуется настройка',
+      protocolsNotReady: 'Сначала настройте выбранные протоколы на назначенном VPN-узле:',
+      configureNode: 'Открыть настройки протоколов узла',
+      settingsLoading: 'Дождитесь загрузки настроек назначенного VPN-узла.',
+      settingsLoadError: 'Не удалось проверить готовность протоколов назначенного VPN-узла.',
+      hysteria2NotReady: 'Для Hysteria2 необходимы отдельный TLS-домен и email для ACME.',
       errorDetail: 'Причина',
       stages: {
         saving_preference: 'Сохраняю желаемый набор…', checking_runtime: 'Проверяю VPN runtimes…',
@@ -82,6 +90,12 @@ function getCopy() {
     loading: 'Loading protocols...', loadError: 'Could not load protocol settings.', noServer: 'Assign a VPN node first.',
     saveError: 'The protocol set could not be applied. Previous active protocols should remain working.',
     selectOne: 'Select at least one protocol.', autoNeedsDefault: 'Auto requires the node-default protocol to be included in the enabled set.',
+    setupRequired: 'Setup required',
+    protocolsNotReady: 'Configure the selected protocols on the assigned VPN node first:',
+    configureNode: 'Open node protocol settings',
+    settingsLoading: 'Wait for the assigned VPN node settings to load.',
+    settingsLoadError: 'Could not verify protocol readiness on the assigned VPN node.',
+    hysteria2NotReady: 'Hysteria2 requires a dedicated TLS domain and an ACME email address.',
     errorDetail: 'Reason',
     stages: {
       saving_preference: 'Saving desired protocol set…', checking_runtime: 'Checking VPN runtimes…',
@@ -114,8 +128,22 @@ function sameProtocols(left: readonly ClientProtocol[], right: readonly ClientPr
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function mutationErrorDetail(error: unknown): string {
-  return error instanceof Error ? error.message.trim() : typeof error === 'string' ? error.trim() : '';
+function protocolIsReady(protocol: ClientProtocol, settings: ProtocolSettingsResponse): boolean {
+  switch (protocol) {
+    case 'wireguard': return settings.wireGuard.ready;
+    case 'hysteria2': return settings.hysteria2.ready;
+    case 'shadowsocks': return settings.shadowsocks.ready;
+    case 'mtproto': return settings.mtproto.ready;
+    case 'vless':
+    default:
+      return settings.reality.enabled && settings.vless.port >= 1 && settings.vless.port <= 65535;
+  }
+}
+
+function mutationErrorDetail(error: unknown, copy: ReturnType<typeof getCopy>): string {
+  const detail = error instanceof Error ? error.message.trim() : typeof error === 'string' ? error.trim() : '';
+  if (detail.includes('Hysteria2 TLS domain is required')) return copy.hysteria2NotReady;
+  return detail;
 }
 
 export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
@@ -170,11 +198,20 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const changed = primary !== currentPrimary || !sameProtocols(enabledProtocols, storedDesired);
   const activationPending = !sameProtocols(storedDesired, activeProtocols);
   const autoInvalid = primary === 'auto' && !enabledProtocols.includes(nodeDefault);
+  const unreadyProtocols = protocolSettingsQuery.data
+    ? enabledProtocols.filter((protocol) => !protocolIsReady(protocol, protocolSettingsQuery.data))
+    : [];
   const validationMessage = enabledProtocols.length === 0
     ? copy.selectOne
     : autoInvalid
         ? copy.autoNeedsDefault
-        : '';
+        : protocolSettingsQuery.isLoading
+          ? copy.settingsLoading
+          : protocolSettingsQuery.isError
+            ? copy.settingsLoadError
+            : unreadyProtocols.length > 0
+              ? `${copy.protocolsNotReady} ${unreadyProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ')}`
+              : '';
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -254,7 +291,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   };
 
   const stageText = deploymentStage ? copy.stages[deploymentStage] : null;
-  const errorDetail = mutationErrorDetail(saveMutation.error);
+  const errorDetail = mutationErrorDetail(saveMutation.error, copy);
   const canRetry = !changed && activationPending;
   const activeSummary = useMemo(
     () => activeProtocols.length ? activeProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ') : '—',
@@ -283,16 +320,26 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             <span>{copy.enabled}</span>
             <div className="vpn-protocol-choice-grid">
               {protocolOrder.map((protocol) => {
-                const disabled = saveMutation.isPending;
+                const selected = enabledProtocols.includes(protocol);
+                const ready = protocolSettingsQuery.data
+                  ? protocolIsReady(protocol, protocolSettingsQuery.data)
+                  : true;
+                const disabled = saveMutation.isPending || (!selected && !ready);
                 return (
-                  <label className="vpn-protocol-choice" key={protocol}>
+                  <label
+                    className={`vpn-protocol-choice${!ready ? ' vpn-protocol-choice-setup-required' : ''}`}
+                    key={protocol}
+                  >
                     <input
                       type="checkbox"
-                      checked={enabledProtocols.includes(protocol)}
+                      checked={selected}
                       disabled={disabled}
                       onChange={() => toggleProtocol(protocol)}
                     />
-                    <span>{protocolLabel(protocol, copy)}</span>
+                    <span className="vpn-protocol-choice-copy">
+                      <strong>{protocolLabel(protocol, copy)}</strong>
+                      {!ready && <small>{copy.setupRequired}</small>}
+                    </span>
                   </label>
                 );
               })}
@@ -323,7 +370,20 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
 
           <div className="form-message">{copy.safety}</div>
           {activationPending && !saveMutation.isPending && <div className="form-message form-message-warning">{copy.pending}</div>}
-          {validationMessage && <div className="form-message form-message-warning">{validationMessage}</div>}
+          {validationMessage && (
+            <div className="form-message form-message-warning vpn-protocol-readiness-warning">
+              <span>{validationMessage}</span>
+              {unreadyProtocols.includes('hysteria2') && <small>{copy.hysteria2NotReady}</small>}
+              {assignedServerId && unreadyProtocols.length > 0 && (
+                <Link
+                  className="small-button"
+                  to={`/protocol-settings/${assignedServerId}?protocol=${encodeURIComponent(unreadyProtocols[0])}`}
+                >
+                  {copy.configureNode}
+                </Link>
+              )}
+            </div>
+          )}
           {changed && <div className="form-message">{copy.desired}: {enabledProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ') || '—'}</div>}
           {saveMutation.isPending && stageText && <div className="form-message" role="status">{stageText}</div>}
           {saveMutation.isError && (

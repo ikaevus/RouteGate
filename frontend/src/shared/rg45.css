@@ -116,6 +116,11 @@
   margin-bottom: 16px;
 }
 
+.protocol-editing-selector {
+  margin-bottom: 18px;
+  max-width: 520px;
+}
+
 .protocol-port-warning {
   background: rgba(245, 158, 11, 0.08);
   border: 1px solid rgba(245, 158, 11, 0.24);

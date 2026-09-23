@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   configureRecommendedProtocolSettings,
   configureRecommendedWireGuard,
@@ -64,6 +64,17 @@ function normalizeProtocol(value: string): ManagedProtocol {
     || value === 'mtproto'
     ? value
     : 'vless';
+}
+
+function requestedProtocol(value: string | null): ManagedProtocol | null {
+  if (value === 'vless'
+    || value === 'wireguard'
+    || value === 'hysteria2'
+    || value === 'shadowsocks'
+    || value === 'mtproto') {
+    return value;
+  }
+  return null;
 }
 
 function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>): ProtocolSettingsFormState {
@@ -139,6 +150,8 @@ function getCopy() {
       continue: 'К VPN-аккаунтам →',
       protocol: 'Протокол узла по умолчанию',
       protocolHint: 'Используется VPN-аккаунтами в режиме «Автоматически». Выбор в этом списке применяется только после сохранения или успешной автонастройки протокола.',
+      editingProtocol: 'Настраиваемый протокол',
+      editingProtocolHint: 'Выберите протокол, параметры которого нужно изменить. Это не меняет протокол узла по умолчанию.',
       wireGuardPort: 'Порт WireGuard',
       wireGuardAddress: 'Адрес интерфейса WireGuard',
       wireGuardDns: 'DNS для клиентов',
@@ -189,6 +202,8 @@ function getCopy() {
     continue: 'Open VPN accounts →',
     protocol: 'Node default protocol',
     protocolHint: 'Used by VPN accounts set to Automatic. A selection here takes effect only after you save it or complete the protocol automatic setup.',
+    editingProtocol: 'Protocol to configure',
+    editingProtocolHint: 'Choose which protocol settings to edit. This does not change the node default protocol.',
     wireGuardPort: 'WireGuard port',
     wireGuardAddress: 'WireGuard interface address',
     wireGuardDns: 'Client DNS',
@@ -229,9 +244,12 @@ function protocolLabel(protocol: ManagedProtocol, copy: ReturnType<typeof getCop
 
 export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const copy = getCopy();
   const [form, setForm] = useState<ProtocolSettingsFormState>(emptyFormState);
+  const [editingProtocol, setEditingProtocol] = useState<ManagedProtocol>('vless');
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const requested = requestedProtocol(searchParams.get('protocol'));
 
   const settingsQuery = useQuery({
     queryKey: ['server-protocol-settings', serverId],
@@ -240,8 +258,12 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   });
 
   useEffect(() => {
-    if (settingsQuery.data) setForm(toFormState(settingsQuery.data));
-  }, [settingsQuery.data]);
+    if (!settingsQuery.data) return;
+    const next = toFormState(settingsQuery.data);
+    setEditingProtocol(requested ?? next.protocol);
+    if (requested) setAdvancedOpen(true);
+    setForm(next);
+  }, [requested, settingsQuery.data]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: (request: UpdateProtocolSettingsRequest) => updateProtocolSettings(serverId, request),
@@ -279,7 +301,9 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   }
 
   function updateProtocol(value: string) {
-    setForm((current) => ({ ...current, protocol: normalizeProtocol(value) }));
+    const protocol = normalizeProtocol(value);
+    setForm((current) => ({ ...current, protocol }));
+    setEditingProtocol(protocol);
     setAdvancedOpen(true);
   }
 
@@ -299,13 +323,13 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   const savedProtocol = normalizeProtocol(settingsQuery.data?.protocol ?? 'vless');
   const protocolSelectionDirty = Boolean(settingsQuery.data) && form.protocol !== savedProtocol;
 
-  const selectedProtocolReady = form.protocol === 'mtproto'
+  const selectedProtocolReady = editingProtocol === 'mtproto'
     ? Boolean(settingsQuery.data?.mtproto.ready) && Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
-    : form.protocol === 'shadowsocks'
+    : editingProtocol === 'shadowsocks'
       ? Boolean(settingsQuery.data?.shadowsocks.ready) && Number.isInteger(shadowsocksPortNumber) && shadowsocksPortNumber >= 1 && shadowsocksPortNumber <= 65535
-      : form.protocol === 'hysteria2'
+      : editingProtocol === 'hysteria2'
         ? Boolean(settingsQuery.data?.hysteria2.ready) && Number.isInteger(hysteria2PortNumber) && hysteria2PortNumber >= 1 && hysteria2PortNumber <= 65535
-        : form.protocol === 'wireguard'
+        : editingProtocol === 'wireguard'
           ? Boolean(settingsQuery.data?.wireGuard.ready) && Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
           : realityComplete && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
 
@@ -313,22 +337,22 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
   useEffect(() => {
     if (settingsQuery.data && !selectedProtocolReady) setAdvancedOpen(true);
-  }, [form.protocol, selectedProtocolReady, settingsQuery.data]);
+  }, [editingProtocol, selectedProtocolReady, settingsQuery.data]);
 
   const mutationPending = updateSettingsMutation.isPending
     || realityKeypairMutation.isPending
     || recommendedSettingsMutation.isPending
     || wireGuardSettingsMutation.isPending;
 
-  const canSave = (form.protocol === 'mtproto'
+  const canSave = (editingProtocol === 'mtproto'
     ? Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
-    : form.protocol === 'shadowsocks'
+    : editingProtocol === 'shadowsocks'
       ? Number.isInteger(shadowsocksPortNumber) && shadowsocksPortNumber >= 1 && shadowsocksPortNumber <= 65535
-      : form.protocol === 'hysteria2'
+      : editingProtocol === 'hysteria2'
         ? Number.isInteger(hysteria2PortNumber) && hysteria2PortNumber >= 1 && hysteria2PortNumber <= 65535
           && form.hysteria2Domain.trim() !== '' && form.hysteria2AcmeEmail.trim() !== ''
           && form.hysteria2MasqueradeUrl.trim() === 'https://www.cloudflare.com/'
-        : form.protocol === 'wireguard'
+        : editingProtocol === 'wireguard'
           ? Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
           : Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535 && (!realityTouched || realityComplete))
     && !mutationPending;
@@ -337,9 +361,9 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
   const translatedKeypairActionLabel = form.realityPublicKey.trim() === ''
     ? t('protocolSettings.generateRealityKeypair')
     : t('protocolSettings.rotateRealityKeypair');
-  const selectedProtocolLabel = protocolLabel(form.protocol, copy);
-  const isVless = form.protocol === 'vless';
-  const isWireGuard = form.protocol === 'wireguard';
+  const selectedProtocolLabel = protocolLabel(editingProtocol, copy);
+  const isVless = editingProtocol === 'vless';
+  const isWireGuard = editingProtocol === 'wireguard';
 
   const recommendedTitle = protocolConfigured
     ? `${selectedProtocolLabel} — ${copy.configuredEyebrow}`
@@ -446,6 +470,21 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
         <summary>{copy.advanced}</summary>
         <p className="panel-subtitle">{copy.advancedDescription}</p>
 
+        <label className="field protocol-editing-selector">
+          <span>{copy.editingProtocol}</span>
+          <select
+            value={editingProtocol}
+            onChange={(event) => setEditingProtocol(normalizeProtocol(event.target.value))}
+          >
+            <option value="vless">VLESS / Reality</option>
+            <option value="wireguard">{copy.wireGuardProtocol}</option>
+            <option value="hysteria2">{copy.hysteria2Protocol}</option>
+            <option value="shadowsocks">{copy.shadowsocksProtocol}</option>
+            <option value="mtproto">{copy.mtprotoProtocol}</option>
+          </select>
+          <small>{copy.editingProtocolHint}</small>
+        </label>
+
         {updateSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
         {isVless && realityKeypairMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.keypairError')}</div>}
         {updateSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
@@ -457,7 +496,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
             {isVless && realityTouched && !realityComplete && <div className="form-message form-message-error">{copy.incompleteReality}</div>}
 
             <div className="protocol-settings-grid">
-              {form.protocol === 'mtproto' ? (
+              {editingProtocol === 'mtproto' ? (
                 <>
                   <label className="field">
                     <span>{copy.mtprotoPort}</span>
@@ -466,7 +505,7 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
                   </label>
                   <label className="field"><span>{copy.securityLabel}</span><input value={settingsQuery.data.mtproto.frontingDomain} readOnly /></label>
                 </>
-              ) : form.protocol === 'shadowsocks' ? (
+              ) : editingProtocol === 'shadowsocks' ? (
                 <>
                   <label className="field">
                     <span>{copy.shadowsocksPort}</span>
@@ -475,14 +514,14 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
                   </label>
                   <label className="field"><span>{copy.methodLabel}</span><input value={settingsQuery.data.shadowsocks.method} readOnly /></label>
                 </>
-              ) : form.protocol === 'hysteria2' ? (
+              ) : editingProtocol === 'hysteria2' ? (
                 <>
                   <label className="field"><span>{copy.hysteria2Port}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.hysteria2Port} onChange={(event) => updateField('hysteria2Port', event.target.value)} /></label>
                   <label className="field"><span>{copy.hysteria2Domain}</span><input value={form.hysteria2Domain} onChange={(event) => updateField('hysteria2Domain', event.target.value)} /></label>
                   <label className="field"><span>{copy.hysteria2AcmeEmail}</span><input type="email" value={form.hysteria2AcmeEmail} onChange={(event) => updateField('hysteria2AcmeEmail', event.target.value)} /></label>
                   <label className="field"><span>{copy.hysteria2MasqueradeUrl}</span><input type="url" value={form.hysteria2MasqueradeUrl} readOnly /><small>{copy.hysteria2Hint}</small></label>
                 </>
-              ) : form.protocol === 'wireguard' ? (
+              ) : editingProtocol === 'wireguard' ? (
                 <>
                   <label className="field"><span>{copy.wireGuardPort}</span><input inputMode="numeric" min="1" max="65535" type="number" value={form.wireGuardPort} onChange={(event) => updateField('wireGuardPort', event.target.value)} /></label>
                   <label className="field"><span>{copy.wireGuardAddress}</span><input value={form.wireGuardAddress} onChange={(event) => updateField('wireGuardAddress', event.target.value)} /></label>
