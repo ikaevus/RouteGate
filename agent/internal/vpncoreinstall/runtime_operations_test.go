@@ -18,6 +18,24 @@ func TestVerifyNamedSHA256AcceptsMatchingAsset(t *testing.T) {
 	}
 }
 
+func TestVerifyNamedSHA256AcceptsHysteriaReleaseHashPath(t *testing.T) {
+	payload := []byte("hysteria-binary")
+	digest := sha256.Sum256(payload)
+	checksums := []byte(hex.EncodeToString(digest[:]) + "  build/hysteria-linux-amd64\n")
+	if err := verifyNamedSHA256(payload, checksums, "hysteria-linux-amd64"); err != nil {
+		t.Fatalf("verify Hysteria release hash: %v", err)
+	}
+	if err := verifyNamedSHA256([]byte("tampered-binary"), checksums, "hysteria-linux-amd64"); err == nil {
+		t.Fatal("expected Hysteria release hash mismatch")
+	}
+	if err := verifyNamedSHA256(payload, checksums, "hysteria-linux-arm64"); err == nil {
+		t.Fatal("expected wrong asset name to be rejected")
+	}
+	if err := verifyNamedSHA256(payload, append(checksums, checksums...), "hysteria-linux-amd64"); err == nil {
+		t.Fatal("expected duplicate checksum entry to be rejected")
+	}
+}
+
 func TestVerifyNamedSHA256RejectsMismatch(t *testing.T) {
 	payload := []byte("routegate-runtime")
 	checksums := []byte("0000000000000000000000000000000000000000000000000000000000000000  runtime.bin\n")

@@ -437,9 +437,13 @@ func verifyNamedSHA256(payload, checksumFile []byte, asset string) error {
 			continue
 		}
 		name := strings.TrimPrefix(fields[len(fields)-1], "*")
-		if name == asset {
+		// Hysteria's release workflow runs sha256sum build/*, so hashes.txt
+		// contains build/hysteria-linux-amd64 instead of the release asset name.
+		if name == asset || name == "build/"+asset {
+			if expected != "" {
+				return fmt.Errorf("duplicate checksum entry")
+			}
 			expected = strings.ToLower(fields[0])
-			break
 		}
 	}
 	if len(expected) != sha256.Size*2 {
