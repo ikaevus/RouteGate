@@ -115,12 +115,13 @@
 :root[data-theme='light'] .traffic-limit-title,
 :root[data-theme='light'] .protocol-recommended-title,
 :root[data-theme='light'] .protocol-recommended-values,
-:root[data-theme='light'] .protocol-advanced-settings summary,
+:root[data-theme='light'] .protocol-advanced-settings h3,
 :root[data-theme='light'] .traffic-checkbox-field label {
   color: var(--rg-light-text-strong);
 }
 
 :root[data-theme='light'] .page-header p,
+:root[data-theme='light'] .protocol-current-default,
 :root[data-theme='light'] .panel-subtitle,
 :root[data-theme='light'] .card-meta,
 :root[data-theme='light'] .protocol-recommended-copy p,
