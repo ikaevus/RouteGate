@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000154_agent_maintenance_operations" {
-		t.Fatalf("applied schema version = %q, want 000154_agent_maintenance_operations", version)
+	if version != "000155_config_apply_trigger_invariant_repair" {
+		t.Fatalf("applied schema version = %q, want 000155_config_apply_trigger_invariant_repair", version)
 	}
 	assertRawTrafficArchivalPreservesDailyRollup(t, ctx, pool)
 	assertAgentMaintenanceJobContract(t, ctx, pool)
@@ -530,8 +530,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000154_agent_maintenance_operations" {
-		t.Fatalf("applied schema version = %q, want 000154_agent_maintenance_operations", version)
+	if version != "000155_config_apply_trigger_invariant_repair" {
+		t.Fatalf("applied schema version = %q, want 000155_config_apply_trigger_invariant_repair", version)
 	}
 }
 
