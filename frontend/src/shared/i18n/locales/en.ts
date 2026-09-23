@@ -619,7 +619,7 @@ export const en = {
   'protocolSettings.saving': 'Saving...',
   'protocolSettings.generating': 'Generating...',
   'protocolSettings.protocolLoadError': 'Failed to load protocol settings.',
-  'protocolSettings.protocolSaveError': 'Failed to save protocol settings. Check port, network, and flow values.',
+  'protocolSettings.protocolSaveError': 'Failed to save protocol settings.',
   'protocolSettings.keypairError': 'Failed to generate Reality keypair.',
   'protocolSettings.saved': 'Protocol settings saved.',
   'protocolSettings.keypairGenerated': 'Reality keypair generated. Only the public key is shown.',

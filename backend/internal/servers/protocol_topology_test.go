@@ -126,6 +126,35 @@ func TestUpdateProtocolSettingsRejectsManagerHostnameForSecondaryHybridHysteria2
 	}
 }
 
+func TestUpdateProtocolSettingsAllowsSecondaryHysteria2OnHybridNodeWithDedicatedHostname(t *testing.T) {
+	fakeProtocolSettingsResult = ProtocolSettings{
+		ServerID: "server-id", Protocol: "vless", Hysteria2Domain: "hy2.manager.example.com",
+	}
+	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
+	repository := &fakeServerRepository{getByID: Server{ID: "server-id", DeploymentRole: "hybrid", Hostname: "manager.example.com"}}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/servers/server-id/protocol-settings", strings.NewReader(`{
+		"hysteria2Port":443,
+		"hysteria2Domain":"hy2.manager.example.com",
+		"hysteria2AcmeEmail":"admin@example.com",
+		"hysteria2MasqueradeUrl":"https://www.cloudflare.com/"
+	}`))
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.UpdateProtocolSettings(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if fakeProtocolSettingsInput.Protocol != nil {
+		t.Fatalf("secondary protocol update changed the node default: %+v", fakeProtocolSettingsInput.Protocol)
+	}
+	if fakeProtocolSettingsInput.Hysteria2Domain == nil || *fakeProtocolSettingsInput.Hysteria2Domain != "hy2.manager.example.com" {
+		t.Fatalf("Hysteria2 domain input = %+v, want dedicated hostname", fakeProtocolSettingsInput.Hysteria2Domain)
+	}
+}
+
 func TestUpdateProtocolSettingsAllowsHysteria2OnDedicatedVPNNode(t *testing.T) {
 	fakeProtocolSettingsResult = ProtocolSettings{ServerID: "server-id", Protocol: "hysteria2"}
 	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}

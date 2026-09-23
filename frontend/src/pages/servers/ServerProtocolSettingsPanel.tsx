@@ -101,29 +101,51 @@ function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>):
 function toRequest(
   form: ProtocolSettingsFormState,
   savedRealityPublicKey: string,
+  savedProtocol: ManagedProtocol,
+  editingProtocol: ManagedProtocol,
 ): UpdateProtocolSettingsRequest {
-  const request: UpdateProtocolSettingsRequest = {
-    protocol: form.protocol,
-    vlessPort: Number(form.vlessPort),
-    vlessFlow: form.vlessFlow.trim(),
-    vlessNetwork: form.vlessNetwork.trim(),
-    realityShortId: form.realityShortId.trim(),
-    realityServerName: form.realityServerName.trim(),
-    wireGuardPort: Number(form.wireGuardPort),
-    wireGuardAddress: form.wireGuardAddress.trim(),
-    wireGuardDns: form.wireGuardDns.trim(),
-    hysteria2Port: Number(form.hysteria2Port),
-    hysteria2Domain: form.hysteria2Domain.trim(),
-    hysteria2AcmeEmail: form.hysteria2AcmeEmail.trim(),
-    hysteria2MasqueradeUrl: form.hysteria2MasqueradeUrl.trim(),
-    shadowsocksPort: Number(form.shadowsocksPort),
-    mtprotoPort: Number(form.mtprotoPort),
-  };
-  const realityPublicKey = form.realityPublicKey.trim();
-  if (realityPublicKey !== savedRealityPublicKey.trim()) {
-    request.realityPublicKey = realityPublicKey;
+  const request: UpdateProtocolSettingsRequest = {};
+  if (form.protocol !== savedProtocol) {
+    request.protocol = form.protocol;
+  }
+
+  switch (editingProtocol) {
+    case 'wireguard':
+      request.wireGuardPort = Number(form.wireGuardPort);
+      request.wireGuardAddress = form.wireGuardAddress.trim();
+      request.wireGuardDns = form.wireGuardDns.trim();
+      break;
+    case 'hysteria2':
+      request.hysteria2Port = Number(form.hysteria2Port);
+      request.hysteria2Domain = form.hysteria2Domain.trim();
+      request.hysteria2AcmeEmail = form.hysteria2AcmeEmail.trim();
+      request.hysteria2MasqueradeUrl = form.hysteria2MasqueradeUrl.trim();
+      break;
+    case 'shadowsocks':
+      request.shadowsocksPort = Number(form.shadowsocksPort);
+      break;
+    case 'mtproto':
+      request.mtprotoPort = Number(form.mtprotoPort);
+      break;
+    default: {
+      request.vlessPort = Number(form.vlessPort);
+      request.vlessFlow = form.vlessFlow.trim();
+      request.vlessNetwork = form.vlessNetwork.trim();
+      request.realityShortId = form.realityShortId.trim();
+      request.realityServerName = form.realityServerName.trim();
+      const realityPublicKey = form.realityPublicKey.trim();
+      if (realityPublicKey !== savedRealityPublicKey.trim()) {
+        request.realityPublicKey = realityPublicKey;
+      }
+    }
   }
   return request;
+}
+
+function mutationErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || error.message.trim() === '') return fallback;
+  const reasonLabel = getCurrentLocale() === 'ru' ? 'Причина:' : 'Reason:';
+  return `${fallback} ${reasonLabel} ${error.message.trim()}`;
 }
 
 function getCopy() {
@@ -309,7 +331,12 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    updateSettingsMutation.mutate(toRequest(form, settingsQuery.data?.reality.publicKey ?? ''));
+    updateSettingsMutation.mutate(toRequest(
+      form,
+      settingsQuery.data?.reality.publicKey ?? '',
+      normalizeProtocol(settingsQuery.data?.protocol ?? 'vless'),
+      editingProtocol,
+    ));
   }
 
   const portNumber = Number(form.vlessPort);
@@ -485,7 +512,11 @@ export function ServerProtocolSettingsPanel({ serverId }: { serverId: string }) 
           <small>{copy.editingProtocolHint}</small>
         </label>
 
-        {updateSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
+        {updateSettingsMutation.isError && (
+          <div className="form-message form-message-error protocol-settings-feedback">
+            {mutationErrorMessage(updateSettingsMutation.error, t('protocolSettings.protocolSaveError'))}
+          </div>
+        )}
         {isVless && realityKeypairMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.keypairError')}</div>}
         {updateSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
         {isVless && realityKeypairMutation.isSuccess && <div className="form-message">{t('protocolSettings.keypairGenerated')}</div>}
