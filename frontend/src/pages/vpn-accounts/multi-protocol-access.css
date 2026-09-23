@@ -55,6 +55,12 @@
   background: rgba(59, 130, 246, 0.12);
 }
 
+.vpn-protocol-choice-setup-required:not(:has(input:checked)) {
+  border-style: dashed;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .field .vpn-protocol-choice > input[type='checkbox'] {
   position: static;
   width: 18px;
@@ -67,13 +73,34 @@
   accent-color: #3b82f6;
 }
 
-.vpn-protocol-choice > span {
+.vpn-protocol-choice-copy {
+  display: grid;
+  gap: 3px;
   min-width: 0;
   padding: 0;
-  color: var(--rg-text-primary, #e5e7eb);
-  font-weight: 600;
   text-align: left;
   line-height: 1.25;
+}
+
+.vpn-protocol-choice-copy strong {
+  color: var(--rg-text-primary, #e5e7eb);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.vpn-protocol-choice-copy small {
+  color: #fbbf24;
+  font-size: 11px;
+}
+
+.vpn-protocol-readiness-warning {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.vpn-protocol-readiness-warning small {
+  line-height: 1.45;
 }
 
 .vpn-account-protocol-preference-content .field-hint {

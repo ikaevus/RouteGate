@@ -101,6 +101,31 @@ func TestUpdateProtocolSettingsRejectsManagerHostnamePatchForActiveHybridHysteri
 	}
 }
 
+func TestUpdateProtocolSettingsRejectsManagerHostnameForSecondaryHybridHysteria2(t *testing.T) {
+	fakeProtocolSettingsResult = ProtocolSettings{
+		ServerID: "server-id", Protocol: "vless",
+	}
+	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
+	repository := &fakeServerRepository{getByID: Server{ID: "server-id", DeploymentRole: "hybrid", Hostname: "manager.example.com"}}
+	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/servers/server-id/protocol-settings", strings.NewReader(`{
+		"protocol":"vless",
+		"hysteria2Domain":"manager.example.com",
+		"hysteria2AcmeEmail":"admin@example.com"
+	}`))
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+
+	handler.UpdateProtocolSettings(response, request)
+
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "different from the Manager hostname") {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+	if fakeProtocolSettingsInput.Hysteria2Domain != nil {
+		t.Fatalf("repository update was called for an unsafe secondary Hysteria2 hostname: %+v", fakeProtocolSettingsInput)
+	}
+}
+
 func TestUpdateProtocolSettingsAllowsHysteria2OnDedicatedVPNNode(t *testing.T) {
 	fakeProtocolSettingsResult = ProtocolSettings{ServerID: "server-id", Protocol: "hysteria2"}
 	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}

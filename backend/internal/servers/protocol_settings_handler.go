@@ -150,8 +150,8 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 			}
 		}
 
-		if effectiveProtocol == platform.VPNProtocolHysteria2 && role == platform.DeploymentRoleHybrid {
-			if strings.TrimSpace(effectiveDomain) == "" {
+		if role == platform.DeploymentRoleHybrid {
+			if effectiveProtocol == platform.VPNProtocolHysteria2 && strings.TrimSpace(effectiveDomain) == "" {
 				writeInvalidRequest(w, "Hysteria2 on a Hybrid Node requires a dedicated DNS hostname for its independent certificate.")
 				return
 			}
@@ -159,7 +159,7 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 			if managerHostname == "" && validHysteria2ServerName(server.Name) {
 				managerHostname = strings.TrimSpace(server.Name)
 			}
-			if managerHostname != "" && strings.EqualFold(strings.TrimSpace(effectiveDomain), managerHostname) {
+			if strings.TrimSpace(effectiveDomain) != "" && managerHostname != "" && strings.EqualFold(strings.TrimSpace(effectiveDomain), managerHostname) {
 				writeInvalidRequest(w, "Hysteria2 on a Hybrid Node must use a DNS hostname different from the Manager hostname.")
 				return
 			}
