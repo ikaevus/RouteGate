@@ -123,3 +123,20 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* The active-protocol pill lists every protocol and can be wider than the
+   header. Keep the title readable and move the pill to its own line instead
+   of letting it squeeze the title into a narrow column. */
+.vpn-account-protocol-preference-panel > .panel-header {
+  flex-wrap: wrap;
+}
+
+.vpn-account-protocol-preference-panel > .panel-header > .panel-header-titles {
+  flex: 1 1 320px;
+}
+
+.vpn-account-protocol-preference-panel > .panel-header > .status-pill {
+  flex: 0 1 auto;
+  border-radius: 14px;
+  line-height: 1.4;
+}
