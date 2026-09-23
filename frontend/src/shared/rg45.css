@@ -117,8 +117,25 @@
 }
 
 .protocol-editing-selector {
-  margin-bottom: 18px;
   max-width: 520px;
+}
+
+.protocol-choice {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  margin-bottom: 20px;
+}
+
+.protocol-current-default {
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.protocol-default-badge {
+  color: #86efac;
+  font-size: 12px;
+  margin-left: 12px;
 }
 
 .protocol-settings-feedback {

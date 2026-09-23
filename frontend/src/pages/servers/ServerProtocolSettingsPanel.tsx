@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -14,7 +14,6 @@ import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 type ManagedProtocol = 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
 
 interface ProtocolSettingsFormState {
-  protocol: ManagedProtocol;
   vlessPort: string;
   vlessFlow: string;
   vlessNetwork: string;
@@ -33,7 +32,6 @@ interface ProtocolSettingsFormState {
 }
 
 const emptyFormState: ProtocolSettingsFormState = {
-  protocol: 'vless',
   vlessPort: '',
   vlessFlow: '',
   vlessNetwork: '',
@@ -79,7 +77,6 @@ function requestedProtocol(value: string | null): ManagedProtocol | null {
 
 function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>): ProtocolSettingsFormState {
   return {
-    protocol: normalizeProtocol(settings.protocol),
     vlessPort: String(settings.vless.port),
     vlessFlow: settings.vless.flow ?? '',
     vlessNetwork: settings.vless.network ?? '',
@@ -101,13 +98,9 @@ function toFormState(settings: Awaited<ReturnType<typeof getProtocolSettings>>):
 function toRequest(
   form: ProtocolSettingsFormState,
   savedRealityPublicKey: string,
-  savedProtocol: ManagedProtocol,
   editingProtocol: ManagedProtocol,
 ): UpdateProtocolSettingsRequest {
   const request: UpdateProtocolSettingsRequest = {};
-  if (form.protocol !== savedProtocol) {
-    request.protocol = form.protocol;
-  }
 
   switch (editingProtocol) {
     case 'wireguard':
@@ -153,28 +146,27 @@ function getCopy() {
     return {
       recommendedEyebrow: 'Рекомендуемая настройка',
       configuredEyebrow: 'Настройки заполнены',
-      selectionEyebrow: 'Изменения не сохранены',
-      selectionDescription: 'Настройки этого протокола уже готовы, но он ещё не сохранён как протокол узла по умолчанию. Сохраните выбор, чтобы VPN-аккаунты в режиме «Автоматически» начали наследовать его.',
-      saveDefault: 'Сохранить как протокол по умолчанию',
+      saveDefault: 'Сделать основным',
+      defaultSaved: 'Основной протокол изменён.',
+      saveFirst: 'Сначала сохраните изменённые параметры протокола.',
       vlessTitle: 'Настроить VLESS / Reality автоматически',
       vlessDescription: 'RouteGate выберет безопасные параметры, сгенерирует Reality keypair и Short ID и использует hostname узла как SNI.',
       vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
       vlessReason: 'HTTPS RouteGate остаётся на 443, поэтому для VPN рекомендуется отдельный порт 8443 без конфликта с nginx.',
-      vlessAction: 'Настроить VLESS / Reality',
+      vlessAction: 'Настроить и сделать основным',
       wireGuardTitle: 'Настроить WireGuard автоматически',
       wireGuardDescription: 'RouteGate создаст серверную пару ключей WireGuard и применит безопасные значения интерфейса по умолчанию.',
       wireGuardValues: 'WireGuard · UDP 51820 · 10.66.0.1/24',
       wireGuardReason: 'Ключи и адреса клиентов останутся привязаны к VPN-аккаунтам, а серверный приватный ключ не показывается в интерфейсе.',
-      wireGuardAction: 'Настроить WireGuard',
+      wireGuardAction: 'Настроить и сделать основным',
       wireGuardPending: 'Настраиваем WireGuard…',
       manualDescription: 'Для этого протокола нет отдельной кнопки автонастройки. Заполните применимые поля ниже и сохраните настройки.',
       setupRequiredEyebrow: 'Требуется настройка',
       configuredDescription: 'Обязательные настройки заполнены. Протокол станет активным только после назначения VPN-аккаунту и успешного применения конфигурации Agent.',
       continue: 'К VPN-аккаунтам →',
-      protocol: 'Протокол узла по умолчанию',
-      protocolHint: 'Используется VPN-аккаунтами в режиме «Автоматически». Выбор в этом списке применяется только после сохранения или успешной автонастройки протокола.',
-      editingProtocol: 'Настраиваемый протокол',
-      editingProtocolHint: 'Выберите протокол, параметры которого нужно изменить. Это не меняет протокол узла по умолчанию.',
+      protocol: 'Основной протокол узла',
+      editingProtocol: 'Протокол для настройки',
+      editingProtocolHint: 'Выбор протокола показывает его параметры. Основной протокол меняется отдельной кнопкой.',
       wireGuardPort: 'Порт WireGuard',
       wireGuardAddress: 'Адрес интерфейса WireGuard',
       wireGuardDns: 'DNS для клиентов',
@@ -207,28 +199,27 @@ function getCopy() {
   return {
     recommendedEyebrow: 'Recommended setup',
     configuredEyebrow: 'Settings complete',
-    selectionEyebrow: 'Unsaved change',
-    selectionDescription: 'This protocol is already prepared, but it is not yet saved as the node default. Save the selection so VPN accounts using Automatic start inheriting it.',
-    saveDefault: 'Save as node default',
+    saveDefault: 'Make default',
+    defaultSaved: 'Node default protocol changed.',
+    saveFirst: 'Save the changed protocol settings first.',
     vlessTitle: 'Configure VLESS / Reality automatically',
     vlessDescription: 'RouteGate will choose safe settings, generate the Reality keypair and Short ID, and use the node hostname as SNI.',
     vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
     vlessReason: 'RouteGate HTTPS stays on 443, so VPN uses a separate 8443 port without conflicting with nginx.',
-    vlessAction: 'Configure VLESS / Reality',
+    vlessAction: 'Configure and make default',
     wireGuardTitle: 'Configure WireGuard automatically',
     wireGuardDescription: 'RouteGate will create the WireGuard server keypair and apply safe interface defaults.',
     wireGuardValues: 'WireGuard · UDP 51820 · 10.66.0.1/24',
     wireGuardReason: 'Client keys and addresses remain account-specific while the server private key stays hidden from the UI.',
-    wireGuardAction: 'Configure WireGuard',
+    wireGuardAction: 'Configure and make default',
     wireGuardPending: 'Configuring WireGuard…',
     manualDescription: 'This protocol has no separate automatic-setup action. Complete the applicable fields below and save the settings.',
     setupRequiredEyebrow: 'Setup required',
     configuredDescription: 'Required settings are complete. The protocol becomes active only after assignment to a VPN account and a successful Agent config apply.',
     continue: 'Open VPN accounts →',
     protocol: 'Node default protocol',
-    protocolHint: 'Used by VPN accounts set to Automatic. A selection here takes effect only after you save it or complete the protocol automatic setup.',
     editingProtocol: 'Protocol to configure',
-    editingProtocolHint: 'Choose which protocol settings to edit. This does not change the node default protocol.',
+    editingProtocolHint: 'Selecting a protocol shows its settings. Change the node default with a separate button.',
     wireGuardPort: 'WireGuard port',
     wireGuardAddress: 'WireGuard interface address',
     wireGuardDns: 'Client DNS',
@@ -282,6 +273,7 @@ export function ServerProtocolSettingsPanel({
   const [editingProtocol, setEditingProtocol] = useState<ManagedProtocol>('vless');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const requested = requestedProtocol(searchParams.get('protocol'));
+  const selectionScope = useRef('');
 
   const settingsQuery = useQuery({
     queryKey: ['server-protocol-settings', serverId],
@@ -292,15 +284,26 @@ export function ServerProtocolSettingsPanel({
   useEffect(() => {
     if (!settingsQuery.data) return;
     const next = toFormState(settingsQuery.data);
-    setEditingProtocol(requested ?? next.protocol);
-    if (requested) setAdvancedOpen(true);
+    const scope = `${serverId}:${requested ?? ''}`;
+    if (selectionScope.current !== scope) {
+      selectionScope.current = scope;
+      setEditingProtocol(requested ?? normalizeProtocol(settingsQuery.data.protocol));
+      if (requested) setAdvancedOpen(true);
+    }
     setForm(next);
-  }, [requested, settingsQuery.data]);
+  }, [serverId, requested, settingsQuery.data]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: (request: UpdateProtocolSettingsRequest) => updateProtocolSettings(serverId, request),
     onSuccess: async (response) => {
       setForm(toFormState(response));
+      await queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', serverId] });
+    },
+  });
+
+  const defaultProtocolMutation = useMutation({
+    mutationFn: (protocol: ManagedProtocol) => updateProtocolSettings(serverId, { protocol }),
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', serverId] });
     },
   });
@@ -332,19 +335,11 @@ export function ServerProtocolSettingsPanel({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function updateProtocol(value: string) {
-    const protocol = normalizeProtocol(value);
-    setForm((current) => ({ ...current, protocol }));
-    setEditingProtocol(protocol);
-    setAdvancedOpen(true);
-  }
-
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     updateSettingsMutation.mutate(toRequest(
       form,
       settingsQuery.data?.reality.publicKey ?? '',
-      normalizeProtocol(settingsQuery.data?.protocol ?? 'vless'),
       editingProtocol,
     ));
   }
@@ -358,7 +353,16 @@ export function ServerProtocolSettingsPanel({
   const realityTouched = realityValues.some(Boolean);
   const realityComplete = realityValues.every(Boolean);
   const savedProtocol = normalizeProtocol(settingsQuery.data?.protocol ?? 'vless');
-  const protocolSelectionDirty = Boolean(settingsQuery.data) && form.protocol !== savedProtocol;
+  const isDefault = editingProtocol === savedProtocol;
+  const selectedSettingsDirty = settingsQuery.data ? JSON.stringify(toRequest(
+    form,
+    settingsQuery.data.reality.publicKey ?? '',
+    editingProtocol,
+  )) !== JSON.stringify(toRequest(
+    toFormState(settingsQuery.data),
+    settingsQuery.data.reality.publicKey ?? '',
+    editingProtocol,
+  )) : false;
 
   const selectedProtocolReady = editingProtocol === 'mtproto'
     ? Boolean(settingsQuery.data?.mtproto.ready) && Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
@@ -370,7 +374,7 @@ export function ServerProtocolSettingsPanel({
           ? Boolean(settingsQuery.data?.wireGuard.ready) && Number.isInteger(wireGuardPortNumber) && wireGuardPortNumber >= 1 && wireGuardPortNumber <= 65535
           : realityComplete && Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535;
 
-  const protocolConfigured = selectedProtocolReady && !protocolSelectionDirty;
+  const protocolConfigured = selectedProtocolReady;
 
   useEffect(() => {
     if (settingsQuery.data && !selectedProtocolReady) setAdvancedOpen(true);
@@ -379,7 +383,8 @@ export function ServerProtocolSettingsPanel({
   const mutationPending = updateSettingsMutation.isPending
     || realityKeypairMutation.isPending
     || recommendedSettingsMutation.isPending
-    || wireGuardSettingsMutation.isPending;
+    || wireGuardSettingsMutation.isPending
+    || defaultProtocolMutation.isPending;
 
   const canSave = (editingProtocol === 'mtproto'
     ? Number.isInteger(mtprotoPortNumber) && mtprotoPortNumber >= 1 && mtprotoPortNumber <= 65535
@@ -394,29 +399,24 @@ export function ServerProtocolSettingsPanel({
           : Number.isInteger(portNumber) && portNumber >= 1 && portNumber <= 65535 && (!realityTouched || realityComplete))
     && !mutationPending;
 
-  const selectionReadyToSave = protocolSelectionDirty && selectedProtocolReady && canSave;
   const translatedKeypairActionLabel = form.realityPublicKey.trim() === ''
     ? t('protocolSettings.generateRealityKeypair')
     : t('protocolSettings.rotateRealityKeypair');
   const selectedProtocolLabel = protocolLabel(editingProtocol, copy);
   const isVless = editingProtocol === 'vless';
   const isWireGuard = editingProtocol === 'wireguard';
-  const showRecommendedSetup = isVless || isWireGuard || protocolSelectionDirty;
+  const showRecommendedSetup = isVless || isWireGuard || !selectedProtocolReady;
 
   const recommendedTitle = protocolConfigured
     ? `${selectedProtocolLabel} — ${copy.configuredEyebrow}`
-    : selectionReadyToSave
-      ? `${selectedProtocolLabel} — ${copy.selectionEyebrow}`
-      : isVless
+    : isVless
         ? copy.vlessTitle
         : isWireGuard
           ? copy.wireGuardTitle
           : `${selectedProtocolLabel}`;
   const recommendedDescription = protocolConfigured
     ? copy.configuredDescription
-    : selectionReadyToSave
-      ? copy.selectionDescription
-      : isVless
+    : isVless
         ? copy.vlessDescription
         : isWireGuard
           ? copy.wireGuardDescription
@@ -438,17 +438,30 @@ export function ServerProtocolSettingsPanel({
 
       {settingsQuery.data && (
         <>
-          <label className="field protocol-default-selector">
-            <span>{copy.protocol}</span>
-            <select value={form.protocol} onChange={(event) => updateProtocol(event.target.value)}>
+          <div className="protocol-choice">
+            <div className="protocol-current-default">{copy.protocol}: <strong>{protocolLabel(savedProtocol, copy)}</strong></div>
+            <label className="field protocol-editing-selector">
+              <span>{copy.editingProtocol}{isDefault && <span className="protocol-default-badge">{t('protocolSettings.default')}</span>}</span>
+              <select value={editingProtocol} onChange={(event) => setEditingProtocol(normalizeProtocol(event.target.value))}>
               <option value="vless">VLESS / Reality</option>
               <option value="wireguard">{copy.wireGuardProtocol}</option>
               <option value="hysteria2">{copy.hysteria2Protocol}</option>
               <option value="shadowsocks">{copy.shadowsocksProtocol}</option>
               <option value="mtproto">{copy.mtprotoProtocol}</option>
-            </select>
-            <small>{copy.protocolHint}</small>
-          </label>
+              </select>
+              <small>{copy.editingProtocolHint}</small>
+            </label>
+            {!isDefault && selectedProtocolReady && (
+              <>
+                <button className="small-button" type="button" disabled={mutationPending || selectedSettingsDirty} onClick={() => defaultProtocolMutation.mutate(editingProtocol)}>
+                  {defaultProtocolMutation.isPending ? t('protocolSettings.saving') : copy.saveDefault}
+                </button>
+                {selectedSettingsDirty && <small>{copy.saveFirst}</small>}
+              </>
+            )}
+            {defaultProtocolMutation.isError && <div className="form-message form-message-error">{mutationErrorMessage(defaultProtocolMutation.error, t('protocolSettings.protocolSaveError'))}</div>}
+            {defaultProtocolMutation.isSuccess && <div className="form-message">{copy.defaultSaved}</div>}
+          </div>
 
           {showRecommendedSetup && (
             <div className={`protocol-recommended-setup${protocolConfigured ? ' protocol-recommended-setup-ready' : ''}`}>
@@ -456,9 +469,7 @@ export function ServerProtocolSettingsPanel({
                 <span className="protocol-recommended-eyebrow">
                   {protocolConfigured
                     ? copy.configuredEyebrow
-                    : selectionReadyToSave
-                      ? copy.selectionEyebrow
-                      : isVless || isWireGuard
+                    : isVless || isWireGuard
                         ? copy.recommendedEyebrow
                         : copy.setupRequiredEyebrow}
                 </span>
@@ -470,10 +481,6 @@ export function ServerProtocolSettingsPanel({
               <div className="protocol-recommended-actions">
                 {protocolConfigured ? (
                   <Link className="small-button" to="/vpn-accounts">{copy.continue}</Link>
-                ) : selectionReadyToSave ? (
-                  <button className="primary-button" type="submit" disabled={!canSave}>
-                    {updateSettingsMutation.isPending ? t('protocolSettings.saving') : copy.saveDefault}
-                  </button>
                 ) : isVless ? (
                   <button
                     className="primary-button"
@@ -515,21 +522,6 @@ export function ServerProtocolSettingsPanel({
       >
         <summary>{copy.advanced}</summary>
         <p className="panel-subtitle">{copy.advancedDescription}</p>
-
-        <label className="field protocol-editing-selector">
-          <span>{copy.editingProtocol}</span>
-          <select
-            value={editingProtocol}
-            onChange={(event) => setEditingProtocol(normalizeProtocol(event.target.value))}
-          >
-            <option value="vless">VLESS / Reality</option>
-            <option value="wireguard">{copy.wireGuardProtocol}</option>
-            <option value="hysteria2">{copy.hysteria2Protocol}</option>
-            <option value="shadowsocks">{copy.shadowsocksProtocol}</option>
-            <option value="mtproto">{copy.mtprotoProtocol}</option>
-          </select>
-          <small>{copy.editingProtocolHint}</small>
-        </label>
 
         {updateSettingsMutation.isError && (
           <div className="form-message form-message-error protocol-settings-feedback">
