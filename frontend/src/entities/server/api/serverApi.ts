@@ -132,12 +132,12 @@ export interface ProtocolSettingsResponse {
 
 export interface UpdateProtocolSettingsRequest {
 	protocol?: 'vless' | 'wireguard' | 'hysteria2' | 'shadowsocks' | 'mtproto';
-  vlessPort: number;
-  vlessFlow: string;
-  vlessNetwork: string;
+  vlessPort?: number;
+  vlessFlow?: string;
+  vlessNetwork?: string;
   realityPublicKey?: string;
-  realityShortId: string;
-  realityServerName: string;
+  realityShortId?: string;
+  realityServerName?: string;
 	wireGuardPort?: number;
 	wireGuardAddress?: string;
 	wireGuardDns?: string;

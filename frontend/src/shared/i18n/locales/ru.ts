@@ -621,7 +621,7 @@ export const ru: Record<TranslationKey, string> = {
   'protocolSettings.saving': 'Сохранение...',
   'protocolSettings.generating': 'Генерация...',
   'protocolSettings.protocolLoadError': 'Не удалось загрузить настройки протокола.',
-  'protocolSettings.protocolSaveError': 'Не удалось сохранить настройки протокола. Проверьте порт, сеть и flow.',
+  'protocolSettings.protocolSaveError': 'Не удалось сохранить настройки протокола.',
   'protocolSettings.keypairError': 'Не удалось создать ключи Reality.',
   'protocolSettings.saved': 'Настройки протокола сохранены.',
   'protocolSettings.keypairGenerated': 'Ключи Reality созданы. Показывается только публичный ключ.',
