@@ -79,7 +79,7 @@ try {
   for (const section of ['access', 'routing', 'protocols', 'traffic', 'settings']) {
     await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
     await page.waitForURL(`${workspace}/${section}`);
-    assert.equal(await page.locator('.workspace-nav-link[aria-current="page"]').getAttribute('href'), `/vpn-accounts/${account.id}/${section}`);
+    await page.locator(`.workspace-nav-link[aria-current="page"][href="/vpn-accounts/${account.id}/${section}"]`).waitFor();
     assert.equal(await page.locator('#vpn-account-workspace-title').innerText(), account.displayName);
   }
   const name = page.locator('.vpn-account-edit-form input').first();
