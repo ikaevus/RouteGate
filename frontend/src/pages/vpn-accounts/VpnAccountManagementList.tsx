@@ -182,7 +182,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
 
   function rowHref(id: string): string {
     const query = searchParams.toString();
-    return `/vpn-accounts/${encodeURIComponent(id)}${query ? `?${query}` : ''}`;
+    return `/vpn-accounts/${encodeURIComponent(id)}/overview${query ? `?${query}` : ''}`;
   }
 
   function toggleAccount(id: string) {
