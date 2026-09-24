@@ -36,9 +36,21 @@
   grid-column: 1 / -1;
 }
 
-.checkbox-field {
-  grid-template-columns: auto 1fr;
+.vpn-account-routing-form .checkbox-field {
+  display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.vpn-account-routing-form .checkbox-field input[type='checkbox'] {
+  position: static;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--rg-primary);
 }
 
 .automatic-selection-decision {

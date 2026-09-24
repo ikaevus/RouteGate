@@ -56,9 +56,11 @@ function formatPercent(value?: number | null): string {
 }
 
 function formatStatus(value?: string | null): string {
-  if (!value) {
+  if (!value || value === 'not_enforced') {
     return t('traffic.notEnforced');
   }
+  if (value === 'within_limit') return t('traffic.withinLimit');
+  if (value === 'over_limit') return t('traffic.overLimit');
 
   return translateStatus(value.replace(/_/g, ' '));
 }

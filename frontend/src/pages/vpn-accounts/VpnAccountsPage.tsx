@@ -191,7 +191,14 @@ export function VpnAccountsPage() {
       <div className="vpn-account-management-layout">
         <VpnAccountManagementList onCreate={openCreateForm} />
 
-        <div className="vpn-account-management-detail-stack" key={accountId}>
+        <div
+          className="vpn-account-management-detail-stack"
+          key={accountId}
+          data-route-scroll-target={accountId ? '' : undefined}
+          role={accountId ? 'region' : undefined}
+          aria-labelledby={accountId ? 'vpn-account-workspace-title' : undefined}
+          tabIndex={accountId ? -1 : undefined}
+        >
           {!accountId ? (
             <div className="panel feature-detail-panel vpn-account-management-panel">
               <EmptyState title={t('vpnAccounts.selectTitle')} description={t('vpnAccounts.selectDescription')} />
@@ -202,7 +209,7 @@ export function VpnAccountsPage() {
                 <div className="vpn-account-workspace-header panel">
                   <div>
                     <span className="vpn-account-workspace-eyebrow">{t('accountWorkspace.account')}</span>
-                    <h2>{accountQuery.data?.displayName || (accountQuery.isLoading ? t('common.loading') : accountId)}</h2>
+                    <h2 id="vpn-account-workspace-title">{accountQuery.data?.displayName || (accountQuery.isLoading ? t('common.loading') : accountId)}</h2>
                     <span className="vpn-account-workspace-id">{accountId}</span>
                   </div>
                   {accountQuery.data && <StatusBadge status={accountQuery.data.status} />}
