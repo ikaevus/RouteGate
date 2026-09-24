@@ -1,7 +1,11 @@
-.vpn-account-routing-policy-content:not([hidden]) {
+.vpn-account-routing-workspace {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
+
+.vpn-account-routing-workspace > .workspace-section,
+.vpn-account-routing-policy-grid > .workspace-section { margin: 0; }
 
 .vpn-account-routing-policy-grid {
   display: grid;
@@ -9,14 +13,11 @@
   gap: 16px;
 }
 
-.routing-policy-card {
+.vpn-account-routing-form {
   display: grid;
   align-content: start;
   gap: 14px;
-  padding: 16px;
-  border: 1px solid var(--rg-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--rg-surface-raised) 82%, transparent);
+  min-width: 0;
 }
 
 .routing-policy-effective {
@@ -31,13 +32,25 @@
   font-size: 12px;
 }
 
-.routing-policy-selection-card {
+.vpn-account-routing-policy-grid > .workspace-section:last-child {
   grid-column: 1 / -1;
 }
 
-.checkbox-field {
-  grid-template-columns: auto 1fr;
+.vpn-account-routing-form .checkbox-field {
+  display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.vpn-account-routing-form .checkbox-field input[type='checkbox'] {
+  position: static;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--rg-primary);
 }
 
 .automatic-selection-decision {

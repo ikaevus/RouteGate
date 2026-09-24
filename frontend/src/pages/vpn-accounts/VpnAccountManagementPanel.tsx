@@ -12,8 +12,8 @@ import {
   updateVpnAccountNotes,
 } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
-import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
 import { EmptyState } from '../../shared/ui/EmptyState';
+import { Section } from '../../shared/ui/Section';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 
@@ -33,7 +33,6 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const [notes, setNotes] = useState('');
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [isOpen, setIsOpen] = useState(true);
 
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
@@ -56,12 +55,18 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     setTelegramUsername(account.telegramUsername ?? '');
     setMessage('');
     setErrorMessage('');
-  }, [accountQuery.data]);
+  }, [
+    accountQuery.data?.id,
+    accountQuery.data?.displayName,
+    accountQuery.data?.email,
+    accountQuery.data?.phone,
+    accountQuery.data?.telegramUsername,
+  ]);
 
   useEffect(() => {
     if (!notesQuery.data) return;
     setNotes(notesQuery.data.notes ?? '');
-  }, [notesQuery.data]);
+  }, [notesQuery.data?.notes]);
 
   async function refreshAccountData() {
     await Promise.all([
@@ -152,6 +157,11 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     if (window.confirm(copy.deleteConfirm(name))) deleteMutation.mutate();
   }
 
+  function handleRevoke() {
+    const name = accountQuery.data?.displayName ?? accountId ?? '';
+    if (window.confirm(copy.revokeConfirm(name))) statusMutation.mutate('revoked');
+  }
+
   if (!accountId) {
     return (
       <div className="panel feature-detail-panel vpn-account-management-panel">
@@ -169,97 +179,83 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   }
 
   const account = accountQuery.data;
-  const actionPending = statusMutation.isPending || deleteMutation.isPending;
+  const actionPending = statusMutation.isPending || deleteMutation.isPending || updateMutation.isPending;
 
   return (
-    <div className="panel feature-detail-panel vpn-account-management-panel">
-      <div className="panel-header vpn-account-editor-header">
-        <CollapsiblePanelHeaderTitles
-          title={copy.editTitle}
-          subtitle={copy.editSubtitle}
-          open={isOpen}
-          onToggle={() => setIsOpen((value) => !value)}
-        />
-        <StatusBadge status={account.status} />
-      </div>
+    <div className="vpn-account-settings">
+      {message && <div className="form-message form-message-success" role="status">{message}</div>}
+      {errorMessage && <div className="form-message form-message-error" role="alert">{errorMessage}</div>}
 
-      <div className="panel-collapsible-body" hidden={!isOpen}>
-      <form className="vpn-account-edit-form" onSubmit={handleSubmit}>
-        <div className="vpn-account-edit-grid">
-          <label className="field">
-            <span>{copy.accountName}</span>
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-            <small>{copy.accountNameHint}</small>
-          </label>
-          <label className="field">
-            <span>{t('vpnAccounts.email')}</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>{t('vpnAccounts.phone')}</span>
-            <input
-              type="tel"
-              value={phone}
-              placeholder={t('vpnAccounts.phonePlaceholder')}
-              onChange={(event) => setPhone(event.target.value)}
-            />
-            <small>{t('vpnAccounts.phoneHint')}</small>
-          </label>
-          <label className="field">
-            <span>{t('vpnAccounts.telegramUsername')}</span>
-            <input
-              value={telegramUsername}
-              placeholder={t('vpnAccounts.telegramUsernamePlaceholder')}
-              onChange={(event) => setTelegramUsername(event.target.value)}
-            />
-            <small>{t('vpnAccounts.telegramUsernameHint')}</small>
-          </label>
-          <label className="field vpn-account-notes-field">
-            <span>{copy.notes}</span>
-            <textarea
-              value={notes}
-              maxLength={4000}
-              rows={4}
-              placeholder={copy.notesPlaceholder}
-              onChange={(event) => setNotes(event.target.value)}
-            />
-            <small>{copy.notesHint}</small>
-          </label>
-        </div>
+      <Section title={copy.identityTitle} description={copy.identitySubtitle}>
+        <form className="vpn-account-edit-form" onSubmit={handleSubmit}>
+          <div className="vpn-account-edit-grid">
+            <label className="field">
+              <span>{copy.accountName}</span>
+              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+              <small>{copy.accountNameHint}</small>
+            </label>
+            <label className="field">
+              <span>{t('vpnAccounts.email')}</span>
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="field">
+              <span>{t('vpnAccounts.phone')}</span>
+              <input
+                type="tel"
+                value={phone}
+                placeholder={t('vpnAccounts.phonePlaceholder')}
+                onChange={(event) => setPhone(event.target.value)}
+              />
+              <small>{t('vpnAccounts.phoneHint')}</small>
+            </label>
+            <label className="field">
+              <span>{t('vpnAccounts.telegramUsername')}</span>
+              <input
+                value={telegramUsername}
+                placeholder={t('vpnAccounts.telegramUsernamePlaceholder')}
+                onChange={(event) => setTelegramUsername(event.target.value)}
+              />
+              <small>{t('vpnAccounts.telegramUsernameHint')}</small>
+            </label>
+            <label className="field vpn-account-notes-field">
+              <span>{copy.notes}</span>
+              <textarea
+                value={notes}
+                maxLength={4000}
+                rows={4}
+                placeholder={copy.notesPlaceholder}
+                onChange={(event) => setNotes(event.target.value)}
+              />
+              <small>{copy.notesHint}</small>
+            </label>
+          </div>
 
-        {notesQuery.isError && <div className="form-message form-message-error">{copy.notesLoadError}</div>}
+          {notesQuery.isError && <div className="form-message form-message-error">{copy.notesLoadError}</div>}
 
-        <div className="form-actions">
-          <button className="primary-button" type="submit" disabled={!displayName.trim() || updateMutation.isPending || notesQuery.isLoading}>
-            {updateMutation.isPending ? copy.saving : copy.save}
-          </button>
-        </div>
-      </form>
+          <div className="form-actions">
+            <button className="primary-button" type="submit" disabled={!displayName.trim() || updateMutation.isPending || notesQuery.isLoading}>
+              {updateMutation.isPending ? copy.saving : copy.save}
+            </button>
+          </div>
+        </form>
+      </Section>
 
-      {message && <div className="form-message form-message-success">{message}</div>}
-      {errorMessage && <div className="form-message form-message-error">{errorMessage}</div>}
-
-      <div className="vpn-account-access-actions">
-        <div>
-          <strong>{copy.accessActions}</strong>
-        </div>
-        <div className="form-actions">
+      <Section title={copy.lifecycleTitle} description={copy.lifecycleSubtitle} aside={<StatusBadge status={account.status} />}>
+        <div className="vpn-account-lifecycle-actions">
           <button className="small-button" type="button" disabled={actionPending || account.status === 'active'} onClick={() => statusMutation.mutate('active')}>{copy.activate}</button>
           <button className="small-button" type="button" disabled={actionPending || account.status === 'suspended'} onClick={() => statusMutation.mutate('suspended')}>{copy.suspend}</button>
-          <button className="small-button" type="button" disabled={actionPending || account.status === 'revoked'} onClick={() => statusMutation.mutate('revoked')}>{copy.revoke}</button>
+          <button className="small-button" type="button" disabled={actionPending || account.status === 'revoked'} onClick={handleRevoke}>{copy.revoke}</button>
         </div>
-      </div>
+      </Section>
 
-      <div className="vpn-account-danger-zone">
-        <div>
-          <strong>{copy.dangerZone}</strong>
-          <p className="panel-subtitle">{account.id}</p>
+      <Section title={copy.dangerZone} description={copy.dangerSubtitle} tone="danger">
+        <div className="vpn-account-delete-action">
+          <span className="vpn-account-delete-id">{account.id}</span>
+          <button className="danger-button" type="button" disabled={actionPending} onClick={handleDelete}>
+            {copy.deleteAccount}
+          </button>
         </div>
-        <button className="danger-button" type="button" disabled={deleteMutation.isPending} onClick={handleDelete}>
-          {copy.deleteAccount}
-        </button>
-      </div>
-      </div>
+      </Section>
     </div>
   );
 }

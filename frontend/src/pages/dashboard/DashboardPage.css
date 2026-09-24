@@ -442,3 +442,30 @@
     gap: 6px 8px;
   }
 }
+
+.dashboard-page a.kpi-widget {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-page .dashboard-entity-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.dashboard-page a.kpi-widget:hover,
+.dashboard-page a.kpi-widget:focus-visible {
+  border-color: var(--accent, #38bdf8);
+}
+
+.dashboard-page a:focus-visible {
+  outline: 2px solid var(--accent, #38bdf8);
+  outline-offset: 3px;
+}
+
+.dashboard-page .quick-action-list a span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -1,19 +1,69 @@
-.vpn-access-devices-grid {
+.vpn-access-workspace {
+  container-type: inline-size;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 16px;
-  margin-top: 4px;
-  margin-bottom: 16px;
+  min-width: 0;
 }
 
-.vpn-access-device-card {
-  display: grid;
+.vpn-access-workspace .workspace-section-header { flex-wrap: wrap; }
+.vpn-access-workspace .workspace-section-header > button { flex-shrink: 0; }
+.vpn-access-workspace h4 { font-size: 16px; margin: 0; overflow-wrap: anywhere; }
+.vpn-access-list-detail { display: grid; gap: 20px; min-width: 0; }
+.vpn-access-device-list {
   align-content: start;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
-  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px;
 }
+.vpn-access-device-row {
+  background: transparent;
+  border: 1px solid var(--rg-border);
+  border-radius: 10px;
+  color: var(--rg-text-primary);
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  font: inherit;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.vpn-access-device-row[aria-pressed='true'] { border-color: var(--rg-primary); background: rgba(59, 130, 246, 0.08); }
+.vpn-access-device-row:focus-visible { outline: 2px solid var(--rg-primary); outline-offset: -2px; }
+.vpn-access-device-row:disabled { cursor: wait; opacity: 0.7; }
+.vpn-access-device-row strong { font-size: 13px; }
+.vpn-access-device-row span, .vpn-access-device-row small { color: var(--rg-text-secondary); font-size: 12px; }
+.vpn-access-focused-detail { min-width: 0; }
+.vpn-access-focused-detail:only-child { grid-column: 1 / -1; }
+.vpn-access-device-detail { display: grid; gap: 12px; min-width: 0; }
+.vpn-access-device-guidance, .vpn-access-device-management { border-top: 1px solid var(--rg-border); padding-top: 12px; }
+.vpn-access-workspace summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.vpn-access-workspace summary:focus-visible { outline: 2px solid var(--rg-primary); outline-offset: 3px; }
+.vpn-access-device-guidance[open] > p, .vpn-access-device-management[open] > p { margin-top: 12px; }
+.vpn-access-legacy-content { display: grid; gap: 12px; padding-top: 16px; min-width: 0; }
+.vpn-access-device-add-form .vpn-account-create-grid { grid-template-columns: minmax(0, 1fr); }
+.vpn-access-device-add-form input, .vpn-access-device-add-form select { min-width: 0; width: 100%; }
+.vpn-access-workspace .field > span { color: var(--rg-text-secondary); }
+.vpn-access-devices-revoked { padding: 16px; border: 1px solid var(--rg-border); border-radius: 12px; }
+.vpn-access-device-revoked-row { overflow-wrap: anywhere; }
+.vpn-access-device-url { display: block; min-width: 0; user-select: all; }
+
+@container (min-width: 760px) {
+  .vpn-access-list-detail { grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.5fr); }
+  .vpn-access-device-list { grid-template-columns: minmax(0, 1fr); max-height: 520px; }
+}
+
+:root[data-theme='light'] .vpn-access-device-compat-full,
+:root[data-theme='light'] .vpn-access-device-recommended { color: #166534; }
+:root[data-theme='light'] .vpn-access-device-compat-setup,
+:root[data-theme='light'] .vpn-access-device-note-warning,
+:root[data-theme='light'] .vpn-access-legacy-badge { color: #92400e; }
+:root[data-theme='light'] .vpn-access-device-compat-generic { color: #475569; }
+:root[data-theme='light'] .vpn-access-device-url { background: #eef2f7; }
 
 .vpn-access-device-actions {
   align-self: end;
@@ -28,7 +78,8 @@
   gap: 12px;
 }
 
-.vpn-access-device-card-header strong {
+.vpn-access-device-card-header strong,
+.vpn-access-device-card-header h4 {
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -42,11 +93,14 @@
 
 .vpn-access-device-rename-form {
   display: flex;
+  flex-wrap: wrap;
+  width: 100%;
   gap: 6px;
   align-items: center;
 }
 
 .vpn-access-device-rename-form input {
+  flex: 1 1 180px;
   min-width: 0;
 }
 
@@ -115,10 +169,8 @@
 }
 
 .vpn-access-legacy-card {
-  display: grid;
-  gap: 10px;
   padding: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
   border: 1px solid rgba(245, 158, 11, 0.34);
   border-radius: 12px;
   background: rgba(245, 158, 11, 0.06);
@@ -151,7 +203,7 @@
 
 .vpn-access-devices-revoked {
   margin-top: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
   font-size: 0.85rem;
   color: var(--rg-text-secondary, #94a3b8);
 }
@@ -184,10 +236,4 @@
   margin-top: 10px;
   font-size: 0.82rem;
   color: var(--rg-text-secondary, #94a3b8);
-}
-
-@media (max-width: 720px) {
-  .vpn-access-devices-grid {
-    grid-template-columns: 1fr;
-  }
 }

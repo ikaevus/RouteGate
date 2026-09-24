@@ -34,3 +34,8 @@ The first milestone is not VPN functionality. The first milestone is a living sy
 4. Frontend shell opens.
 5. Agent starts.
 6. Agent heartbeat can be implemented next.
+
+## Admin UI
+
+See [UI workspace patterns](ui-workspaces.md) for RG-80 navigation, task sections,
+entity actions, status handling and responsive accessibility conventions.

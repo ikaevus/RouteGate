@@ -17,7 +17,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getVpnAccount, updateVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
-import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
+import { Section } from '../../shared/ui/Section';
 import './vpnAccountRoutingPolicy.css';
 
 function selectionStatusLabel(status: 'selected' | 'current' | 'no_eligible_candidates' | 'node_group_required' | 'cooldown'): string {
@@ -90,7 +90,6 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const [automaticSelectionEnabled, setAutomaticSelectionEnabled] = useState(false);
   const [allowDegraded, setAllowDegraded] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(300);
-  const [isOpen, setIsOpen] = useState(true);
   const [serverId, setServerId] = useState('');
   const [nodeMessage, setNodeMessage] = useState('');
   const [nodeError, setNodeError] = useState('');
@@ -110,7 +109,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
 
   useEffect(() => {
     setServerId(accountQuery.data?.serverId ?? '');
-  }, [accountQuery.data]);
+  }, [accountQuery.data?.serverId]);
 
   const savedNodeGroupId = policyQuery.data?.nodeGroup?.id ?? '';
   const savedSelectionPolicy = policyQuery.data?.automaticSelectionPolicy;
@@ -208,178 +207,180 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   }
 
   const policy = policyQuery.data;
-  const hasError = policyQuery.isError || profilesQuery.isError || groupsQuery.isError;
+  const hasError = policyQuery.isError || profilesQuery.isError || groupsQuery.isError
+    || accountQuery.isError || serversQuery.isError;
+  const isLoading = policyQuery.isLoading || profilesQuery.isLoading || groupsQuery.isLoading
+    || accountQuery.isLoading || serversQuery.isLoading;
   const currentServerName = serversQuery.data?.items.find((server) => server.id === accountQuery.data?.serverId)?.name
     ?? accountQuery.data?.serverId
     ?? t('vpnAccounts.noServerAssignment');
 
+  if (hasError || isLoading) {
+    return (
+      <Section title={t('routingPolicy.title')} description={t('routingPolicy.subtitle')}>
+        {hasError
+          ? <div className="form-message form-message-error">{t('routingPolicy.loadError')}</div>
+          : <p className="empty-state">{t('common.loading')}</p>}
+      </Section>
+    );
+  }
+
   return (
-    <div className="panel feature-detail-panel vpn-account-routing-policy-panel">
-      <div className="panel-header">
-        <CollapsiblePanelHeaderTitles
-          title={t('routingPolicy.title')}
-          subtitle={t('routingPolicy.subtitle')}
-          open={isOpen}
-          onToggle={() => setIsOpen((value) => !value)}
-        />
-      </div>
-      <div className="panel-collapsible-body vpn-account-routing-policy-content" hidden={!isOpen}>
-      {hasError && <div className="form-message form-message-error">{t('routingPolicy.loadError')}</div>}
+    <div className="vpn-account-routing-workspace">
       {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
 
-      <form className="routing-policy-card vpn-account-placement-card" onSubmit={saveNode}>
-        <div>
-          <strong>{copy.placementTitle}</strong>
-          <p className="routing-policy-automation-note">{copy.placementSubtitle}</p>
-        </div>
-        <div className="routing-policy-effective">
-          <span>{copy.currentNode}</span>
-          <strong>{currentServerName}</strong>
-        </div>
-        <label className="field">
-          <span>{t('vpnAccounts.serverAssignment')}</span>
-          <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
-            <option value="">{t('vpnAccounts.noServerAssignment')}</option>
-            {(serversQuery.data?.items ?? []).map((server) => (
-              <option key={server.id} value={server.id}>{server.name || server.id}</option>
-            ))}
-          </select>
-        </label>
-        <div className="form-actions">
-          <button className="small-button" type="submit" disabled={nodeMutation.isPending || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
-        </div>
-        {nodeMessage && <div className="form-message form-message-success">{nodeMessage}</div>}
-        {nodeError && <div className="form-message form-message-error">{nodeError}</div>}
-        {nodeConfigChanged && (
-          <div className="form-message vpn-account-config-notice">
-            <span>{copy.configNotice}</span>
-            <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
+      <Section title={copy.placementTitle} description={copy.placementSubtitle}>
+        <form className="vpn-account-routing-form" onSubmit={saveNode}>
+          <div className="routing-policy-effective">
+            <span>{copy.currentNode}</span>
+            <strong>{currentServerName}</strong>
           </div>
-        )}
-      </form>
+          <label className="field">
+            <span>{t('vpnAccounts.serverAssignment')}</span>
+            <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
+              <option value="">{t('vpnAccounts.noServerAssignment')}</option>
+              {(serversQuery.data?.items ?? []).map((server) => (
+                <option key={server.id} value={server.id}>{server.name || server.id}</option>
+              ))}
+            </select>
+          </label>
+          <div className="form-actions">
+            <button className="small-button" type="submit" disabled={nodeMutation.isPending || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
+          </div>
+          {nodeMessage && <div className="form-message form-message-success">{nodeMessage}</div>}
+          {nodeError && <div className="form-message form-message-error">{nodeError}</div>}
+          {nodeConfigChanged && (
+            <div className="form-message vpn-account-config-notice">
+              <span>{copy.configNotice}</span>
+              <Link className="text-link" to="/config-deploy">{copy.openDeploy}</Link>
+            </div>
+          )}
+        </form>
+      </Section>
 
       {policy && (
         <div className="vpn-account-routing-policy-grid">
-          <form className="routing-policy-card" onSubmit={saveProfile}>
-            <label className="field">
-              <span>{t('routingPolicy.profile')}</span>
-              <select value={routingProfileId} onChange={(event) => setRoutingProfileId(event.target.value)}>
-                <option value="">{t('routingPolicy.inherit')}</option>
-                {(profilesQuery.data?.items ?? []).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-              </select>
-            </label>
-            <div className="routing-policy-effective">
-              <span>{t('routingPolicy.effective')}</span>
-              <strong>{policy.effectiveRoutingProfile?.name ?? t('common.notAvailable')}</strong>
-              <small>{t('routingPolicy.source', { source: sourceLabel(policy.routingProfileSource) })}</small>
-            </div>
-
-            {!policy.clientRoutingSupported && <div className="form-message form-message-warning">{t('routingPolicy.clientRoutingUnsupported')}</div>}
-            <div className="form-actions">
-              <button className="small-button" type="submit" disabled={profileMutation.isPending}>{routingProfileId ? t('routingPolicy.saveProfile') : t('routingPolicy.clearProfile')}</button>
-            </div>
-          </form>
-
-          <form className="routing-policy-card" onSubmit={saveGroup}>
-            <label className="field">
-              <span>{t('routingPolicy.nodeGroup')}</span>
-              <select value={nodeGroupId} onChange={(event) => setNodeGroupId(event.target.value)}>
-                <option value="">{t('routingPolicy.noNodeGroup')}</option>
-                {(groupsQuery.data?.items ?? []).map((group) => <option key={group.id} value={group.id}>{group.name} · {group.memberCount}</option>)}
-              </select>
-            </label>
-            {policy.nodeGroup && !nodeGroupDirty && (
-              <div className={`form-message ${policy.currentServerInGroup ? 'form-message-success' : 'form-message-warning'}`}>
-                {policy.currentServerInGroup ? t('routingPolicy.currentInGroup') : t('routingPolicy.currentOutsideGroup')}
+          <Section title={t('routingPolicy.profile')}>
+            <form className="vpn-account-routing-form" onSubmit={saveProfile}>
+              <label className="field">
+                <span>{t('routingPolicy.profile')}</span>
+                <select value={routingProfileId} onChange={(event) => setRoutingProfileId(event.target.value)}>
+                  <option value="">{t('routingPolicy.inherit')}</option>
+                  {(profilesQuery.data?.items ?? []).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                </select>
+              </label>
+              <div className="routing-policy-effective">
+                <span>{t('routingPolicy.effective')}</span>
+                <strong>{policy.effectiveRoutingProfile?.name ?? t('common.notAvailable')}</strong>
+                <small>{t('routingPolicy.source', { source: sourceLabel(policy.routingProfileSource) })}</small>
               </div>
-            )}
-            {nodeGroupDirty && <div className="form-message form-message-warning">{copy.unsavedNodeGroup}</div>}
-            <p className="routing-policy-automation-note">{t('automaticSelection.groupHelp')}</p>
-            <div className="form-actions">
-              <button className="small-button" type="submit" disabled={groupMutation.isPending}>{nodeGroupId ? t('routingPolicy.saveGroup') : t('routingPolicy.clearGroup')}</button>
-            </div>
-          </form>
 
-          <form className="routing-policy-card routing-policy-selection-card" onSubmit={saveSelectionPolicy}>
-            <div>
-              <strong>{t('automaticSelection.title')}</strong>
-              <p className="routing-policy-automation-note">{t('automaticSelection.subtitle')}</p>
-            </div>
-            <label className="field checkbox-field">
-              <input
-                type="checkbox"
-                checked={automaticSelectionEnabled}
-                disabled={!policy.nodeGroup || nodeGroupDirty}
-                onChange={(event) => setAutomaticSelectionEnabled(event.target.checked)}
-              />
-              <span>{t('automaticSelection.enabled')}</span>
-            </label>
-            <label className="field checkbox-field">
-              <input type="checkbox" checked={allowDegraded} disabled={!policy.nodeGroup || nodeGroupDirty} onChange={(event) => setAllowDegraded(event.target.checked)} />
-              <span>{t('automaticSelection.allowDegraded')}</span>
-            </label>
-            <label className="field">
-              <span>{t('automaticSelection.cooldown')}</span>
-              <input
-                type="number"
-                min={1}
-                max={1440}
-                value={Math.round(cooldownSeconds / 60)}
-                disabled={!policy.nodeGroup || nodeGroupDirty}
-                onChange={(event) => setCooldownSeconds(Math.max(60, Number(event.target.value || 1) * 60))}
-              />
-            </label>
-            <div className="form-actions">
-              <button className="small-button" type="submit" disabled={selectionPolicyMutation.isPending || !policy.nodeGroup || nodeGroupDirty}>{t('automaticSelection.save')}</button>
-              <button
-                className="small-button secondary"
-                type="button"
-                disabled={!policy.nodeGroup || automaticSelectionDirty || selectionPreviewQuery.isFetching}
-                onClick={() => selectionPreviewQuery.refetch()}
-              >
-                {t('automaticSelection.refresh')}
-              </button>
-            </div>
-            {!policy.nodeGroup && !nodeGroupDirty && <div className="form-message form-message-warning">{t('automaticSelection.nodeGroupRequired')}</div>}
-            {nodeGroupDirty && <div className="form-message form-message-warning">{copy.saveNodeGroupFirst}</div>}
-            {!nodeGroupDirty && selectionPolicyDirty && <div className="form-message form-message-warning">{copy.savePolicyFirst}</div>}
-            {!automaticSelectionDirty && selectionPreviewQuery.isError && <div className="form-message form-message-error">{t('automaticSelection.previewError')}</div>}
-            {!automaticSelectionDirty && selectionPreviewQuery.data && (
-              <div className="automatic-selection-decision">
-                <span>{selectionStatusLabel(selectionPreviewQuery.data.status)}</span>
-                {selectionPreviewQuery.data.selectedCandidate && (
-                  <strong>{selectionPreviewQuery.data.selectedCandidate.serverName} · {protocolDisplayName(selectionPreviewQuery.data.selectedCandidate.protocol)}</strong>
-                )}
-                <small>{t('automaticSelection.eligible', { count: selectionPreviewQuery.data.eligibleCandidates })}</small>
-                {selectionPreviewQuery.data.blockedUntil && <small>{t('automaticSelection.blockedUntil', { date: new Date(selectionPreviewQuery.data.blockedUntil).toLocaleString() })}</small>}
+              {!policy.clientRoutingSupported && <div className="form-message form-message-warning">{t('routingPolicy.clientRoutingUnsupported')}</div>}
+              <div className="form-actions">
+                <button className="small-button" type="submit" disabled={profileMutation.isPending}>{routingProfileId ? t('routingPolicy.saveProfile') : t('routingPolicy.clearProfile')}</button>
               </div>
-            )}
-            {selectionApplyMutation.data?.configDeploymentRequired && (
-              <div className="automatic-selection-next-action">
-                <div className="form-message form-message-warning">{t('automaticSelection.deployRequired')}</div>
-                <div className="form-actions">
-                  {selectionApplyMutation.data.affectedServerIds.map((serverId, index) => (
-                    <Link className="small-button" key={serverId} to={`/servers/${encodeURIComponent(serverId)}`}>
-                      {index === 0 ? t('automaticSelection.openSelectedNode') : t('automaticSelection.openPreviousNode')}
-                    </Link>
-                  ))}
+            </form>
+          </Section>
+
+          <Section title={t('routingPolicy.nodeGroup')}>
+            <form className="vpn-account-routing-form" onSubmit={saveGroup}>
+              <label className="field">
+                <span>{t('routingPolicy.nodeGroup')}</span>
+                <select value={nodeGroupId} onChange={(event) => setNodeGroupId(event.target.value)}>
+                  <option value="">{t('routingPolicy.noNodeGroup')}</option>
+                  {(groupsQuery.data?.items ?? []).map((group) => <option key={group.id} value={group.id}>{group.name} · {group.memberCount}</option>)}
+                </select>
+              </label>
+              {policy.nodeGroup && !nodeGroupDirty && (
+                <div className={`form-message ${policy.currentServerInGroup ? 'form-message-success' : 'form-message-warning'}`}>
+                  {policy.currentServerInGroup ? t('routingPolicy.currentInGroup') : t('routingPolicy.currentOutsideGroup')}
                 </div>
+              )}
+              {nodeGroupDirty && <div className="form-message form-message-warning">{copy.unsavedNodeGroup}</div>}
+              <p className="routing-policy-automation-note">{t('automaticSelection.groupHelp')}</p>
+              <div className="form-actions">
+                <button className="small-button" type="submit" disabled={groupMutation.isPending}>{nodeGroupId ? t('routingPolicy.saveGroup') : t('routingPolicy.clearGroup')}</button>
               </div>
-            )}
-            <div className="form-actions">
-              <button
-                className="small-button"
-                type="button"
-                disabled={automaticSelectionDirty || !selectionPreviewQuery.data?.canApply || selectionApplyMutation.isPending}
-                onClick={() => selectionApplyMutation.mutate()}
-              >
-                {t('automaticSelection.apply')}
-              </button>
-            </div>
-          </form>
+            </form>
+          </Section>
+
+          <Section title={t('automaticSelection.title')} description={t('automaticSelection.subtitle')}>
+            <form className="vpn-account-routing-form" onSubmit={saveSelectionPolicy}>
+              <label className="field checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={automaticSelectionEnabled}
+                  disabled={!policy.nodeGroup || nodeGroupDirty}
+                  onChange={(event) => setAutomaticSelectionEnabled(event.target.checked)}
+                />
+                <span>{t('automaticSelection.enabled')}</span>
+              </label>
+              <label className="field checkbox-field">
+                <input type="checkbox" checked={allowDegraded} disabled={!policy.nodeGroup || nodeGroupDirty} onChange={(event) => setAllowDegraded(event.target.checked)} />
+                <span>{t('automaticSelection.allowDegraded')}</span>
+              </label>
+              <label className="field">
+                <span>{t('automaticSelection.cooldown')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={Math.round(cooldownSeconds / 60)}
+                  disabled={!policy.nodeGroup || nodeGroupDirty}
+                  onChange={(event) => setCooldownSeconds(Math.max(60, Number(event.target.value || 1) * 60))}
+                />
+              </label>
+              <div className="form-actions">
+                <button className="small-button" type="submit" disabled={selectionPolicyMutation.isPending || !policy.nodeGroup || nodeGroupDirty}>{t('automaticSelection.save')}</button>
+                <button
+                  className="small-button secondary"
+                  type="button"
+                  disabled={!policy.nodeGroup || automaticSelectionDirty || selectionPreviewQuery.isFetching}
+                  onClick={() => selectionPreviewQuery.refetch()}
+                >
+                  {t('automaticSelection.refresh')}
+                </button>
+              </div>
+              {!policy.nodeGroup && !nodeGroupDirty && <div className="form-message form-message-warning">{t('automaticSelection.nodeGroupRequired')}</div>}
+              {nodeGroupDirty && <div className="form-message form-message-warning">{copy.saveNodeGroupFirst}</div>}
+              {!nodeGroupDirty && selectionPolicyDirty && <div className="form-message form-message-warning">{copy.savePolicyFirst}</div>}
+              {!automaticSelectionDirty && selectionPreviewQuery.isError && <div className="form-message form-message-error">{t('automaticSelection.previewError')}</div>}
+              {!automaticSelectionDirty && selectionPreviewQuery.data && (
+                <div className="automatic-selection-decision">
+                  <span>{selectionStatusLabel(selectionPreviewQuery.data.status)}</span>
+                  {selectionPreviewQuery.data.selectedCandidate && (
+                    <strong>{selectionPreviewQuery.data.selectedCandidate.serverName} · {protocolDisplayName(selectionPreviewQuery.data.selectedCandidate.protocol)}</strong>
+                  )}
+                  <small>{t('automaticSelection.eligible', { count: selectionPreviewQuery.data.eligibleCandidates })}</small>
+                  {selectionPreviewQuery.data.blockedUntil && <small>{t('automaticSelection.blockedUntil', { date: new Date(selectionPreviewQuery.data.blockedUntil).toLocaleString() })}</small>}
+                </div>
+              )}
+              {selectionApplyMutation.data?.configDeploymentRequired && (
+                <div className="automatic-selection-next-action">
+                  <div className="form-message form-message-warning">{t('automaticSelection.deployRequired')}</div>
+                  <div className="form-actions">
+                    {selectionApplyMutation.data.affectedServerIds.map((serverId, index) => (
+                      <Link className="small-button" key={serverId} to={`/servers/${encodeURIComponent(serverId)}`}>
+                        {index === 0 ? t('automaticSelection.openSelectedNode') : t('automaticSelection.openPreviousNode')}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="form-actions">
+                <button
+                  className="small-button"
+                  type="button"
+                  disabled={automaticSelectionDirty || !selectionPreviewQuery.data?.canApply || selectionApplyMutation.isPending}
+                  onClick={() => selectionApplyMutation.mutate()}
+                >
+                  {t('automaticSelection.apply')}
+                </button>
+              </div>
+            </form>
+          </Section>
         </div>
       )}
-      </div>
     </div>
   );
 }

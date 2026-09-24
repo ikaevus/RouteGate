@@ -1,9 +1,14 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getServers } from '../../entities/server/api/serverApi';
+import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { createVpnAccount } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
+import { EmptyState } from '../../shared/ui/EmptyState';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
+import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
+import { AccountOverview } from './AccountOverview';
 import { AccessDevicesPanel } from './AccessDevicesPanel';
 import { TrafficStatsPanel } from './TrafficStatsPanel';
 import { VpnAccountConnectionPanels } from './VpnAccountConnectionPanels';
@@ -11,6 +16,7 @@ import { VpnAccountManagementList } from './VpnAccountManagementList';
 import { VpnAccountManagementPanel } from './VpnAccountManagementPanel';
 import { VpnAccountRoutingPolicyPanel } from './VpnAccountRoutingPolicyPanel';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
+import { accountSections, accountWorkspaceHref, isAccountSection } from './accountWorkspace';
 import './vpnAccountManagement.css';
 import './vpnAccountNotes.css';
 
@@ -20,7 +26,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function VpnAccountsPage() {
   const copy = getVpnAccountManagementCopy();
-  const { accountId } = useParams<{ accountId: string }>();
+  const { accountId, section } = useParams<{ accountId: string; section: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -36,6 +42,11 @@ export function VpnAccountsPage() {
   }, [searchParams]);
 
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
+  const accountQuery = useQuery({
+    queryKey: ['vpn-account', accountId],
+    queryFn: () => getVpnAccount(accountId ?? ''),
+    enabled: Boolean(accountId),
+  });
 
   const createAccountMutation = useMutation({
     mutationFn: () => createVpnAccount({
@@ -58,7 +69,7 @@ export function VpnAccountsPage() {
       nextParams.set('addDevice', '1');
       await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
       const query = nextParams.toString();
-      navigate(`/vpn-accounts/${account.id}${query ? `?${query}` : ''}`);
+      navigate(`/vpn-accounts/${encodeURIComponent(account.id)}/access${query ? `?${query}` : ''}`);
     },
   });
 
@@ -87,8 +98,19 @@ export function VpnAccountsPage() {
     if (canCreateAccount) createAccountMutation.mutate();
   }
 
+  if (accountId && (!section || !isAccountSection(section))) {
+    const target = section ? 'overview' : searchParams.get('addDevice') === '1' ? 'access' : 'overview';
+    const query = searchParams.toString();
+    return <Navigate to={`/vpn-accounts/${encodeURIComponent(accountId)}/${target}${query ? `?${query}` : ''}`} replace />;
+  }
+
+  const navigation = accountId ? accountSections.map((item) => ({
+    href: accountWorkspaceHref(accountId, item, searchParams),
+    label: t(`accountWorkspace.${item}`),
+  })) : [];
+
   return (
-    <section className="page vpn-accounts-page feature-screen-page vpn-account-management-page" style={{ overflowX: 'hidden' }}>
+    <section className="page vpn-accounts-page feature-screen-page vpn-account-management-page">
       <div className="page-header feature-page-header">
         <div>
           <h1>{t('vpnAccounts.title')}</h1>
@@ -169,13 +191,42 @@ export function VpnAccountsPage() {
       <div className="vpn-account-management-layout">
         <VpnAccountManagementList onCreate={openCreateForm} />
 
-        <div className="vpn-account-management-detail-stack">
-          <VpnAccountManagementPanel accountId={accountId} />
-          {accountId && <AccessDevicesPanel accountId={accountId} />}
-          {accountId && <VpnAccountRoutingPolicyPanel accountId={accountId} />}
-          {accountId && <VpnAccountConnectionPanels accountId={accountId} />}
-          {accountId && <TrafficStatsPanel accountId={accountId} />}
-
+        <div
+          className="vpn-account-management-detail-stack"
+          key={accountId}
+          data-route-scroll-target={accountId ? '' : undefined}
+          role={accountId ? 'region' : undefined}
+          aria-labelledby={accountId ? 'vpn-account-workspace-title' : undefined}
+          tabIndex={accountId ? -1 : undefined}
+        >
+          {!accountId ? (
+            <div className="panel feature-detail-panel vpn-account-management-panel">
+              <EmptyState title={t('vpnAccounts.selectTitle')} description={t('vpnAccounts.selectDescription')} />
+            </div>
+          ) : (
+            <>
+              <div className="vpn-account-workspace-context">
+                <div className="vpn-account-workspace-header panel">
+                  <div>
+                    <span className="vpn-account-workspace-eyebrow">{t('accountWorkspace.account')}</span>
+                    <h2 id="vpn-account-workspace-title">{accountQuery.data?.displayName || (accountQuery.isLoading ? t('common.loading') : accountId)}</h2>
+                    <span className="vpn-account-workspace-id">{accountId}</span>
+                  </div>
+                  {accountQuery.data && <StatusBadge status={accountQuery.data.status} />}
+                </div>
+                <WorkspaceNav label={t('accountWorkspace.navigation')} items={navigation} />
+              </div>
+              {accountQuery.isError ? (
+                <div className="panel form-message form-message-error">{copy.loadAccountError}</div>
+              ) : section === 'overview' ? (
+                accountQuery.data ? <AccountOverview account={accountQuery.data} /> : <div className="panel vpn-account-workspace-wait">{t('common.loading')}</div>
+              ) : section === 'access' ? <AccessDevicesPanel accountId={accountId} />
+                : section === 'routing' ? <VpnAccountRoutingPolicyPanel accountId={accountId} />
+                : section === 'protocols' ? <VpnAccountConnectionPanels accountId={accountId} />
+                : section === 'traffic' ? <TrafficStatsPanel accountId={accountId} />
+                : <VpnAccountManagementPanel accountId={accountId} />}
+            </>
+          )}
         </div>
       </div>
     </section>

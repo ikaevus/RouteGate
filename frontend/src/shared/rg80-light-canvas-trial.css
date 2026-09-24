@@ -162,7 +162,6 @@
 }
 
 :root[data-theme='light'] .detail-row,
-:root[data-theme='light'] .vpn-account-access-actions,
 :root[data-theme='light'] .traffic-limit-form,
 :root[data-theme='light'] .protocol-advanced-settings,
 :root[data-theme='light'] .registration-token-config-example {
@@ -322,11 +321,6 @@
 }
 
 /* Danger controls keep their semantic hue without carrying the dark-theme maroon panel. */
-:root[data-theme='light'] .vpn-account-danger-zone {
-  background: rgba(248, 113, 113, 0.1);
-  border-color: rgba(153, 27, 27, 0.28);
-}
-
 :root[data-theme='light'] .danger-button {
   background: #b91c1c;
   border-color: #991b1b;

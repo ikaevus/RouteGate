@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import { VpnAccountProtocolPreferencePanel } from './VpnAccountProtocolPreferencePanel';
+import { accountWorkspaceHref } from './accountWorkspace';
 
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
@@ -10,7 +12,7 @@ function getCopy() {
       loading: 'Проверяем назначение VPN-узла...',
       unavailable: 'Не удалось загрузить назначение VPN-узла.',
       nodeRequiredTitle: 'Сначала назначьте VPN-узел',
-      nodeRequiredDescription: 'Этот VPN-аккаунт ещё не назначен серверу. Назначьте VPN-узел в разделе «Маршрутизация и размещение» ниже. После назначения здесь появятся выбор протоколов и данные для ручного подключения.',
+      nodeRequiredDescription: 'Этот VPN-аккаунт ещё не назначен серверу. Назначьте VPN-узел в разделе «Маршрутизация». После назначения здесь появятся выбор протоколов и данные для ручного подключения.',
       assignNodeAction: 'Перейти к маршрутизации и размещению',
     } as const;
   }
@@ -20,24 +22,18 @@ function getCopy() {
     loading: 'Checking VPN node assignment...',
     unavailable: 'Could not load the VPN node assignment.',
     nodeRequiredTitle: 'Assign a VPN node first',
-    nodeRequiredDescription: 'This VPN account is not assigned to a server yet. Assign a VPN node in the Routing & Placement section below. After assignment, protocol selection and manual connection data will appear here.',
+    nodeRequiredDescription: 'This VPN account is not assigned to a server yet. Assign a VPN node in Routing. After assignment, protocol selection and manual connection data will appear here.',
     assignNodeAction: 'Go to Routing & Placement',
   } as const;
 }
 
 export function VpnAccountConnectionPanels({ accountId }: { accountId: string }) {
   const copy = getCopy();
+  const [searchParams] = useSearchParams();
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
     queryFn: () => getVpnAccount(accountId),
   });
-
-  const scrollToAssignment = () => {
-    document.querySelector('.vpn-account-routing-policy-panel')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  };
 
   if (accountQuery.isLoading) {
     return (
@@ -66,9 +62,9 @@ export function VpnAccountConnectionPanels({ accountId }: { accountId: string })
         <div className="empty-state empty-state-card vpn-client-empty-state">
           <strong>{copy.nodeRequiredTitle}</strong>
           <p>{copy.nodeRequiredDescription}</p>
-          <button className="small-button" type="button" onClick={scrollToAssignment}>
+          <Link className="small-button" to={accountWorkspaceHref(accountId, 'routing', searchParams)}>
             {copy.assignNodeAction}
-          </button>
+          </Link>
         </div>
       </div>
     );

@@ -152,7 +152,7 @@ function getCopy() {
       deployConfirm: (server: string) => `Развернуть VPN-конфигурацию на ${server}?\n\nRouteGate отрендерит, проверит и применит конфиг. После применения Agent выполнит необходимые перезапуски и healthcheck.`,
       readyTitle: 'RouteGate готов',
       readyDescription: 'VPN-протокол настроен, конфигурация применена и первый VPN-аккаунт готов к подключению.',
-      readyAction: 'Открыть аккаунт и QR',
+      readyAction: 'Открыть доступ устройства',
       dismiss: 'Скрыть',
       readyServer: (server: string) => `Рабочий сервер: ${server}`,
     } as const;
@@ -230,7 +230,7 @@ function getCopy() {
     deployConfirm: (server: string) => `Deploy VPN configuration to ${server}?\n\nRouteGate will render, validate, and apply the config. After applying it, Agent will perform the required restarts and healthcheck.`,
     readyTitle: 'RouteGate is ready',
     readyDescription: 'The VPN protocol is configured, the configuration is applied, and the first VPN account is ready to connect.',
-    readyAction: 'Open account and QR',
+    readyAction: 'Open device access',
     dismiss: 'Hide',
     readyServer: (server: string) => `Working server: ${server}`,
   } as const;
@@ -463,7 +463,7 @@ export function GettingStartedWidget() {
       copy: finalCopy,
       complete: managerReady && serverConnected && vpnCoreInstalled && protocolReady && onboardingReady,
       to: onboardingReady && firstReadyAccount
-        ? `/vpn-accounts/${firstReadyAccount.id}`
+        ? `/vpn-accounts/${encodeURIComponent(firstReadyAccount.id)}/access`
         : accountReady && primaryServer
           ? `/servers/${primaryServer.id}`
           : '/vpn-accounts?create=1',
@@ -537,7 +537,7 @@ export function GettingStartedWidget() {
             {primaryServer && <small>{copy.readyServer(primaryServer.name || primaryServer.id)}</small>}
           </div>
           <div className="getting-started-complete-actions">
-            <Link className="getting-started-action" to={`/vpn-accounts/${firstReadyAccount.id}`}>
+            <Link className="getting-started-action" to={`/vpn-accounts/${encodeURIComponent(firstReadyAccount.id)}/access`}>
               {copy.readyAction} →
             </Link>
             <button className="getting-started-dismiss" type="button" onClick={dismiss}>

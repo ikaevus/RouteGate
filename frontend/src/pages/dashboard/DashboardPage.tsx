@@ -87,16 +87,16 @@ function formatAuditResource(event: DashboardRecentAuditEvent): string {
   return event.resourceId ? `${event.resourceType} · ${event.resourceId}` : event.resourceType;
 }
 
-function KpiWidget({ title, value, meta, tone, icon }: { title: string; value: string; meta: string; tone: string; icon: string }) {
+function KpiWidget({ title, value, meta, tone, icon, to }: { title: string; value: string; meta: string; tone: string; icon: string; to: string }) {
   return (
-    <div className={`dashboard-widget kpi-widget kpi-widget-${tone}`}>
+    <Link to={to} className={`dashboard-widget kpi-widget kpi-widget-${tone}`}>
       <div>
         <div className="kpi-title"><span className="kpi-dot" />{title}</div>
         <div className="kpi-value">{value}</div>
         <div className="kpi-meta">{meta}</div>
       </div>
       <div className="kpi-icon" aria-hidden="true">{icon}</div>
-    </div>
+    </Link>
   );
 }
 
@@ -224,10 +224,9 @@ function NodeDistributionWidget({ distribution, available }: { distribution?: Da
 function QuickActionsWidget() {
   const actions = [
     { label: t('dashboard.addServer'), to: '/servers' },
-    { label: t('dashboard.registerAgent'), to: '/servers' },
     { label: t('dashboard.createRoutingProfile'), to: '/routing-profiles' },
-    { label: t('dashboard.deployConfiguration'), to: '/protocol-settings' },
-    { label: t('dashboard.createUserGroup'), to: '/vpn-accounts' },
+    { label: t('dashboard.selectDeploymentServer'), to: '/servers' },
+    { label: t('navigation.vpnAccounts'), to: '/vpn-accounts' },
   ];
 
   return (
@@ -277,10 +276,12 @@ function TrafficOverviewWidget({ daily, available }: { daily: DashboardDailyTraf
   );
 }
 
-function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
+function ServersSummaryWidget({ servers, pending, available }: { pending: boolean; available: boolean; servers: Array<{ id: string; name: string; region: string; online: boolean; load: string; traffic: string; status: string }> }) {
   return (
     <WidgetPanel title={t('servers.title')} className="servers-summary-widget dashboard-table-widget">
-      {servers.length === 0 ? (
+      {!available ? (
+        <p className="empty-state" role="status">{t(pending ? 'common.loading' : 'common.notAvailable')}</p>
+      ) : servers.length === 0 ? (
         <p className="empty-state">{t('servers.emptyTitle')}</p>
       ) : (
         <div className="dashboard-table servers-summary-table">
@@ -292,7 +293,7 @@ function ServersSummaryWidget({ servers }: { servers: Array<{ id: string; name: 
 
             return (
               <div className="dashboard-table-row" key={server.id}>
-                <strong title={server.name}>{server.name}</strong>
+                <Link className="dashboard-entity-link" to={`/servers/${encodeURIComponent(server.id)}`} title={server.name}>{server.name}</Link>
                 <span className="server-region-cell">
                   {countryCode && (
                     <span className={`server-country-flag server-country-${countryCode.toLowerCase()}`} aria-label={t('dashboard.countryCode', { code: countryCode })} />
@@ -336,7 +337,7 @@ function OnlineUsersWidget({ items, available }: { items: ClientConnection[]; av
             const online = item.state === 'online' && item.confidence === 'exact';
             return (
               <div className="dashboard-table-row" key={item.groupKey}>
-                <strong title={item.email || item.accountName}>{item.accountName}</strong>
+                <Link className="dashboard-entity-link" to={`/vpn-accounts/${encodeURIComponent(item.vpnAccountId)}/access`} title={item.email || item.accountName}>{item.accountName}</Link>
                 <span className={`online-user-state online-user-state--${online ? 'online' : 'recent'}`}>
                   <i aria-hidden="true" />
                   {t(online ? 'dashboard.online' : 'dashboard.recentlyActive')}
@@ -371,7 +372,7 @@ function RecentDeploymentsWidget({ deployments, available }: { deployments: Dash
           </div>
           {deployments.map((deployment) => (
             <div className="dashboard-table-row" key={deployment.id}>
-              <strong title={deployment.configVersionId}>v{deployment.configVersion}</strong>
+              <Link className="dashboard-entity-link" to={`/servers/${encodeURIComponent(deployment.serverId)}`} title={deployment.configVersionId}>v{deployment.configVersion}</Link>
               <span title={deployment.serverName}>{deployment.serverName}</span>
               <span>{deployment.action}</span>
               <StatusBadge status={deployment.status} />
@@ -484,9 +485,9 @@ export function DashboardPage() {
   const onlineAgentsCount = agents.filter((agent) => agent.status === 'online').length;
   const offlineAgentsCount = Math.max(agentsCount - onlineAgentsCount, 0);
 
-  const activeVpnAccounts = activeVpnAccountsCountQuery.data?.total ?? 0;
+  const activeVpnAccounts = activeVpnAccountsCountQuery.isSuccess ? activeVpnAccountsCountQuery.data.total : '—';
   const onlineVpnUsers = clientConnectionsQuery.data?.summary.onlineUsers ?? 0;
-  const vpnAccountsCount = vpnAccountsCountQuery.data?.total ?? 0;
+  const vpnAccountsCount = vpnAccountsCountQuery.isSuccess ? vpnAccountsCountQuery.data.total : '—';
   const trafficApiAvailable = dashboardTrafficQuery.isSuccess;
   const monthlyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.monthlyAvailable === true;
   const dailyTrafficAvailable = trafficApiAvailable && dashboardTrafficQuery.data?.dailyAvailable === true;
@@ -513,20 +514,23 @@ export function DashboardPage() {
         <GettingStartedWidget />
         <KpiWidget
           title={t('dashboard.activeServers')}
-          value={`${activeServersCount} / ${serversCount}`}
-          meta={`${t('dashboard.online')}: ${connectedServersCount} · ${t('dashboard.offline')}: ${disconnectedServersCount}`}
+          to="/servers"
+          value={serversQuery.isSuccess ? `${activeServersCount} / ${serversCount}` : '—'}
+          meta={serversQuery.isSuccess ? `${t('dashboard.online')}: ${connectedServersCount} · ${t('dashboard.offline')}: ${disconnectedServersCount}` : t(serversQuery.isPending ? 'common.loading' : 'common.notAvailable')}
           tone="blue"
           icon="▤"
         />
         <KpiWidget
           title={t('dashboard.onlineAgents')}
-          value={`${onlineAgentsCount} / ${agentsCount}`}
-          meta={`${t('dashboard.connected')}: ${onlineAgentsCount} · ${t('dashboard.noConnection')}: ${offlineAgentsCount}`}
+          to="/servers"
+          value={agentsQuery.isSuccess ? `${onlineAgentsCount} / ${agentsCount}` : '—'}
+          meta={agentsQuery.isSuccess ? `${t('dashboard.connected')}: ${onlineAgentsCount} · ${t('dashboard.noConnection')}: ${offlineAgentsCount}` : t(agentsQuery.isPending ? 'common.loading' : 'common.notAvailable')}
           tone="cyan"
           icon="⌘"
         />
         <KpiWidget
           title={t('dashboard.onlineVpnUsers')}
+          to="/analytics"
           value={clientConnectionsQuery.isSuccess ? String(onlineVpnUsers) : 'N/A'}
           meta={t('dashboard.activeAccountsMeta', { active: activeVpnAccounts, total: vpnAccountsCount })}
           tone="purple"
@@ -534,6 +538,7 @@ export function DashboardPage() {
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
+          to="/analytics"
           value={monthlyTrafficAvailable && monthlyTraffic ? formatBytes(monthlyTraffic.totalBytes) : 'N/A'}
           meta={monthlyTrafficAvailable && monthlyTraffic
             ? `${t('dashboard.inboundTraffic')}: ${formatBytes(monthlyTraffic.rxBytes)} · ${t('dashboard.outboundTraffic')}: ${formatBytes(monthlyTraffic.txBytes)}`
@@ -553,7 +558,7 @@ export function DashboardPage() {
         <TrafficOverviewWidget daily={dashboardTrafficQuery.data?.daily ?? []} available={dailyTrafficAvailable} />
         <QuickActionsWidget />
         <div className="dashboard-activity-grid">
-          <ServersSummaryWidget servers={displayServers} />
+          <ServersSummaryWidget servers={displayServers} pending={serversQuery.isPending} available={serversQuery.isSuccess} />
           <OnlineUsersWidget items={clientConnectionsQuery.data?.items ?? []} available={clientConnectionsQuery.isSuccess} />
           <RecentDeploymentsWidget
             deployments={dashboardActivityQuery.data?.recentDeployments ?? []}

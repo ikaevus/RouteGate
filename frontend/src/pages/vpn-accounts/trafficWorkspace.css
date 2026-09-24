@@ -1,0 +1,25 @@
+.traffic-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.traffic-workspace > .workspace-section { margin: 0; }
+.traffic-workspace .traffic-limit-form { border-top: 0; padding-top: 0; }
+.traffic-workspace .traffic-checkbox-field label span { color: var(--rg-text-primary); }
+.traffic-workspace .traffic-limit-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.traffic-workspace .traffic-limit-meta { color: var(--rg-text-secondary); margin-top: 14px; }
+.traffic-workspace .traffic-enforcement-detail {
+  border-top: 1px solid var(--rg-border);
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+.traffic-workspace .traffic-enforcement-detail .traffic-limit-meta { margin-top: 0; }
+.traffic-workspace .traffic-limit-title { margin: 0 0 4px; }
+.traffic-workspace .traffic-enforcement-detail .panel-subtitle { margin: 0; }
+
+@media (max-width: 760px) {
+  .traffic-workspace .traffic-limit-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
