@@ -148,7 +148,7 @@ a {
 /* This pill lists every active protocol, so it can get long. The shared pill
    style is nowrap, which would give it a min-content width far past a phone
    screen; let this one wrap instead. */
-.vpn-account-protocol-preference-panel .status-pill {
+.vpn-account-protocol-workspace .status-pill {
   white-space: normal;
 }
 

@@ -14,7 +14,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
-import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
+import { Section } from '../../shared/ui/Section';
 import {
   deployPendingProtocol,
   ensureProtocolRuntime,
@@ -49,10 +49,15 @@ function getCopy() {
       primaryHint: 'Основной протокол используется как вариант по умолчанию в местах, где нужен один способ подключения. Остальные разрешённые протоколы продолжают работать параллельно.',
       active: 'Активны сейчас',
       desired: 'Будут активны после применения',
+      disabled: 'Не разрешён',
+      details: 'Подробнее',
+      nodeReady: 'VPN-узел готов к этому протоколу.',
+      applyTitle: 'Основной протокол и применение',
+      applySubtitle: 'Выберите основной протокол и примените выбранный набор.',
       auto: 'Auto — протокол узла по умолчанию',
       vless: 'VLESS / Reality', wireguard: 'WireGuard', hysteria2: 'Hysteria2',
       shadowsocks: 'Shadowsocks 2022', mtproto: 'MTProto / FakeTLS',
-      safety: 'Изменения применяются транзакционно: текущий рабочий набор остаётся активным до успешного render → validate → apply → healthcheck.',
+      safety: 'Рабочие подключения сохраняются, пока новый набор не будет успешно применён.',
       save: 'Применить набор протоколов', retry: 'Повторить применение', saving: 'Подготовка...',
       saved: 'Набор протоколов успешно применён.',
       pending: 'Новый набор сохранён как желаемый, но ещё не активирован. Предыдущие рабочие подключения сохранены.',
@@ -82,9 +87,12 @@ function getCopy() {
     enabled: 'Enabled protocols', primary: 'Primary protocol',
     primaryHint: 'The primary protocol is the default where one connection method is required. Other enabled protocols remain available in parallel.',
     active: 'Active now', desired: 'Active after apply', auto: 'Auto — inherit node default',
+    disabled: 'Not enabled', details: 'Details', nodeReady: 'The VPN node is ready for this protocol.',
+    applyTitle: 'Primary protocol and activation',
+    applySubtitle: 'Choose a primary protocol and apply the selected set.',
     vless: 'VLESS / Reality', wireguard: 'WireGuard', hysteria2: 'Hysteria2',
     shadowsocks: 'Shadowsocks 2022', mtproto: 'MTProto / FakeTLS',
-    safety: 'Changes are transactional: the current working set stays active until render → validate → apply → healthcheck succeeds.',
+    safety: 'Working connections are preserved until the new set is successfully applied.',
     save: 'Apply protocol set', retry: 'Retry apply', saving: 'Preparing...', saved: 'Protocol set applied successfully.',
     pending: 'The desired set is saved but not active yet. Previous working connections are preserved.',
     loading: 'Loading protocols...', loadError: 'Could not load protocol settings.', noServer: 'Assign a VPN node first.',
@@ -154,7 +162,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const [enabledProtocols, setEnabledProtocols] = useState<ClientProtocol[]>(['vless']);
   const [saved, setSaved] = useState(false);
   const [deploymentStage, setDeploymentStage] = useState<ProtocolDeploymentStage | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [focusedProtocol, setFocusedProtocol] = useState<ClientProtocol>('vless');
 
   const connectionQuery = useQuery({
     queryKey,
@@ -302,28 +310,25 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     () => activeProtocols.length ? activeProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ') : '—',
     [activeProtocols, copy],
   );
+  const focusedReady = protocolSettingsQuery.data
+    ? protocolIsReady(focusedProtocol, protocolSettingsQuery.data)
+    : null;
+  const focusedStatus = activeProtocols.includes(focusedProtocol)
+    ? copy.active
+    : enabledProtocols.includes(focusedProtocol) ? copy.desired : copy.disabled;
 
   return (
-    <div className="panel feature-detail-panel vpn-account-protocol-preference-panel">
-      <div className="panel-header">
-        <CollapsiblePanelHeaderTitles
-          title={copy.title}
-          subtitle={copy.subtitle}
-          open={isOpen}
-          onToggle={() => setIsOpen((value) => !value)}
-        />
-        {connectionQuery.data && <span className="status-pill">{copy.active}: {activeSummary}</span>}
-      </div>
-
-      <div className="panel-collapsible-body" hidden={!isOpen}>
-      {connectionQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
-      {connectionQuery.isError && <div className="form-message form-message-error">{copy.loadError}</div>}
-
-      {connectionQuery.data && (
-        <div className="vpn-account-protocol-preference-content">
-          <div className="field vpn-account-protocol-options">
-            <span>{copy.enabled}</span>
-            <div className="vpn-protocol-choice-grid">
+    <div className="vpn-account-protocol-workspace">
+      <Section
+        title={copy.title}
+        description={copy.subtitle}
+        aside={connectionQuery.data && <span className="status-pill">{copy.active}: {activeSummary}</span>}
+      >
+        {connectionQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
+        {connectionQuery.isError && <div className="form-message form-message-error">{copy.loadError}</div>}
+        {connectionQuery.data && (
+          <div className="vpn-protocol-list-detail">
+            <div className="vpn-protocol-list" role="group" aria-label={copy.enabled}>
               {protocolOrder.map((protocol) => {
                 const selected = enabledProtocols.includes(protocol);
                 const ready = protocolSettingsQuery.data
@@ -331,86 +336,117 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
                   : true;
                 const disabled = saveMutation.isPending || (!selected && !ready);
                 return (
-                  <label
-                    className={`vpn-protocol-choice${!ready ? ' vpn-protocol-choice-setup-required' : ''}`}
+                  <div
+                    className={`vpn-protocol-row${focusedProtocol === protocol ? ' is-focused' : ''}`}
                     key={protocol}
                   >
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      disabled={disabled}
-                      onChange={() => toggleProtocol(protocol)}
-                    />
-                    <span className="vpn-protocol-choice-copy">
-                      <strong>{protocolLabel(protocol, copy)}</strong>
-                      {!ready && <small>{copy.setupRequired}</small>}
-                    </span>
-                  </label>
+                    <label className="vpn-protocol-row-label">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={disabled}
+                        onChange={() => { toggleProtocol(protocol); setFocusedProtocol(protocol); }}
+                      />
+                      <span className="vpn-protocol-choice-copy">
+                        <strong>{protocolLabel(protocol, copy)}</strong>
+                        <small>
+                          {activeProtocols.includes(protocol) ? copy.active : selected ? copy.desired : copy.disabled}
+                          {!ready && <> · <span className="vpn-protocol-setup-hint">{copy.setupRequired}</span></>}
+                        </small>
+                      </span>
+                    </label>
+                    <button
+                      className="vpn-protocol-detail-trigger"
+                      type="button"
+                      aria-label={`${copy.details}: ${protocolLabel(protocol, copy)}`}
+                      aria-pressed={focusedProtocol === protocol}
+                      onClick={() => setFocusedProtocol(protocol)}
+                    >
+                      {copy.details}
+                    </button>
+                  </div>
                 );
               })}
             </div>
-          </div>
-
-          <div className="vpn-account-create-grid">
-            <label className="field">
-              <span>{copy.primary}</span>
-              <select
-                value={primary}
-                disabled={saveMutation.isPending}
-                onChange={(event) => {
-                  setPrimary(event.target.value as ClientProtocolPreference);
-                  saveMutation.reset();
-                  setSaved(false);
-                  setDeploymentStage(null);
-                }}
-              >
-                <option value="auto">{copy.auto}</option>
-                {enabledProtocols.map((protocol) => (
-                  <option key={protocol} value={protocol}>{protocolLabel(protocol, copy)}</option>
-                ))}
-              </select>
-              <span className="field-hint">{copy.primaryHint}</span>
-            </label>
-          </div>
-
-          <div className="form-message">{copy.safety}</div>
-          {activationPending && !saveMutation.isPending && <div className="form-message form-message-warning">{copy.pending}</div>}
-          {validationMessage && (
-            <div className="form-message form-message-warning vpn-protocol-readiness-warning">
-              <span>{validationMessage}</span>
-              {unreadyProtocols.includes('hysteria2') && <small>{copy.hysteria2NotReady}</small>}
-              {assignedServerId && unreadyProtocols.length > 0 && (
-                <Link
-                  className="small-button"
-                  to={`/protocol-settings/${assignedServerId}?protocol=${encodeURIComponent(unreadyProtocols[0])}`}
-                >
-                  {copy.configureNode}
+            <div className="vpn-protocol-detail">
+              <h4>{protocolLabel(focusedProtocol, copy)}</h4>
+              <p>{focusedStatus}</p>
+              <p>{protocolSettingsQuery.isLoading ? copy.settingsLoading
+                : protocolSettingsQuery.isError ? copy.settingsLoadError
+                  : focusedReady ? copy.nodeReady : copy.setupRequired}</p>
+              {assignedServerId && (
+                <Link className="text-link" to={`/protocol-settings/${encodeURIComponent(assignedServerId)}?protocol=${focusedProtocol}`}>
+                  {copy.configureNode} →
                 </Link>
               )}
             </div>
-          )}
-          {changed && <div className="form-message">{copy.desired}: {enabledProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ') || '—'}</div>}
-          {saveMutation.isPending && stageText && <div className="form-message" role="status">{stageText}</div>}
-          {saveMutation.isError && (
-            <div className="form-message form-message-error">
-              {copy.saveError}{errorDetail && <div>{copy.errorDetail}: {errorDetail}</div>}
-            </div>
-          )}
-          {saved && <div className="form-message" role="status">{copy.saved}</div>}
-
-          <div className="form-actions">
-            <button
-              className="primary-button"
-              type="button"
-              disabled={(!changed && !activationPending) || saveMutation.isPending || Boolean(validationMessage) || !assignedServer}
-              onClick={() => saveMutation.mutate()}
-            >
-              {saveMutation.isPending ? stageText ?? copy.saving : canRetry ? copy.retry : copy.save}
-            </button>
           </div>
-        </div>
+        )}
+      </Section>
+
+      {connectionQuery.data && (
+        <Section title={copy.applyTitle} description={copy.applySubtitle}>
+          <div className="vpn-account-protocol-preference-content">
+            <div className="vpn-account-create-grid">
+              <label className="field">
+                <span>{copy.primary}</span>
+                <select
+                  value={primary}
+                  disabled={saveMutation.isPending}
+                  onChange={(event) => {
+                    setPrimary(event.target.value as ClientProtocolPreference);
+                    saveMutation.reset();
+                    setSaved(false);
+                    setDeploymentStage(null);
+                  }}
+                >
+                  <option value="auto">{copy.auto}</option>
+                  {enabledProtocols.map((protocol) => (
+                    <option key={protocol} value={protocol}>{protocolLabel(protocol, copy)}</option>
+                  ))}
+                </select>
+                <span className="field-hint">{copy.primaryHint}</span>
+              </label>
+            </div>
+
+            <div className="form-message">{copy.safety}</div>
+            {activationPending && !saveMutation.isPending && <div className="form-message form-message-warning">{copy.pending}</div>}
+            {validationMessage && (
+              <div className="form-message form-message-warning vpn-protocol-readiness-warning">
+                <span>{validationMessage}</span>
+                {unreadyProtocols.includes('hysteria2') && <small>{copy.hysteria2NotReady}</small>}
+                {assignedServerId && unreadyProtocols.length > 0 && (
+                  <Link
+                    className="small-button"
+                    to={`/protocol-settings/${encodeURIComponent(assignedServerId)}?protocol=${encodeURIComponent(unreadyProtocols[0])}`}
+                  >
+                    {copy.configureNode}
+                  </Link>
+                )}
+              </div>
+            )}
+            {changed && <div className="form-message">{copy.desired}: {enabledProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ') || '—'}</div>}
+            {saveMutation.isPending && stageText && <div className="form-message" role="status">{stageText}</div>}
+            {saveMutation.isError && (
+              <div className="form-message form-message-error">
+                {copy.saveError}{errorDetail && <div>{copy.errorDetail}: {errorDetail}</div>}
+              </div>
+            )}
+            {saved && <div className="form-message" role="status">{copy.saved}</div>}
+
+            <div className="form-actions">
+              <button
+                className="primary-button"
+                type="button"
+                disabled={(!changed && !activationPending) || saveMutation.isPending || Boolean(validationMessage) || !assignedServer}
+                onClick={() => saveMutation.mutate()}
+              >
+                {saveMutation.isPending ? stageText ?? copy.saving : canRetry ? copy.retry : copy.save}
+              </button>
+            </div>
+          </div>
+        </Section>
       )}
-      </div>
     </div>
   );
 }
