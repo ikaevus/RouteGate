@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -18,7 +18,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t } from '../../shared/i18n/i18n';
 import { clientCompatibilityGuidanceKey, clientCompatibilityLimitationKey } from '../../shared/i18n/clientCompatibilityTranslations';
-import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
+import { Section } from '../../shared/ui/Section';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { DeviceSendComposer } from './DeviceSendComposer';
 import './access-devices.css';
@@ -79,15 +79,23 @@ function formatDate(value?: string | null): string {
 }
 
 export function AccessDevicesPanel({ accountId }: { accountId: string }) {
+  // A new account gets fresh UI state, including one-time links and dialogs.
+  return <AccountAccessWorkspace key={accountId} accountId={accountId} />;
+}
+
+function AccountAccessWorkspace({ accountId }: { accountId: string }) {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [isOpen, setIsOpen] = useState(true);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const detailId = useId();
+  const mounted = useRef(true);
   const [isAddOpen, setIsAddOpen] = useState(searchParams.get('addDevice') === '1');
   const [name, setName] = useState('');
   const [clientType, setClientType] = useState<DeviceClientType>('hiddify');
   const [deviceType, setDeviceType] = useState<DevicePlatform>('other');
   const [revealed, setRevealed] = useState<Record<string, RevealedAccess>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyErrorId, setCopyErrorId] = useState<string | null>(null);
   const [qrDeviceId, setQrDeviceId] = useState<string | null>(null);
   const [sendDeviceId, setSendDeviceId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -96,18 +104,12 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   const [legacyQrOpen, setLegacyQrOpen] = useState(false);
 
   useEffect(() => {
-    setRevealed({});
-    setRenamingId(null);
-    setSendDeviceId(null);
-    setLegacyRevealed(null);
-    setLegacyQrOpen(false);
-  }, [accountId]);
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
-    if (searchParams.get('addDevice') === '1') {
-      setIsAddOpen(true);
-      setIsOpen(true);
-    }
+    if (searchParams.get('addDevice') === '1') setIsAddOpen(true);
   }, [searchParams]);
 
   function clearAddDeviceParam() {
@@ -137,6 +139,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   }
 
   const legacyRotateMutation = useMutation({
+    onMutate: () => { setLegacyQrOpen(false); setCopiedId(null); setCopyErrorId(null); },
     mutationFn: () => rotateVpnAccountSubscriptionToken(accountId),
     onSuccess: async (response) => {
       setLegacyRevealed({
@@ -164,6 +167,8 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
       deviceType,
     }),
     onSuccess: async (response) => {
+      if (!mounted.current) { await refresh(); return; }
+      setSelectedDeviceId(response.device.id);
       setRevealed((previous) => ({
         ...previous,
         [response.device.id]: {
@@ -182,6 +187,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   });
 
   const rotateMutation = useMutation({
+    onMutate: () => { setQrDeviceId(null); setSendDeviceId(null); setCopiedId(null); setCopyErrorId(null); },
     mutationFn: (deviceId: string) => rotateVpnAccountDeviceToken(accountId, deviceId),
     onSuccess: async (response) => {
       setRevealed((previous) => ({
@@ -197,6 +203,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   });
 
   const revokeMutation = useMutation({
+    onMutate: () => { setQrDeviceId(null); setSendDeviceId(null); setCopiedId(null); setCopyErrorId(null); },
     mutationFn: (deviceId: string) => revokeVpnAccountDevice(accountId, deviceId),
     onSuccess: async (response) => {
       setRevealed((previous) => {
@@ -221,26 +228,51 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   });
 
   const copyLink = async (deviceId: string, url: string) => {
-    if (!navigator.clipboard) return;
-    await navigator.clipboard.writeText(url);
-    setCopiedId(deviceId);
-    window.setTimeout(() => setCopiedId(null), 1800);
+    setCopyErrorId(null);
+    try {
+      if (!navigator.clipboard) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(url);
+      setCopiedId(deviceId);
+      window.setTimeout(() => setCopiedId((current) => current === deviceId ? null : current), 1800);
+    } catch {
+      setCopyErrorId(deviceId);
+    }
   };
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (createMutation.isPending || name.trim() === '') return;
+    if (deviceBusy || name.trim() === '') return;
     createMutation.mutate();
   }
 
   function startRename(access: VpnAccountDeviceAccess) {
+    renameMutation.reset();
     setRenamingId(access.device.id);
     setRenameValue(deviceNameLabel(access.device.name));
   }
 
-  function handleRevoke(deviceId: string, hasActiveToken: boolean) {
-    const confirmationKey = hasActiveToken ? 'accessDevices.revokeConfirm' : 'accessDevices.removeConfirm';
-    if (window.confirm(t(confirmationKey))) revokeMutation.mutate(deviceId);
+  function handleRotate(access: VpnAccountDeviceAccess) {
+    if (deviceBusy) return;
+    if (!access.hasActiveToken || window.confirm(t('accessDevices.rotateConfirm', { name: deviceNameLabel(access.device.name) }))) {
+      rotateMutation.mutate(access.device.id);
+    }
+  }
+
+  function handleRevoke(access: VpnAccountDeviceAccess) {
+    if (deviceBusy) return;
+    const key = access.hasActiveToken ? 'accessDevices.revokeNamedConfirm' : 'accessDevices.removeNamedConfirm';
+    if (window.confirm(t(key, { name: deviceNameLabel(access.device.name) }))) revokeMutation.mutate(access.device.id);
+  }
+
+  function selectDevice(deviceId: string) {
+    setSelectedDeviceId(deviceId);
+    setIsAddOpen(false);
+    clearAddDeviceParam();
+    setRenamingId(null);
+    setSendDeviceId(null);
+    setQrDeviceId(null);
+    setCopiedId(null);
+    setCopyErrorId(null);
   }
 
   function handleLegacyRevoke() {
@@ -254,35 +286,244 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
   const devices = devicesQuery.data?.items ?? [];
   const activeDevices = devices.filter((access) => access.device.status === 'active');
   const revokedDevices = devices.filter((access) => access.device.status !== 'active');
-  const qrAccess = qrDeviceId ? revealed[qrDeviceId] : undefined;
+  const selectedAccess = activeDevices.find((access) => access.device.id === selectedDeviceId) ?? activeDevices[0];
+  const deviceBusy = createMutation.isPending || rotateMutation.isPending || revokeMutation.isPending || renameMutation.isPending;
+  const legacyBusy = legacyRotateMutation.isPending || legacyRevokeMutation.isPending;
+  const qrAccess = qrDeviceId && activeDevices.some((access) => access.device.id === qrDeviceId && access.hasActiveToken)
+    ? revealed[qrDeviceId] : undefined;
+
+  function renderDeviceDetail(access: VpnAccountDeviceAccess) {
+    const { device, compatibility } = access;
+    const reveal = revealed[device.id];
+    const isRenaming = renamingId === device.id;
+    const isSending = sendDeviceId === device.id;
+    const isRotatingThis = rotateMutation.isPending && rotateMutation.variables === device.id;
+    const isRevokingThis = revokeMutation.isPending && revokeMutation.variables === device.id;
+
+    return (
+      <section className="vpn-access-device-detail" key={device.id} aria-label={deviceNameLabel(device.name)}>
+        <div className="vpn-access-device-card-header">
+          {isRenaming ? (
+            <form
+              className="vpn-access-device-rename-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!deviceBusy && renameValue.trim() !== '') renameMutation.mutate(device.id);
+              }}
+            >
+              <input aria-label={t('accessDevices.deviceName')} disabled={deviceBusy} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={100} required autoFocus />
+              <button className="small-button" type="submit" disabled={deviceBusy || renameValue.trim() === ''}>{t('accessDevices.save')}</button>
+              <button className="small-button" type="button" disabled={deviceBusy} onClick={() => setRenamingId(null)}>{t('common.cancel')}</button>
+            </form>
+          ) : (
+            <h4>{deviceNameLabel(device.name)}</h4>
+          )}
+          <span className={`status-pill ${compatibilityClass(compatibility.status)}`}>
+            {compatibilityLabel(compatibility.status)}
+          </span>
+        </div>
+
+        <div className="vpn-access-device-meta">
+          <span>{clientTypeLabel(device.clientType)}</span>
+          <span>·</span>
+          <span>{platformLabel(device.deviceType)}</span>
+          {device.clientType === 'hiddify' && <span className="vpn-access-device-recommended">{t('accessDevices.recommended')}</span>}
+        </div>
+
+        {renameMutation.isError && renameMutation.variables === device.id && (
+          <div className="form-message form-message-error">{getErrorMessage(renameMutation.error, t('accessDevices.renameError'))}</div>
+        )}
+
+        {!access.hasActiveToken ? (
+          <div className="form-message form-message-warning vpn-access-device-empty">
+            <strong>{t('accessDevices.noTokenTitle')}</strong>
+            <span>{t('accessDevices.noTokenHint')}</span>
+          </div>
+        ) : reveal ? (
+          <>
+            <div className="form-message form-message-success vpn-access-device-reveal">
+              <strong>{t('accessDevices.newAccessTitle')}</strong>
+              <span>{t('accessDevices.newAccessHint')}</span>
+            </div>
+            <code className="vpn-access-device-url">{reveal.subscriptionUrl}</code>
+          </>
+        ) : (
+          <div className="form-message form-message-warning vpn-access-device-hidden">
+            <strong>{t('accessDevices.hiddenLinkTitle')}</strong>
+            <span>{t('accessDevices.hiddenLinkHint')}</span>
+          </div>
+        )}
+
+        <div className="form-actions vpn-access-device-actions">
+          {access.hasActiveToken && reveal ? (
+            <>
+              <button className="primary-button" type="button" disabled={deviceBusy} onClick={() => void copyLink(device.id, reveal.subscriptionUrl)}>
+                {copiedId === device.id ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
+              </button>
+              <button className="small-button" type="button" disabled={deviceBusy} onClick={() => setQrDeviceId(device.id)}>{t('accessDevices.showQr')}</button>
+              <button className="small-button" type="button" disabled={deviceBusy} aria-expanded={isSending} onClick={() => toggleSend(device.id)}>{t('accessDevices.send')}</button>
+            </>
+          ) : (
+            <button className="primary-button" type="button" disabled={deviceBusy} onClick={() => handleRotate(access)}>
+              {t(isRotatingThis ? (access.hasActiveToken ? 'accessDevices.rotating' : 'accessDevices.creatingLink') : (access.hasActiveToken ? 'accessDevices.rotate' : 'accessDevices.createLink'))}
+            </button>
+          )}
+        </div>
+        {copyErrorId === device.id && <div className="form-message form-message-error" role="alert">{t('accessDevices.copyError')}</div>}
+
+        {(compatibility.limitationCodes ?? []).map((code) => {
+          const key = clientCompatibilityLimitationKey(code);
+          return key ? <p className="vpn-access-device-note vpn-access-device-note-warning" key={code}>{t(key)}</p> : null;
+        })}
+
+        {(compatibility.guidanceCodes ?? []).some((code) => clientCompatibilityGuidanceKey(code)) && (
+          <details className="vpn-access-device-guidance">
+            <summary>{t('accessDevices.setupAndCompatibility')}</summary>
+            {(compatibility.guidanceCodes ?? []).map((code) => {
+              const key = clientCompatibilityGuidanceKey(code);
+              const classes = code === 'v2rayn_import_subscription'
+                ? 'vpn-access-device-note vpn-access-device-note-action'
+                : 'vpn-access-device-note';
+              return key ? <p className={classes} key={code}>{t(key)}</p> : null;
+            })}
+
+          </details>
+        )}
+        <details className="vpn-access-device-management">
+          <summary>{t('accessDevices.manageDevice')}</summary>
+          <p className="vpn-access-device-note">{t('accessDevices.manageHint', { name: deviceNameLabel(device.name) })}</p>
+          <div className="form-actions">
+            {access.hasActiveToken && reveal && (
+              <button className="small-button" type="button" disabled={deviceBusy} onClick={() => handleRotate(access)}>
+                {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
+              </button>
+            )}
+            {!isRenaming && <button className="small-button" type="button" disabled={deviceBusy} onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>}
+            <button className="small-button danger-button" type="button" disabled={deviceBusy} onClick={() => handleRevoke(access)}>
+              {t(isRevokingThis ? (access.hasActiveToken ? 'accessDevices.revoking' : 'accessDevices.removing') : (access.hasActiveToken ? 'accessDevices.revoke' : 'accessDevices.remove'))}
+            </button>
+          </div>
+        </details>
+        {rotateMutation.isError && rotateMutation.variables === device.id && (
+          <div className="form-message form-message-error">{getErrorMessage(rotateMutation.error, t('accessDevices.rotateError'))}</div>
+        )}
+        {revokeMutation.isError && revokeMutation.variables === device.id && (
+          <div className="form-message form-message-error">
+            {getErrorMessage(revokeMutation.error, t(access.hasActiveToken ? 'accessDevices.revokeError' : 'accessDevices.removeError'))}
+          </div>
+        )}
+
+        {isSending && access.hasActiveToken && reveal && (
+          <DeviceSendComposer
+            key={reveal.subscriptionUrl}
+            accountId={accountId}
+            deviceId={device.id}
+            accessUrl={reveal.subscriptionUrl}
+            onClose={() => setSendDeviceId(null)}
+          />
+        )}
+      </section>
+    );
+  }
 
   return (
-    <div className="panel feature-detail-panel vpn-access-devices-panel">
-      <div className="panel-header">
-        <CollapsiblePanelHeaderTitles
-          title={t('accessDevices.title')}
-          subtitle={t('accessDevices.subtitle')}
-          open={isOpen}
-          onToggle={() => setIsOpen((value) => !value)}
-        />
-      </div>
-
-      <div className="panel-collapsible-body" hidden={!isOpen}>
+    <div className="vpn-access-workspace">
+      <Section
+        title={t('accessDevices.title')}
+        description={t('accessDevices.workspaceSubtitle')}
+        aside={<button className="primary-button" type="button" disabled={deviceBusy || isAddOpen} onClick={() => { createMutation.reset(); setIsAddOpen(true); setRenamingId(null); setSendDeviceId(null); }}>{t('accessDevices.addDevice')}</button>}
+      >
         {devicesQuery.isLoading && <p className="empty-state">{t('accessDevices.loading')}</p>}
         {devicesQuery.isError && <div className="form-message form-message-error">{t('accessDevices.loadError')}</div>}
         {!devicesQuery.isLoading && !devicesQuery.isError && activeDevices.length === 0 && (
           <p className="empty-state">{t('accessDevices.empty')}</p>
         )}
 
-        {legacyAccessQuery.isError && (
-          <div className="form-message form-message-error">{t('accessDevices.legacyLoadError')}</div>
-        )}
-        {legacyAccessQuery.data?.hasActiveToken && (
-          <section className="vpn-access-legacy-card">
-            <div className="vpn-access-device-card-header">
-              <strong>{t('accessDevices.legacyTitle')}</strong>
-              <span className="vpn-access-legacy-badge">{t('accessDevices.legacyBadge')}</span>
+        <div className="vpn-access-list-detail">
+          {activeDevices.length > 0 && (
+            <div className="vpn-access-device-list" role="group" aria-label={t('accessDevices.deviceList')}>
+              {activeDevices.map(({ device, hasActiveToken }) => (
+                <button
+                  key={device.id}
+                  type="button"
+                  className="vpn-access-device-row"
+                  aria-pressed={!isAddOpen && selectedAccess?.device.id === device.id}
+                  aria-controls={detailId}
+                  disabled={deviceBusy}
+                  onClick={() => selectDevice(device.id)}
+                >
+                  <strong>{deviceNameLabel(device.name)}</strong>
+                  <span>{platformLabel(device.deviceType)} · {clientTypeLabel(device.clientType)}</span>
+                  <small>{t(hasActiveToken ? 'accessDevices.linkActive' : 'accessDevices.noTokenTitle')}</small>
+                </button>
+              ))}
             </div>
+          )}
+          <div id={detailId} className="vpn-access-focused-detail">
+            {isAddOpen ? (
+                <form className="vpn-access-device-add-form" onSubmit={handleCreate}>
+                  <h4>{t('accessDevices.create')}</h4>
+                  <div className="vpn-account-create-grid">
+                    <label className="field">
+                      <span>{t('accessDevices.deviceName')}</span>
+                      <input autoFocus disabled={createMutation.isPending} value={name} onChange={(event) => setName(event.target.value)} placeholder={t('accessDevices.deviceNamePlaceholder')} maxLength={100} required />
+                    </label>
+                    <label className="field">
+                      <span>{t('accessDevices.client')}</span>
+                      <select disabled={createMutation.isPending} value={clientType} onChange={(event) => setClientType(event.target.value as DeviceClientType)}>
+                        <option value="hiddify">Hiddify · {t('accessDevices.recommended')}</option>
+                        <option value="happ">HAPP</option>
+                        <option value="v2rayn">v2rayN</option>
+                        <option value="v2rayng">v2rayNG</option>
+                        <option value="generic">{t('accessDevices.genericClient')}</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>{t('accessDevices.platform')}</span>
+                      <select disabled={createMutation.isPending} value={deviceType} onChange={(event) => setDeviceType(event.target.value as DevicePlatform)}>
+                        <option value="ios">{t('accessDevices.platformIos')}</option>
+                        <option value="android">{t('accessDevices.platformAndroid')}</option>
+                        <option value="windows">{t('accessDevices.platformWindows')}</option>
+                        <option value="macos">{t('accessDevices.platformMacos')}</option>
+                        <option value="linux">{t('accessDevices.platformLinux')}</option>
+                        <option value="other">{t('accessDevices.platformOther')}</option>
+                      </select>
+                    </label>
+                  </div>
+                  {createMutation.isError && (
+                    <div className="form-message form-message-error">{getErrorMessage(createMutation.error, t('accessDevices.createError'))}</div>
+                  )}
+                  <div className="form-actions">
+                    <button className="primary-button" type="submit" disabled={createMutation.isPending || name.trim() === ''}>
+                      {createMutation.isPending ? t('accessDevices.creating') : t('accessDevices.create')}
+                    </button>
+                    <button className="small-button" type="button" disabled={createMutation.isPending} onClick={() => { setIsAddOpen(false); clearAddDeviceParam(); }}>{t('common.cancel')}</button>
+                  </div>
+                </form>
+            ) : selectedAccess ? renderDeviceDetail(selectedAccess) : null}
+          </div>
+        </div>
+      </Section>
+      {revokedDevices.length > 0 && (
+        <details className="vpn-access-devices-revoked">
+          <summary>{t('accessDevices.revokedSummary', { count: revokedDevices.length })}</summary>
+          {revokedDevices.map((access) => (
+            <div className="vpn-access-device-revoked-row" key={access.device.id}>
+              <span>{deviceNameLabel(access.device.name)}</span>
+              <span>{clientTypeLabel(access.device.clientType)}</span>
+              <span>{t('accessDevices.revokedAt', { date: formatDate(access.device.revokedAt) })}</span>
+            </div>
+          ))}
+        </details>
+      )}
+
+      {legacyAccessQuery.isError && (
+        <div className="form-message form-message-error">{t('accessDevices.legacyLoadError')}</div>
+      )}
+      {legacyAccessQuery.data?.hasActiveToken && (
+        <details className="vpn-access-legacy-card">
+          <summary>{t('accessDevices.legacyTitle')}</summary>
+          <div className="vpn-access-legacy-content">
             <p className="vpn-access-device-note">{t('accessDevices.legacyDescription')}</p>
             <div className="vpn-access-device-meta">
               <span>{t('accessDevices.legacyCreatedAt', { date: formatDate(legacyAccessQuery.data.createdAt) })}</span>
@@ -315,7 +556,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
               <button
                 className="small-button"
                 type="button"
-                disabled={!legacyRevealed}
+                disabled={!legacyRevealed || legacyBusy}
                 onClick={() => setLegacyQrOpen(true)}
               >
                 {t('accessDevices.showQr')}
@@ -323,7 +564,7 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
               <button
                 className="small-button"
                 type="button"
-                disabled={!legacyRevealed}
+                disabled={!legacyRevealed || legacyBusy}
                 onClick={() => legacyRevealed && void copyLink('legacy', legacyRevealed.subscriptionUrl)}
               >
                 {copiedId === 'legacy' ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
@@ -331,15 +572,15 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
               <button
                 className="small-button"
                 type="button"
-                disabled={legacyRotateMutation.isPending}
-                onClick={() => legacyRotateMutation.mutate()}
+                disabled={legacyBusy}
+                onClick={() => { if (window.confirm(t('accessDevices.legacyRotateConfirm'))) legacyRotateMutation.mutate(); }}
               >
                 {legacyRotateMutation.isPending ? t('accessDevices.legacyRotating') : t('accessDevices.legacyRotate')}
               </button>
               <button
                 className="small-button danger-button"
                 type="button"
-                disabled={legacyRevokeMutation.isPending}
+                disabled={legacyBusy}
                 onClick={handleLegacyRevoke}
               >
                 {legacyRevokeMutation.isPending ? t('accessDevices.legacyRevoking') : t('accessDevices.legacyRevoke')}
@@ -351,254 +592,10 @@ export function AccessDevicesPanel({ accountId }: { accountId: string }) {
             {legacyRevokeMutation.isError && (
               <div className="form-message form-message-error">{getErrorMessage(legacyRevokeMutation.error, t('accessDevices.legacyRevokeError'))}</div>
             )}
-          </section>
-        )}
-
-        {activeDevices.length > 0 && (
-          <div className="vpn-access-devices-grid">
-            {activeDevices.map((access) => {
-              const { device, compatibility } = access;
-              const reveal = revealed[device.id];
-              const isRenaming = renamingId === device.id;
-              const isSending = sendDeviceId === device.id;
-              const isRotatingThis = rotateMutation.isPending && rotateMutation.variables === device.id;
-              const isRevokingThis = revokeMutation.isPending && revokeMutation.variables === device.id;
-
-              return (
-                <section className="vpn-access-device-card" key={device.id}>
-                  <div className="vpn-access-device-card-header">
-                    {isRenaming ? (
-                      <form
-                        className="vpn-access-device-rename-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          if (renameValue.trim() !== '') renameMutation.mutate(device.id);
-                        }}
-                      >
-                        <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={100} required autoFocus />
-                        <button className="small-button" type="submit" disabled={renameMutation.isPending || renameValue.trim() === ''}>{t('accessDevices.save')}</button>
-                        <button className="small-button" type="button" onClick={() => setRenamingId(null)}>{t('common.cancel')}</button>
-                      </form>
-                    ) : (
-                      <strong>{deviceNameLabel(device.name)}</strong>
-                    )}
-                    <span className={`status-pill ${compatibilityClass(compatibility.status)}`}>
-                      {compatibilityLabel(compatibility.status)}
-                    </span>
-                  </div>
-
-                  <div className="vpn-access-device-meta">
-                    <span>{clientTypeLabel(device.clientType)}</span>
-                    <span>·</span>
-                    <span>{platformLabel(device.deviceType)}</span>
-                    {device.clientType === 'hiddify' && <span className="vpn-access-device-recommended">{t('accessDevices.recommended')}</span>}
-                  </div>
-
-                  {(compatibility.guidanceCodes ?? []).map((code) => {
-                    const key = clientCompatibilityGuidanceKey(code);
-                    const classes = code === 'v2rayn_import_subscription'
-                      ? 'vpn-access-device-note vpn-access-device-note-action'
-                      : 'vpn-access-device-note';
-                    return key ? <p className={classes} key={code}>{t(key)}</p> : null;
-                  })}
-                  {(compatibility.limitationCodes ?? []).map((code) => {
-                    const key = clientCompatibilityLimitationKey(code);
-                    return key ? <p className="vpn-access-device-note vpn-access-device-note-warning" key={code}>{t(key)}</p> : null;
-                  })}
-
-                  {renameMutation.isError && renamingId === null && (
-                    <div className="form-message form-message-error">{getErrorMessage(renameMutation.error, t('accessDevices.renameError'))}</div>
-                  )}
-
-                  {!access.hasActiveToken ? (
-                    <div className="form-message form-message-warning vpn-access-device-empty">
-                      <strong>{t('accessDevices.noTokenTitle')}</strong>
-                      <span>{t('accessDevices.noTokenHint')}</span>
-                    </div>
-                  ) : reveal ? (
-                    <>
-                      <div className="form-message form-message-success vpn-access-device-reveal">
-                        <strong>{t('accessDevices.newAccessTitle')}</strong>
-                        <span>{t('accessDevices.newAccessHint')}</span>
-                      </div>
-                      <code className="vpn-access-device-url">{reveal.subscriptionUrl}</code>
-                    </>
-                  ) : (
-                    <div className="form-message form-message-warning vpn-access-device-hidden">
-                      <strong>{t('accessDevices.hiddenLinkTitle')}</strong>
-                      <span>{t('accessDevices.hiddenLinkHint')}</span>
-                    </div>
-                  )}
-
-                  {!access.hasActiveToken ? (
-                    <div className="form-actions vpn-access-device-actions">
-                      <button
-                        className="primary-button"
-                        type="button"
-                        disabled={isRotatingThis}
-                        onClick={() => rotateMutation.mutate(device.id)}
-                      >
-                        {isRotatingThis ? t('accessDevices.creatingLink') : t('accessDevices.createLink')}
-                      </button>
-                      {!isRenaming && (
-                        <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
-                      )}
-                      <button
-                        className="small-button danger-button"
-                        type="button"
-                        disabled={isRevokingThis}
-                        onClick={() => handleRevoke(device.id, false)}
-                      >
-                        {isRevokingThis ? t('accessDevices.removing') : t('accessDevices.remove')}
-                      </button>
-                    </div>
-                  ) : !reveal ? (
-                    <div className="form-actions vpn-access-device-actions">
-                      <button
-                        className="primary-button"
-                        type="button"
-                        disabled={isRotatingThis}
-                        onClick={() => rotateMutation.mutate(device.id)}
-                      >
-                        {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
-                      </button>
-                      {!isRenaming && (
-                        <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
-                      )}
-                      <button
-                        className="small-button danger-button"
-                        type="button"
-                        disabled={isRevokingThis}
-                        onClick={() => handleRevoke(device.id, true)}
-                      >
-                        {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="form-actions vpn-access-device-actions">
-                      <button
-                        className="small-button"
-                        type="button"
-                        onClick={() => setQrDeviceId(device.id)}
-                      >
-                        {t('accessDevices.showQr')}
-                      </button>
-                      <button
-                        className="small-button"
-                        type="button"
-                        onClick={() => reveal && void copyLink(device.id, reveal.subscriptionUrl)}
-                      >
-                        {copiedId === device.id ? t('clientCompatibility.copied') : t('accessDevices.copyLink')}
-                      </button>
-                      <button
-                        className="small-button"
-                        type="button"
-                        onClick={() => toggleSend(device.id)}
-                      >
-                        {t('accessDevices.send')}
-                      </button>
-                      <button
-                        className="small-button"
-                        type="button"
-                        disabled={isRotatingThis}
-                        onClick={() => rotateMutation.mutate(device.id)}
-                      >
-                        {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
-                      </button>
-                      {!isRenaming && (
-                        <button className="small-button" type="button" onClick={() => startRename(access)}>{t('accessDevices.rename')}</button>
-                      )}
-                      <button
-                        className="small-button danger-button"
-                        type="button"
-                        disabled={isRevokingThis}
-                        onClick={() => handleRevoke(device.id, true)}
-                      >
-                        {isRevokingThis ? t('accessDevices.revoking') : t('accessDevices.revoke')}
-                      </button>
-                    </div>
-                  )}
-                  {rotateMutation.isError && rotateMutation.variables === device.id && (
-                    <div className="form-message form-message-error">{getErrorMessage(rotateMutation.error, t('accessDevices.rotateError'))}</div>
-                  )}
-                  {revokeMutation.isError && revokeMutation.variables === device.id && (
-                    <div className="form-message form-message-error">
-                      {getErrorMessage(revokeMutation.error, t(access.hasActiveToken ? 'accessDevices.revokeError' : 'accessDevices.removeError'))}
-                    </div>
-                  )}
-
-                  {isSending && reveal && (
-                    <DeviceSendComposer
-                      accountId={accountId}
-                      deviceId={device.id}
-                      accessUrl={reveal.subscriptionUrl}
-                      onClose={() => setSendDeviceId(null)}
-                    />
-                  )}
-                </section>
-              );
-            })}
+            {copyErrorId === 'legacy' && <div className="form-message form-message-error" role="alert">{t('accessDevices.copyError')}</div>}
           </div>
-        )}
-
-        {revokedDevices.length > 0 && (
-          <details className="vpn-access-devices-revoked">
-            <summary>{t('accessDevices.revokedSummary', { count: revokedDevices.length })}</summary>
-            {revokedDevices.map((access) => (
-              <div className="vpn-access-device-revoked-row" key={access.device.id}>
-                <span>{deviceNameLabel(access.device.name)}</span>
-                <span>{clientTypeLabel(access.device.clientType)}</span>
-                <span>{t('accessDevices.revokedAt', { date: formatDate(access.device.revokedAt) })}</span>
-              </div>
-            ))}
-          </details>
-        )}
-
-        {isAddOpen ? (
-          <form className="vpn-access-device-add-form" onSubmit={handleCreate}>
-            <div className="vpn-account-create-grid">
-              <label className="field">
-                <span>{t('accessDevices.deviceName')}</span>
-                <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t('accessDevices.deviceNamePlaceholder')} maxLength={100} required />
-              </label>
-              <label className="field">
-                <span>{t('accessDevices.client')}</span>
-                <select value={clientType} onChange={(event) => setClientType(event.target.value as DeviceClientType)}>
-                  <option value="hiddify">Hiddify · {t('accessDevices.recommended')}</option>
-                  <option value="happ">HAPP</option>
-                  <option value="v2rayn">v2rayN</option>
-                  <option value="v2rayng">v2rayNG</option>
-                  <option value="generic">{t('accessDevices.genericClient')}</option>
-                </select>
-              </label>
-              <label className="field">
-                <span>{t('accessDevices.platform')}</span>
-                <select value={deviceType} onChange={(event) => setDeviceType(event.target.value as DevicePlatform)}>
-                  <option value="ios">{t('accessDevices.platformIos')}</option>
-                  <option value="android">{t('accessDevices.platformAndroid')}</option>
-                  <option value="windows">{t('accessDevices.platformWindows')}</option>
-                  <option value="macos">{t('accessDevices.platformMacos')}</option>
-                  <option value="linux">{t('accessDevices.platformLinux')}</option>
-                  <option value="other">{t('accessDevices.platformOther')}</option>
-                </select>
-              </label>
-            </div>
-            {createMutation.isError && (
-              <div className="form-message form-message-error">{getErrorMessage(createMutation.error, t('accessDevices.createError'))}</div>
-            )}
-            <div className="form-actions">
-              <button className="primary-button" type="submit" disabled={createMutation.isPending || name.trim() === ''}>
-                {createMutation.isPending ? t('accessDevices.creating') : t('accessDevices.create')}
-              </button>
-              <button className="small-button" type="button" onClick={() => { setIsAddOpen(false); clearAddDeviceParam(); }}>{t('common.cancel')}</button>
-            </div>
-          </form>
-        ) : (
-          <div className="form-actions">
-            <button className="small-button" type="button" onClick={() => setIsAddOpen(true)}>{t('accessDevices.addDevice')}</button>
-          </div>
-        )}
-      </div>
+        </details>
+      )}
 
       <SubscriptionQrDialog
         isOpen={Boolean(qrDeviceId && qrAccess)}
