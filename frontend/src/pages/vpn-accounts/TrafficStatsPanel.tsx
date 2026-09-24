@@ -6,7 +6,8 @@ import {
   type UpdateTrafficLimitRequest,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
-import { CollapsiblePanelHeaderTitles } from '../../shared/ui/CollapsiblePanelHeader';
+import { Section } from '../../shared/ui/Section';
+import './trafficWorkspace.css';
 
 const BYTES_PER_GIB = 1024 ** 3;
 const BPS_PER_MBIT = 1_000_000;
@@ -103,7 +104,6 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   const [speedLimitMbps, setSpeedLimitMbps] = useState('');
   const [resetDay, setResetDay] = useState('1');
   const [formError, setFormError] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
 
   const trafficQuery = useQuery({
     queryKey: ['vpn-account-traffic', accountId],
@@ -199,25 +199,11 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   };
 
   return (
-    <div className="panel traffic-panel">
-      <div className="panel-header">
-        <CollapsiblePanelHeaderTitles
-          title={t('traffic.title')}
-          subtitle={t('traffic.subtitle')}
-          open={isOpen}
-          onToggle={() => setIsOpen((value) => !value)}
-        />
-      </div>
-
-      <div className="panel-collapsible-body" hidden={!isOpen}>
-      {trafficQuery.isLoading && <p className="empty-state">{t('traffic.loading')}</p>}
-
-      {trafficQuery.isError && (
-        <div className="form-message form-message-error">{t('traffic.loadError')}</div>
-      )}
-
-      {traffic && (
-        <div className="traffic-panel-content">
+    <div className="traffic-workspace">
+      <Section title={t('traffic.title')} description={t('traffic.subtitle')}>
+        {trafficQuery.isLoading && <p className="empty-state">{t('traffic.loading')}</p>}
+        {trafficQuery.isError && <div className="form-message form-message-error">{t('traffic.loadError')}</div>}
+        {traffic && (
           <div className="traffic-summary-grid">
             <TrafficMetricCard
               label={t('traffic.uploaded')}
@@ -235,37 +221,47 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
               meta={`${formatDateTime(traffic.period.from)} → ${formatDateTime(traffic.period.to)}`}
             />
           </div>
+        )}
+      </Section>
 
-          <div className="traffic-limit-card">
-            <div className="traffic-limit-header">
-              <div>
-                <div className="traffic-limit-title">{t('traffic.monthlyLimit')}</div>
-                <p className="panel-subtitle">
-                  {hasMonthlyLimit
-                    ? t('traffic.usedOfLimit', { used: formatBytes(traffic.usage.totalBytes), limit: formatBytes(monthlyLimitBytes) })
-                    : t('traffic.noMonthlyLimitConfigured')}
-                </p>
-              </div>
-              <span className={limitBadge.className}>{limitBadge.label}</span>
-            </div>
-
-            <div className="traffic-progress-track" aria-label={t('traffic.limitProgress')}>
+      {traffic && (
+        <Section
+          title={t('traffic.monthlyLimit')}
+          description={hasMonthlyLimit
+            ? t('traffic.usedOfLimit', { used: formatBytes(traffic.usage.totalBytes), limit: formatBytes(monthlyLimitBytes) })
+            : t('traffic.noMonthlyLimitConfigured')}
+          aside={<span className={limitBadge.className}>{limitBadge.label}</span>}
+        >
+          {hasMonthlyLimit && (
+            <div
+              className="traffic-progress-track"
+              role="progressbar"
+              aria-label={t('traffic.limitProgress')}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressPercent)}
+              aria-valuetext={formatPercent(usedPercent)}
+            >
               <div className="traffic-progress-fill" style={{ width: `${progressPercent}%` }} />
             </div>
+          )}
 
-            <div className="traffic-limit-meta">
-              <span>{t('traffic.used', { value: formatPercent(usedPercent) })}</span>
-              <span>{t('traffic.remaining', { value: formatBytes(limit?.remainingBytes) })}</span>
-              <span>{t('traffic.resetDayValue', { value: limit?.resetDay ?? 1 })}</span>
-              <span>{t('traffic.speedLimitValue', { value: limit?.speedLimitBps ? `${formatNumberInput(limit.speedLimitBps / BPS_PER_MBIT)} Mbps` : t('traffic.notSet') })}</span>
-              <span>{t('traffic.updated', { value: formatDateTime(limit?.updatedAt) })}</span>
-            </div>
+          <div className="traffic-limit-meta">
+            {hasMonthlyLimit && (
+              <>
+                <span>{t('traffic.used', { value: formatPercent(usedPercent) })}</span>
+                <span>{t('traffic.remaining', { value: formatBytes(limit?.remainingBytes) })}</span>
+              </>
+            )}
+            <span>{t('traffic.resetDayValue', { value: limit?.resetDay ?? 1 })}</span>
+            <span>{t('traffic.speedLimitValue', { value: limit?.speedLimitBps ? `${formatNumberInput(limit.speedLimitBps / BPS_PER_MBIT)} Mbps` : t('traffic.notSet') })}</span>
+            <span>{t('traffic.updated', { value: formatDateTime(limit?.updatedAt) })}</span>
           </div>
 
-          <div className="traffic-limit-card">
+          <div className="traffic-enforcement-detail">
             <div className="traffic-limit-header">
               <div>
-                <div className="traffic-limit-title">{t('traffic.enforcementState')}</div>
+                <h4 className="traffic-limit-title">{t('traffic.enforcementState')}</h4>
                 <p className="panel-subtitle">{t('traffic.enforcementSubtitle')}</p>
               </div>
               <span className={enforcementBadge.className}>{enforcementBadge.label}</span>
@@ -277,13 +273,12 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
               <span>{t('traffic.evaluated', { value: formatDateTime(limit?.enforcementUpdatedAt) })}</span>
             </div>
           </div>
+        </Section>
+      )}
 
+      {traffic && (
+        <Section title={t('traffic.limitSettings')} description={t('traffic.limitSettingsSubtitle')}>
           <form className="traffic-limit-form" onSubmit={handleSubmit}>
-            <div>
-              <div className="panel-title token-snippet-title">{t('traffic.limitSettings')}</div>
-              <p className="panel-subtitle">{t('traffic.limitSettingsSubtitle')}</p>
-            </div>
-
             <div className="traffic-limit-form-grid">
               <label className="field">
                 <span>{t('traffic.monthlyLimitGib')}</span>
@@ -352,9 +347,8 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
               </button>
             </div>
           </form>
-        </div>
+        </Section>
       )}
-      </div>
     </div>
   );
 }
