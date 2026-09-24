@@ -16,6 +16,7 @@ const password = 'Workspace-CI-only-2026!';
 const manager = spawn(process.env.ROUTEGATE_E2E_MANAGER, [], {
   cwd: fileURLToPath(new URL('../../backend/', import.meta.url)),
   env: { ...process.env, ROUTEGATE_ENV: 'dev', ROUTEGATE_HTTP_ADDR: '127.0.0.1:18080',
+    ROUTEGATE_PUBLIC_URL: 'https://workspace.example.invalid',
     ROUTEGATE_GEOIP_ENABLED: 'false', ROUTEGATE_BOOTSTRAP_ADMIN_EMAIL: email,
     ROUTEGATE_BOOTSTRAP_ADMIN_USERNAME: 'workspace-ci', ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD: password },
   stdio: ['ignore', 'ignore', 'inherit'],
@@ -99,7 +100,8 @@ try {
   const created = page.waitForResponse(response => response.request().method() === 'POST'
     && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/devices`);
   await form.locator('button[type="submit"]').click();
-  assert.ok((await created).ok());
+  const createdResponse = await created;
+  assert.ok(createdResponse.ok(), `Device creation: HTTP ${createdResponse.status()}`);
   await page.locator('.vpn-access-device-detail').waitFor();
   await page.reload();
   await page.locator('.vpn-access-device-detail').waitFor();
