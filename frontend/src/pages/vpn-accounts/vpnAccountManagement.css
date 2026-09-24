@@ -442,6 +442,14 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.vpn-account-settings {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vpn-account-settings > .workspace-section { margin: 0; }
+
 .vpn-account-edit-grid {
   display: grid;
   gap: 12px;
@@ -466,23 +474,22 @@
   min-height: 16px;
 }
 
-.vpn-account-access-actions,
-.vpn-account-danger-zone {
+.vpn-account-lifecycle-actions,
+.vpn-account-delete-action {
   align-items: center;
-  border-top: 1px solid rgba(51, 65, 85, 0.65);
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  justify-content: space-between;
-  margin-top: 16px;
-  padding-top: 16px;
+  gap: 10px;
 }
 
-.vpn-account-danger-zone {
-  border: 1px solid rgba(248, 113, 113, 0.25);
-  border-radius: 14px;
-  background: rgba(127, 29, 29, 0.08);
-  padding: 14px;
+.vpn-account-delete-action {
+  justify-content: space-between;
+}
+
+.vpn-account-delete-id {
+  color: var(--rg-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1280px) {
