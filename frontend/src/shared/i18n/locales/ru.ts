@@ -110,6 +110,7 @@ export const ru: Record<TranslationKey, string> = {
   'dashboard.allRegions': 'Все регионы',
   'dashboard.trafficOverview': 'Трафик',
   'dashboard.last30Days': 'за последние 30 дней',
+  'dashboard.selectDeploymentServer': 'Выбрать сервер для развёртывания',
   'dashboard.quickActions': 'Быстрые действия',
   'dashboard.trafficTypes': 'Типы трафика',
   'dashboard.recentDeployments': 'Последние развертывания',

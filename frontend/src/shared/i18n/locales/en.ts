@@ -108,6 +108,7 @@ export const en = {
   'dashboard.allRegions': 'All regions',
   'dashboard.trafficOverview': 'Traffic',
   'dashboard.last30Days': 'last 30 days',
+  'dashboard.selectDeploymentServer': 'Select server for deployment',
   'dashboard.quickActions': 'Quick actions',
   'dashboard.trafficTypes': 'Traffic types',
   'dashboard.recentDeployments': 'Recent deployments',
