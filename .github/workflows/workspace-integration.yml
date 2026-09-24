@@ -1,0 +1,53 @@
+name: Workspace integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    name: Browser with Manager and PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: routegate_workspace_e2e
+          POSTGRES_USER: routegate
+          POSTGRES_PASSWORD: routegate_ci_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U routegate -d routegate_workspace_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ROUTEGATE_DATABASE_URL: postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable
+      ROUTEGATE_E2E_ISOLATED: '1'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build Manager
+        working-directory: backend
+        run: go build -o "$RUNNER_TEMP/routegate-manager" ./cmd/routegate-manager
+      - name: Install browser dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Exercise workspace against Manager
+        working-directory: frontend
+        run: ROUTEGATE_E2E_MANAGER="$RUNNER_TEMP/routegate-manager" npm run test:workspace-integration

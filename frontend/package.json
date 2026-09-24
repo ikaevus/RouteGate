@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "i18n:check": "node scripts/i18n-check.mjs",
     "test:rollout": "node --test src/pages/settings/platformUpdateRolloutModel.test.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:workspace-integration": "node scripts/workspace-integration.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "latest",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "playwright": "1.62.1"
   }
 }

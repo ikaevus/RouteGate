@@ -64,3 +64,17 @@ both themes, as well as empty/error states and unusually long names.
 
 The account workspace is the reference for gradual adoption. Existing server and
 routing screens need separate review; this slice does not claim full UI migration.
+
+## Integration verification
+
+`Workspace integration` runs Chromium against the real Manager and a disposable
+PostgreSQL 16 database in GitHub Actions. It covers login, Dashboard navigation,
+all account workspace routes, persisted account edits, device creation and mobile
+layout in both themes. Run `npm run test:workspace-integration` from `frontend`
+with the same isolated environment defined in the workflow. The script requires
+`ROUTEGATE_E2E_ISOLATED=1`, a loopback database named `routegate_workspace_e2e`,
+`ROUTEGATE_DATABASE_URL` and `ROUTEGATE_E2E_MANAGER` (the compiled binary path).
+
+The job creates test records and does not use a deployed installation. It does not
+start an Agent, install a VPN runtime or verify real client connectivity. Those
+remain separate staging checks before merging or deployment.
