@@ -14,3 +14,30 @@
 @media (max-width: 620px) {
   .server-details-page .server-details-header { flex-direction: column; align-items: flex-start; }
 }
+
+.server-deployment-help { margin-bottom: 16px; }
+.server-deployment-help summary, .server-deployment-job summary { cursor: pointer; }
+.server-config-workspace { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+.server-config-list { display: grid; gap: 8px; max-height: 560px; overflow-y: auto; padding: 4px; }
+.server-config-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 12px; border: 1px solid var(--border-color, #64748b); border-radius: 10px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.server-config-choice[aria-pressed="true"] { border-color: #38bdf8; box-shadow: inset 3px 0 #38bdf8; }
+.server-config-choice:focus-visible, .server-deployment-job summary:focus-visible, .server-deployment-help summary:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+.server-config-choice-date { flex-basis: 100%; font-size: 12px; opacity: .8; }
+.server-config-detail { min-width: 0; padding: 16px; border: 1px solid var(--border-color, #64748b); border-radius: 12px; }
+.server-config-detail h3 { margin: 0 0 12px; }
+.server-config-detail .timestamp-stack { flex-direction: row; flex-wrap: wrap; }
+.server-config-metadata { display: grid; gap: 12px; margin-block: 20px; }
+.server-config-metadata dt { font-size: 12px; opacity: .8; }
+.server-config-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.server-config-detail .table-actions { flex-wrap: wrap; }
+.server-deployment-history { display: grid; gap: 8px; }
+.server-deployment-job { border: 1px solid var(--border-color, #64748b); border-radius: 10px; min-width: 0; }
+.server-deployment-job summary { padding: 14px; }
+.server-deployment-job-summary { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 10px; width: calc(100% - 24px); vertical-align: top; overflow-wrap: anywhere; }
+.server-deployment-error { flex-basis: 100%; }
+.server-deployment-job-detail { display: grid; gap: 12px; padding: 0 16px 16px; overflow-wrap: anywhere; }
+.server-deployment-job-detail .detail-row { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .server-config-workspace { grid-template-columns: minmax(0, 1fr); }
+  .server-config-list { max-height: 240px; }
+}
