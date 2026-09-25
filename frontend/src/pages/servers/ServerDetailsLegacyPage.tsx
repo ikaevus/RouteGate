@@ -1,3 +1,6 @@
+import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
+import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
+import './serverWorkspace.css';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -215,10 +218,6 @@ function RegistrationTokenResult({
   );
 }
 
-function shortHash(value?: string | null): string {
-  return value && value.length > 12 ? value.slice(0, 12) : formatValue(value);
-}
-
 function formatStageValue(value: unknown): string {
   if (typeof value === 'string' && value.trim() !== '') {
     return value;
@@ -250,11 +249,21 @@ function StageSummary({ resultPayload }: { resultPayload?: Record<string, unknow
   );
 }
 
-export function ServerDetailsPage() {
-  const { serverId } = useParams<{ serverId: string }>();
+const serverSections = ['overview', 'connection', 'services', 'routing', 'deployments', 'settings'] as const;
+
+export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?: ReactNode; connectionGuidance?: ReactNode }) {
+  const { serverId, section } = useParams<{ serverId: string; section: string }>();
   const routeLocation = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const activeSection = serverSections.includes(section as typeof serverSections[number]) ? section : 'overview';
+  const sectionPath = (value: string) => `/servers/${encodeURIComponent(serverId ?? '')}/${value}${routeLocation.search}`;
+  useEffect(() => {
+    if (section !== activeSection) {
+      navigate(sectionPath(activeSection ?? 'overview'), { replace: true, state: routeLocation.state });
+    }
+  }, [serverId, section, activeSection, routeLocation.search, navigate]);
+
   const wasJustCreated = Boolean(
     (routeLocation.state as { serverCreated?: boolean } | null)?.serverCreated,
   );
@@ -277,6 +286,7 @@ export function ServerDetailsPage() {
   const [editPublicIp, setEditPublicIp] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [applyHistoryPage, setApplyHistoryPage] = useState(0);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
@@ -486,7 +496,10 @@ export function ServerDetailsPage() {
 
   const renderConfigMutation = useMutation({
     mutationFn: () => renderConfig(serverId ?? ''),
-    onSuccess: refreshConfigQueries,
+    onSuccess: async (response) => {
+      setSelectedVersionId(response.configVersion.id);
+      await refreshConfigQueries();
+    },
   });
 
   const validateConfigMutation = useMutation({
@@ -651,6 +664,12 @@ export function ServerDetailsPage() {
     : Math.min((applyJobsQuery.data?.offset ?? 0) + applyJobs.length, applyJobsTotal);
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
   const currentConfigVersionId = configVersionsQuery.data?.currentConfigVersionId ?? null;
+  const currentVersion = configVersions.find(version => version.id === currentConfigVersionId);
+  const selectedVersion = configVersions.find(version => version.id === selectedVersionId)
+    ?? currentVersion ?? configVersions[0];
+  const configActionPending = validateConfigMutation.isPending || applyConfigMutation.isPending
+    || reapplyConfigMutation.isPending || deleteConfigVersionMutation.isPending
+    || pinConfigVersionMutation.isPending || unpinConfigVersionMutation.isPending;
   const managerBaseUrl = registrationToken?.managerUrl || getManagerBaseUrl();
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
@@ -682,10 +701,27 @@ export function ServerDetailsPage() {
           <p>{formatValue(server.description)}</p>
         </div>
 
-        <StatusBadge status={server.status} />
+        <div className="server-workspace-context">
+          <span>{deploymentRoleLabel(server.deploymentRole)}</span>
+          <StatusBadge status={server.status} />
+          <ConnectionStatusBadge status={server.inventory.connectionState} />
+        </div>
       </div>
-
-      <div className="details-layout">
+      <WorkspaceNav label={t('serverWorkspace.navigation')} items={serverSections.map(value => ({ href: sectionPath(value), label: t(`serverWorkspace.${value}`) }))} />
+      <div className="server-workspace-content" data-route-scroll-target tabIndex={-1}>
+      {activeSection === 'overview' && (
+        <section className="panel server-workspace-overview">
+          <h2>{t('serverWorkspace.overview')}</h2>
+          <div className="server-workspace-summaries">
+            <Link to={sectionPath('connection')}><strong>{t('serverWorkspace.connection')}</strong><ConnectionStatusBadge status={server.inventory.connectionState} /><span>{t('serverDetails.lastContact')}: {formatDate(agent?.lastSeenAt)}</span></Link>
+            {server.deploymentRole !== 'management' && <Link to={sectionPath('services')}><strong>{t('serverWorkspace.services')}</strong><StatusBadge status={server.inventory.connectionState === 'online' ? (parseVPNCoreStatus(agent?.capabilities)?.state ?? 'unknown') : 'unknown'} /></Link>}
+            <Link to={sectionPath('deployments')}><strong>{t('serverWorkspace.deployments')}</strong><span>{t('serverWorkspace.currentConfiguration')}: {configVersionsQuery.isSuccess ? (currentVersion ? `v${currentVersion.version}` : currentConfigVersionId ? t('common.notAvailable') : t('serverWorkspace.notApplied')) : t(configVersionsQuery.isPending ? 'common.loading' : 'common.notAvailable')}</span><span>{t('serverWorkspace.reviewDeployments')}</span></Link>
+          </div>
+          <p>{t(server.inventory.connectionState === 'awaiting_agent' ? 'serverWorkspace.connectNext' : server.inventory.connectionState === 'offline' ? 'serverWorkspace.restoreNext' : 'serverWorkspace.reviewNext')}</p>
+          <Link className="primary-button" to={sectionPath(server.inventory.connectionState === 'awaiting_agent' || server.inventory.connectionState === 'offline' ? 'connection' : 'deployments')}>{t('serverWorkspace.nextAction')}</Link>
+        </section>
+      )}
+      <div className="server-workspace-domain" hidden={activeSection !== 'settings'}>
         <div className="panel">
           <div className="panel-header">
             <div className="panel-title">{t('serverDetails.detailsTitle')}</div>
@@ -831,7 +867,10 @@ export function ServerDetailsPage() {
           )}
         </div>
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'connection'}>
         <div className="panel server-connection-panel">
+          {connectionGuidance}
           <div className="panel-title">{t('serverDetails.routeGateConnectionTitle')}</div>
           {server.deploymentRole === 'management' ? (
             <div className="empty-state empty-state-card agent-registration-empty-state">
@@ -893,6 +932,11 @@ export function ServerDetailsPage() {
         </div>
       </div>
 
+      <div className="server-workspace-domain" hidden={activeSection !== 'services'}>
+        {vpnPanel ?? <div className="panel"><p>{t('serverDetails.managementNodeNoAgentDescription')}</p></div>}
+        {server.deploymentRole !== 'management' && <Link className="text-link" to={`/protocol-settings/${encodeURIComponent(server.id)}`}>{t('navigation.protocolSettings')} →</Link>}
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'routing'}>
       <div className="panel routing-profile-assignment-panel">
         <div className="panel-header">
           <div>
@@ -961,6 +1005,8 @@ export function ServerDetailsPage() {
         </form>
       </div>
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'connection'}>
       {server.deploymentRole !== 'management' && <div className="panel token-panel">
         <div className="panel-title">{t('serverDetails.registrationTokenTitle')}</div>
         <p className="muted-text">
@@ -987,6 +1033,8 @@ export function ServerDetailsPage() {
         )}
       </div>}
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'deployments'}>
       <div className="panel admin-table-panel">
         <div className="panel-header">
           <div>
@@ -1003,8 +1051,11 @@ export function ServerDetailsPage() {
           </button>
         </div>
 
-        <p className="muted-text">{t('serverDetails.configVersionsImmutableHint')}</p>
-        <p className="muted-text">{t('serverDetails.configRetentionHint')}</p>
+        <details className="server-deployment-help">
+          <summary>{t('serverDetails.versionPolicy')}</summary>
+          <p className="muted-text">{t('serverDetails.configVersionsImmutableHint')}</p>
+          <p className="muted-text">{t('serverDetails.configRetentionHint')}</p>
+        </details>
 
         {configVersionsQuery.isError && (
           <div className="form-message form-message-error">{t('serverDetails.configVersionsLoadError')}</div>
@@ -1022,19 +1073,28 @@ export function ServerDetailsPage() {
 
         {configVersionsQuery.isLoading ? (
           <p className="empty-state">{t('serverDetails.loadingConfigVersions')}</p>
-        ) : configVersions.length === 0 ? (
+        ) : configVersionsQuery.isError && configVersions.length === 0 ? null : configVersions.length === 0 ? (
           <p className="empty-state">{t('serverDetails.noConfigVersions')}</p>
         ) : (
-          <div className="admin-table config-versions-table">
-            <div className="admin-table-row admin-table-head config-versions-table-row">
-              <span>{t('serverDetails.version')}</span>
-              <span>{t('vpnAccounts.status')}</span>
-              <span>{t('serverDetails.hash')}</span>
-              <span>{t('serverDetails.created')}</span>
-              <span>{t('serverDetails.applied')}</span>
-              <span>{t('routingProfiles.actions')}</span>
+          <div className="server-config-workspace">
+            <div className="server-config-list" role="group" aria-label={t('serverDetails.configVersions')}>
+              {configVersions.map((version) => (
+                <button
+                  key={version.id}
+                  type="button"
+                  className="server-config-choice"
+                  aria-pressed={selectedVersion?.id === version.id}
+                  onClick={() => setSelectedVersionId(version.id)}
+                >
+                  <strong>v{version.version}</strong>
+                  <StatusBadge status={version.status} />
+                  {currentConfigVersionId === version.id && <span className="badge badge-online">{t('serverDetails.currentConfig')}</span>}
+                  {version.pinned && <span className="badge">{t('serverDetails.pinnedConfig')}</span>}
+                  <span className="server-config-choice-date">{formatDate(version.createdAt)}</span>
+                </button>
+              ))}
             </div>
-            {configVersions.map((version: ConfigVersion) => {
+            {(selectedVersion ? [selectedVersion] : []).map((version: ConfigVersion) => {
               const isValidating =
                 validateConfigMutation.isPending && validateConfigMutation.variables === version.id;
               const isApplying =
@@ -1054,21 +1114,23 @@ export function ServerDetailsPage() {
               const canDeleteConfigVersion = !isCurrentConfig && !version.pinned && !hasActiveDeployment;
 
               return (
-                <div className="admin-table-row config-versions-table-row" key={version.id}>
-                  <strong>v{version.version}</strong>
+                <section className="server-config-detail" key={version.id} aria-label={t('serverDetails.selectedVersion', { version: version.version })}>
+                  <h3>{t('serverDetails.selectedVersion', { version: version.version })}</h3>
                   <div className="timestamp-stack">
                     <StatusBadge status={version.status} />
                     {isCurrentConfig && <span className="badge badge-online">{t('serverDetails.currentConfig')}</span>}
                     {version.pinned && <span className="badge">{t('serverDetails.pinnedConfig')}</span>}
                   </div>
-                  <code>{shortHash(version.configHash)}</code>
-                  <span>{formatDate(version.createdAt)}</span>
-                  <span>{formatDate(version.appliedAt)}</span>
+                  <dl className="server-config-metadata">
+                    <div><dt>{t('serverDetails.hash')}</dt><dd><code>{version.configHash}</code></dd></div>
+                    <div><dt>{t('serverDetails.created')}</dt><dd>{formatDate(version.createdAt)}</dd></div>
+                    <div><dt>{t('serverDetails.applied')}</dt><dd>{formatDate(version.appliedAt)}</dd></div>
+                  </dl>
                   <div className="table-actions">
                     <button
                       className="small-button"
                       type="button"
-                      disabled={Boolean(version.appliedAt) || isValidating}
+                      disabled={Boolean(version.appliedAt) || configActionPending}
                       onClick={() => validateConfigMutation.mutate(version.id)}
                     >
                       {isValidating ? t('serverDetails.validating') : t('serverDetails.validate')}
@@ -1077,7 +1139,7 @@ export function ServerDetailsPage() {
                       <button
                         className="small-button"
                         type="button"
-                        disabled={version.status !== 'validated' || isApplying}
+                        disabled={version.status !== 'validated' || configActionPending}
                         onClick={() => applyConfigMutation.mutate(version.id)}
                       >
                         {isApplying ? t('serverDetails.applying') : t('serverDetails.apply')}
@@ -1087,7 +1149,7 @@ export function ServerDetailsPage() {
                       <button
                         className="small-button"
                         type="button"
-                        disabled={isReapplying}
+                        disabled={configActionPending}
                         onClick={() => reapplyConfigMutation.mutate(version.id)}
                       >
                         {isReapplying
@@ -1101,7 +1163,7 @@ export function ServerDetailsPage() {
                       <button
                         className="small-button"
                         type="button"
-                        disabled={isPinning || isUnpinning}
+                        disabled={configActionPending}
                         onClick={() => {
                           if (version.pinned) {
                             unpinConfigVersionMutation.mutate(version.id);
@@ -1121,7 +1183,7 @@ export function ServerDetailsPage() {
                       <button
                         className="small-button"
                         type="button"
-                        disabled={isDeleting}
+                        disabled={configActionPending}
                         onClick={() => {
                           if (window.confirm(t('serverDetails.deleteConfigConfirm', { version: version.version }))) {
                             deleteConfigVersionMutation.mutate(version.id);
@@ -1132,7 +1194,7 @@ export function ServerDetailsPage() {
                       </button>
                     )}
                   </div>
-                </div>
+                </section>
               );
             })}
           </div>
@@ -1163,7 +1225,10 @@ export function ServerDetailsPage() {
           )}
         </div>
 
-        <p className="muted-text">{t('serverDetails.deploymentHistoryImmutableHint')}</p>
+        <details className="server-deployment-help">
+          <summary>{t('serverDetails.historyPolicy')}</summary>
+          <p className="muted-text">{t('serverDetails.deploymentHistoryImmutableHint')}</p>
+        </details>
 
         {applyJobsQuery.isError && (
           <div className="form-message form-message-error">{t('serverDetails.applyJobsLoadError')}</div>
@@ -1181,38 +1246,36 @@ export function ServerDetailsPage() {
 
         {applyJobsQuery.isLoading ? (
           <p className="empty-state">{t('serverDetails.loadingApplyJobs')}</p>
-        ) : applyJobs.length === 0 ? (
+        ) : applyJobsQuery.isError && applyJobs.length === 0 ? null : applyJobs.length === 0 ? (
           <p className="empty-state">{t('serverDetails.noApplyJobs')}</p>
         ) : (
           <>
-            <div className="admin-table apply-jobs-table">
-              <div className="admin-table-row admin-table-head apply-jobs-table-row">
-                <span>{t('vpnAccounts.status')}</span>
-                <span>{t('routingProfiles.action')}</span>
-                <span>{t('serverDetails.version')}</span>
-                <span>{t('serverDetails.stages')}</span>
-                <span>{t('serverDetails.error')}</span>
-                <span>{t('serverDetails.timestamps')}</span>
-              </div>
+            <div className="server-deployment-history">
               {applyJobs.map((job: ConfigApplyJob) => {
                 const version = versionsById.get(job.configVersionId);
 
                 return (
-                  <div className="admin-table-row apply-jobs-table-row" key={job.id}>
-                    <StatusBadge status={job.status} />
-                    <strong>{job.action}</strong>
-                    <div className="timestamp-stack">
-                      <strong>{version ? `v${version.version}` : t('serverDetails.versionUnknown')}</strong>
-                      <span>{shortHash(job.configVersionId)}</span>
+                  <details className="server-deployment-job" key={job.id}>
+                    <summary>
+                      <span className="server-deployment-job-summary">
+                        <StatusBadge status={job.status} />
+                        <strong>{job.action === 'apply' ? t('serverDetails.deploymentAction') : job.action}</strong>
+                        <span>{version ? `v${version.version}` : t('serverDetails.versionUnknown')}</span>
+                        <span>{formatDate(job.createdAt)}</span>
+                        {job.errorMessage && <span className="server-deployment-error">{job.errorMessage}</span>}
+                      </span>
+                    </summary>
+                    <div className="server-deployment-job-detail">
+                      <DetailRow label={t('serverDetails.versionIdentifier')}>{job.configVersionId}</DetailRow>
+                      <div>{t('serverDetails.stages')}</div>
+                      <StageSummary resultPayload={job.resultPayload} />
+                      <div className="timestamp-stack">
+                        <span>{t('serverDetails.createdValue', { value: formatDate(job.createdAt) })}</span>
+                        <span>{t('serverDetails.updatedValue', { value: formatDate(job.updatedAt) })}</span>
+                        <span>{t('serverDetails.completedValue', { value: formatDate(job.completedAt) })}</span>
+                      </div>
                     </div>
-                    <StageSummary resultPayload={job.resultPayload} />
-                    <span>{formatValue(job.errorMessage)}</span>
-                    <div className="timestamp-stack">
-                      <span>{t('serverDetails.createdValue', { value: formatDate(job.createdAt) })}</span>
-                      <span>{t('serverDetails.updatedValue', { value: formatDate(job.updatedAt) })}</span>
-                      <span>{t('serverDetails.completedValue', { value: formatDate(job.completedAt) })}</span>
-                    </div>
-                  </div>
+                  </details>
                 );
               })}
             </div>
@@ -1253,6 +1316,8 @@ export function ServerDetailsPage() {
         )}
       </div>
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'settings'}>
       <div className="panel server-danger-zone">
         <div>
           <div className="panel-title">{t('serverDetails.dangerZoneTitle')}</div>
@@ -1269,6 +1334,9 @@ export function ServerDetailsPage() {
         >
           {t('serverDetails.deleteServer')}
         </button>
+      </div>
+
+      </div>
       </div>
 
       {isRegistrationTokenDialogOpen && registrationToken && (

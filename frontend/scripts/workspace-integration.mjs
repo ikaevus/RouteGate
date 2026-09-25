@@ -74,6 +74,16 @@ try {
   await page.locator('a.kpi-widget').first().click();
   await page.waitForURL(`${origin}/servers`);
 
+  const serverWorkspace = `${origin}/servers/${server.id}`;
+  await page.goto(serverWorkspace);
+  await page.waitForURL(`${serverWorkspace}/overview`);
+  await page.locator('.server-workspace-overview').waitFor();
+  assert.equal(await page.locator('.server-workspace-overview .primary-button').getAttribute('href'), `/servers/${server.id}/connection`);
+  for (const section of ['connection', 'services', 'routing', 'deployments', 'settings']) {
+    await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
+    await page.locator(`.workspace-nav-link[aria-current="page"][href$="/${section}"]`).waitFor();
+    assert.equal(await page.locator('.server-details-header h1').innerText(), server.name);
+  }
   const workspace = `${origin}/vpn-accounts/${account.id}`;
   await page.goto(workspace);
   await page.waitForURL(`${workspace}/overview`);

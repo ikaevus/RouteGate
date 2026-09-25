@@ -462,6 +462,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/servers" element={<ServersPage />} />
             <Route path="/servers/:serverId" element={<ServerDetailsPage />} />
+            <Route path="/servers/:serverId/:section" element={<ServerDetailsPage />} />
             <Route path="/protocol-settings" element={<ProtocolSettingsPage />} />
             <Route path="/protocol-settings/:serverId" element={<ProtocolSettingsPage />} />
             <Route path="/vpn-accounts" element={<VpnAccountsPage />} />

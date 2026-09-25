@@ -1,3 +1,4 @@
+import './WorkspaceNav.css';
 import { useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 

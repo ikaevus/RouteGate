@@ -11,13 +11,15 @@ import { ApiError } from '../../shared/api/client';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
+import './serversList.css';
 
 function formatDate(value?: string | null): string {
   if (!value) {
     return t('common.notAvailable');
   }
 
-  return new Date(value).toLocaleString();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? t('common.notAvailable') : date.toLocaleString();
 }
 
 function formatValue(value?: string | null): string {
@@ -113,27 +115,42 @@ function getCreateErrorMessage(error: unknown): string {
 
 function ServerRow({ server }: { server: Server }) {
   return (
-    <Link className="table-row servers-table-row table-row-link" to={`/servers/${server.id}`}>
-      <div>
+    <Link className="table-row servers-table-row table-row-link" to={`/servers/${encodeURIComponent(server.id)}/overview`}>
+      <div className="server-list-identity">
         <strong className="text-link">{formatValue(server.name)}</strong>
-        <span>{formatValue(server.description)}</span>
+        <span>{deploymentRoleLabel(server.deploymentRole)}</span>
+        {server.description?.trim() && <span className="server-list-description">{server.description}</span>}
       </div>
-      <div>{deploymentRoleLabel(server.deploymentRole)}</div>
-      <div>{formatValue(server.provider)}</div>
-      <div>{formatValue(server.location)}</div>
-      <div>{formatValue(server.publicIp)}</div>
-      <div>
-        <StatusBadge status={server.status} />
+      <div className="server-list-cell">
+        <span className="server-list-mobile-label">{t('servers.placement')}</span>
+        <span>{formatValue(server.location)}</span>
+        <span className="server-list-secondary">{t('servers.provider')}: {formatValue(server.provider)}</span>
       </div>
-      <div>
+      <div className="server-list-cell">
+        <span className="server-list-mobile-label">{t('servers.publicIp')}</span>
+        <span className="server-list-address">{formatValue(server.publicIp)}</span>
+      </div>
+      <div className="server-list-cell">
+        <span className="server-list-mobile-label">{t('servers.connection')}</span>
         <StatusBadge
           status={server.inventory.connectionState}
           label={connectionStateLabel(server.inventory.connectionState)}
         />
+        <span className="server-list-secondary">{t('servers.status')}</span>
+        <StatusBadge status={server.status} />
       </div>
-      <div>{formatValue(server.agent?.agentVersion)}</div>
-      <div>{formatDate(server.agent?.lastSeenAt)}</div>
-      <div>{formatDate(server.createdAt)}</div>
+      <div className="server-list-cell">
+        <span className="server-list-mobile-label">{t('servers.agent')}</span>
+        {server.inventory.connectionState === 'not_applicable' ? (
+          <span>{t('servers.connection.notApplicable')}</span>
+        ) : (
+          <>
+            <span>{t('servers.version')}: {formatValue(server.agent?.agentVersion)}</span>
+            <span className="server-list-secondary">{t('servers.lastSeen')}</span>
+            <span>{formatDate(server.agent?.lastSeenAt)}</span>
+          </>
+        )}
+      </div>
     </Link>
   );
 }
@@ -220,10 +237,11 @@ export function ServersPage() {
           <button className="primary-button" type="button" onClick={openCreateForm}>
             {t('servers.addAction')}
           </button>
-          <div className="status-pill">
-            <span className="status-dot status-dot-ok" />
-            {servers.length} {t('servers.registered')}
-          </div>
+          {serversQuery.isSuccess && (
+            <div className="status-pill">
+              {servers.length} {t('servers.registered')}
+            </div>
+          )}
         </div>
       </div>
 
@@ -361,17 +379,12 @@ export function ServersPage() {
 
         {servers.length > 0 && (
           <div className="table servers-table">
-            <div className="table-row table-head servers-table-row">
+            <div className="table-row table-head servers-table-row" aria-hidden="true">
               <div>{t('servers.name')}</div>
-              <div>{t('servers.deploymentRole')}</div>
-              <div>{t('servers.provider')}</div>
-              <div>{t('servers.location')}</div>
+              <div>{t('servers.placement')}</div>
               <div>{t('servers.publicIp')}</div>
-              <div>{t('servers.status')}</div>
               <div>{t('servers.connection')}</div>
-              <div>{t('servers.version')}</div>
-              <div>{t('servers.lastSeen')}</div>
-              <div>{t('servers.created')}</div>
+              <div>{t('servers.agent')}</div>
             </div>
 
             {servers.map((server) => (
