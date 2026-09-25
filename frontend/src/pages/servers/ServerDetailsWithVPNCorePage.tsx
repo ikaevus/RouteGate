@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { getServer } from '../../entities/server/api/serverApi';
@@ -87,9 +86,12 @@ function inventoryGuidance(nextAction: string) {
 }
 
 export function ServerDetailsWithVPNCorePage() {
+  const { serverId } = useParams();
+  return <ServerWorkspace key={serverId} />;
+}
+
+function ServerWorkspace() {
   const { serverId } = useParams<{ serverId: string }>();
-  const [panelTarget, setPanelTarget] = useState<HTMLElement | null>(null);
-  const [connectionPanelTarget, setConnectionPanelTarget] = useState<HTMLElement | null>(null);
   const [activeOperation, setActiveOperation] = useState<{
     operation: VPNCoreOperation;
     jobId: string;
@@ -150,11 +152,6 @@ export function ServerDetailsWithVPNCorePage() {
       return status === 'failed' || status === 'succeeded' ? false : 2_000;
     },
   });
-
-  useEffect(() => {
-    setPanelTarget(document.querySelector<HTMLElement>('.details-layout'));
-    setConnectionPanelTarget(document.querySelector<HTMLElement>('.server-connection-panel'));
-  }, [serverId, serverQuery.isSuccess]);
 
   const server = serverQuery.data;
   const agent = server?.agent;
@@ -428,11 +425,5 @@ export function ServerDetailsWithVPNCorePage() {
     </div>
   ) : null;
 
-  return (
-    <>
-      <LegacyServerDetailsPage />
-      {connectionPanelTarget && guidancePanel ? createPortal(guidancePanel, connectionPanelTarget) : null}
-      {panelTarget && hostsVPNPlane ? createPortal(panel, panelTarget) : null}
-    </>
-  );
+  return <LegacyServerDetailsPage vpnPanel={hostsVPNPlane ? panel : null} connectionGuidance={guidancePanel} />;
 }

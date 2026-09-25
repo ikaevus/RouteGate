@@ -78,3 +78,20 @@ with the same isolated environment defined in the workflow. The script requires
 The job creates test records and does not use a deployed installation. It does not
 start an Agent, install a VPN runtime or verify real client connectivity. Those
 remain separate staging checks before merging or deployment.
+
+## Server workspace foundation
+
+Server details now use `/servers/:serverId/:section` with overview, connection,
+services, routing, deployments and settings. The old server URL and unknown
+sections resolve to overview while retaining query parameters and navigation state.
+The header preserves identity, role and connection state across domains.
+
+The VPN service panel and Agent guidance are passed as React content instead of
+being inserted through document-wide DOM queries. Domain panels remain mounted
+while hidden to preserve drafts and in-flight operation state; switching server
+identity remounts the workspace so tokens and dialogs cannot follow another server.
+Shared navigation styling now belongs to WorkspaceNav itself.
+
+This first slice retains existing service and deployment actions and confirmation
+flows. Focused configuration-version details, deployment history simplification and
+server inventory table refinement remain separate follow-up work.

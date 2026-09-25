@@ -1,3 +1,6 @@
+import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
+import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
+import './serverWorkspace.css';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -250,11 +253,21 @@ function StageSummary({ resultPayload }: { resultPayload?: Record<string, unknow
   );
 }
 
-export function ServerDetailsPage() {
-  const { serverId } = useParams<{ serverId: string }>();
+const serverSections = ['overview', 'connection', 'services', 'routing', 'deployments', 'settings'] as const;
+
+export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?: ReactNode; connectionGuidance?: ReactNode }) {
+  const { serverId, section } = useParams<{ serverId: string; section: string }>();
   const routeLocation = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const activeSection = serverSections.includes(section as typeof serverSections[number]) ? section : 'overview';
+  const sectionPath = (value: string) => `/servers/${encodeURIComponent(serverId ?? '')}/${value}${routeLocation.search}`;
+  useEffect(() => {
+    if (section !== activeSection) {
+      navigate(sectionPath(activeSection ?? 'overview'), { replace: true, state: routeLocation.state });
+    }
+  }, [serverId, section, activeSection, routeLocation.search, navigate]);
+
   const wasJustCreated = Boolean(
     (routeLocation.state as { serverCreated?: boolean } | null)?.serverCreated,
   );
@@ -651,6 +664,7 @@ export function ServerDetailsPage() {
     : Math.min((applyJobsQuery.data?.offset ?? 0) + applyJobs.length, applyJobsTotal);
   const versionsById = new Map(configVersions.map((version) => [version.id, version]));
   const currentConfigVersionId = configVersionsQuery.data?.currentConfigVersionId ?? null;
+  const currentVersion = configVersions.find(version => version.id === currentConfigVersionId);
   const managerBaseUrl = registrationToken?.managerUrl || getManagerBaseUrl();
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
@@ -682,10 +696,27 @@ export function ServerDetailsPage() {
           <p>{formatValue(server.description)}</p>
         </div>
 
-        <StatusBadge status={server.status} />
+        <div className="server-workspace-context">
+          <span>{deploymentRoleLabel(server.deploymentRole)}</span>
+          <StatusBadge status={server.status} />
+          <ConnectionStatusBadge status={server.inventory.connectionState} />
+        </div>
       </div>
-
-      <div className="details-layout">
+      <WorkspaceNav label={t('serverWorkspace.navigation')} items={serverSections.map(value => ({ href: sectionPath(value), label: t(`serverWorkspace.${value}`) }))} />
+      <div className="server-workspace-content" data-route-scroll-target tabIndex={-1}>
+      {activeSection === 'overview' && (
+        <section className="panel server-workspace-overview">
+          <h2>{t('serverWorkspace.overview')}</h2>
+          <div className="server-workspace-summaries">
+            <Link to={sectionPath('connection')}><strong>{t('serverWorkspace.connection')}</strong><ConnectionStatusBadge status={server.inventory.connectionState} /><span>{t('serverDetails.lastContact')}: {formatDate(agent?.lastSeenAt)}</span></Link>
+            {server.deploymentRole !== 'management' && <Link to={sectionPath('services')}><strong>{t('serverWorkspace.services')}</strong><StatusBadge status={server.inventory.connectionState === 'online' ? (parseVPNCoreStatus(agent?.capabilities)?.state ?? 'unknown') : 'unknown'} /></Link>}
+            <Link to={sectionPath('deployments')}><strong>{t('serverWorkspace.deployments')}</strong><span>{t('serverWorkspace.currentConfiguration')}: {configVersionsQuery.isSuccess ? (currentVersion ? `v${currentVersion.version}` : currentConfigVersionId ? t('common.notAvailable') : t('serverWorkspace.notApplied')) : t(configVersionsQuery.isPending ? 'common.loading' : 'common.notAvailable')}</span><span>{t('serverWorkspace.reviewDeployments')}</span></Link>
+          </div>
+          <p>{t(server.inventory.connectionState === 'awaiting_agent' ? 'serverWorkspace.connectNext' : server.inventory.connectionState === 'offline' ? 'serverWorkspace.restoreNext' : 'serverWorkspace.reviewNext')}</p>
+          <Link className="primary-button" to={sectionPath(server.inventory.connectionState === 'awaiting_agent' || server.inventory.connectionState === 'offline' ? 'connection' : 'deployments')}>{t('serverWorkspace.nextAction')}</Link>
+        </section>
+      )}
+      <div className="server-workspace-domain" hidden={activeSection !== 'settings'}>
         <div className="panel">
           <div className="panel-header">
             <div className="panel-title">{t('serverDetails.detailsTitle')}</div>
@@ -831,7 +862,10 @@ export function ServerDetailsPage() {
           )}
         </div>
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'connection'}>
         <div className="panel server-connection-panel">
+          {connectionGuidance}
           <div className="panel-title">{t('serverDetails.routeGateConnectionTitle')}</div>
           {server.deploymentRole === 'management' ? (
             <div className="empty-state empty-state-card agent-registration-empty-state">
@@ -893,6 +927,11 @@ export function ServerDetailsPage() {
         </div>
       </div>
 
+      <div className="server-workspace-domain" hidden={activeSection !== 'services'}>
+        {vpnPanel ?? <div className="panel"><p>{t('serverDetails.managementNodeNoAgentDescription')}</p></div>}
+        {server.deploymentRole !== 'management' && <Link className="text-link" to={`/protocol-settings/${encodeURIComponent(server.id)}`}>{t('navigation.protocolSettings')} →</Link>}
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'routing'}>
       <div className="panel routing-profile-assignment-panel">
         <div className="panel-header">
           <div>
@@ -961,6 +1000,8 @@ export function ServerDetailsPage() {
         </form>
       </div>
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'connection'}>
       {server.deploymentRole !== 'management' && <div className="panel token-panel">
         <div className="panel-title">{t('serverDetails.registrationTokenTitle')}</div>
         <p className="muted-text">
@@ -987,6 +1028,8 @@ export function ServerDetailsPage() {
         )}
       </div>}
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'deployments'}>
       <div className="panel admin-table-panel">
         <div className="panel-header">
           <div>
@@ -1253,6 +1296,8 @@ export function ServerDetailsPage() {
         )}
       </div>
 
+      </div>
+      <div className="server-workspace-domain" hidden={activeSection !== 'settings'}>
       <div className="panel server-danger-zone">
         <div>
           <div className="panel-title">{t('serverDetails.dangerZoneTitle')}</div>
@@ -1269,6 +1314,9 @@ export function ServerDetailsPage() {
         >
           {t('serverDetails.deleteServer')}
         </button>
+      </div>
+
+      </div>
       </div>
 
       {isRegistrationTokenDialogOpen && registrationToken && (

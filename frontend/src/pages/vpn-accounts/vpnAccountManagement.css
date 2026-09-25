@@ -72,31 +72,6 @@
 
 .vpn-account-workspace-id { overflow-wrap: anywhere; }
 
-.workspace-nav {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  display: flex;
-  gap: 4px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.workspace-nav-link {
-  border-bottom: 2px solid transparent;
-  color: var(--rg-text-secondary);
-  flex: 0 0 auto;
-  font-size: 13px;
-  padding: 10px 12px;
-  text-decoration: none;
-}
-
-.workspace-nav-link:hover,
-.workspace-nav-link.is-active {
-  color: var(--rg-text-primary);
-}
-
-.workspace-nav-link.is-active { border-bottom-color: var(--rg-primary); }
-.workspace-nav-link:focus-visible,
 .vpn-account-summary:focus-visible { outline: 2px solid var(--rg-primary); outline-offset: -2px; }
 
 .vpn-account-workspace-wait { margin: 0; }

@@ -1,0 +1,16 @@
+.server-workspace-domain[hidden] { display: none !important; }
+.server-workspace-content, .server-workspace-domain { min-width: 0; }
+.server-workspace-domain:not([hidden]) { display: grid; gap: 16px; }
+.server-workspace-content { display: grid; gap: 16px; scroll-margin-top: 85px; }
+.server-workspace-context { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.server-workspace-summaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 12px; margin-block: 16px; }
+.server-workspace-summaries a { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--border-color, #334155); border-radius: 12px; color: inherit; text-decoration: none; }
+.server-workspace-summaries a:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
+.server-workspace-content > .server-workspace-domain:empty { display: none; }
+.server-details-page .workspace-nav { margin-block: 16px; }
+
+.server-details-page .server-details-header > div:first-child { min-width: 0; flex: 1; }
+.server-details-page .server-details-header h1 { overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .server-details-page .server-details-header { flex-direction: column; align-items: flex-start; }
+}
