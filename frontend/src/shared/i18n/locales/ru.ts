@@ -224,6 +224,7 @@ export const ru: Record<TranslationKey, string> = {
   'servers.deploymentRole.management': 'Управляющий узел',
   'servers.deploymentRole.vpn': 'VPN-узел',
   'servers.deploymentRole.hybrid': 'Гибридный узел',
+  'servers.placement': 'Размещение',
   'servers.provider': 'Провайдер',
   'servers.location': 'Локация',
   'servers.publicIp': 'Публичный IP',

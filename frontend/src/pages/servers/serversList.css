@@ -1,0 +1,33 @@
+.servers-page .servers-table-panel { min-width: 0; }
+.servers-page .servers-table { min-width: 0; }
+.servers-page .servers-table-row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.2fr);
+  gap: 20px;
+  padding: 16px 12px;
+  align-items: start;
+}
+.servers-page .servers-table-row > div { min-width: 0; }
+.servers-page .server-list-identity,
+.servers-page .server-list-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.servers-page .servers-table-row span,
+.servers-page .servers-table-row strong { max-width: 100%; white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+.servers-page .servers-table-row .badge { white-space: normal !important; }
+.servers-page .server-list-description,
+.servers-page .server-list-secondary { font-size: 12px; opacity: .8; }
+.servers-page .server-list-address { font-family: monospace; }
+/* Retain field labels for assistive technology when the visual headings are shown. */
+.servers-page .server-list-mobile-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; clip-path: inset(50%); overflow: hidden; }
+@media (max-width: 1100px) {
+  .servers-page .servers-table { display: grid; gap: 12px; }
+  .servers-page .servers-table-row.table-head { display: none; }
+  .servers-page .servers-table-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; border: 1px solid var(--border-color, #64748b); border-radius: 12px; }
+  .servers-page .server-list-identity { grid-column: 1 / -1; }
+  .servers-page .server-list-mobile-label { position: static; width: auto; height: auto; padding: 0; margin: 0; clip-path: none; font-size: 12px; font-weight: 700; }
+}
+@media (max-width: 380px) {
+  .servers-page .servers-table-row { grid-template-columns: minmax(0, 1fr); }
+}
+.servers-page .server-list-cell > span:not(.badge) { color: var(--rg-text-primary, #e2e8f0); margin-top: 0; }
+.servers-page .server-list-cell > .server-list-secondary,
+.servers-page .server-list-cell > .server-list-mobile-label { color: var(--rg-text-secondary, #94a3b8); opacity: 1; }
+:root[data-theme='light'] .servers-page .server-list-description { opacity: 1; }

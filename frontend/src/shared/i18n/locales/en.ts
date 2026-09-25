@@ -222,6 +222,7 @@ export const en = {
   'servers.deploymentRole.management': 'Management Node',
   'servers.deploymentRole.vpn': 'VPN Node',
   'servers.deploymentRole.hybrid': 'Hybrid Node',
+  'servers.placement': 'Placement',
   'servers.provider': 'Provider',
   'servers.location': 'Location',
   'servers.publicIp': 'Public IP',
