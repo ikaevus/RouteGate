@@ -436,6 +436,13 @@ export const en = {
   'traffic.monthlyLimitField': 'Monthly limit',
   'traffic.speedLimitField': 'Speed limit',
 
+  'routingWorkspace.actionVpn': 'Via VPN',
+  'routingWorkspace.domainsGroup': 'Domains',
+  'routingWorkspace.domainsHelp': 'Enter exact domains or domain suffixes, one value per line or comma-separated.',
+  'routingWorkspace.networkGroup': 'IP networks',
+  'routingWorkspace.networkHelp': 'Enter networks in CIDR notation: address and prefix length, for example 192.0.2.0/24.',
+  'routingWorkspace.advancedMatchers': 'Additional matchers',
+  'routingWorkspace.advancedHelp': 'Domain keywords and GeoSite/GeoIP dataset tags. Available tags depend on the datasets on the node.',
   'routingWorkspace.navigation': 'Routing profile sections',
   'routingWorkspace.overview': 'Overview',
   'routingWorkspace.rules': 'Rules',

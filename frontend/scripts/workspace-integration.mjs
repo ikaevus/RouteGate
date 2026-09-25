@@ -96,8 +96,26 @@ try {
   await page.locator('.routing-rules-panel').getByRole('button', { name: 'Add routing rule', exact: true }).click();
   await page.locator('.routing-rule-form input').first().fill('Direct example');
   await page.locator('.routing-rule-form textarea').first().fill('example.com');
+  await page.locator('.routing-rule-form textarea').nth(1).fill('example.org');
+  await page.locator('.routing-rule-form textarea').nth(2).fill('192.0.2.0/24');
+  await page.locator('.routing-rule-form summary').click();
+  await page.locator('.routing-rule-form textarea').nth(3).fill('example');
+  await page.locator('.routing-rule-form textarea').nth(4).fill('category-ads-all');
+  await page.locator('.routing-rule-form textarea').nth(5).fill('private');
   await page.locator('.routing-rule-form').getByRole('button', { name: 'Save rule', exact: true }).click();
-  await page.locator('.routing-rules-table').getByText('Direct example', { exact: true }).waitFor();
+  await page.locator('.routing-rule-list').getByText('Direct example', { exact: true }).waitFor();
+  assert.equal(await page.locator('.routing-rule-matchers li').count(), 6);
+  await page.locator('.routing-rule-detail').getByRole('button', { name: 'Edit', exact: true }).click();
+  assert.ok(await page.locator('.routing-rule-form details').evaluate(element => element.open));
+  assert.equal(await page.locator('.routing-rule-form textarea').nth(5).inputValue(), 'private');
+  await page.locator('.routing-rule-form input').first().fill('Updated example');
+  await page.locator('.routing-rule-form').getByRole('button', { name: 'Save rule', exact: true }).click();
+  await page.locator('.routing-rule-detail h3').getByText('Updated example', { exact: true }).waitFor();
+  const savedProfile = await api(`/api/v1/routing-profiles/${profile.id}`, { token });
+  const savedRule = savedProfile.rules[0];
+  for (const [field, values] of Object.entries({ domains: ['example.com'], domainSuffixes: ['example.org'], ipCidrs: ['192.0.2.0/24'], domainKeywords: ['example'], geoSites: ['category-ads-all'], geoIps: ['private'] })) {
+    assert.deepEqual(savedRule[field], values, `preserve ${field} through editing`);
+  }
   await page.locator('.workspace-nav-link[href$="/settings"]').click();
   assert.equal(await page.locator('.routing-profile-details-panel input').first().inputValue(), 'Persisted routing profile');
   await page.locator('.routing-profile-details-panel').getByRole('button', { name: 'Save profile', exact: true }).click();

@@ -94,28 +94,28 @@ function ProfileRow({ profile, selected }: { profile: RoutingProfile; selected: 
   );
 }
 
-function RuleSummary({ rule }: { rule: RoutingProfileRule }) {
-  const counts = [
-    ['domains', rule.domains?.length ?? 0],
-    ['suffixes', rule.domainSuffixes?.length ?? 0],
-    ['keywords', rule.domainKeywords?.length ?? 0],
-    ['cidrs', rule.ipCidrs?.length ?? 0],
-    ['geosite', rule.geoSites?.length ?? 0],
-    ['geoip', rule.geoIps?.length ?? 0],
-  ].filter(([, count]) => Number(count) > 0);
+const matcherFields = [
+  { key: 'domains', text: 'domains', label: 'routingProfiles.exactDomains', example: 'example.com' },
+  { key: 'domainSuffixes', text: 'suffixes', label: 'routingProfiles.domainSuffixes', example: 'example.org' },
+  { key: 'ipCidrs', text: 'cidrs', label: 'routingProfiles.ipCidrs', example: '192.0.2.0/24, 2001:db8::/32' },
+  { key: 'domainKeywords', text: 'keywords', label: 'routingProfiles.domainKeywords', example: 'example' },
+  { key: 'geoSites', text: 'geosite', label: 'routingProfiles.geoSiteTags', example: 'category-ads-all' },
+  { key: 'geoIps', text: 'geoip', label: 'routingProfiles.geoIpTags', example: 'private' },
+] as const;
 
-  if (counts.length === 0) return <span className='muted-text'>{t('routingProfiles.noMatchers')}</span>;
+function actionLabel(action: RoutingRuleAction) {
+  return action === 'vpn' ? t('routingWorkspace.actionVpn')
+    : t(action === 'direct' ? 'routingProfiles.actionDirect' : 'routingProfiles.actionBlock');
+}
 
-  return (
-    <div className='stage-summary'>
-      {counts.map(([label, count]) => (
-        <span className='stage-pill' key={String(label)}>
-          <span>{label}</span>
-          <strong>{count}</strong>
-        </span>
-      ))}
-    </div>
-  );
+function RuleMatchers({ rule }: { rule: RoutingProfileRule }) {
+  const populated = matcherFields.filter(field => rule[field.key]?.length);
+  return populated.length ? <dl className='routing-rule-matchers'>
+    {populated.map(field => <div key={field.key}>
+      <dt>{t(field.label)}</dt>
+      <dd><ul>{rule[field.key]?.map((value, index) => <li key={`${index}:${value}`}><code>{value}</code></li>)}</ul></dd>
+    </div>)}
+  </dl> : <p>{t('routingProfiles.noMatchers')}</p>;
 }
 
 export function RoutingProfilesPage() {
@@ -135,7 +135,17 @@ function RoutingWorkspace() {
   const sectionPath = (value: string) => `/routing-profiles/${encodeURIComponent(profileId ?? '')}/${value}${location.search}`;
   const [profileDirty, setProfileDirty] = useState(false);
   const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const [advancedMatchersOpen, setAdvancedMatchersOpen] = useState(false);
   const ruleEditorRef = useRef<HTMLFormElement>(null);
+  const rulesPanelRef = useRef<HTMLDivElement>(null);
+  function restoreRuleFocus() {
+    requestAnimationFrame(() => {
+      const panel = rulesPanelRef.current;
+      (panel?.querySelector<HTMLButtonElement>('.routing-rule-choice[aria-pressed="true"]')
+        ?? panel?.querySelector<HTMLButtonElement>('.panel-header button'))?.focus();
+    });
+  }
   useEffect(() => {
     if (profileId && section !== activeSection) navigate(sectionPath('overview'), { replace: true, state: location.state });
   }, [profileId, section, activeSection, location.search, navigate]);
@@ -169,6 +179,7 @@ function RoutingWorkspace() {
 
   function resetRuleForm() {
     setRuleEditorOpen(false);
+    setAdvancedMatchersOpen(false);
     setEditingRuleId(null);
     setRuleForm(emptyRule);
     setRuleText({ domains: '', suffixes: '', keywords: '', cidrs: '', geosite: '', geoip: '' });
@@ -203,9 +214,11 @@ function RoutingWorkspace() {
     mutationFn: (request: RuleForm) => editingRuleId
       ? updateRoutingProfileRule(profileId ?? '', editingRuleId, request)
       : createRoutingProfileRule(profileId ?? '', request),
-    onSuccess: async () => {
+    onSuccess: async (rule) => {
+      setSelectedRuleId(rule.id);
       resetRuleForm();
       await queryClient.invalidateQueries({ queryKey: ['routing-profile', profileId] });
+      restoreRuleFocus();
     },
   });
 
@@ -236,6 +249,7 @@ function RoutingWorkspace() {
   }
 
   function editRule(rule: RoutingProfileRule) {
+    setAdvancedMatchersOpen(Boolean(rule.domainKeywords?.length || rule.geoSites?.length || rule.geoIps?.length));
     saveRuleMutation.reset();
     setRuleEditorOpen(true);
     setEditingRuleId(rule.id);
@@ -253,6 +267,7 @@ function RoutingWorkspace() {
   const profiles = profilesQuery.data?.items ?? [];
   const selectedProfile = profileQuery.data;
   const rules = selectedProfile?.rules ?? [];
+  const selectedRule = rules.find(rule => rule.id === selectedRuleId) ?? rules[0];
   const actionPending = updateProfileMutation.isPending || deleteProfileMutation.isPending
     || saveRuleMutation.isPending || deleteRuleMutation.isPending;
   const canSaveRule = ruleForm.name.trim() !== ''
@@ -333,22 +348,35 @@ function RoutingWorkspace() {
             </form>
               </div>
               <div className='routing-workspace-domain routing-workspace-rules' hidden={activeSection !== 'rules'}>
-            <div className='panel admin-table-panel routing-rules-panel'>
+            <div ref={rulesPanelRef} className='panel admin-table-panel routing-rules-panel'>
               <div className='panel-header'><div><div className='panel-title'>{t('routingProfiles.rules')}</div><p className='panel-subtitle'>{t('routingProfiles.rulesSubtitle')}</p></div><button className='small-button' type='button' disabled={actionPending || ruleEditorOpen} onClick={() => { resetRuleForm(); saveRuleMutation.reset(); setRuleEditorOpen(true); }}>{t('routingProfiles.addRule')}</button></div>
               {deleteRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteRuleMutation.error, t('routingProfiles.deleteRuleError'))}</div>}
               {rules.length === 0 ? <p className='empty-state'>{t('routingProfiles.noRules')}</p> : (
-                <div className='admin-table routing-rules-table'>
-                  <div className='admin-table-row admin-table-head routing-rules-table-row'><span>{t('routingProfiles.rule')}</span><span>{t('routingProfiles.priority')}</span><span>{t('routingProfiles.action')}</span><span>{t('vpnAccounts.status')}</span><span>{t('routingProfiles.matchers')}</span><span>{t('routingProfiles.actions')}</span></div>
-                  {rules.map((rule) => (
-                    <div className='admin-table-row routing-rules-table-row' key={rule.id}>
-                      <div><strong>{formatValue(rule.name)}</strong><span>{t('routingProfiles.updatedValue', { value: formatDate(rule.updatedAt) })}</span></div>
-                      <span>{rule.priority}</span>
-                      <StatusBadge value={rule.action} />
+                <div className={`routing-rule-browser${ruleEditorOpen ? ' is-editing' : ''}`}>
+                  <div className='routing-rule-list' role='group' aria-label={t('routingProfiles.rules')}>
+                    {rules.map(rule => <button key={rule.id} type='button' className='routing-rule-choice'
+                      aria-pressed={selectedRule?.id === rule.id} disabled={ruleEditorOpen}
+                      onClick={() => setSelectedRuleId(rule.id)}>
+                      <strong>{rule.name}</strong>
+                      <span>{t('routingProfiles.priority')}: {rule.priority} · {actionLabel(rule.action)}</span>
                       <StatusBadge value={rule.enabled ? 'enabled' : 'disabled'} />
-                      <RuleSummary rule={rule} />
-                      <div className='table-actions'><button className='small-button' type='button' disabled={actionPending || ruleEditorOpen} onClick={() => editRule(rule)}>{t('routingProfiles.edit')}</button><button className='small-button' type='button' disabled={actionPending || ruleEditorOpen} onClick={() => { if (window.confirm(t('routingWorkspace.deleteRuleConfirm', { name: rule.name }))) deleteRuleMutation.mutate(rule.id); }}>{t('routingProfiles.deleteProfile')}</button></div>
+                    </button>)}
+                  </div>
+                  {selectedRule && !ruleEditorOpen && <section className='routing-rule-detail' aria-label={selectedRule.name}>
+                    <h3>{selectedRule.name}</h3>
+                    <div className='routing-rule-context'>
+                      <span>{actionLabel(selectedRule.action)}</span>
+                      <StatusBadge value={selectedRule.enabled ? 'enabled' : 'disabled'} />
+                      <span>{t('routingProfiles.priority')}: {selectedRule.priority}</span>
                     </div>
-                  ))}
+                    <p className='muted-text'>{t('routingProfiles.updatedValue', { value: formatDate(selectedRule.updatedAt) })}</p>
+                    <h4>{t('routingProfiles.matchers')}</h4>
+                    <RuleMatchers rule={selectedRule} />
+                    <div className='table-actions'>
+                      <button className='small-button' type='button' disabled={actionPending || ruleEditorOpen} onClick={() => editRule(selectedRule)}>{t('routingProfiles.edit')}</button>
+                      <button className='small-button' type='button' disabled={actionPending || ruleEditorOpen} onClick={() => { if (window.confirm(t('routingWorkspace.deleteRuleConfirm', { name: selectedRule.name }))) deleteRuleMutation.mutate(selectedRule.id); }}>{t('routingProfiles.deleteProfile')}</button>
+                    </div>
+                  </section>}
                 </div>
               )}
             </div>
@@ -359,7 +387,7 @@ function RoutingWorkspace() {
                   <p className='panel-subtitle'>{t('routingProfiles.ruleHelp')}</p>
                 </div>
                 <div className='table-actions'>
-                  <button className='small-button' type='button' disabled={actionPending} onClick={resetRuleForm}>{t('routingProfiles.cancelEdit')}</button>
+                  <button className='small-button' type='button' disabled={actionPending} onClick={() => { resetRuleForm(); restoreRuleFocus(); }}>{t('routingProfiles.cancelEdit')}</button>
                   <button className='small-button' type='submit' disabled={!canSaveRule || actionPending}>{t('routingProfiles.saveRule')}</button>
                 </div>
               </div>
@@ -369,17 +397,34 @@ function RoutingWorkspace() {
               <div className='routing-rule-form-grid'>
                 <label className='field'><span>{t('routingProfiles.name')}</span><input value={ruleForm.name} onChange={(event) => setRuleForm((current) => ({ ...current, name: event.target.value }))} /></label>
                 <label className='field'><span>{t('routingProfiles.priority')}</span><input min='0' type='number' value={ruleForm.priority} onChange={(event) => setRuleForm((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
-                <label className='field'><span>{t('routingProfiles.action')}</span><select value={ruleForm.action} onChange={(event) => setRuleForm((current) => ({ ...current, action: event.target.value as RoutingRuleAction }))}><option value='direct'>{t('routingProfiles.actionDirect')}</option><option value='vpn'>vpn</option><option value='block'>{t('routingProfiles.actionBlock')}</option></select></label>
+                <label className='field'><span>{t('routingProfiles.action')}</span><select value={ruleForm.action} onChange={(event) => setRuleForm((current) => ({ ...current, action: event.target.value as RoutingRuleAction }))}><option value='direct'>{t('routingProfiles.actionDirect')}</option><option value='vpn'>{t('routingWorkspace.actionVpn')}</option><option value='block'>{t('routingProfiles.actionBlock')}</option></select></label>
                 <div className='traffic-checkbox-field'><label><input checked={ruleForm.enabled} type='checkbox' onChange={(event) => setRuleForm((current) => ({ ...current, enabled: event.target.checked }))} />{t('routingProfiles.enabled')}</label><p>{t('routingProfiles.priorityHelp')}</p></div>
               </div>
-              <div className='routing-rule-matchers-grid'>
-                <label className='field'><span>{t('routingProfiles.exactDomains')}</span><textarea rows={4} value={ruleText.domains} onChange={(event) => setRuleText((current) => ({ ...current, domains: event.target.value }))} /></label>
-                <label className='field'><span>{t('routingProfiles.domainSuffixes')}</span><textarea rows={4} value={ruleText.suffixes} onChange={(event) => setRuleText((current) => ({ ...current, suffixes: event.target.value }))} /></label>
-                <label className='field'><span>{t('routingProfiles.domainKeywords')}</span><textarea rows={4} value={ruleText.keywords} onChange={(event) => setRuleText((current) => ({ ...current, keywords: event.target.value }))} /></label>
-                <label className='field'><span>{t('routingProfiles.ipCidrs')}</span><textarea rows={4} value={ruleText.cidrs} onChange={(event) => setRuleText((current) => ({ ...current, cidrs: event.target.value }))} /></label>
-                <label className='field'><span>{t('routingProfiles.geoSiteTags')}</span><textarea rows={4} value={ruleText.geosite} onChange={(event) => setRuleText((current) => ({ ...current, geosite: event.target.value }))} /></label>
-                <label className='field'><span>{t('routingProfiles.geoIpTags')}</span><textarea rows={4} value={ruleText.geoip} onChange={(event) => setRuleText((current) => ({ ...current, geoip: event.target.value }))} /></label>
-              </div>
+              <section className='routing-matcher-group'>
+                <h3>{t('routingWorkspace.domainsGroup')}</h3>
+                <p>{t('routingWorkspace.domainsHelp')}</p>
+                <div className='routing-rule-matchers-grid'>
+                  {matcherFields.slice(0, 2).map(field => <label className='field' key={field.key}>
+                    <span>{t(field.label)}</span>
+                    <textarea rows={3} placeholder={field.example} value={ruleText[field.text]} onChange={event => setRuleText(current => ({ ...current, [field.text]: event.target.value }))} />
+                  </label>)}
+                </div>
+              </section>
+              <section className='routing-matcher-group'>
+                <h3>{t('routingWorkspace.networkGroup')}</h3>
+                <p>{t('routingWorkspace.networkHelp')}</p>
+                <label className='field'><span>{t('routingProfiles.ipCidrs')}</span><textarea rows={3} placeholder={matcherFields[2].example} value={ruleText.cidrs} onChange={event => setRuleText(current => ({ ...current, cidrs: event.target.value }))} /></label>
+              </section>
+              <details className='routing-matcher-group' open={advancedMatchersOpen} onToggle={event => setAdvancedMatchersOpen(event.currentTarget.open)}>
+                <summary>{t('routingWorkspace.advancedMatchers')}</summary>
+                <p>{t('routingWorkspace.advancedHelp')}</p>
+                <div className='routing-rule-matchers-grid'>
+                  {matcherFields.slice(3).map(field => <label className='field' key={field.key}>
+                    <span>{t(field.label)}</span>
+                    <textarea rows={3} placeholder={field.example} value={ruleText[field.text]} onChange={event => setRuleText(current => ({ ...current, [field.text]: event.target.value }))} />
+                  </label>)}
+                </div>
+              </details>
               </fieldset>
             </form>
               </div>

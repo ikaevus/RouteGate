@@ -438,6 +438,13 @@ export const ru: Record<TranslationKey, string> = {
   'traffic.monthlyLimitField': 'Месячный лимит',
   'traffic.speedLimitField': 'Лимит скорости',
 
+  'routingWorkspace.actionVpn': 'Через VPN',
+  'routingWorkspace.domainsGroup': 'Домены',
+  'routingWorkspace.domainsHelp': 'Укажите точные домены или доменные суффиксы. По одному значению в строке или через запятую.',
+  'routingWorkspace.networkGroup': 'IP-сети',
+  'routingWorkspace.networkHelp': 'Укажите сети в формате CIDR: адрес и длина префикса, например 192.0.2.0/24.',
+  'routingWorkspace.advancedMatchers': 'Дополнительные условия',
+  'routingWorkspace.advancedHelp': 'Ключевые слова в доменах и теги наборов GeoSite/GeoIP. Доступность тегов зависит от наборов на узле.',
   'routingWorkspace.navigation': 'Разделы профиля маршрутизации',
   'routingWorkspace.overview': 'Обзор',
   'routingWorkspace.rules': 'Правила',

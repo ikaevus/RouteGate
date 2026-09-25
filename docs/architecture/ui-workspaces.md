@@ -112,9 +112,14 @@ to the named profile or rule and requires confirmation; default profiles remain
 protected. Creating a profile opens its rules; deleting it returns to the list.
 Callbacks from unmounted workspaces do not redirect the newly selected profile.
 
+The rule list selects a focused detail card with complete matcher values and scoped
+actions. Selecting a rule is read-only; selection stays fixed while the editor is
+open. Saving selects the returned rule; deleting the selection falls back to the
+first remaining rule. The editor groups domains and IP networks, with keywords and
+GeoSite/GeoIP tags under additional matchers. Existing additional values expand that
+group when editing, and closing it never removes values from the save payload.
 The existing matcher fields, rule priority/action semantics and APIs are retained.
-The dense rule table can scroll within its panel. Richer selected-rule details and
-matcher guidance remain follow-up work; this is the navigation foundation.
+Integration checks verify all six matcher arrays survive creating and editing a rule.
 
 Workspace integration additionally verifies a routing rule created through the UI,
 settings-draft preservation during that save, persisted profile edits, routing
