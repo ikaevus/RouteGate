@@ -84,6 +84,50 @@ try {
     await page.locator(`.workspace-nav-link[aria-current="page"][href$="/${section}"]`).waitFor();
     assert.equal(await page.locator('.server-details-header h1').innerText(), server.name);
   }
+  const profile = await api('/api/v1/routing-profiles', { method: 'POST', token,
+    body: { name: 'Workspace routing profile', description: '', isDefault: false } });
+  const routingWorkspace = `${origin}/routing-profiles/${profile.id}`;
+  await page.goto(routingWorkspace);
+  await page.waitForURL(`${routingWorkspace}/overview`);
+  await page.locator('.routing-workspace-overview').waitFor();
+  await page.locator('.workspace-nav-link[href$="/settings"]').click();
+  await page.locator('.routing-profile-details-panel input').first().fill('Persisted routing profile');
+  await page.locator('.workspace-nav-link[href$="/rules"]').click();
+  await page.locator('.routing-rules-panel').getByRole('button', { name: 'Add routing rule', exact: true }).click();
+  await page.locator('.routing-rule-form input').first().fill('Direct example');
+  await page.locator('.routing-rule-form textarea').first().fill('example.com');
+  await page.locator('.routing-rule-form textarea').nth(1).fill('example.org');
+  await page.locator('.routing-rule-form textarea').nth(2).fill('192.0.2.0/24');
+  await page.locator('.routing-rule-form summary').click();
+  await page.locator('.routing-rule-form textarea').nth(3).fill('example');
+  await page.locator('.routing-rule-form textarea').nth(4).fill('category-ads-all');
+  await page.locator('.routing-rule-form textarea').nth(5).fill('private');
+  await page.locator('.routing-rule-form').getByRole('button', { name: 'Save rule', exact: true }).click();
+  await page.locator('.routing-rule-list').getByText('Direct example', { exact: true }).waitFor();
+  assert.equal(await page.locator('.routing-rule-matchers li').count(), 6);
+  await page.locator('.routing-rule-detail').getByRole('button', { name: 'Edit', exact: true }).click();
+  assert.ok(await page.locator('.routing-rule-form details').evaluate(element => element.open));
+  assert.equal(await page.locator('.routing-rule-form textarea').nth(5).inputValue(), 'private');
+  await page.locator('.routing-rule-form input').first().fill('Updated example');
+  await page.locator('.routing-rule-form').getByRole('button', { name: 'Save rule', exact: true }).click();
+  await page.locator('.routing-rule-detail h3').getByText('Updated example', { exact: true }).waitFor();
+  const savedProfile = await api(`/api/v1/routing-profiles/${profile.id}`, { token });
+  const savedRule = savedProfile.rules[0];
+  for (const [field, values] of Object.entries({ domains: ['example.com'], domainSuffixes: ['example.org'], ipCidrs: ['192.0.2.0/24'], domainKeywords: ['example'], geoSites: ['category-ads-all'], geoIps: ['private'] })) {
+    assert.deepEqual(savedRule[field], values, `preserve ${field} through editing`);
+  }
+  await page.locator('.workspace-nav-link[href$="/settings"]').click();
+  assert.equal(await page.locator('.routing-profile-details-panel input').first().inputValue(), 'Persisted routing profile');
+  await page.locator('.routing-profile-details-panel').getByRole('button', { name: 'Save profile', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.routing-workspace-header h2')?.textContent === 'Persisted routing profile');
+  await page.reload();
+  await page.getByRole('heading', { name: 'Persisted routing profile', exact: true }).waitFor();
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${theme} routing mobile overflow`);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const workspace = `${origin}/vpn-accounts/${account.id}`;
   await page.goto(workspace);
   await page.waitForURL(`${workspace}/overview`);

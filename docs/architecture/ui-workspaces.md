@@ -92,6 +92,35 @@ while hidden to preserve drafts and in-flight operation state; switching server
 identity remounts the workspace so tokens and dialogs cannot follow another server.
 Shared navigation styling now belongs to WorkspaceNav itself.
 
-This first slice retains existing service and deployment actions and confirmation
-flows. Focused configuration-version details, deployment history simplification and
-server inventory table refinement remain separate follow-up work.
+Configuration versions now use a selectable list and focused actions. Deployment
+history keeps failures visible and puts stages/timestamps in disclosure. The server
+inventory uses five grouped columns and labelled cards on narrow screens. These
+changes were deployed in PR #463 and visually accepted by the owner.
+
+## Routing profile workspace
+
+Routing profiles use `/routing-profiles/:profileId/:section` with overview, rules
+and settings. Legacy and unknown section URLs redirect to overview, retaining
+query parameters. The profile list remains alongside the selected workspace on
+wide screens, with persistent profile identity and default/custom status.
+
+The rule editor opens deliberately after the rule list. Domain switches retain
+unsaved settings and rule input; changing profile identity remounts local state.
+Profile refreshes do not overwrite dirty settings, including refreshes after rule
+operations. Pending writes disable conflicting form controls. Deletion is scoped
+to the named profile or rule and requires confirmation; default profiles remain
+protected. Creating a profile opens its rules; deleting it returns to the list.
+Callbacks from unmounted workspaces do not redirect the newly selected profile.
+
+The rule list selects a focused detail card with complete matcher values and scoped
+actions. Selecting a rule is read-only; selection stays fixed while the editor is
+open. Saving selects the returned rule; deleting the selection falls back to the
+first remaining rule. The editor groups domains and IP networks, with keywords and
+GeoSite/GeoIP tags under additional matchers. Existing additional values expand that
+group when editing, and closing it never removes values from the save payload.
+The existing matcher fields, rule priority/action semantics and APIs are retained.
+Integration checks verify all six matcher arrays survive creating and editing a rule.
+
+Workspace integration additionally verifies a routing rule created through the UI,
+settings-draft preservation during that save, persisted profile edits, routing
+navigation and mobile layout against Manager and PostgreSQL.

@@ -62,12 +62,6 @@
   text-overflow: clip;
 }
 
-@media (min-width: 981px) {
-  .routing-profiles-table-row {
-    align-items: start;
-    grid-template-columns: minmax(0, 1.45fr) auto minmax(132px, 0.75fr) !important;
-  }
-}
 
 .routing-rules-table {
   min-width: 1180px;
