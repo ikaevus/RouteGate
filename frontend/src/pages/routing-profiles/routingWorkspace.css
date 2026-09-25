@@ -1,0 +1,46 @@
+.routing-profiles-page .routing-profiles-layout { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); align-items: start; }
+.routing-profiles-page .routing-profiles-layout > .panel:first-child { grid-column: 1; grid-row: auto; }
+.routing-profiles-page .routing-profiles-table-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.routing-profiles-page .routing-profiles-table-row.admin-table-head { display: none; }
+.routing-profiles-page .routing-profiles-table-row strong,
+.routing-profiles-page .routing-profiles-table-row span { white-space: normal; overflow-wrap: anywhere; }
+.routing-workspace { min-width: 0; display: grid; gap: 16px; }
+.routing-workspace-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 12px; }
+.routing-workspace-header > div { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.routing-workspace-header h2 { margin: 0; }
+.routing-workspace-header p { margin-bottom: 0; }
+.routing-workspace-content { min-width: 0; scroll-margin-top: 85px; }
+.routing-workspace-domain[hidden], .routing-workspace .routing-rule-form[hidden] { display: none !important; }
+.routing-workspace-domain:not([hidden]) { display: grid; gap: 16px; }
+.routing-workspace fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.routing-workspace .routing-rule-inputs { display: grid; gap: 16px; }
+.routing-workspace .routing-profile-form-grid,
+.routing-workspace .routing-rule-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.routing-workspace .routing-rules-panel { order: 0; }
+.routing-workspace .routing-rule-form { order: 1; }
+.routing-workspace-overview .primary-button { display: inline-block; }
+@media (max-width: 1100px) {
+  .routing-profiles-page .routing-profiles-layout { grid-template-columns: minmax(0, 1fr); }
+  .routing-profiles-page .routing-profiles-layout > .panel:first-child { grid-column: 1; }
+  .routing-profiles-page .routing-profiles-table { max-height: 260px; overflow-y: auto; }
+}
+@media (max-width: 620px) {
+  .routing-workspace .routing-profile-form-grid,
+  .routing-workspace .routing-rule-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.routing-profiles-page .routing-profiles-table { min-width: 0; }
+.routing-workspace .routing-rules-table { min-width: 740px; }
+.routing-workspace .routing-rules-table-row { grid-template-columns: minmax(120px, 1.3fr) 65px 70px 85px minmax(150px, 1.4fr) 115px; }
+.routing-workspace .routing-rules-panel { min-width: 0; overflow-x: auto; }
+.routing-workspace .routing-rule-form { scroll-margin-top: 90px; }
+@media (max-width: 620px) {
+  .routing-workspace .routing-rule-matchers-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.routing-profiles-page .routing-profiles-layout > .panel:not(:first-child) { grid-column: auto; }
+.routing-profiles-page .page-header { flex-wrap: wrap; gap: 12px; }
+.routing-profiles-page .page-header > div:first-child { min-width: 0; }
+.routing-profiles-page .page-header h1 { overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .routing-profiles-page .page-header { flex-direction: column; align-items: flex-start; }
+}
+:root[data-theme='light'] .routing-workspace .routing-rules-table-row > div > strong { color: var(--rg-light-text-strong, #0f172a) !important; }
