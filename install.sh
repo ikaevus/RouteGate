@@ -471,7 +471,7 @@ apt_repository_host_trusted() {
 }
 
 apt_repository_trust_report() {
-  local root=${1:-}
+  local root=$1
   local uri host
   local found=0
   local blocked=0
@@ -502,7 +502,7 @@ validate_apt_repository_trust() {
   local report=""
 
   printf '\n[RouteGate] APT repository trust preflight\n'
-  if report=$(apt_repository_trust_report); then
+  if report=$(apt_repository_trust_report ""); then
     printf '%s\n\n' "$report"
     return 0
   fi
