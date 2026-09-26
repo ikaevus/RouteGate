@@ -184,9 +184,15 @@ main() {
     build_architecture "$arch"
   done
 
+  cp "$ROOT_DIR/install.sh" "$OUTPUT_DIR/install.sh"
+  cp "$ROOT_DIR/install-agent.sh" "$OUTPUT_DIR/install-agent.sh"
+  cp "$ROOT_DIR/install-grafana.sh" "$OUTPUT_DIR/install-grafana.sh"
+  chmod 0644     "$OUTPUT_DIR/install.sh"     "$OUTPUT_DIR/install-agent.sh"     "$OUTPUT_DIR/install-grafana.sh"
+
   (
     cd "$OUTPUT_DIR"
     sha256sum routegate-*.tar.gz >SHA256SUMS
+    sha256sum install.sh install-agent.sh install-grafana.sh >INSTALLER_SHA256SUMS
   )
 
   python3 "$ROOT_DIR/scripts/release_manifest.py" build \
@@ -201,7 +207,7 @@ main() {
     --artifacts-dir "$OUTPUT_DIR"
 
   rm -rf "$OUTPUT_DIR"/stage-*
-  log "Release bundles, SHA256SUMS, and release-manifest.json are ready in ${OUTPUT_DIR}."
+  log "Release bundles, installer scripts, checksums, and release-manifest.json are ready in ${OUTPUT_DIR}."
 }
 
 main "$@"
