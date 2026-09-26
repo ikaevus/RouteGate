@@ -603,6 +603,12 @@ verify_existing_install() {
   exit 0
 }
 
+verify_completed_install_before_repository_preflight() {
+  [[ -f "$ROUTEGATE_STATE_FILE" ]] || return 0
+  [[ "$(state_value STATUS || true)" == "complete" ]] || return 0
+  verify_existing_install
+}
+
 collect_routegate_conflicts() {
   local root=${1:-}
   local path
@@ -1810,6 +1816,7 @@ main() {
   prompt_for_inputs
   validate_inputs
   validate_platform
+  verify_completed_install_before_repository_preflight
   validate_apt_repository_trust
   print_dependency_plan
   detect_conflicts
