@@ -18,7 +18,28 @@ assert_true() { local name=$1; shift; if "$@"; then pass "$name"; else fail "$na
 assert_false() { local name=$1; shift; if "$@"; then fail "$name"; else pass "$name"; fi; }
 assert_equal() { local name=$1 expected=$2 actual=$3; if [[ "$expected" == "$actual" ]]; then pass "$name"; else fail "$name (expected: $expected, actual: $actual)"; fi; }
 
+
+test_apt_repository_trust_preflight() {
+  local root="$TEST_TMP/apt-trust-agent"
+  mkdir -p "$root/etc/apt/sources.list.d"
+
+  cat >"$root/etc/apt/sources.list" <<'EOF_LIST'
+deb [arch=amd64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://archive.ubuntu.com/ubuntu noble main
+deb http://security.ubuntu.com/ubuntu noble-security main
+EOF_LIST
+
+  assert_true     "Agent installer accepts official Ubuntu repositories"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
+
+  cat >"$root/etc/apt/sources.list.d/untrusted.list" <<'EOF_UNTRUSTED'
+deb https://example.invalid/ubuntu noble main
+EOF_UNTRUSTED
+
+  assert_false     "Agent installer rejects third-party APT repositories by default"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
+}
+
 valid_token="rg_reg_$(printf 'a%.0s' {1..43})"
+
+test_apt_repository_trust_preflight
 
 assert_true "accepts a public HTTPS Manager origin" validate_manager_url "https://manager.routegate.org"
 assert_true "accepts a non-default HTTPS port" validate_manager_url "https://manager.routegate.org:8443"
