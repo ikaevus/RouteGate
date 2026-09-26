@@ -137,6 +137,133 @@ platform_tuple_supported() {
   [[ "$os_id" == "ubuntu" && "$version_id" == "24.04" && ("$arch" == "amd64" || "$arch" == "arm64") && "$systemd_running" == "1" ]]
 }
 
+
+apt_source_uris() {
+  local root=${1:-}
+  local file
+
+  for file in \
+    "${root}/etc/apt/sources.list" \
+    "${root}"/etc/apt/sources.list.d/*.list; do
+    [[ -f "$file" ]] || continue
+    awk '
+      /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+      $1 == "deb" || $1 == "deb-src" {
+        i = 2
+        if ($i ~ /^\[/) {
+          while (i <= NF && $i !~ /\]$/) i++
+          i++
+        }
+        if (i <= NF) print $i
+      }
+    ' "$file"
+  done
+
+  for file in "${root}"/etc/apt/sources.list.d/*.sources; do
+    [[ -f "$file" ]] || continue
+    awk '
+      function flush() {
+        if (tolower(enabled) != "no") {
+          for (i = 1; i <= uri_count; i++) print uris[i]
+        }
+        enabled = ""
+        uri_count = 0
+        delete uris
+        in_uris = 0
+      }
+      /^[[:space:]]*$/ { flush(); next }
+      /^[[:space:]]*#/ { next }
+      tolower($1) == "enabled:" {
+        enabled = tolower($2)
+        in_uris = 0
+        next
+      }
+      tolower($1) == "uris:" {
+        for (i = 2; i <= NF; i++) uris[++uri_count] = $i
+        in_uris = 1
+        next
+      }
+      /^[^[:space:]][^:]*:/ {
+        in_uris = 0
+        next
+      }
+      in_uris && /^[[:space:]]+/ {
+        for (i = 1; i <= NF; i++) uris[++uri_count] = $i
+      }
+      END { flush() }
+    ' "$file"
+  done
+}
+
+apt_repository_host() {
+  local uri=$1
+  local authority host
+
+  case "$uri" in
+    http://*|https://*) ;;
+    *) return 1 ;;
+  esac
+
+  authority=${uri#*://}
+  authority=${authority%%/*}
+  authority=${authority##*@}
+  host=${authority%%:*}
+  [[ -n "$host" ]] || return 1
+  printf '%s\n' "${host,,}"
+}
+
+apt_repository_host_trusted() {
+  case "$1" in
+    archive.ubuntu.com|security.ubuntu.com|ports.ubuntu.com|*.archive.ubuntu.com)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+apt_repository_trust_report() {
+  local root=$1
+  local uri host
+  local found=0
+  local blocked=0
+  local uris=()
+
+  mapfile -t uris < <(apt_source_uris "$root" | sort -u)
+
+  if ((${#uris[@]} == 0)); then
+    printf '  [blocked] no active APT repository URIs detected\n'
+    return 1
+  fi
+
+  for uri in "${uris[@]}"; do
+    found=1
+    host=$(apt_repository_host "$uri" 2>/dev/null || true)
+    if [[ -n "$host" ]] && apt_repository_host_trusted "$host"; then
+      printf '  [trusted] %s\n' "$uri"
+    else
+      printf '  [blocked] %s\n' "$uri"
+      blocked=1
+    fi
+  done
+
+  ((found == 1 && blocked == 0))
+}
+
+validate_apt_repository_trust() {
+  local report=""
+
+  printf '\n[RouteGate] APT repository trust preflight\n'
+  if report=$(apt_repository_trust_report ""); then
+    printf '%s\n\n' "$report"
+    return 0
+  fi
+
+  printf '%s\n\n' "$report"
+  die "Host APT sources are outside the RouteGate clean-host trust boundary. Use official Ubuntu archive/security repositories before installation."
+}
+
 validate_inputs() {
   ROUTEGATE_MANAGER_URL=${ROUTEGATE_MANAGER_URL%/}
   validate_manager_url "$ROUTEGATE_MANAGER_URL" || die "ROUTEGATE_MANAGER_URL must be a public HTTPS origin without a path, query, or fragment."
@@ -439,6 +566,7 @@ main() {
   parse_args "$@"
   validate_inputs
   require_supported_host
+  validate_apt_repository_trust
   install_dependencies
   prepare_bundle
   install_agent
