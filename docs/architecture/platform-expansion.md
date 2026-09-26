@@ -61,8 +61,15 @@ The existing one-time token design remains the foundation:
 
 RG-114B implements this sequence with the Agent-only `install-agent.sh`
 installer. Manager returns a copyable command containing its configured public
-HTTPS origin and the one-time token. The installer downloads a published
-release bundle, verifies `SHA256SUMS`, installs only Agent and its systemd unit,
+HTTPS origin and the one-time token. For release builds, that command is bound
+to the Manager's exact Git commit and the SHA-256 of `install-agent.sh`
+embedded during the release build. The remote host downloads that exact script,
+verifies the embedded checksum before privileged execution, and receives the
+matching RouteGate release version explicitly. Mutable `main`-branch bootstrap
+is therefore outside the release onboarding trust boundary. Non-release builds
+without a complete trusted build identity do not expose the copyable privileged
+bootstrap command. The installer then downloads the matching published release
+bundle, verifies `SHA256SUMS`, installs only Agent and its systemd unit,
 exchanges the token, and starts heartbeats. It does not install Manager,
 PostgreSQL, Web UI/nginx, or a VPN Core.
 

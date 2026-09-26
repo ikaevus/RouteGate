@@ -30,12 +30,28 @@ Hysteria and WireGuard stay inactive until a validated config apply.
 The command is generated from `ROUTEGATE_PUBLIC_URL`, which must be a public
 HTTPS origin without a path, query, or fragment.
 
+For released Manager builds, the generated command is also bound to the exact
+Manager build identity. Manager embeds the full Git commit and SHA-256 of
+`install-agent.sh` at release build time. The onboarding command downloads the
+installer from that exact commit, verifies the embedded SHA-256 locally, and only
+then executes it with the matching RouteGate release version. Mutable
+`main`-branch installer execution is not part of the release onboarding path.
+
+Development or non-release builds that do not carry a release version, full Git
+commit, and installer checksum do not expose a copyable privileged bootstrap
+command.
+
 ## Security properties
 
 - registration tokens are bound to one node, stored only as SHA-256 hashes,
   expire, and can be consumed once;
 - the raw token appears only in the one-time Manager response and copied command;
 - the installer does not print the token;
+- the Agent installer URL is pinned to the exact Manager build commit;
+- the downloaded Agent installer must match the SHA-256 embedded into the Manager
+  binary at build time before `sudo` executes it;
+- the bootstrap passes the exact Manager release version to the installer, which
+  prevents onboarding from silently drifting to a different published release;
 - release bundles are verified against the published `SHA256SUMS` file;
 - the pinned Hysteria binary is verified against its upstream `hashes.txt`;
 - Agent replaces the bootstrap token with its persistent dedicated credential

@@ -9,6 +9,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-${ROOT_DIR}/dist}"
 VERSION="${VERSION:-}"
 COMMIT="${COMMIT:-}"
 BUILD_DATE="${BUILD_DATE:-}"
+AGENT_INSTALLER_SHA256=""
 ARCHITECTURES="${ARCHITECTURES:-amd64 arm64}"
 
 log() {
@@ -35,6 +36,8 @@ prepare_metadata() {
     COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD)
   fi
   [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || die "COMMIT must be a full Git SHA."
+  AGENT_INSTALLER_SHA256=$(sha256sum "$ROOT_DIR/install-agent.sh" | awk '{print $1}')
+  [[ "$AGENT_INSTALLER_SHA256" =~ ^[a-f0-9]{64}$ ]] || die "Failed to derive install-agent.sh SHA-256."
 }
 
 build_frontend() {
@@ -72,7 +75,7 @@ build_architecture() {
     cd "$ROOT_DIR/backend"
     CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
       -trimpath \
-      -ldflags "-s -w -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=${VERSION} -X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=${COMMIT} -X github.com/ikaevus/routegate/backend/internal/buildinfo.BuildDate=${BUILD_DATE}" \
+      -ldflags "-s -w -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=${VERSION} -X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=${COMMIT} -X github.com/ikaevus/routegate/backend/internal/buildinfo.BuildDate=${BUILD_DATE} -X github.com/ikaevus/routegate/backend/internal/buildinfo.AgentInstallerSHA256=${AGENT_INSTALLER_SHA256}" \
       -o "$stage_dir/bin/routegate-manager" \
       ./cmd/routegate-manager
   )

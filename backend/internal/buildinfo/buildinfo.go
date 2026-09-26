@@ -11,15 +11,17 @@ const (
 )
 
 var (
-	Version   = "dev"
-	GitCommit = "unknown"
-	BuildDate = "unknown"
+	Version              = "dev"
+	GitCommit            = "unknown"
+	BuildDate            = "unknown"
+	AgentInstallerSHA256 = "unknown"
 )
 
 type Info struct {
 	Version                       string
 	GitCommit                     string
 	BuildDate                     string
+	AgentInstallerSHA256          string
 	AgentProtocolVersion          int
 	MinimumAgentProtocolVersion   int
 	RecommendedAgentVersion       string
@@ -35,6 +37,7 @@ func Current() Info {
 		Version:                       valueOrDefault(Version, "dev"),
 		GitCommit:                     valueOrDefault(GitCommit, "unknown"),
 		BuildDate:                     valueOrDefault(BuildDate, "unknown"),
+		AgentInstallerSHA256:          valueOrDefault(AgentInstallerSHA256, "unknown"),
 		AgentProtocolVersion:          AgentProtocolVersion,
 		MinimumAgentProtocolVersion:   MinimumSupportedAgentProtocolVersion,
 		RecommendedAgentVersion:       RecommendedAgentVersion,

@@ -16,6 +16,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/audit"
 	"github.com/ikaevus/routegate/backend/internal/auth"
+	"github.com/ikaevus/routegate/backend/internal/buildinfo"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 	"github.com/ikaevus/routegate/backend/internal/platform"
 )
@@ -36,6 +37,9 @@ type registrationTokenRepository interface {
 type Handler struct {
 	logger                    *slog.Logger
 	publicURL                 string
+	buildVersion              string
+	buildCommit               string
+	agentInstallerSHA256      string
 	service                   *Service
 	servers                   serverRepository
 	registrationTokens        registrationTokenRepository
@@ -47,9 +51,13 @@ type Handler struct {
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, publicURL string) *Handler {
 	repository := NewRepository(pool)
+	build := buildinfo.Current()
 	return &Handler{
 		logger:                    logger,
 		publicURL:                 publicURL,
+		buildVersion:              build.Version,
+		buildCommit:               build.GitCommit,
+		agentInstallerSHA256:      build.AgentInstallerSHA256,
 		service:                   NewService(repository),
 		servers:                   repository,
 		registrationTokens:        agents.NewRepository(pool),
@@ -333,10 +341,10 @@ func (h *Handler) CreateRegistrationToken(w http.ResponseWriter, r *http.Request
 		Metadata: map[string]any{
 			"token_preview":      audit.MaskSecret(rawToken),
 			"expires_at":         expiresAt,
-			"bootstrap_available": agentBootstrapAvailable(h.publicURL),
+			"bootstrap_available": agentBootstrapAvailable(h.publicURL, h.buildVersion, h.buildCommit, h.agentInstallerSHA256),
 		},
 	})
-	managerURL, bootstrapCommand := buildAgentBootstrapCommand(h.publicURL, rawToken)
+	managerURL, bootstrapCommand := buildAgentBootstrapCommand(h.publicURL, rawToken, h.buildVersion, h.buildCommit, h.agentInstallerSHA256)
 	httpx.WriteJSON(w, http.StatusCreated, RegistrationTokenResponse{
 		ServerID:          serverID,
 		RegistrationToken: rawToken,
