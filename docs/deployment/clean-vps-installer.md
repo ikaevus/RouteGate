@@ -115,10 +115,25 @@ project's supply-chain trust boundary.
 
 ### Interactive installation
 
+Choose the release first. Download its installer to a file, inspect the exact
+bytes that will run as root, then execute it:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-  | sudo bash
+VERSION=v0.1.0
+curl -fL --proto '=https' --tlsv1.2 \
+  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \
+  -o routegate-install.sh
+less routegate-install.sh
+sudo bash routegate-install.sh --version "${VERSION}"
+rm -f routegate-install.sh
 ```
+
+Do not pipe a mutable branch such as `main` directly into `sudo bash`.
+
+For releases produced by the current release workflow, the GitHub Release also
+contains the installer scripts, `INSTALLER_SHA256SUMS`, and
+`installer-scripts.attestation.json`. These artifacts let an operator verify
+the installer separately before privileged execution.
 
 The installer asks for:
 
@@ -133,22 +148,33 @@ By default, the installer resolves the latest published RouteGate release and ve
 ### Pin v0.1.0 explicitly
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-  | sudo bash -s -- \
-      --domain vpn.example.com \
-      --email owner@example.com \
-      --version v0.1.0
+curl -fL --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/ikaevus/RouteGate/v0.1.0/install.sh \
+  -o routegate-install-v0.1.0.sh
+less routegate-install-v0.1.0.sh
+sudo bash routegate-install-v0.1.0.sh \
+  --domain vpn.example.com \
+  --email owner@example.com \
+  --version v0.1.0
+rm -f routegate-install-v0.1.0.sh
 ```
 
 ### Unattended confirmation
 
+Download and verify the installer first; `--yes` only skips RouteGate's final
+interactive confirmation and does not weaken the bootstrap checks:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-  | sudo bash -s -- \
-      --domain vpn.example.com \
-      --email owner@example.com \
-      --version v0.1.0 \
-      --yes
+curl -fL --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/ikaevus/RouteGate/v0.1.0/install.sh \
+  -o routegate-install-v0.1.0.sh
+less routegate-install-v0.1.0.sh
+sudo bash routegate-install-v0.1.0.sh \
+  --domain vpn.example.com \
+  --email owner@example.com \
+  --version v0.1.0 \
+  --yes
+rm -f routegate-install-v0.1.0.sh
 ```
 
 ## Installer options
