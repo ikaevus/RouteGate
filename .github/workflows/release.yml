@@ -143,6 +143,14 @@ jobs:
               --bundle dist/release-bundles.attestation.json
           done
 
+          for installer in dist/install.sh dist/install-agent.sh dist/install-grafana.sh; do
+            gh attestation verify "$installer" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$SIGNER_WORKFLOW" \
+              --predicate-type "$PREDICATE_TYPE" \
+              --bundle dist/installer-scripts.attestation.json
+          done
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -185,9 +193,14 @@ jobs:
               gh release create "$TAG_NAME" \
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
+                dist/INSTALLER_SHA256SUMS \
+                dist/install.sh \
+                dist/install-agent.sh \
+                dist/install-grafana.sh \
                 dist/release-manifest.json \
                 dist/release-manifest.attestation.json \
                 dist/release-bundles.attestation.json \
+                dist/installer-scripts.attestation.json \
                 --verify-tag \
                 --notes-file "$notes_file" \
                 --title "RouteGate $TAG_NAME"
@@ -195,9 +208,14 @@ jobs:
               gh release create "$TAG_NAME" \
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
+                dist/INSTALLER_SHA256SUMS \
+                dist/install.sh \
+                dist/install-agent.sh \
+                dist/install-grafana.sh \
                 dist/release-manifest.json \
                 dist/release-manifest.attestation.json \
                 dist/release-bundles.attestation.json \
+                dist/installer-scripts.attestation.json \
                 --verify-tag \
                 --generate-notes \
                 --title "RouteGate $TAG_NAME"
