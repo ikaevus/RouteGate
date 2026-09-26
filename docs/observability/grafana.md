@@ -49,12 +49,22 @@ configuration, data directory, or service.
 
 ## Install
 
-Run on the RouteGate host:
+Run on the RouteGate host from the same immutable RouteGate release as the
+installed platform. Download the script first, inspect it, and only then execute
+it with privileges:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install-grafana.sh \
-  | sudo bash
+VERSION=v0.1.0
+curl -fL --proto '=https' --tlsv1.2 \
+  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install-grafana.sh" \
+  -o routegate-install-grafana.sh
+less routegate-install-grafana.sh
+sudo bash routegate-install-grafana.sh
+rm -f routegate-install-grafana.sh
 ```
+
+New releases also publish this installer as a checksummed, provenance-attested
+release asset. Do not pipe a mutable branch directly into `sudo bash`.
 
 The installer uses the official Grafana stable APT repository and installs the
 open-source `grafana` package. It verifies the expected Grafana repository signing
