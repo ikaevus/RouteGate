@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -25,6 +25,10 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [identityDirty, setIdentityDirty] = useState(false);
+  const [notesDirty, setNotesDirty] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,14 +52,13 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
   useEffect(() => {
     const account = accountQuery.data;
-    if (!account) return;
+    if (!account || identityDirty) return;
     setDisplayName(account.displayName);
     setEmail(account.email ?? '');
     setPhone(account.phone ?? '');
     setTelegramUsername(account.telegramUsername ?? '');
-    setMessage('');
-    setErrorMessage('');
   }, [
+    identityDirty,
     accountQuery.data?.id,
     accountQuery.data?.displayName,
     accountQuery.data?.email,
@@ -64,9 +67,9 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   ]);
 
   useEffect(() => {
-    if (!notesQuery.data) return;
+    if (!notesQuery.data || notesDirty) return;
     setNotes(notesQuery.data.notes ?? '');
-  }, [notesQuery.data?.notes]);
+  }, [notesQuery.data?.notes, notesDirty]);
 
   async function refreshAccountData() {
     await Promise.all([
@@ -111,6 +114,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       setMessage(copy.editSuccess);
       setErrorMessage('');
       await refreshAccountData();
+      setIdentityDirty(false);
+      setNotesDirty(false);
     },
     onError: () => {
       setMessage('');
@@ -140,6 +145,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
     mutationFn: () => deleteVpnAccount(accountId ?? ''),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
+      if (!mounted.current) return;
       const query = searchParams.toString();
       navigate(`/vpn-accounts${query ? `?${query}` : ''}`, { replace: true });
     },
@@ -148,7 +154,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!displayName.trim() || updateMutation.isPending) return;
+    if (!displayName.trim() || updateMutation.isPending || statusMutation.isPending || deleteMutation.isPending || !notesQuery.isSuccess) return;
     updateMutation.mutate();
   }
 
@@ -188,20 +194,24 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
       <Section title={copy.identityTitle} description={copy.identitySubtitle}>
         <form className="vpn-account-edit-form" onSubmit={handleSubmit}>
-          <div className="vpn-account-edit-grid">
+          <div className="vpn-account-edit-grid" onChange={(event) => {
+            if (event.target instanceof HTMLTextAreaElement) setNotesDirty(true);
+            else setIdentityDirty(true);
+          }}>
             <label className="field">
               <span>{copy.accountName}</span>
-              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+              <input disabled={actionPending} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
               <small>{copy.accountNameHint}</small>
             </label>
             <label className="field">
               <span>{t('vpnAccounts.email')}</span>
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <input disabled={actionPending} type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
             <label className="field">
               <span>{t('vpnAccounts.phone')}</span>
               <input
                 type="tel"
+                disabled={actionPending}
                 value={phone}
                 placeholder={t('vpnAccounts.phonePlaceholder')}
                 onChange={(event) => setPhone(event.target.value)}
@@ -212,6 +222,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
               <span>{t('vpnAccounts.telegramUsername')}</span>
               <input
                 value={telegramUsername}
+                disabled={actionPending}
                 placeholder={t('vpnAccounts.telegramUsernamePlaceholder')}
                 onChange={(event) => setTelegramUsername(event.target.value)}
               />
@@ -221,6 +232,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
               <span>{copy.notes}</span>
               <textarea
                 value={notes}
+                disabled={actionPending || !notesQuery.isSuccess}
                 maxLength={4000}
                 rows={4}
                 placeholder={copy.notesPlaceholder}
@@ -233,7 +245,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
           {notesQuery.isError && <div className="form-message form-message-error">{copy.notesLoadError}</div>}
 
           <div className="form-actions">
-            <button className="primary-button" type="submit" disabled={!displayName.trim() || updateMutation.isPending || notesQuery.isLoading}>
+            <button className="primary-button" type="submit" disabled={!displayName.trim() || actionPending || !notesQuery.isSuccess}>
               {updateMutation.isPending ? copy.saving : copy.save}
             </button>
           </div>
