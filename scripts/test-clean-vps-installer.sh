@@ -415,7 +415,49 @@ test_conflict_collection() {
     "$output"
 }
 
+
+test_apt_repository_trust_preflight() {
+  local root="$TEST_TMP/apt-trust-clean"
+  mkdir -p "$root/etc/apt/sources.list.d"
+
+  cat >"$root/etc/apt/sources.list.d/ubuntu.sources" <<'EOF_SOURCES'
+Types: deb
+URIs: http://archive.ubuntu.com/ubuntu
+Suites: noble noble-updates
+Components: main universe
+
+Types: deb
+URIs: http://security.ubuntu.com/ubuntu
+Suites: noble-security
+Components: main universe
+EOF_SOURCES
+
+  assert_true     "accepts official Ubuntu archive and security repositories"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
+
+  cat >"$root/etc/apt/sources.list.d/provider.list" <<'EOF_PROVIDER'
+deb https://mirror.yandex.ru/ubuntu noble main
+EOF_PROVIDER
+
+  assert_false     "rejects provider-controlled Ubuntu mirrors outside the trust boundary"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
+
+  local report
+  report=$(apt_repository_trust_report "$root" 2>/dev/null || true)
+  assert_true     "reports the blocked repository URI for operator review"     grep -Fq '[blocked] https://mirror.yandex.ru/ubuntu' <<<"$report"
+
+  rm -f "$root/etc/apt/sources.list.d/provider.list"
+  cat >"$root/etc/apt/sources.list.d/disabled.sources" <<'EOF_DISABLED'
+Types: deb
+URIs: https://mirror.yandex.ru/ubuntu
+Suites: noble
+Components: main
+Enabled: no
+EOF_DISABLED
+
+  assert_true     "ignores explicitly disabled deb822 repository stanzas"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
+}
+
 printf 'TAP version 13\n'
+test_apt_repository_trust_preflight
 test_validation_helpers
 test_argument_parsing
 test_artifact_urls
