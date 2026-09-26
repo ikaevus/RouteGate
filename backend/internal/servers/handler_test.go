@@ -324,6 +324,9 @@ func TestDeleteServerReturnsNotFound(t *testing.T) {
 func testHandler(servers serverRepository, tokens registrationTokenRepository) *Handler {
 	return &Handler{
 		logger:                    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		buildVersion:              "v1.2.3",
+		buildCommit:               "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		agentInstallerSHA256:      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		servers:                   servers,
 		registrationTokens:        tokens,
 		generateRegistrationToken: agents.GenerateRegistrationToken,
