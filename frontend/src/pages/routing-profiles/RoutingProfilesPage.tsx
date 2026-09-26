@@ -17,9 +17,15 @@ import {
 } from '../../entities/routingProfile/api/routingProfileApi';
 import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
 import './routingWorkspace.css';
-import { t, translateStatus } from '../../shared/i18n/i18n';
+import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 
 type RuleForm = CreateRoutingProfileRuleRequest;
+
+function formatCount(kind: 'profileCount' | 'ruleCount', count: number): string {
+  const category = new Intl.PluralRules(getCurrentLocale()).select(count);
+  const suffix = category === 'one' ? 'One' : category === 'few' ? 'Few' : '';
+  return t(`routingProfiles.${kind}${suffix}`, { count });
+}
 
 const emptyRule: RuleForm = {
   name: '',
@@ -282,7 +288,7 @@ function RoutingWorkspace() {
           <h1>{t('routingProfiles.title')}</h1>
           <p>{t('routingProfiles.subtitle')}</p>
         </div>
-        {profilesQuery.isSuccess && <div className='status-pill'>{t('routingProfiles.profileCount', { count: profiles.length })}</div>}
+        {profilesQuery.isSuccess && <div className='status-pill'>{formatCount('profileCount', profiles.length)}</div>}
       </div>
 
       <div className='routing-profiles-layout'>
@@ -321,7 +327,7 @@ function RoutingWorkspace() {
             <div className='routing-workspace-content' data-route-scroll-target tabIndex={-1}>
               {activeSection === 'overview' && <section className='panel routing-workspace-overview'>
                 <h3>{t('routingWorkspace.overview')}</h3>
-                <p>{t('routingProfiles.ruleCount', { count: rules.length })}</p>
+                <p>{formatCount('ruleCount', rules.length)}</p>
                 <p>{t('routingProfiles.updatedValue', { value: formatDate(selectedProfile.updatedAt) })}</p>
                 <p>{t(rules.length === 0 ? 'routingWorkspace.nextAddRule' : 'routingWorkspace.nextReviewRules')}</p>
                 <Link className='primary-button' to={sectionPath('rules')}>{t('routingWorkspace.openRules')}</Link>
@@ -387,18 +393,18 @@ function RoutingWorkspace() {
                   <p className='panel-subtitle'>{t('routingProfiles.ruleHelp')}</p>
                 </div>
                 <div className='table-actions'>
-                  <button className='small-button' type='button' disabled={actionPending} onClick={() => { resetRuleForm(); restoreRuleFocus(); }}>{t('routingProfiles.cancelEdit')}</button>
+                  <button className='small-button' type='button' disabled={actionPending} onClick={() => { resetRuleForm(); restoreRuleFocus(); }}>{t('common.cancel')}</button>
                   <button className='small-button' type='submit' disabled={!canSaveRule || actionPending}>{t('routingProfiles.saveRule')}</button>
                 </div>
               </div>
               {saveRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(saveRuleMutation.error, t('routingProfiles.saveRuleError'))}</div>}
-              {!hasMatcherText(ruleText) && <div className='form-message form-message-warning'>{t('routingProfiles.matcherWarning')}</div>}
+              {!hasMatcherText(ruleText) && <p className='muted-text'>{t('routingProfiles.matcherWarning')}</p>}
               <fieldset disabled={actionPending} className='routing-rule-inputs'>
               <div className='routing-rule-form-grid'>
                 <label className='field'><span>{t('routingProfiles.name')}</span><input value={ruleForm.name} onChange={(event) => setRuleForm((current) => ({ ...current, name: event.target.value }))} /></label>
-                <label className='field'><span>{t('routingProfiles.priority')}</span><input min='0' type='number' value={ruleForm.priority} onChange={(event) => setRuleForm((current) => ({ ...current, priority: Number(event.target.value) }))} /></label>
+                <label className='field'><span>{t('routingProfiles.priority')}</span><input aria-describedby='routing-rule-priority-help' min='0' type='number' value={ruleForm.priority} onChange={(event) => setRuleForm((current) => ({ ...current, priority: Number(event.target.value) }))} /><small id='routing-rule-priority-help' className='muted-text'>{t('routingProfiles.priorityHelp')}</small></label>
                 <label className='field'><span>{t('routingProfiles.action')}</span><select value={ruleForm.action} onChange={(event) => setRuleForm((current) => ({ ...current, action: event.target.value as RoutingRuleAction }))}><option value='direct'>{t('routingProfiles.actionDirect')}</option><option value='vpn'>{t('routingWorkspace.actionVpn')}</option><option value='block'>{t('routingProfiles.actionBlock')}</option></select></label>
-                <div className='traffic-checkbox-field'><label><input checked={ruleForm.enabled} type='checkbox' onChange={(event) => setRuleForm((current) => ({ ...current, enabled: event.target.checked }))} />{t('routingProfiles.enabled')}</label><p>{t('routingProfiles.priorityHelp')}</p></div>
+                <div className='traffic-checkbox-field'><label><input checked={ruleForm.enabled} type='checkbox' onChange={(event) => setRuleForm((current) => ({ ...current, enabled: event.target.checked }))} />{t('routingProfiles.enabled')}</label></div>
               </div>
               <section className='routing-matcher-group'>
                 <h3>{t('routingWorkspace.domainsGroup')}</h3>
