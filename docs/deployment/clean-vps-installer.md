@@ -177,8 +177,8 @@ The installer performs these stages in order:
 2. Enumerates active classic and deb822 APT sources and fails closed unless every active repository is inside the official Ubuntu trust boundary. This happens before any `apt-get update` or package installation.
 3. Shows which required APT dependencies will be reused and which will be installed.
 4. Detects unowned RouteGate files, active web/database services, or listeners on TCP 80/443 before mutation.
-6. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
-5. Creates root-owned installation state and recovery storage.
+5. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
+6. Creates root-owned installation state and recovery storage.
 7. Installs required APT packages including PostgreSQL, nginx, Certbot, curl, jq, OpenSSL, and runtime utilities.
 8. Resolves the requested RouteGate release, downloads the native bundle, verifies `SHA256SUMS`, rejects unsafe archive paths/links, and validates the manifest.
 9. Installs Manager, Agent, migrations, frontend assets, nginx configuration, and systemd units.
