@@ -224,7 +224,10 @@ export function VpnAccountsPage() {
                 : section === 'routing' ? <VpnAccountRoutingPolicyPanel accountId={accountId} />
                 : section === 'protocols' ? <VpnAccountConnectionPanels accountId={accountId} />
                 : section === 'traffic' ? <TrafficStatsPanel accountId={accountId} />
-                : <VpnAccountManagementPanel accountId={accountId} />}
+                : null}
+              <div hidden={section !== 'settings' || accountQuery.isError}>
+                <VpnAccountManagementPanel accountId={accountId} />
+              </div>
             </>
           )}
         </div>

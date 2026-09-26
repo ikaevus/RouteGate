@@ -49,6 +49,8 @@ try {
   const account = await api('/api/v1/vpn-accounts', { method: 'POST', token,
     body: { displayName: 'Workspace integration account', serverId: server.id } });
   await api(`/api/v1/vpn-accounts/${account.id}/activate`, { method: 'POST', token });
+  const otherAccount = await api('/api/v1/vpn-accounts', { method: 'POST', token,
+    body: { displayName: 'Other draft account', serverId: server.id } });
 
   vite = await createServer({ root: frontendRoot, server: { host: '127.0.0.1', port: 15173, strictPort: true,
     proxy: { '/api': { target: managerUrl, changeOrigin: true } } } });
@@ -139,6 +141,28 @@ try {
   }
   const name = page.locator('.vpn-account-edit-form input').first();
   await name.fill('Workspace persisted name');
+  const notes = page.locator('.vpn-account-edit-form textarea');
+  await notes.fill('Unsaved notes retained across tabs');
+  for (const section of ['overview', 'access', 'routing', 'protocols', 'traffic']) {
+    await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
+    await page.waitForURL(`${workspace}/${section}`);
+    await name.waitFor({ state: 'hidden' });
+    assert.equal(await name.isVisible(), false, 'Settings inputs stay hidden outside settings');
+  }
+  await page.locator('.workspace-nav-link[href$="/settings"]').click();
+  assert.equal(await name.inputValue(), 'Workspace persisted name');
+  assert.equal(await notes.inputValue(), 'Unsaved notes retained across tabs');
+  // A lifecycle operation refetches both account data and notes. Changed remote
+  // values must not overwrite the local dirty fields.
+  await api(`/api/v1/vpn-accounts/${account.id}`, { method: 'PATCH', token,
+    body: { displayName: 'Remote account name' } });
+  await api(`/api/v1/vpn-accounts/${account.id}/notes`, { method: 'PATCH', token,
+    body: { notes: 'Remote notes' } });
+  await page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Suspend', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#vpn-account-workspace-title')?.textContent === 'Remote account name');
+  await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
+  assert.equal(await name.inputValue(), 'Workspace persisted name', 'Refetch preserves identity draft');
+  assert.equal(await notes.inputValue(), 'Unsaved notes retained across tabs', 'Refetch preserves notes draft');
   const saved = page.waitForResponse(response => response.request().method() === 'PATCH'
     && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}`);
   await page.locator('.vpn-account-edit-form button[type="submit"]').click();
@@ -147,6 +171,19 @@ try {
   await page.locator('.vpn-account-edit-form').waitFor();
   await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form input')?.value === 'Workspace persisted name');
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).displayName, 'Workspace persisted name');
+  assert.equal((await api(`/api/v1/vpn-accounts/${account.id}/notes`, { token })).notes, 'Unsaved notes retained across tabs');
+  await name.fill('Draft must not follow another account');
+  await notes.fill('Private draft must not follow another account');
+  await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${otherAccount.id}/"]`).click();
+  await page.locator('.workspace-nav-link[href$="/settings"]').click();
+  await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form input')?.value === 'Other draft account');
+  assert.equal(await notes.inputValue(), '');
+  await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${account.id}/"]`).click();
+  await page.locator('.workspace-nav-link[href$="/settings"]').click();
+  await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form input')?.value === 'Workspace persisted name');
+  await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form textarea')?.value === 'Unsaved notes retained across tabs');
+  await page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Activate', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
 
   await page.goto(`${workspace}/access?addDevice=1`);
   const form = page.locator('.vpn-access-device-add-form');
