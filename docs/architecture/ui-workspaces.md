@@ -35,7 +35,8 @@ secrets in navigation URLs, notifications or diagnostic output.
 
 ## Status and next action
 
-Use Notice for actionable feedback. A failed operation should leave the form and
+Use actionable notices for feedback (currently form-message markup, not a shared
+Notice component). A failed operation should leave the form and
 its unsaved input available for correction. Background status refresh must not
 replace an in-progress edit.
 
@@ -62,8 +63,9 @@ both themes, as well as empty/error states and unusually long names.
 - Dashboard summaries: `frontend/src/pages/dashboard/DashboardPage.tsx`
 - Guided onboarding: `frontend/src/pages/dashboard/GettingStartedWidget.tsx`
 
-The account workspace is the reference for gradual adoption. Existing server and
-routing screens need separate review; this slice does not claim full UI migration.
+Account, server and routing-profile workspaces now implement domain navigation.
+This does not claim migration of every administrative screen or completion of all
+original design-system primitives. See the completion audit below.
 
 ## Integration verification
 
@@ -124,3 +126,51 @@ Integration checks verify all six matcher arrays survive creating and editing a 
 Workspace integration additionally verifies a routing rule created through the UI,
 settings-draft preservation during that save, persisted profile edits, routing
 navigation and mobile layout against Manager and PostgreSQL.
+
+## Completion audit — 26 September 2026
+
+Reviewed source baseline: `3760acb5790356e758fe17155bccb777523e6647`.
+Status: **in progress; not ready to close RG-80**.
+PRs #462, #463, #464 and #469 delivered the workspace migrations and routing copy
+polish. This audit is a source/documentation review, not a new live browser or VPN
+connectivity test. Owner screenshots demonstrate desktop routing overview, empty
+rules and the open editor; they do not establish all-domain mobile acceptance.
+
+| Original requirement | Evidence and current status |
+| --- | --- |
+| Workspace navigation | Shared `WorkspaceNav.tsx`; URL domains in all three workspaces, selected-link visibility and navigation focus handling. Implemented. |
+| Section primitive | Shared `Section.tsx` provides heading association, description, actions and danger tone. Adopted in account panels; server/routing still use local panel markup. Partial adoption. |
+| Drawer / focused detail | Inline selected details exist for devices, rules and configuration versions. Focused-detail option implemented; a generic drawer is unnecessary unless a concrete workflow requires an overlay. |
+| Notice / Callout | Feedback uses repeated `form-message` markup with inconsistent alert/status roles. Shared Notice component is absent; the earlier wording implied otherwise. Pending consolidation. |
+| Action Menu | Scoped buttons and native disclosures are in use. Generic Action Menu is absent. Record an explicit retain-disclosure decision or implement it for a concrete action group before claiming full foundation completion. |
+| Summary / Status | Shared `StatusBadge.tsx` exists, alongside local badges and domain-specific summaries. A unified Summary contract is not yet documented/implemented. Partial. |
+| Account domains / identity | Overview, access, routing, protocols, traffic and settings; persistent account header and account-keyed detail subtree. Implemented. |
+| Server / routing domains | Six server domains and three profile domains; identity remains visible. Hidden domain panels retain local state. Implemented. |
+| Draft preservation | Routing protects dirty settings against refetch and retains mounted forms. Account domain components are conditionally rendered and unmount on tab changes: local settings input can be lost. Follow-up required. |
+| Guided next action | Account/server/routing overviews and Dashboard supply contextual links. Implemented baseline; no navigation-triggered mutations introduced. |
+| Responsive / accessibility | Shared navigation and focused details exist; current permanent browser checks cover only selected mobile states. Full matrix remains outstanding. |
+
+### Concrete follow-ups, in order
+
+1. Preserve account settings drafts across domain navigation and background data
+   refresh without carrying drafts, revealed credentials or confirmations to another
+   account. `VpnAccountsPage.tsx` conditionally mounts each panel, while
+   `VpnAccountManagementPanel.tsx` stores fields in local state and initializes them
+   from query data. Add a real-browser regression for navigation away/back and
+   switching account identity. Audit other account forms for the same lifecycle.
+2. Extend `frontend/scripts/workspace-integration.mjs` to cover all three workspaces
+   at narrow and wide widths in both themes, including the open routing editor.
+   Today server tabs are visited at desktop width; mobile routing is checked on
+   settings and mobile account on access. Those checks are not a full mobile matrix.
+3. Consolidate actionable feedback into a shared Notice with explicit neutral,
+   success and error semantics. Document a Summary/Status contract and decide the
+   remaining Action Menu scope based on actual consumers. Avoid unused primitives
+   created only to satisfy a component-name checklist.
+4. Recheck keyboard focus, long names, loading/error/empty states and confirmations
+   after these changes; then record owner visual acceptance and remaining deferred
+   scope explicitly. Only then decide whether to close RG-80.
+
+Existing CI on PR #469 and its merged main commit passed, including the real
+Manager/PostgreSQL browser job. Those results cover the script's existing assertions;
+they do not verify the follow-ups above. Runtime health validation after deployment
+also passed, but is separate from UI acceptance and real client traffic testing.
