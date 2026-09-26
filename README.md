@@ -209,12 +209,24 @@ Before installation:
 - make TCP ports 80 and 443 reachable;
 - connect as `root` or a user with working `sudo`.
 
-Run:
+Choose the RouteGate release you intend to install, download the installer to a
+local file, review it, and only then run it with privileges. For example:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-  | sudo bash
+VERSION=v0.1.0
+curl -fL --proto '=https' --tlsv1.2 \
+  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \
+  -o routegate-install.sh
+less routegate-install.sh
+sudo bash routegate-install.sh --version "${VERSION}"
+rm -f routegate-install.sh
 ```
+
+Published releases built with the current release workflow also attach
+`install.sh`, `install-agent.sh`, `install-grafana.sh`,
+`INSTALLER_SHA256SUMS`, and an offline GitHub Artifact Attestation bundle.
+That release-asset path is the preferred high-assurance bootstrap for new
+releases.
 
 Before any APT network operation, the installer also checks the host's active package sources and fails closed unless they are official Ubuntu archive/security repositories. Provider and other third-party mirrors are not silently trusted or rewritten.
 
