@@ -53,8 +53,10 @@ Usage:
   sudo bash install.sh [options]
 
 Canonical interactive installation:
-  curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-    | sudo bash
+  Download install.sh from an immutable RouteGate release, review it, then run:
+  sudo bash install.sh
+
+Do not pipe a mutable branch directly into a privileged shell.
 
 The installer asks for the public FQDN, email addresses, and whether the
 optional RouteGate-managed Prometheus component should be installed.
