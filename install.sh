@@ -53,8 +53,10 @@ Usage:
   sudo bash install.sh [options]
 
 Canonical interactive installation:
-  curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-    | sudo bash
+  Download install.sh from an immutable RouteGate release, review it, then run:
+  sudo bash install.sh
+
+Do not pipe a mutable branch directly into a privileged shell.
 
 The installer asks for the public FQDN, email addresses, and whether the
 optional RouteGate-managed Prometheus component should be installed.
@@ -599,6 +601,12 @@ verify_existing_install() {
   log "RouteGate is already installed and healthy. No changes were made."
   log "Open https://${ROUTEGATE_DOMAIN}/"
   exit 0
+}
+
+verify_completed_install_before_repository_preflight() {
+  [[ -f "$ROUTEGATE_STATE_FILE" ]] || return 0
+  [[ "$(state_value STATUS || true)" == "complete" ]] || return 0
+  verify_existing_install
 }
 
 collect_routegate_conflicts() {
@@ -1808,6 +1816,7 @@ main() {
   prompt_for_inputs
   validate_inputs
   validate_platform
+  verify_completed_install_before_repository_preflight
   validate_apt_repository_trust
   print_dependency_plan
   detect_conflicts

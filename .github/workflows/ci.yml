@@ -205,6 +205,10 @@ jobs:
             --artifacts-dir "$OUTPUT_DIR"
           cd "$OUTPUT_DIR"
           sha256sum -c SHA256SUMS
+          sha256sum -c INSTALLER_SHA256SUMS
+          test -s install.sh
+          test -s install-agent.sh
+          test -s install-grafana.sh
           tar -tzf routegate-ci-test-linux-amd64.tar.gz > bundle-files.txt
           grep -Fxq './bin/routegate-manager' bundle-files.txt
           grep -Fxq './bin/routegate-agent' bundle-files.txt
@@ -230,6 +234,10 @@ jobs:
           path: |
             ${{ runner.temp }}/routegate-dist/routegate-ci-test-linux-amd64.tar.gz
             ${{ runner.temp }}/routegate-dist/SHA256SUMS
+            ${{ runner.temp }}/routegate-dist/INSTALLER_SHA256SUMS
+            ${{ runner.temp }}/routegate-dist/install.sh
+            ${{ runner.temp }}/routegate-dist/install-agent.sh
+            ${{ runner.temp }}/routegate-dist/install-grafana.sh
             ${{ runner.temp }}/routegate-dist/release-manifest.json
           if-no-files-found: error
           retention-days: 7

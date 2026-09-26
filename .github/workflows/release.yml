@@ -70,6 +70,8 @@ jobs:
             --artifacts-dir dist
           cd dist
           sha256sum -c SHA256SUMS
+          sha256sum -c INSTALLER_SHA256SUMS
+          bash -n install.sh install-agent.sh install-grafana.sh
           for bundle in routegate-*.tar.gz; do
             listing="${bundle}.files"
             tar -tzf "$bundle" > "$listing"
@@ -102,15 +104,24 @@ jobs:
         with:
           subject-path: dist/routegate-*.tar.gz
 
+      - name: Attest installer script provenance
+        id: attest_installers
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: dist/install*.sh
+
       - name: Preserve offline attestation bundles
         env:
           MANIFEST_ATTESTATION: ${{ steps.attest_manifest.outputs.bundle-path }}
           BUNDLE_ATTESTATION: ${{ steps.attest_bundles.outputs.bundle-path }}
+          INSTALLER_ATTESTATION: ${{ steps.attest_installers.outputs.bundle-path }}
         run: |
           test -s "$MANIFEST_ATTESTATION"
           test -s "$BUNDLE_ATTESTATION"
+          test -s "$INSTALLER_ATTESTATION"
           cp "$MANIFEST_ATTESTATION" dist/release-manifest.attestation.json
           cp "$BUNDLE_ATTESTATION" dist/release-bundles.attestation.json
+          cp "$INSTALLER_ATTESTATION" dist/installer-scripts.attestation.json
 
       - name: Verify release provenance policy
         env:
@@ -132,6 +143,14 @@ jobs:
               --bundle dist/release-bundles.attestation.json
           done
 
+          for installer in dist/install.sh dist/install-agent.sh dist/install-grafana.sh; do
+            gh attestation verify "$installer" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$SIGNER_WORKFLOW" \
+              --predicate-type "$PREDICATE_TYPE" \
+              --bundle dist/installer-scripts.attestation.json
+          done
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -139,9 +158,14 @@ jobs:
           path: |
             dist/routegate-*.tar.gz
             dist/SHA256SUMS
+            dist/INSTALLER_SHA256SUMS
+            dist/install.sh
+            dist/install-agent.sh
+            dist/install-grafana.sh
             dist/release-manifest.json
             dist/release-manifest.attestation.json
             dist/release-bundles.attestation.json
+            dist/installer-scripts.attestation.json
           if-no-files-found: error
 
       - name: Publish GitHub release assets
@@ -154,9 +178,14 @@ jobs:
             gh release upload "$TAG_NAME" \
               dist/routegate-*.tar.gz \
               dist/SHA256SUMS \
+              dist/INSTALLER_SHA256SUMS \
+              dist/install.sh \
+              dist/install-agent.sh \
+              dist/install-grafana.sh \
               dist/release-manifest.json \
               dist/release-manifest.attestation.json \
               dist/release-bundles.attestation.json \
+              dist/installer-scripts.attestation.json \
               --clobber
           else
             notes_file="docs/release/${TAG_NAME}.md"
@@ -164,9 +193,14 @@ jobs:
               gh release create "$TAG_NAME" \
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
+                dist/INSTALLER_SHA256SUMS \
+                dist/install.sh \
+                dist/install-agent.sh \
+                dist/install-grafana.sh \
                 dist/release-manifest.json \
                 dist/release-manifest.attestation.json \
                 dist/release-bundles.attestation.json \
+                dist/installer-scripts.attestation.json \
                 --verify-tag \
                 --notes-file "$notes_file" \
                 --title "RouteGate $TAG_NAME"
@@ -174,9 +208,14 @@ jobs:
               gh release create "$TAG_NAME" \
                 dist/routegate-*.tar.gz \
                 dist/SHA256SUMS \
+                dist/INSTALLER_SHA256SUMS \
+                dist/install.sh \
+                dist/install-agent.sh \
+                dist/install-grafana.sh \
                 dist/release-manifest.json \
                 dist/release-manifest.attestation.json \
                 dist/release-bundles.attestation.json \
+                dist/installer-scripts.attestation.json \
                 --verify-tag \
                 --generate-notes \
                 --title "RouteGate $TAG_NAME"
