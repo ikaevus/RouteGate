@@ -51,22 +51,25 @@ The installer preserves SSH authentication policy and stops rather than silently
 
 ## Install
 
-Canonical interactive installation:
+Canonical installation starts from an immutable release identity. Download
+the installer, inspect it, and then execute it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-  | sudo bash
+VERSION=v0.1.0
+curl -fL --proto '=https' --tlsv1.2 \
+  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \
+  -o routegate-install.sh
+less routegate-install.sh
+sudo bash routegate-install.sh \
+  --domain vpn.example.com \
+  --email owner@example.com \
+  --version "${VERSION}"
+rm -f routegate-install.sh
 ```
 
-To pin the first public release explicitly:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
-  | sudo bash -s -- \
-      --domain vpn.example.com \
-      --email owner@example.com \
-      --version v0.1.0
-```
+Mutable branch content is not piped directly into a privileged shell. New
+releases additionally publish checksum and provenance-attestation assets for
+the installer scripts.
 
 The installer resolves a published release bundle and verifies it against the release `SHA256SUMS` before installing it.
 
