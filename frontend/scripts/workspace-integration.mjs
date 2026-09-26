@@ -145,6 +145,8 @@ try {
   await notes.fill('Unsaved notes retained across tabs');
   for (const section of ['overview', 'access', 'routing', 'protocols', 'traffic']) {
     await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
+    await page.waitForURL(`${workspace}/${section}`);
+    await name.waitFor({ state: 'hidden' });
     assert.equal(await name.isVisible(), false, 'Settings inputs stay hidden outside settings');
   }
   await page.locator('.workspace-nav-link[href$="/settings"]').click();
