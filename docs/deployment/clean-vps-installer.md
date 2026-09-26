@@ -47,6 +47,8 @@ enabled but cannot start successfully until the Agent applies a validated
 ```text
 Clean Ubuntu 24.04 LTS VPS
         ↓
+official Ubuntu APT repository trust preflight
+        ↓
 one copy-paste installer command
         ↓
 host, DNS, and conflict preflight
@@ -79,6 +81,8 @@ The installer intentionally does **not** install or start sing-box. VPN Core ins
 Before running the installer:
 
 - use a clean Ubuntu 24.04 LTS amd64 VPS;
+- require the active APT sources to resolve only to Canonical Ubuntu archive/security infrastructure (`archive.ubuntu.com`, regional `*.archive.ubuntu.com`, `security.ubuntu.com`, or `ports.ubuntu.com`);
+- treat provider-controlled, organization-controlled, PPA, and other third-party APT mirrors as outside the default clean-host trust boundary until the operator deliberately replaces or removes them;
 - connect as `root` or a user with working `sudo`;
 - create a DNS `A` record for the chosen FQDN pointing directly to the VPS public IPv4 address;
 - ensure inbound TCP ports 80 and 443 are reachable;
@@ -88,6 +92,24 @@ Before running the installer:
 Already installed compatible APT packages are not conflicts. Active database/web services or unowned RouteGate files are treated as potential conflicts because they may contain unrelated data or configuration. The installer stops before unsafe mutation and presents safe recovery guidance.
 
 The installer does not provision the VPS and does not modify SSH authentication policy.
+
+### APT repository trust preflight
+
+A "clean Ubuntu VPS" is a trust statement, not only an operating-system version check.
+Before the installer performs any APT network operation, RouteGate enumerates active
+`/etc/apt/sources.list`, `*.list`, and deb822 `*.sources` entries.
+
+The default installation boundary accepts only Canonical Ubuntu archive/security
+hosts. Any active provider mirror, PPA, private mirror, or other third-party APT
+source causes a hard stop and is printed as `[blocked]` for operator review.
+Explicitly disabled deb822 stanzas (`Enabled: no`) are ignored.
+
+RouteGate deliberately does **not** auto-rewrite repository configuration. The
+operator must decide whether to replace, remove, or otherwise trust a source before
+retrying installation. This keeps package provenance outside RouteGate's silent
+mutation surface and prevents a hosting image from implicitly extending the
+project's supply-chain trust boundary.
+
 
 ## Install RouteGate
 
@@ -152,25 +174,26 @@ Local-file and explicit-URL modes still require checksum verification. A bundle 
 The installer performs these stages in order:
 
 1. Prompts for missing domain/email values and validates arguments, Ubuntu version, architecture, systemd, required base commands, and privileges.
-2. Shows which required APT dependencies will be reused and which will be installed.
-3. Detects unowned RouteGate files, active web/database services, or listeners on TCP 80/443 before mutation.
-4. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
+2. Enumerates active classic and deb822 APT sources and fails closed unless every active repository is inside the official Ubuntu trust boundary. This happens before any `apt-get update` or package installation.
+3. Shows which required APT dependencies will be reused and which will be installed.
+4. Detects unowned RouteGate files, active web/database services, or listeners on TCP 80/443 before mutation.
+6. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
 5. Creates root-owned installation state and recovery storage.
-6. Installs required APT packages including PostgreSQL, nginx, Certbot, curl, jq, OpenSSL, and runtime utilities.
-7. Resolves the requested RouteGate release, downloads the native bundle, verifies `SHA256SUMS`, rejects unsafe archive paths/links, and validates the manifest.
-8. Installs Manager, Agent, migrations, frontend assets, nginx configuration, and systemd units.
-9. Creates a dedicated local PostgreSQL role/database with a generated password and loopback-only listening.
-10. Generates a unique bootstrap administrator credential used only to initialize the first SuperAdmin and local platform workflow.
-11. Starts Manager on `127.0.0.1:8080` and verifies its health endpoint.
-12. Configures nginx, preserves the existing SSH firewall policy, and requests a Let's Encrypt certificate.
-13. Enables `certbot.timer` and installs a RouteGate nginx validation/reload hook for certificate renewal.
-14. Creates the local All-in-One Server through the authenticated Manager API.
-15. Creates a one-time Agent registration token, starts the local Agent, and verifies persistent Agent credentials.
-16. Creates a high-entropy, single-use administrator setup token and constructs `https://<domain>/setup#token=<token>`.
-17. Removes bootstrap administrator values from the Manager environment and restarts Manager.
-18. Writes root-only first-access/recovery information and installs `routegate-recovery`.
-19. Verifies PostgreSQL, nginx, Manager, Agent, HTTPS health, Agent credentials, and local PostgreSQL exposure.
-20. Marks installation state complete and prints the `/setup` next action.
+7. Installs required APT packages including PostgreSQL, nginx, Certbot, curl, jq, OpenSSL, and runtime utilities.
+8. Resolves the requested RouteGate release, downloads the native bundle, verifies `SHA256SUMS`, rejects unsafe archive paths/links, and validates the manifest.
+9. Installs Manager, Agent, migrations, frontend assets, nginx configuration, and systemd units.
+10. Creates a dedicated local PostgreSQL role/database with a generated password and loopback-only listening.
+11. Generates a unique bootstrap administrator credential used only to initialize the first SuperAdmin and local platform workflow.
+12. Starts Manager on `127.0.0.1:8080` and verifies its health endpoint.
+13. Configures nginx, preserves the existing SSH firewall policy, and requests a Let's Encrypt certificate.
+14. Enables `certbot.timer` and installs a RouteGate nginx validation/reload hook for certificate renewal.
+15. Creates the local All-in-One Server through the authenticated Manager API.
+16. Creates a one-time Agent registration token, starts the local Agent, and verifies persistent Agent credentials.
+17. Creates a high-entropy, single-use administrator setup token and constructs `https://<domain>/setup#token=<token>`.
+18. Removes bootstrap administrator values from the Manager environment and restarts Manager.
+19. Writes root-only first-access/recovery information and installs `routegate-recovery`.
+20. Verifies PostgreSQL, nginx, Manager, Agent, HTTPS health, Agent credentials, and local PostgreSQL exposure.
+21. Marks installation state complete and prints the `/setup` next action.
 
 ## First administrator activation
 
@@ -291,6 +314,8 @@ Both amd64 and arm64 bundles are published to keep the native packaging contract
 
 - Manager listens only on loopback and is exposed through nginx/HTTPS.
 - PostgreSQL is local-only.
+- The installer fails closed before APT network access when active package sources leave the official Ubuntu repository trust boundary.
+- RouteGate does not silently rewrite a host's APT sources; repository trust remains an explicit operator decision.
 - Release checksum verification is mandatory.
 - Archive traversal and archive links are rejected.
 - Secrets are not passed as normal process command-line arguments.
