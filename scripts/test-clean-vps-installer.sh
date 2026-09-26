@@ -456,8 +456,18 @@ EOF_DISABLED
   assert_true     "ignores explicitly disabled deb822 repository stanzas"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
 }
 
+test_existing_install_precedes_repository_preflight() {
+  local main_body
+  main_body=$(sed -n '/^main() {/,/^}/p' "$ROOT_DIR/install.sh")
+  local existing_line trust_line
+  existing_line=$(grep -n 'verify_completed_install_before_repository_preflight' <<<"$main_body" | head -n1 | cut -d: -f1)
+  trust_line=$(grep -n 'validate_apt_repository_trust' <<<"$main_body" | head -n1 | cut -d: -f1)
+  assert_true     "completed RouteGate installs are verified before clean-host APT trust checks"     test "$existing_line" -lt "$trust_line"
+}
+
 printf 'TAP version 13\n'
 test_apt_repository_trust_preflight
+test_existing_install_precedes_repository_preflight
 test_validation_helpers
 test_argument_parsing
 test_artifact_urls
