@@ -216,6 +216,8 @@ curl -fsSL https://raw.githubusercontent.com/ikaevus/RouteGate/main/install.sh \
   | sudo bash
 ```
 
+Before any APT network operation, the installer also checks the host's active package sources and fails closed unless they are official Ubuntu archive/security repositories. Provider and other third-party mirrors are not silently trusted or rewritten.
+
 The installer downloads a published RouteGate release bundle and verifies it against `SHA256SUMS`. To install v0.1.0 explicitly, use `--version v0.1.0` as documented in the [Clean VPS Installer guide](docs/deployment/clean-vps-installer.md).
 
 After installation, open the single-use `/setup` link printed by the installer, choose the administrator password, and continue through the guided Dashboard workflow.
