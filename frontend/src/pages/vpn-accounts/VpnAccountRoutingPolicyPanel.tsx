@@ -82,7 +82,7 @@ function getCopy() {
   } as const;
 }
 
-export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string }) {
+export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { accountId: string; active?: boolean }) {
   const queryClient = useQueryClient();
   const copy = getCopy();
   const [routingProfileId, setRoutingProfileId] = useState('');
@@ -94,6 +94,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const [nodeMessage, setNodeMessage] = useState('');
   const [nodeError, setNodeError] = useState('');
   const [nodeConfigChanged, setNodeConfigChanged] = useState(false);
+  const [edited, setEdited] = useState({ node: false, profile: false, group: false, selection: false });
 
   const policyQuery = useQuery({
     queryKey: ['vpn-account-routing-policy', accountId],
@@ -108,8 +109,9 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
 
   useEffect(() => {
+    if (!accountQuery.data || edited.node) return;
     setServerId(accountQuery.data?.serverId ?? '');
-  }, [accountQuery.data?.serverId]);
+  }, [accountQuery.data?.serverId, edited.node]);
 
   const savedNodeGroupId = policyQuery.data?.nodeGroup?.id ?? '';
   const savedSelectionPolicy = policyQuery.data?.automaticSelectionPolicy;
@@ -123,22 +125,33 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
   const selectionPreviewQuery = useQuery({
     queryKey: ['vpn-account-automatic-selection-preview', accountId],
     queryFn: () => previewVpnAccountAutomaticSelection(accountId),
-    enabled: Boolean(policyQuery.data?.nodeGroup) && !automaticSelectionDirty,
+    enabled: active && Boolean(policyQuery.data?.nodeGroup) && !automaticSelectionDirty,
   });
 
   useEffect(() => {
-    setRoutingProfileId(policyQuery.data?.explicitRoutingProfile?.id ?? '');
-    setNodeGroupId(policyQuery.data?.nodeGroup?.id ?? '');
-    setAutomaticSelectionEnabled(policyQuery.data?.automaticSelectionPolicy.enabled ?? false);
-    setAllowDegraded(policyQuery.data?.automaticSelectionPolicy.allowDegraded ?? false);
-    setCooldownSeconds(policyQuery.data?.automaticSelectionPolicy.cooldownSeconds ?? 300);
-  }, [policyQuery.data]);
+    if (!policyQuery.data) return;
+    if (!edited.profile) setRoutingProfileId(policyQuery.data.explicitRoutingProfile?.id ?? '');
+    if (!edited.group) setNodeGroupId(policyQuery.data.nodeGroup?.id ?? '');
+    if (!edited.selection) {
+      setAutomaticSelectionEnabled(policyQuery.data.automaticSelectionPolicy.enabled ?? false);
+      setAllowDegraded(policyQuery.data.automaticSelectionPolicy.allowDegraded ?? false);
+      setCooldownSeconds(policyQuery.data.automaticSelectionPolicy.cooldownSeconds ?? 300);
+    }
+  }, [policyQuery.data, edited.profile, edited.group, edited.selection]);
+
+  async function finishPolicySave(field: 'profile' | 'group' | 'selection') {
+    await refreshPolicy();
+    if (queryClient.getQueryState(['vpn-account-routing-policy', accountId])?.status === 'success') {
+      setEdited(current => ({ ...current, [field]: false }));
+    }
+  }
 
   async function refreshPolicy() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
+      queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-automatic-selection-preview', accountId] }),
     ]);
   }
@@ -147,13 +160,13 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
     mutationFn: () => routingProfileId
       ? assignVpnAccountRoutingProfile(accountId, routingProfileId)
       : clearVpnAccountRoutingProfile(accountId),
-    onSuccess: refreshPolicy,
+    onSuccess: () => finishPolicySave('profile'),
   });
   const groupMutation = useMutation({
     mutationFn: () => nodeGroupId
       ? assignVpnAccountNodeGroup(accountId, nodeGroupId)
       : clearVpnAccountNodeGroup(accountId),
-    onSuccess: refreshPolicy,
+    onSuccess: () => finishPolicySave('group'),
   });
   const selectionPolicyMutation = useMutation({
     mutationFn: () => updateVpnAccountAutomaticSelection(accountId, {
@@ -161,7 +174,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       allowDegraded,
       cooldownSeconds,
     }),
-    onSuccess: refreshPolicy,
+    onSuccess: () => finishPolicySave('selection'),
   });
   const selectionApplyMutation = useMutation({
     mutationFn: () => applyVpnAccountAutomaticSelection(accountId),
@@ -174,11 +187,10 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       setNodeError('');
       setNodeConfigChanged(true);
       setServerId(updated.serverId ?? '');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
-        queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
-        refreshPolicy(),
-      ]);
+      await refreshPolicy();
+      if (queryClient.getQueryState(['vpn-account', accountId])?.status === 'success') {
+        setEdited(current => ({ ...current, node: false }));
+      }
     },
     onError: () => {
       setNodeMessage('');
@@ -188,21 +200,25 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
 
   function saveNode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editingDisabled) return;
     nodeMutation.mutate();
   }
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editingDisabled) return;
     profileMutation.mutate();
   }
 
   function saveGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editingDisabled) return;
     groupMutation.mutate();
   }
 
   function saveSelectionPolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editingDisabled || !policyQuery.data?.nodeGroup || nodeGroupDirty) return;
     selectionPolicyMutation.mutate();
   }
 
@@ -211,6 +227,8 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
     || accountQuery.isError || serversQuery.isError;
   const isLoading = policyQuery.isLoading || profilesQuery.isLoading || groupsQuery.isLoading
     || accountQuery.isLoading || serversQuery.isLoading;
+  const editingDisabled = isLoading || hasError || nodeMutation.isPending || profileMutation.isPending
+    || groupMutation.isPending || selectionPolicyMutation.isPending || selectionApplyMutation.isPending;
   const currentServerName = serversQuery.data?.items.find((server) => server.id === accountQuery.data?.serverId)?.name
     ?? accountQuery.data?.serverId
     ?? t('vpnAccounts.noServerAssignment');
@@ -230,14 +248,18 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
 
       <Section title={copy.placementTitle} description={copy.placementSubtitle}>
-        <form className="vpn-account-routing-form" onSubmit={saveNode}>
+        <form className="vpn-account-routing-form" onSubmit={saveNode} onChange={() => {
+          setEdited(current => ({ ...current, node: true }));
+          setNodeMessage('');
+          setNodeError('');
+        }}>
           <div className="routing-policy-effective">
             <span>{copy.currentNode}</span>
             <strong>{currentServerName}</strong>
           </div>
           <label className="field">
             <span>{t('vpnAccounts.serverAssignment')}</span>
-            <select value={serverId} onChange={(event) => setServerId(event.target.value)}>
+            <select value={serverId} disabled={editingDisabled} onChange={(event) => setServerId(event.target.value)}>
               <option value="">{t('vpnAccounts.noServerAssignment')}</option>
               {(serversQuery.data?.items ?? []).map((server) => (
                 <option key={server.id} value={server.id}>{server.name || server.id}</option>
@@ -245,7 +267,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
             </select>
           </label>
           <div className="form-actions">
-            <button className="small-button" type="submit" disabled={nodeMutation.isPending || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
+            <button className="small-button" type="submit" disabled={editingDisabled || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
           </div>
           {nodeMessage && <div className="form-message form-message-success">{nodeMessage}</div>}
           {nodeError && <div className="form-message form-message-error">{nodeError}</div>}
@@ -261,10 +283,13 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
       {policy && (
         <div className="vpn-account-routing-policy-grid">
           <Section title={t('routingPolicy.profile')}>
-            <form className="vpn-account-routing-form" onSubmit={saveProfile}>
+            <form className="vpn-account-routing-form" onSubmit={saveProfile} onChange={() => {
+              setEdited(current => ({ ...current, profile: true }));
+              profileMutation.reset();
+            }}>
               <label className="field">
                 <span>{t('routingPolicy.profile')}</span>
-                <select value={routingProfileId} onChange={(event) => setRoutingProfileId(event.target.value)}>
+                <select value={routingProfileId} disabled={editingDisabled} onChange={(event) => setRoutingProfileId(event.target.value)}>
                   <option value="">{t('routingPolicy.inherit')}</option>
                   {(profilesQuery.data?.items ?? []).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
                 </select>
@@ -277,16 +302,19 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
 
               {!policy.clientRoutingSupported && <div className="form-message form-message-warning">{t('routingPolicy.clientRoutingUnsupported')}</div>}
               <div className="form-actions">
-                <button className="small-button" type="submit" disabled={profileMutation.isPending}>{routingProfileId ? t('routingPolicy.saveProfile') : t('routingPolicy.clearProfile')}</button>
+                <button className="small-button" type="submit" disabled={editingDisabled}>{routingProfileId ? t('routingPolicy.saveProfile') : t('routingPolicy.clearProfile')}</button>
               </div>
             </form>
           </Section>
 
           <Section title={t('routingPolicy.nodeGroup')}>
-            <form className="vpn-account-routing-form" onSubmit={saveGroup}>
+            <form className="vpn-account-routing-form" onSubmit={saveGroup} onChange={() => {
+              setEdited(current => ({ ...current, group: true }));
+              groupMutation.reset();
+            }}>
               <label className="field">
                 <span>{t('routingPolicy.nodeGroup')}</span>
-                <select value={nodeGroupId} onChange={(event) => setNodeGroupId(event.target.value)}>
+                <select value={nodeGroupId} disabled={editingDisabled} onChange={(event) => setNodeGroupId(event.target.value)}>
                   <option value="">{t('routingPolicy.noNodeGroup')}</option>
                   {(groupsQuery.data?.items ?? []).map((group) => <option key={group.id} value={group.id}>{group.name} · {group.memberCount}</option>)}
                 </select>
@@ -299,24 +327,27 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
               {nodeGroupDirty && <div className="form-message form-message-warning">{copy.unsavedNodeGroup}</div>}
               <p className="routing-policy-automation-note">{t('automaticSelection.groupHelp')}</p>
               <div className="form-actions">
-                <button className="small-button" type="submit" disabled={groupMutation.isPending}>{nodeGroupId ? t('routingPolicy.saveGroup') : t('routingPolicy.clearGroup')}</button>
+                <button className="small-button" type="submit" disabled={editingDisabled}>{nodeGroupId ? t('routingPolicy.saveGroup') : t('routingPolicy.clearGroup')}</button>
               </div>
             </form>
           </Section>
 
           <Section title={t('automaticSelection.title')} description={t('automaticSelection.subtitle')}>
-            <form className="vpn-account-routing-form" onSubmit={saveSelectionPolicy}>
+            <form className="vpn-account-routing-form" onSubmit={saveSelectionPolicy} onChange={() => {
+              setEdited(current => ({ ...current, selection: true }));
+              selectionPolicyMutation.reset();
+            }}>
               <label className="field checkbox-field">
                 <input
                   type="checkbox"
                   checked={automaticSelectionEnabled}
-                  disabled={!policy.nodeGroup || nodeGroupDirty}
+                  disabled={editingDisabled || !policy.nodeGroup || nodeGroupDirty}
                   onChange={(event) => setAutomaticSelectionEnabled(event.target.checked)}
                 />
                 <span>{t('automaticSelection.enabled')}</span>
               </label>
               <label className="field checkbox-field">
-                <input type="checkbox" checked={allowDegraded} disabled={!policy.nodeGroup || nodeGroupDirty} onChange={(event) => setAllowDegraded(event.target.checked)} />
+                <input type="checkbox" checked={allowDegraded} disabled={editingDisabled || !policy.nodeGroup || nodeGroupDirty} onChange={(event) => setAllowDegraded(event.target.checked)} />
                 <span>{t('automaticSelection.allowDegraded')}</span>
               </label>
               <label className="field">
@@ -326,16 +357,16 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
                   min={1}
                   max={1440}
                   value={Math.round(cooldownSeconds / 60)}
-                  disabled={!policy.nodeGroup || nodeGroupDirty}
+                  disabled={editingDisabled || !policy.nodeGroup || nodeGroupDirty}
                   onChange={(event) => setCooldownSeconds(Math.max(60, Number(event.target.value || 1) * 60))}
                 />
               </label>
               <div className="form-actions">
-                <button className="small-button" type="submit" disabled={selectionPolicyMutation.isPending || !policy.nodeGroup || nodeGroupDirty}>{t('automaticSelection.save')}</button>
+                <button className="small-button" type="submit" disabled={editingDisabled || !policy.nodeGroup || nodeGroupDirty}>{t('automaticSelection.save')}</button>
                 <button
                   className="small-button secondary"
                   type="button"
-                  disabled={!policy.nodeGroup || automaticSelectionDirty || selectionPreviewQuery.isFetching}
+                  disabled={editingDisabled || !policy.nodeGroup || automaticSelectionDirty || selectionPreviewQuery.isFetching}
                   onClick={() => selectionPreviewQuery.refetch()}
                 >
                   {t('automaticSelection.refresh')}
@@ -371,8 +402,8 @@ export function VpnAccountRoutingPolicyPanel({ accountId }: { accountId: string 
                 <button
                   className="small-button"
                   type="button"
-                  disabled={automaticSelectionDirty || !selectionPreviewQuery.data?.canApply || selectionApplyMutation.isPending}
-                  onClick={() => selectionApplyMutation.mutate()}
+                  disabled={editingDisabled || automaticSelectionDirty || !selectionPreviewQuery.data?.canApply}
+                  onClick={() => { if (!editingDisabled && !automaticSelectionDirty && selectionPreviewQuery.data?.canApply) selectionApplyMutation.mutate(); }}
                 >
                   {t('automaticSelection.apply')}
                 </button>

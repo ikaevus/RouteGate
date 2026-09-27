@@ -292,6 +292,102 @@ try {
   await page.waitForFunction(() => document.querySelector('.traffic-limit-form input')?.value === '125');
   await checkTrafficDraft();
 
+  // Four independent routing drafts survive tabs/refetches and sibling saves.
+  const draftServer = await api('/api/v1/servers', { method: 'POST', token,
+    body: { name: 'Routing draft node', publicIp: '192.0.2.11', deploymentRole: 'vpn' } });
+  const groupA = await api('/api/v1/node-groups', { method: 'POST', token,
+    body: { name: 'Routing group A', description: '', selectionStrategy: 'priority' } });
+  const groupB = await api('/api/v1/node-groups', { method: 'POST', token,
+    body: { name: 'Routing group B', description: '', selectionStrategy: 'priority' } });
+  const remoteProfile = await api('/api/v1/routing-profiles', { method: 'POST', token,
+    body: { name: 'Remote assigned profile', description: '', isDefault: false } });
+  const policyPath = `/api/v1/vpn-accounts/${account.id}/routing-policy`;
+  const profilePath = `/api/v1/vpn-accounts/${account.id}/routing-profile`;
+  const groupPath = `/api/v1/vpn-accounts/${account.id}/node-group`;
+  const selectionPath = `/api/v1/vpn-accounts/${account.id}/automatic-selection`;
+  await api(groupPath, { method: 'PUT', token, body: { nodeGroupId: groupA.id } });
+  await page.goto(`${workspace}/routing`);
+  const routingForms = page.locator('.vpn-account-routing-form');
+  const nodeSelect = routingForms.nth(0).locator('select');
+  const profileSelect = routingForms.nth(1).locator('select');
+  const groupSelect = routingForms.nth(2).locator('select');
+  const selectionForm = routingForms.nth(3);
+  await groupSelect.waitFor();
+  await page.waitForFunction(id => document.querySelectorAll('.vpn-account-routing-form select')[2]?.value === id, groupA.id);
+  await nodeSelect.selectOption(draftServer.id);
+  await profileSelect.selectOption(profile.id);
+  await selectionForm.locator('input[type="checkbox"]').nth(0).check();
+  await selectionForm.locator('input[type="checkbox"]').nth(1).check();
+  await selectionForm.locator('input[type="number"]').fill('17');
+  await groupSelect.selectOption(groupB.id);
+  async function checkRoutingDraft() {
+    assert.equal(await nodeSelect.inputValue(), draftServer.id);
+    assert.equal(await profileSelect.inputValue(), profile.id);
+    assert.equal(await groupSelect.inputValue(), groupB.id);
+    assert.equal(await selectionForm.locator('input[type="number"]').inputValue(), '17');
+    for (const checkbox of await selectionForm.locator('input[type="checkbox"]').all()) assert.ok(await checkbox.isChecked());
+  }
+  for (const section of ['overview', 'access', 'protocols', 'traffic', 'settings']) {
+    await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
+    await page.waitForURL(`${workspace}/${section}`);
+    await routingForms.nth(0).waitFor({ state: 'hidden' });
+  }
+  await api(profilePath, { method: 'PUT', token, body: { routingProfileId: remoteProfile.id } });
+  await api(selectionPath, { method: 'PUT', token, body: { enabled: false, allowDegraded: false, cooldownSeconds: 600 } });
+  const policyRefetch = page.waitForResponse(response => response.request().method() === 'GET'
+    && new URL(response.url()).pathname === policyPath);
+  await page.locator('.workspace-nav-link[href$="/overview"]').click();
+  assert.equal((await (await policyRefetch).json()).explicitRoutingProfile.id, remoteProfile.id);
+  await page.waitForLoadState('networkidle');
+  await page.locator('.workspace-nav-link[href$="/routing"]').click();
+  await routingForms.nth(0).waitFor();
+  await checkRoutingDraft();
+
+  let releaseRoutingWrite;
+  const routingWriteArrived = new Promise(resolve => { releaseRoutingWrite = resolve; });
+  await page.route(`**${profilePath}`, route => { releaseRoutingWrite(route); }, { times: 1 });
+  await routingForms.nth(1).locator('button[type="submit"]').click();
+  const heldRoutingWrite = await routingWriteArrived;
+  await page.waitForFunction(() => {
+    const controls = [...document.querySelectorAll('.vpn-account-routing-form input, .vpn-account-routing-form select, .vpn-account-routing-form button')];
+    return controls.length > 0 && controls.every(control => control.disabled);
+  });
+  await heldRoutingWrite.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'Routing conflict' }) });
+  await page.locator('.vpn-account-routing-workspace > .form-message-error').waitFor();
+  await checkRoutingDraft();
+  async function saveRoutingForm(index, path, method = 'PUT') {
+    const savedResponse = page.waitForResponse(response => response.request().method() === method
+      && new URL(response.url()).pathname === path);
+    await routingForms.nth(index).locator('button[type="submit"]').click();
+    assert.ok((await savedResponse).ok());
+    await page.waitForFunction(() => !document.querySelector('.vpn-account-routing-form select')?.disabled);
+    await checkRoutingDraft();
+  }
+  await saveRoutingForm(1, profilePath);
+  await saveRoutingForm(2, groupPath);
+  await saveRoutingForm(3, selectionPath);
+  await saveRoutingForm(0, `/api/v1/vpn-accounts/${account.id}`, 'PATCH');
+  const storedPolicy = await api(policyPath, { token });
+  assert.equal(storedPolicy.explicitRoutingProfile.id, profile.id);
+  assert.equal(storedPolicy.nodeGroup.id, groupB.id);
+  assert.equal(storedPolicy.automaticSelectionPolicy.cooldownSeconds, 1020);
+  assert.equal(storedPolicy.automaticSelectionPolicy.enabled, true);
+  assert.equal(storedPolicy.automaticSelectionPolicy.allowDegraded, true);
+  assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).serverId, draftServer.id);
+  await profileSelect.selectOption(remoteProfile.id);
+  await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${otherAccount.id}/"]`).click();
+  await page.locator('.workspace-nav-link[href$="/routing"]').click();
+  await nodeSelect.waitFor();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await nodeSelect.inputValue(), server.id);
+  assert.equal(await profileSelect.inputValue(), '');
+  assert.equal(await groupSelect.inputValue(), '');
+  await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${account.id}/"]`).click();
+  await page.locator('.workspace-nav-link[href$="/routing"]').click();
+  await nodeSelect.waitFor();
+  await page.waitForLoadState('networkidle');
+  await checkRoutingDraft();
+
   // Summary navigation must open the indicated domain without writing data.
   // Check every card, including both account cards that lead to Routing.
   const navigationWrites = [];

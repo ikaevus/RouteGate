@@ -209,6 +209,24 @@ for retry, and editing clears old success/error feedback.
 
 Integration covers all five other tabs, a changed remote limit followed by an
 overview-triggered refetch, pending controls, rejected save/retry, persistence,
-and account isolation. Routing/protocol drafts and device/delivery forms still
+and account isolation. Protocol drafts and device/delivery forms still
 need their own review. Credential-bearing domains continue to unmount when left;
 they are not retained as hidden panels by this change.
+
+## Routing settings drafts
+
+The routing panel also stays mounted in the account-keyed workspace. Separate
+edit guards protect node placement, explicit profile, node group and automatic
+selection policy. Saving one form clears only its guard after a successful
+refetch; other drafts remain intact. All routing write controls are disabled
+during any routing write. Changing account discards the local drafts.
+
+Automatic-selection preview is enabled only in the visible routing domain and
+still requires saved group/policy settings. Selecting tabs never applies a node
+decision. Policy refresh also invalidates the account so an applied placement is
+reflected in account context. Credential-bearing protocol/access domains remain
+unmounted on exit; preserving their non-secret drafts is a separate step.
+
+Integration exercises all four routing forms, all five other tabs, changed remote
+profile/policy, rejected profile write/retry, pending controls, sibling-save
+isolation, persistence and switching accounts against disposable Manager data.
