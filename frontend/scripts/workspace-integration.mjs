@@ -376,14 +376,18 @@ try {
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).serverId, draftServer.id);
   await profileSelect.selectOption(remoteProfile.id);
   await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${otherAccount.id}/"]`).click();
-  await page.locator('.workspace-nav-link[href$="/routing"]').click();
+  // Wait for the new account's navigation; a generic suffix selector can click
+  // the previous account's still-rendered tab and navigate back during routing.
+  await page.locator(`.workspace-nav-link[href="/vpn-accounts/${otherAccount.id}/routing"]`).click();
+  await page.waitForURL(`${origin}/vpn-accounts/${otherAccount.id}/routing`);
   await nodeSelect.waitFor();
   await page.waitForLoadState('networkidle');
   assert.equal(await nodeSelect.inputValue(), server.id);
   assert.equal(await profileSelect.inputValue(), '');
   assert.equal(await groupSelect.inputValue(), '');
   await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${account.id}/"]`).click();
-  await page.locator('.workspace-nav-link[href$="/routing"]').click();
+  await page.locator(`.workspace-nav-link[href="/vpn-accounts/${account.id}/routing"]`).click();
+  await page.waitForURL(`${workspace}/routing`);
   await nodeSelect.waitFor();
   await page.waitForLoadState('networkidle');
   await checkRoutingDraft();
