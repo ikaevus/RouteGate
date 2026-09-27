@@ -104,6 +104,18 @@ try {
   await page.locator('.routing-rule-form textarea').nth(3).fill('example');
   await page.locator('.routing-rule-form textarea').nth(4).fill('category-ads-all');
   await page.locator('.routing-rule-form textarea').nth(5).fill('private');
+  // Deliberate rejected write: feedback is an alert, and the editor/draft stays
+  // available for retry. Only this request is mocked; the retry hits Manager.
+  const ruleEndpoint = `**/api/v1/routing-profiles/${profile.id}/rules`;
+  await page.route(ruleEndpoint, route => route.fulfill({ status: 409,
+    contentType: 'application/json', body: JSON.stringify({ message: 'Rule conflict: retry safely' }) }), { times: 1 });
+  await page.locator('.routing-rule-form').getByRole('button', { name: 'Save rule', exact: true }).click();
+  const ruleAlert = page.locator('.routing-rule-form').getByRole('alert');
+  await ruleAlert.waitFor();
+  assert.ok((await ruleAlert.textContent()).includes('Rule conflict: retry safely'));
+  assert.equal(await ruleAlert.getAttribute('aria-atomic'), 'true');
+  assert.equal(await page.locator('.routing-rule-form input').first().inputValue(), 'Direct example');
+  assert.equal(await page.locator('.routing-rule-form textarea').nth(5).inputValue(), 'private');
   await page.locator('.routing-rule-form').getByRole('button', { name: 'Save rule', exact: true }).click();
   await page.locator('.routing-rule-list').getByText('Direct example', { exact: true }).waitFor();
   assert.equal(await page.locator('.routing-rule-matchers li').count(), 6);
@@ -167,6 +179,9 @@ try {
     && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}`);
   await page.locator('.vpn-account-edit-form button[type="submit"]').click();
   assert.ok((await saved).ok());
+  const accountSuccess = page.locator('.vpn-account-management-panel .form-message-success[role="status"]');
+  await accountSuccess.waitFor();
+  assert.equal(await accountSuccess.getAttribute('aria-atomic'), 'true');
   await page.reload();
   await page.locator('.vpn-account-edit-form').waitFor();
   await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form input')?.value === 'Workspace persisted name');

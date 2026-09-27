@@ -14,6 +14,7 @@ import {
 import { t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { Section } from '../../shared/ui/Section';
+import { Notice } from '../../shared/ui/Notice';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy';
 
@@ -181,7 +182,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   }
 
   if (accountQuery.isError || !accountQuery.data) {
-    return <div className="panel feature-detail-panel vpn-account-management-panel"><div className="form-message form-message-error">{copy.loadAccountError}</div></div>;
+    return <div className="panel feature-detail-panel vpn-account-management-panel"><Notice tone="error">{copy.loadAccountError}</Notice></div>;
   }
 
   const account = accountQuery.data;
@@ -189,8 +190,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
 
   return (
     <div className="vpn-account-settings">
-      {message && <div className="form-message form-message-success" role="status">{message}</div>}
-      {errorMessage && <div className="form-message form-message-error" role="alert">{errorMessage}</div>}
+      {message && <Notice tone="success" announcement="polite">{message}</Notice>}
+      {errorMessage && <Notice tone="error" announcement="assertive">{errorMessage}</Notice>}
 
       <Section title={copy.identityTitle} description={copy.identitySubtitle}>
         <form className="vpn-account-edit-form" onSubmit={handleSubmit}>
@@ -242,7 +243,7 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
             </label>
           </div>
 
-          {notesQuery.isError && <div className="form-message form-message-error">{copy.notesLoadError}</div>}
+          {notesQuery.isError && <Notice tone="error">{copy.notesLoadError}</Notice>}
 
           <div className="form-actions">
             <button className="primary-button" type="submit" disabled={!displayName.trim() || actionPending || !notesQuery.isSuccess}>

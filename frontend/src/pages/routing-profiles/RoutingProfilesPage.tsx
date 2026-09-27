@@ -16,6 +16,7 @@ import {
   type RoutingRuleAction,
 } from '../../entities/routingProfile/api/routingProfileApi';
 import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
+import { Notice } from '../../shared/ui/Notice';
 import './routingWorkspace.css';
 import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
 
@@ -301,9 +302,9 @@ function RoutingWorkspace() {
             <button className='small-button' type='submit' disabled={createProfileMutation.isPending}>{t('routingProfiles.createProfile')}</button>
           </div>
 
-          {createProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(createProfileMutation.error, t('routingProfiles.createError'))}</div>}
+          {createProfileMutation.isError && <Notice tone="error" announcement="assertive">{getErrorMessage(createProfileMutation.error, t('routingProfiles.createError'))}</Notice>}
           {profilesQuery.isLoading && <p className='empty-state'>{t('routingProfiles.loading')}</p>}
-          {profilesQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profilesQuery.error, t('routingProfiles.loadError'))}</div>}
+          {profilesQuery.isError && <Notice tone="error">{getErrorMessage(profilesQuery.error, t('routingProfiles.loadError'))}</Notice>}
           {profilesQuery.isSuccess && profiles.length === 0 && <p className='empty-state'>{t('routingWorkspace.noProfiles')}</p>}
           {profiles.length > 0 && (
             <div className='admin-table routing-profiles-table'>
@@ -315,7 +316,7 @@ function RoutingWorkspace() {
 
         {!profileId && <div className='panel'><p className='empty-state'>{t('routingProfiles.selectProfile')}</p></div>}
         {profileQuery.isLoading && <p className='empty-state'>{t('common.loading')}</p>}
-        {profileQuery.isError && <div className='form-message form-message-error'>{getErrorMessage(profileQuery.error, t('routingProfiles.selectedLoadError'))}</div>}
+        {profileQuery.isError && <Notice tone="error">{getErrorMessage(profileQuery.error, t('routingProfiles.selectedLoadError'))}</Notice>}
 
         {selectedProfile && (
           <div className='routing-workspace'>
@@ -344,8 +345,8 @@ function RoutingWorkspace() {
                   <button className='small-button' type='submit' disabled={profileName.trim() === '' || actionPending}>{t('routingProfiles.saveProfile')}</button>
                 </div>
               </div>
-              {updateProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(updateProfileMutation.error, t('routingProfiles.updateError'))}</div>}
-              {deleteProfileMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteProfileMutation.error, t('routingProfiles.deleteError'))}</div>}
+              {updateProfileMutation.isError && <Notice tone="error" announcement="assertive">{getErrorMessage(updateProfileMutation.error, t('routingProfiles.updateError'))}</Notice>}
+              {deleteProfileMutation.isError && <Notice tone="error" announcement="assertive">{getErrorMessage(deleteProfileMutation.error, t('routingProfiles.deleteError'))}</Notice>}
               <fieldset className='routing-profile-form-grid' disabled={actionPending}>
                 <label className='field'><span>{t('routingProfiles.name')}</span><input value={profileName} onChange={(event) => { setProfileDirty(true); setProfileName(event.target.value); }} /></label>
                 <label className='field'><span>{t('routingProfiles.description')}</span><input value={profileDescription} onChange={(event) => { setProfileDirty(true); setProfileDescription(event.target.value); }} /></label>
@@ -356,7 +357,7 @@ function RoutingWorkspace() {
               <div className='routing-workspace-domain routing-workspace-rules' hidden={activeSection !== 'rules'}>
             <div ref={rulesPanelRef} className='panel admin-table-panel routing-rules-panel'>
               <div className='panel-header'><div><div className='panel-title'>{t('routingProfiles.rules')}</div><p className='panel-subtitle'>{t('routingProfiles.rulesSubtitle')}</p></div><button className='small-button' type='button' disabled={actionPending || ruleEditorOpen} onClick={() => { resetRuleForm(); saveRuleMutation.reset(); setRuleEditorOpen(true); }}>{t('routingProfiles.addRule')}</button></div>
-              {deleteRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(deleteRuleMutation.error, t('routingProfiles.deleteRuleError'))}</div>}
+              {deleteRuleMutation.isError && <Notice tone="error" announcement="assertive">{getErrorMessage(deleteRuleMutation.error, t('routingProfiles.deleteRuleError'))}</Notice>}
               {rules.length === 0 ? <p className='empty-state'>{t('routingProfiles.noRules')}</p> : (
                 <div className={`routing-rule-browser${ruleEditorOpen ? ' is-editing' : ''}`}>
                   <div className='routing-rule-list' role='group' aria-label={t('routingProfiles.rules')}>
@@ -397,7 +398,7 @@ function RoutingWorkspace() {
                   <button className='small-button' type='submit' disabled={!canSaveRule || actionPending}>{t('routingProfiles.saveRule')}</button>
                 </div>
               </div>
-              {saveRuleMutation.isError && <div className='form-message form-message-error'>{getErrorMessage(saveRuleMutation.error, t('routingProfiles.saveRuleError'))}</div>}
+              {saveRuleMutation.isError && <Notice tone="error" announcement="assertive">{getErrorMessage(saveRuleMutation.error, t('routingProfiles.saveRuleError'))}</Notice>}
               {!hasMatcherText(ruleText) && <p className='muted-text'>{t('routingProfiles.matcherWarning')}</p>}
               <fieldset disabled={actionPending} className='routing-rule-inputs'>
               <div className='routing-rule-form-grid'>

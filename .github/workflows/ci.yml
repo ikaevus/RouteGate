@@ -270,6 +270,9 @@ jobs:
       - name: Test rollout UI safety model
         run: npm run test:rollout
 
+      - name: Test shared UI semantics
+        run: npm run test:ui
+
       - name: Build frontend
         run: npm run build
 

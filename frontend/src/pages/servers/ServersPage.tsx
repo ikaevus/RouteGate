@@ -10,6 +10,7 @@ import {
 import { ApiError } from '../../shared/api/client';
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { EmptyState } from '../../shared/ui/EmptyState';
+import { Notice } from '../../shared/ui/Notice';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import './serversList.css';
 
@@ -246,9 +247,9 @@ export function ServersPage() {
       </div>
 
       {wasJustDeleted && (
-        <div className="form-message form-message-success" role="status">
+        <Notice tone="success" announcement="polite">
           {t('servers.deleteSuccess')}
-        </div>
+        </Notice>
       )}
 
       <div className="panel table-panel servers-table-panel">
@@ -341,9 +342,9 @@ export function ServersPage() {
             </div>
 
             {createServerMutation.isError && (
-              <div className="form-message form-message-error" role="alert">
+              <Notice tone="error" announcement="assertive">
                 {getCreateErrorMessage(createServerMutation.error)}
-              </div>
+              </Notice>
             )}
 
             <div className="form-actions">
@@ -365,7 +366,7 @@ export function ServersPage() {
         {serversQuery.isLoading && <p className="empty-state">{t('servers.loading')}</p>}
 
         {serversQuery.isError && (
-          <div className="form-message form-message-error">{t('servers.loadError')}</div>
+          <Notice tone="error">{t('servers.loadError')}</Notice>
         )}
 
         {serversQuery.isSuccess && servers.length === 0 && (
