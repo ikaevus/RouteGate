@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "i18n:check": "node scripts/i18n-check.mjs",
     "test:rollout": "node --test src/pages/settings/platformUpdateRolloutModel.test.ts",
+    "test:ui": "node --test scripts/notice.test.mjs",
     "preview": "vite preview",
     "test:workspace-integration": "node scripts/workspace-integration.mjs"
   },

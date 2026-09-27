@@ -35,7 +35,23 @@ secrets in navigation URLs, notifications or diagnostic output.
 
 ## Status and next action
 
-Use Notice for actionable feedback. A failed operation should leave the form and
+Use `shared/ui/Notice` for actionable feedback. Its `tone` selects existing
+`form-message` styling (info, success, warning or error); it does not imply urgency.
+Static guidance and query errors default to `announcement="off"`. Use
+`announcement="polite"` for operation confirmation/progress (`role="status"`),
+and `announcement="assertive"` for a failed user operation (`role="alert"`).
+Live notices are atomic. Keep feedback next to the affected task, with explicit
+next-action links/buttons as children where needed; do not move focus to it or
+hide it on a timer. Never place credentials in a notice.
+
+Initial consumers are routing profiles, account settings and the server inventory.
+Other existing messages remain candidates for gradual migration; this is not a
+claim of application-wide adoption or assistive-technology certification.
+`npm run test:ui` verifies rendered semantics, styling compatibility and child
+actions. Browser integration verifies rejected routing writes retain the draft
+for retry and account saves expose polite confirmation.
+
+A failed operation should leave the form and
 its unsaved input available for correction. Background status refresh must not
 replace an in-progress edit.
 
@@ -62,8 +78,8 @@ both themes, as well as empty/error states and unusually long names.
 - Dashboard summaries: `frontend/src/pages/dashboard/DashboardPage.tsx`
 - Guided onboarding: `frontend/src/pages/dashboard/GettingStartedWidget.tsx`
 
-The account workspace is the reference for gradual adoption. Existing server and
-routing screens need separate review; this slice does not claim full UI migration.
+Account, server and routing-profile workspaces are implemented as described below.
+Shared-pattern adoption remains gradual; this does not claim full UI migration.
 
 ## Integration verification
 
