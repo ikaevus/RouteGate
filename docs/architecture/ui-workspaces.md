@@ -124,3 +124,21 @@ Integration checks verify all six matcher arrays survive creating and editing a 
 Workspace integration additionally verifies a routing rule created through the UI,
 settings-draft preservation during that save, persisted profile edits, routing
 navigation and mobile layout against Manager and PostgreSQL.
+
+## Responsive regression matrix
+
+The permanent browser script checks all six server domains, all six account
+domains and all three routing-profile domains at 390px and 1440px widths in dark
+and light themes (60 layouts). It also opens and cancels the routing-rule editor,
+with additional conditions collapsed and expanded (8 more layouts). Each case
+checks document/body horizontal overflow and visibility of the active domain in
+the navigation strip. Domain checks retain the selected entity's header.
+
+These are geometry/navigation regressions against isolated test data, not pixel
+snapshots or proof of Safari behavior. Real-device visual acceptance, long-name
+stress cases and full loading/error-state coverage remain separate checks.
+
+Account settings draft regressions also cover tab navigation, changed remote
+identity/notes followed by a lifecycle-triggered refetch, successful persistence,
+and isolation when switching accounts. This does not claim draft persistence for
+every other account form.

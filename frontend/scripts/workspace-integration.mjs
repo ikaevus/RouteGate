@@ -198,13 +198,69 @@ try {
   await page.locator('.vpn-access-device-detail').waitFor();
   assert.ok((await page.locator('.vpn-access-device-detail').innerText()).includes('Integration laptop'));
 
-  for (const theme of ['dark', 'light']) {
-    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-    await page.setViewportSize({ width: 390, height: 844 });
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${theme} mobile overflow`);
+  // Exercise every domain, not just whichever tab happens to be selected after
+  // CRUD tests. Data and mutations remain confined to the disposable database.
+  const workspaces = [
+    { path: `/servers/${server.id}`, header: '.server-details-header h1', name: server.name,
+      sections: ['overview', 'connection', 'services', 'routing', 'deployments', 'settings'] },
+    { path: `/vpn-accounts/${account.id}`, header: '#vpn-account-workspace-title', name: 'Workspace persisted name',
+      sections: ['overview', 'access', 'routing', 'protocols', 'traffic', 'settings'] },
+    { path: `/routing-profiles/${profile.id}`, header: '.routing-workspace-header h2', name: 'Persisted routing profile',
+      sections: ['overview', 'rules', 'settings'] },
+  ];
+  let layoutChecks = 0;
+  async function checkLayout(label) {
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    const dimensions = await page.evaluate(() => ({
+      viewport: innerWidth, document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+    }));
+    assert.ok(dimensions.document <= dimensions.viewport + 1 && dimensions.body <= dimensions.viewport + 1,
+      `${label}: horizontal page overflow ${JSON.stringify(dimensions)}`);
+    const active = page.locator('.workspace-nav-link[aria-current="page"]');
+    assert.equal(await active.count(), 1, `${label}: one active domain`);
+    assert.ok(await active.evaluate(element => {
+      const link = element.getBoundingClientRect();
+      const nav = element.closest('nav').getBoundingClientRect();
+      return link.left >= Math.max(nav.left, 0) - 1 && link.right <= Math.min(nav.right, innerWidth) + 1;
+    }), `${label}: active domain is visible in navigation strip`);
+    layoutChecks++;
   }
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+    for (const theme of ['dark', 'light']) {
+      for (const target of workspaces) {
+        await page.goto(`${origin}${target.path}/overview`);
+        await page.locator(target.header).getByText(target.name, { exact: true }).waitFor();
+        await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+        for (const section of target.sections) {
+          await page.locator(`.workspace-nav-link[href="${target.path}/${section}"]`).click();
+          await page.waitForURL(`${origin}${target.path}/${section}`);
+          await page.locator(`.workspace-nav-link[aria-current="page"][href="${target.path}/${section}"]`).waitFor();
+          assert.equal(await page.locator(target.header).innerText(), target.name);
+          await checkLayout(`${width}/${theme}${target.path}/${section}`);
+        }
+        if (target.path.startsWith('/routing-profiles/')) {
+          await page.locator('.workspace-nav-link[href$="/rules"]').click();
+          await page.locator('.routing-rules-panel').getByRole('button', { name: 'Add routing rule', exact: true }).click();
+          await page.locator('.routing-rule-form input').first().waitFor();
+          await checkLayout(`${width}/${theme}/routing-editor`);
+          await page.locator('.routing-rule-form summary').click();
+          await page.locator('.routing-rule-form textarea').last().waitFor();
+          await checkLayout(`${width}/${theme}/routing-editor-advanced`);
+          await page.locator('.routing-rule-form').getByRole('button', { name: 'Cancel', exact: true }).click();
+          await page.locator('.routing-rule-form').waitFor({ state: 'hidden' });
+        }
+      }
+    }
+  }
+  assert.equal(layoutChecks, 68, '60 domain layouts plus 8 rule editor layouts');
   assert.deepEqual(errors, []);
-  console.log('PASS: real Manager login, Dashboard link, six workspace routes, persisted account edit and device creation, mobile themes');
+  console.log(`PASS: Manager CRUD, account draft isolation, routing matchers, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
 } finally {
   await browser?.close();
   await vite?.close();
