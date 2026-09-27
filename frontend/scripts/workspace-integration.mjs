@@ -214,6 +214,35 @@ try {
   await page.locator('.vpn-access-device-detail').waitFor();
   assert.ok((await page.locator('.vpn-access-device-detail').innerText()).includes('Integration laptop'));
 
+  // Summary navigation must open the indicated domain without writing data.
+  // Check every card, including both account cards that lead to Routing.
+  const navigationWrites = [];
+  const recordNavigationWrite = request => {
+    if (request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+      navigationWrites.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  };
+  page.on('request', recordNavigationWrite);
+  for (const target of [
+    { base: serverWorkspace, selector: '.server-workspace-summaries a', sections: ['connection', 'services', 'deployments'] },
+    { base: workspace, selector: '.vpn-account-summary', sections: ['routing', 'access', 'routing', 'traffic'] },
+    { base: routingWorkspace, selector: '.routing-workspace-overview .primary-button', sections: ['rules'] },
+  ]) {
+    for (const [index, section] of target.sections.entries()) {
+      await page.goto(`${target.base}/overview`);
+      const link = page.locator(target.selector).nth(index);
+      await link.waitFor();
+      assert.equal(await page.locator(target.selector).count(), target.sections.length);
+      assert.equal(await link.getAttribute('href'), `${new URL(target.base).pathname}/${section}`);
+      await link.click();
+      await page.waitForURL(`${target.base}/${section}`);
+      await page.locator(`.workspace-nav-link[aria-current="page"][href$="/${section}"]`).waitFor();
+      await page.waitForLoadState('networkidle');
+    }
+  }
+  page.off('request', recordNavigationWrite);
+  assert.deepEqual(navigationWrites, [], 'Summary navigation must remain read-only');
+
   // Exercise every domain, not just whichever tab happens to be selected after
   // CRUD tests. Data and mutations remain confined to the disposable database.
   const workspaces = [
@@ -276,7 +305,7 @@ try {
   }
   assert.equal(layoutChecks, 68, '60 domain layouts plus 8 rule editor layouts');
   assert.deepEqual(errors, []);
-  console.log(`PASS: Manager CRUD, account draft isolation, routing matchers, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
+  console.log(`PASS: Manager CRUD, account draft isolation, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
 } finally {
   await browser?.close();
   await vite?.close();

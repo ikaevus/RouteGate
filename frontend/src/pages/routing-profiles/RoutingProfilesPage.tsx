@@ -17,8 +17,9 @@ import {
 } from '../../entities/routingProfile/api/routingProfileApi';
 import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
 import { Notice } from '../../shared/ui/Notice';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
 import './routingWorkspace.css';
-import { getCurrentLocale, t, translateStatus } from '../../shared/i18n/i18n';
+import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 
 type RuleForm = CreateRoutingProfileRuleRequest;
 
@@ -53,11 +54,6 @@ function formatValue(value?: string | null): string {
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() !== '' ? error.message : fallback;
-}
-
-function StatusBadge({ value }: { value: string }) {
-  const className = value.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-  return <span className={`badge badge-${className}`}>{translateStatus(value)}</span>;
 }
 
 function splitList(value: string): string[] {
@@ -95,7 +91,7 @@ function ProfileRow({ profile, selected }: { profile: RoutingProfile; selected: 
         <strong>{formatValue(profile.name)}</strong>
         <span>{formatValue(profile.description)}</span>
       </div>
-      <StatusBadge value={profile.isDefault ? 'default' : 'custom'} />
+      <StatusBadge status={profile.isDefault ? 'default' : 'custom'} />
       <span>{formatDate(profile.updatedAt)}</span>
     </Link>
   );
@@ -322,7 +318,7 @@ function RoutingWorkspace() {
           <div className='routing-workspace'>
             <header className='panel routing-workspace-header'>
               <div><h2>{selectedProfile.name}</h2><p>{formatValue(selectedProfile.description)}</p></div>
-              <StatusBadge value={selectedProfile.isDefault ? 'default' : 'custom'} />
+              <StatusBadge status={selectedProfile.isDefault ? 'default' : 'custom'} />
             </header>
             <WorkspaceNav label={t('routingWorkspace.navigation')} items={sections.map(value => ({ href: sectionPath(value), label: t(`routingWorkspace.${value}`) }))} />
             <div className='routing-workspace-content' data-route-scroll-target tabIndex={-1}>
@@ -366,14 +362,14 @@ function RoutingWorkspace() {
                       onClick={() => setSelectedRuleId(rule.id)}>
                       <strong>{rule.name}</strong>
                       <span>{t('routingProfiles.priority')}: {rule.priority} · {actionLabel(rule.action)}</span>
-                      <StatusBadge value={rule.enabled ? 'enabled' : 'disabled'} />
+                      <StatusBadge status={rule.enabled ? 'enabled' : 'disabled'} />
                     </button>)}
                   </div>
                   {selectedRule && !ruleEditorOpen && <section className='routing-rule-detail' aria-label={selectedRule.name}>
                     <h3>{selectedRule.name}</h3>
                     <div className='routing-rule-context'>
                       <span>{actionLabel(selectedRule.action)}</span>
-                      <StatusBadge value={selectedRule.enabled ? 'enabled' : 'disabled'} />
+                      <StatusBadge status={selectedRule.enabled ? 'enabled' : 'disabled'} />
                       <span>{t('routingProfiles.priority')}: {selectedRule.priority}</span>
                     </div>
                     <p className='muted-text'>{t('routingProfiles.updatedValue', { value: formatDate(selectedRule.updatedAt) })}</p>

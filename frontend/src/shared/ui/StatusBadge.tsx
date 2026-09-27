@@ -1,11 +1,5 @@
 import { translateStatus } from '../i18n/i18n';
 
-function toStatusClassName(status?: string | null): string {
-  const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
-
-  return normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-}
-
 const calmPositiveStatuses = new Set([
   'online',
   'active',
@@ -46,8 +40,8 @@ type StatusBadgeProps = {
 };
 
 export function StatusBadge({ status, label }: StatusBadgeProps) {
-  const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
-  const statusClassName = toStatusClassName(normalizedStatus);
+  const normalizedStatus = status?.trim().toLowerCase() || 'unknown';
+  const statusClassName = normalizedStatus.replace(/[^a-z0-9-]/g, '-');
   const translatedLabel = label ?? translateStatus(normalizedStatus);
   const displayLabel = calmPositiveStatuses.has(statusClassName)
     ? sentenceCaseUpperLabel(translatedLabel)

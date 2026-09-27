@@ -64,6 +64,40 @@ Deployment is server-scoped; select a server first or open the server shown in t
 recent deployment. A ready account opens access management. Navigation must not
 implicitly install, apply, rotate or revoke anything.
 
+### Summary and status contract
+
+- A summary represents one object/domain with a visible label, a meaningful value
+  or status, and a link to its detail domain. Navigation is read-only, not an
+  implicit mutation. Do not nest buttons or links inside a summary link.
+- Use shared `StatusBadge` for account, server and routing-profile states. It
+  normalizes whitespace/case, retains existing badge classes and textual labels,
+  and treats missing values as unknown, never healthy or online. Unknown future
+  status tokens remain visible rather than being mapped to success.
+- Domain adapters may supply a more precise label (for example server connection
+  state); the badge does not determine connectivity from recent traffic or infer
+  service health. Server VPN-core summaries remain unknown when the Agent is not
+  online, regardless of cached capability data.
+- Badges are static text, not live regions or interactive controls. Color is
+  supplementary to the label. Use Notice for feedback from a user operation.
+- Summary data must distinguish pending, failed, empty and known-zero results.
+  A failed request must not silently fall back to a stale healthy value or zero.
+
+The current account/server summary layouts are intentionally retained; they do
+not need a generic card wrapper solely to share markup. Integration checks click
+all seven overview cards plus the routing overview action, verify their domain
+destinations, and reject API writes during that navigation. The 68-layout matrix
+covers the shared badges in both themes and viewport sizes.
+
+### Contextual actions decision
+
+Keep current scoped buttons for common actions and native disclosure for secondary
+details. No generic ActionMenu is introduced yet: there is no accepted consumer
+that needs a transient menu rather than visible actions. Do not hide the next
+logical action or a required warning behind an overflow menu merely for symmetry.
+Keep destructive confirmation tied to the named object. If a future screen needs
+ActionMenu, implement and test focus return, keyboard navigation, Escape/close and
+disabled/pending behavior with that real consumer before generalizing it.
+
 ## Responsive and accessibility checks
 
 Use native links and buttons, visible keyboard focus and associated form labels.
