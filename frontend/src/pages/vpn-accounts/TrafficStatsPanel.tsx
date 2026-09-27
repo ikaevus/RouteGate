@@ -7,6 +7,7 @@ import {
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
 import { Section } from '../../shared/ui/Section';
+import { Notice } from '../../shared/ui/Notice';
 import './trafficWorkspace.css';
 
 const BYTES_PER_GIB = 1024 ** 3;
@@ -106,6 +107,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   const [speedLimitMbps, setSpeedLimitMbps] = useState('');
   const [resetDay, setResetDay] = useState('1');
   const [formError, setFormError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
 
   const trafficQuery = useQuery({
     queryKey: ['vpn-account-traffic', accountId],
@@ -114,6 +116,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
   });
 
   useEffect(() => {
+    if (!trafficQuery.data || dirty) return;
     const limit = trafficQuery.data?.limit;
 
     setMonthlyLimitGiB(
@@ -129,15 +132,19 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
     );
     setResetDay(String(limit?.resetDay ?? 1));
     setFormError(null);
-  }, [trafficQuery.data?.limit, accountId]);
+  }, [trafficQuery.data?.limit, accountId, dirty]);
 
   const updateLimitMutation = useMutation({
     mutationFn: (request: UpdateTrafficLimitRequest) => updateVpnAccountTrafficLimit(accountId, request),
     onMutate: () => {
       setFormError(null);
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['vpn-account-traffic', accountId] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['vpn-account-traffic', accountId] });
+      // A saved write followed by a failed refresh must not restore stale input.
+      if (queryClient.getQueryState(['vpn-account-traffic', accountId])?.status === 'success') {
+        setDirty(false);
+      }
     },
   });
 
@@ -179,6 +186,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (updateLimitMutation.isPending || !trafficQuery.isSuccess) return;
 
     try {
       const monthlyLimit = parseOptionalNumber(monthlyLimitGiB, t('traffic.monthlyLimitField'), { allowZero: true });
@@ -280,7 +288,11 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
 
       {traffic && (
         <Section title={t('traffic.limitSettings')} description={t('traffic.limitSettingsSubtitle')}>
-          <form className="traffic-limit-form" onSubmit={handleSubmit}>
+          <form className="traffic-limit-form" onSubmit={handleSubmit} onChange={() => {
+            setDirty(true);
+            setFormError(null);
+            updateLimitMutation.reset();
+          }}>
             <div className="traffic-limit-form-grid">
               <label className="field">
                 <span>{t('traffic.monthlyLimitGib')}</span>
@@ -289,6 +301,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                   step="0.01"
                   type="number"
                   value={monthlyLimitGiB}
+                  disabled={updateLimitMutation.isPending || !trafficQuery.isSuccess}
                   placeholder={t('traffic.unlimited')}
                   onChange={(event) => setMonthlyLimitGiB(event.target.value)}
                 />
@@ -301,6 +314,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                   step="0.01"
                   type="number"
                   value={speedLimitMbps}
+                  disabled={updateLimitMutation.isPending || !trafficQuery.isSuccess}
                   placeholder={t('traffic.notSet')}
                   onChange={(event) => setSpeedLimitMbps(event.target.value)}
                 />
@@ -314,6 +328,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                   step="1"
                   type="number"
                   value={resetDay}
+                  disabled={updateLimitMutation.isPending || !trafficQuery.isSuccess}
                   onChange={(event) => setResetDay(event.target.value)}
                 />
               </label>
@@ -323,6 +338,7 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
                   <input
                     type="checkbox"
                     checked={hardLimitEnabled}
+                    disabled={updateLimitMutation.isPending || !trafficQuery.isSuccess}
                     onChange={(event) => setHardLimitEnabled(event.target.checked)}
                   />
                   <span>{t('traffic.hardLimit')}</span>
@@ -331,19 +347,19 @@ export function TrafficStatsPanel({ accountId }: { accountId: string }) {
               </div>
             </div>
 
-            {formError && <div className="form-message form-message-error">{formError}</div>}
+            {formError && <Notice tone="error" announcement="assertive">{formError}</Notice>}
             {updateLimitMutation.isError && (
-              <div className="form-message form-message-error">{t('traffic.saveError')}</div>
+              <Notice tone="error" announcement="assertive">{t('traffic.saveError')}</Notice>
             )}
-            {updateLimitMutation.isSuccess && !updateLimitMutation.isPending && (
-              <div className="form-message">{t('traffic.saveSuccess')}</div>
+            {updateLimitMutation.isSuccess && !dirty && (
+              <Notice tone="success" announcement="polite">{t('traffic.saveSuccess')}</Notice>
             )}
 
             <div className="traffic-form-actions">
               <button
                 className="primary-button"
                 type="submit"
-                disabled={updateLimitMutation.isPending}
+                disabled={updateLimitMutation.isPending || !trafficQuery.isSuccess}
               >
                 {updateLimitMutation.isPending ? t('traffic.saving') : t('traffic.save')}
               </button>
