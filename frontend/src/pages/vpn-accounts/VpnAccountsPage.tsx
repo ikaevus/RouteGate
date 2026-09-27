@@ -221,9 +221,11 @@ export function VpnAccountsPage() {
               ) : section === 'overview' ? (
                 accountQuery.data ? <AccountOverview account={accountQuery.data} /> : <div className="panel vpn-account-workspace-wait">{t('common.loading')}</div>
               ) : section === 'access' ? <AccessDevicesPanel accountId={accountId} />
-                : section === 'routing' ? <VpnAccountRoutingPolicyPanel accountId={accountId} />
                 : section === 'protocols' ? <VpnAccountConnectionPanels accountId={accountId} />
                 : null}
+              <div hidden={section !== 'routing' || accountQuery.isError}>
+                <VpnAccountRoutingPolicyPanel accountId={accountId} active={section === 'routing' && !accountQuery.isError} />
+              </div>
               <div hidden={section !== 'traffic' || accountQuery.isError}>
                 <TrafficStatsPanel accountId={accountId} />
               </div>
