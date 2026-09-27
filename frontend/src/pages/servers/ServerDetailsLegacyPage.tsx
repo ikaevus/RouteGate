@@ -1,4 +1,5 @@
 import { WorkspaceNav } from '../../shared/ui/WorkspaceNav';
+import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
 import './serverWorkspace.css';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -122,13 +123,6 @@ function getDeleteErrorMessage(error: unknown): string {
   return t('serverDetails.deleteError');
 }
 
-function StatusBadge({ status }: { status?: string | null }) {
-  const normalizedStatus = status && status.trim() !== '' ? status : 'unknown';
-  const statusClassName = normalizedStatus.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-
-  return <span className={`badge badge-${statusClassName}`}>{translateStatus(normalizedStatus)}</span>;
-}
-
 function ConnectionStatusBadge({ status }: { status?: string | null }) {
   const normalizedStatus = status?.trim().toLowerCase() || 'unknown';
   const label = normalizedStatus === 'online'
@@ -140,9 +134,7 @@ function ConnectionStatusBadge({ status }: { status?: string | null }) {
         : normalizedStatus === 'not_applicable'
           ? t('serverDetails.connectionNotApplicable')
           : translateStatus(normalizedStatus);
-  const statusClassName = normalizedStatus.replace(/[^a-z0-9-]/g, '-');
-
-  return <span className={`badge badge-${statusClassName}`}>{label}</span>;
+  return <StatusBadge status={normalizedStatus} label={label} />;
 }
 
 function DetailRow({ label, children }: { label: string; children: ReactNode }) {
