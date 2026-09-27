@@ -258,6 +258,10 @@ try {
   await page.route(`**${limitPath}`, route => { releaseTrafficWrite(route); }, { times: 1 });
   await trafficForm.locator('button[type="submit"]').click();
   const heldTrafficWrite = await trafficWriteArrived;
+  await page.waitForFunction(() => {
+    const controls = [...document.querySelectorAll('.traffic-limit-form input, .traffic-limit-form button[type="submit"]')];
+    return controls.length === 5 && controls.every(control => control.disabled);
+  });
   for (const input of await trafficForm.locator('input').all()) assert.ok(await input.isDisabled());
   assert.ok(await trafficForm.locator('button[type="submit"]').isDisabled());
   await heldTrafficWrite.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'Traffic conflict' }) });
