@@ -179,7 +179,8 @@ try {
     && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}`);
   await page.locator('.vpn-account-edit-form button[type="submit"]').click();
   assert.ok((await saved).ok());
-  const accountSuccess = page.locator('.vpn-account-management-panel .form-message-success[role="status"]');
+  await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
+  const accountSuccess = page.locator('.vpn-account-settings .form-message-success[role="status"]');
   await accountSuccess.waitFor();
   assert.equal(await accountSuccess.getAttribute('aria-atomic'), 'true');
   await page.reload();
