@@ -214,6 +214,84 @@ try {
   await page.locator('.vpn-access-device-detail').waitFor();
   assert.ok((await page.locator('.vpn-access-device-detail').innerText()).includes('Integration laptop'));
 
+  // Traffic settings retain a local draft, but never carry it to another account.
+  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  const trafficForm = page.locator('.traffic-limit-form');
+  const trafficNumbers = trafficForm.locator('input[type="number"]');
+  const trafficHardLimit = trafficForm.locator('input[type="checkbox"]');
+  await trafficForm.waitFor();
+  await trafficNumbers.nth(0).fill('125');
+  await trafficNumbers.nth(1).fill('35');
+  await trafficNumbers.nth(2).fill('12');
+  await trafficHardLimit.check();
+  async function checkTrafficDraft(monthly = '125', speed = '35', day = '12', hard = true) {
+    assert.equal(await trafficNumbers.nth(0).inputValue(), monthly);
+    assert.equal(await trafficNumbers.nth(1).inputValue(), speed);
+    assert.equal(await trafficNumbers.nth(2).inputValue(), day);
+    assert.equal(await trafficHardLimit.isChecked(), hard);
+  }
+  for (const section of ['overview', 'access', 'routing', 'protocols', 'settings']) {
+    await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
+    await page.waitForURL(`${workspace}/${section}`);
+    await trafficForm.waitFor({ state: 'hidden' });
+  }
+  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  await trafficForm.waitFor();
+  await checkTrafficDraft();
+  const trafficPath = `/api/v1/vpn-accounts/${account.id}/traffic`;
+  const limitPath = `/api/v1/vpn-accounts/${account.id}/traffic-limit`;
+  await api(limitPath, { method: 'PATCH', token, body: {
+    monthlyLimitBytes: 88 * 1024 ** 3, speedLimitBps: 9_000_000, resetDay: 3, hardLimitEnabled: false,
+  } });
+  const refreshedTraffic = page.waitForResponse(response => response.request().method() === 'GET'
+    && new URL(response.url()).pathname === trafficPath);
+  await page.locator('.workspace-nav-link[href$="/overview"]').click();
+  assert.equal((await (await refreshedTraffic).json()).limit.resetDay, 3);
+  await page.waitForLoadState('networkidle');
+  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  await trafficForm.waitFor();
+  await checkTrafficDraft();
+
+  // Hold one rejected write to verify pending controls, then retry for real.
+  let releaseTrafficWrite;
+  const trafficWriteArrived = new Promise(resolve => { releaseTrafficWrite = resolve; });
+  await page.route(`**${limitPath}`, route => { releaseTrafficWrite(route); }, { times: 1 });
+  await trafficForm.locator('button[type="submit"]').click();
+  const heldTrafficWrite = await trafficWriteArrived;
+  await page.waitForFunction(() => {
+    const controls = [...document.querySelectorAll('.traffic-limit-form input, .traffic-limit-form button[type="submit"]')];
+    return controls.length === 5 && controls.every(control => control.disabled);
+  });
+  for (const input of await trafficForm.locator('input').all()) assert.ok(await input.isDisabled());
+  assert.ok(await trafficForm.locator('button[type="submit"]').isDisabled());
+  await heldTrafficWrite.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ message: 'Traffic conflict' }) });
+  await trafficForm.getByRole('alert').waitFor();
+  await checkTrafficDraft();
+  const trafficSaved = page.waitForResponse(response => response.request().method() === 'PATCH'
+    && new URL(response.url()).pathname === limitPath);
+  await trafficForm.locator('button[type="submit"]').click();
+  assert.ok((await trafficSaved).ok());
+  await trafficForm.getByRole('status').waitFor();
+  await checkTrafficDraft();
+  const persistedTraffic = (await api(trafficPath, { token })).limit;
+  assert.equal(persistedTraffic.monthlyLimitBytes, 125 * 1024 ** 3);
+  assert.equal(persistedTraffic.speedLimitBps, 35_000_000);
+  assert.equal(persistedTraffic.resetDay, 12);
+  assert.equal(persistedTraffic.hardLimitEnabled, true);
+  await trafficNumbers.nth(0).fill('999');
+  assert.equal(await trafficForm.getByRole('status').count(), 0, 'Editing clears stale save confirmation');
+  await api(`/api/v1/vpn-accounts/${otherAccount.id}/traffic-limit`, { method: 'PATCH', token, body: {
+    monthlyLimitBytes: 77 * 1024 ** 3, speedLimitBps: null, resetDay: 2, hardLimitEnabled: false,
+  } });
+  await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${otherAccount.id}/"]`).click();
+  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  await page.waitForFunction(() => document.querySelector('.traffic-limit-form input')?.value === '77');
+  await checkTrafficDraft('77', '', '2', false);
+  await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${account.id}/"]`).click();
+  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  await page.waitForFunction(() => document.querySelector('.traffic-limit-form input')?.value === '125');
+  await checkTrafficDraft();
+
   // Summary navigation must open the indicated domain without writing data.
   // Check every card, including both account cards that lead to Routing.
   const navigationWrites = [];
@@ -305,7 +383,7 @@ try {
   }
   assert.equal(layoutChecks, 68, '60 domain layouts plus 8 rule editor layouts');
   assert.deepEqual(errors, []);
-  console.log(`PASS: Manager CRUD, account draft isolation, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
+  console.log(`PASS: Manager CRUD, account/traffic draft isolation and retry, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
 } finally {
   await browser?.close();
   await vite?.close();

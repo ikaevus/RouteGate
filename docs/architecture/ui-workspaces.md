@@ -192,3 +192,23 @@ Account settings draft regressions also cover tab navigation, changed remote
 identity/notes followed by a lifecycle-triggered refetch, successful persistence,
 and isolation when switching accounts. This does not claim draft persistence for
 every other account form.
+
+## Traffic settings drafts
+
+The non-secret traffic panel, like account settings, stays mounted under the
+account-keyed workspace while its domain is hidden. Changing account identity
+remounts it; this is in-memory retention, not browser storage or reload recovery.
+The traffic query remains enabled (no new polling) so successful writes can
+refresh their data even if the user changes domains during saving.
+
+Local edits protect all four limit fields from background query updates. Inputs
+and submit are disabled during a save or when traffic data is unavailable.
+Successful saving clears the dirty guard only after a successful refresh; a
+failed refresh does not restore stale input. Rejected writes retain the draft
+for retry, and editing clears old success/error feedback.
+
+Integration covers all five other tabs, a changed remote limit followed by an
+overview-triggered refetch, pending controls, rejected save/retry, persistence,
+and account isolation. Routing/protocol drafts and device/delivery forms still
+need their own review. Credential-bearing domains continue to unmount when left;
+they are not retained as hidden panels by this change.
