@@ -17,6 +17,12 @@ ROUTEGATE_BUNDLE_BASE_URL="${ROUTEGATE_BUNDLE_BASE_URL:-}"
 ROUTEGATE_AGENT_CONFIG="${ROUTEGATE_AGENT_CONFIG:-/etc/routegate/agent.yaml}"
 ROUTEGATE_AGENT_BINARY="${ROUTEGATE_AGENT_BINARY:-/usr/local/bin/routegate-agent}"
 ROUTEGATE_AGENT_SERVICE="${ROUTEGATE_AGENT_SERVICE:-/etc/systemd/system/routegate-agent.service}"
+ROUTEGATE_INSTALLER_STATE_DIR="${ROUTEGATE_INSTALLER_STATE_DIR:-/var/lib/routegate-agent-installer}"
+ROUTEGATE_INSTALLER_STATE_FILE="${ROUTEGATE_INSTALLER_STATE_FILE:-${ROUTEGATE_INSTALLER_STATE_DIR}/state.env}"
+ROUTEGATE_INSTALLER_LOG_FILE="${ROUTEGATE_INSTALLER_LOG_FILE:-/var/log/routegate-agent-installer.log}"
+ROUTEGATE_INSTALLER_STATE_READY=0
+ROUTEGATE_INSTALLER_STAGE="preflight"
+ROUTEGATE_INSTALLER_STARTED_AT=""
 ROUTEGATE_WORK_DIR=""
 ROUTEGATE_ARCH=""
 ROUTEGATE_RESOLVED_VERSION=""
@@ -47,12 +53,79 @@ USAGE
 }
 
 log() {
-  printf '[RouteGate Agent] %s\n' "$*"
+  local message="$*"
+  printf '[RouteGate Agent] %s\n' "$message"
+  if [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" && -f "${ROUTEGATE_INSTALLER_LOG_FILE:-}" ]]; then
+    printf '%s [INFO] stage=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${ROUTEGATE_INSTALLER_STAGE:-unknown}" "$message" >>"$ROUTEGATE_INSTALLER_LOG_FILE"
+  fi
+}
+
+write_installer_state() {
+  [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]] || return 0
+  local status=$1
+  local stage=$2
+  local updated_at tmp
+  updated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  tmp=$(mktemp "${ROUTEGATE_INSTALLER_STATE_DIR}/.state.XXXXXX") || return 1
+  {
+    printf 'STATUS=%s\n' "$status"
+    printf 'STAGE=%s\n' "$stage"
+    printf 'STARTED_AT=%s\n' "$ROUTEGATE_INSTALLER_STARTED_AT"
+    printf 'UPDATED_AT=%s\n' "$updated_at"
+  } >"$tmp"
+  chmod 0600 "$tmp"
+  mv -f -- "$tmp" "$ROUTEGATE_INSTALLER_STATE_FILE"
+}
+
+set_installer_stage() {
+  ROUTEGATE_INSTALLER_STAGE=$1
+  write_installer_state running "$ROUTEGATE_INSTALLER_STAGE"
+}
+
+initialize_installer_state() {
+  [[ ! -L "$ROUTEGATE_INSTALLER_STATE_DIR" ]] || die "Refusing to use a symbolic link as the Agent installer state directory."
+  install -d -m 0700 "$ROUTEGATE_INSTALLER_STATE_DIR"
+  [[ ! -L "$ROUTEGATE_INSTALLER_STATE_FILE" ]] || die "Refusing to use a symbolic link as the Agent installer state file."
+  [[ ! -L "$ROUTEGATE_INSTALLER_LOG_FILE" ]] || die "Refusing to use a symbolic link as the Agent installer log."
+  install -d -m 0755 "$(dirname "$ROUTEGATE_INSTALLER_LOG_FILE")"
+  touch "$ROUTEGATE_INSTALLER_LOG_FILE"
+  chown root:root "$ROUTEGATE_INSTALLER_LOG_FILE"
+  chmod 0600 "$ROUTEGATE_INSTALLER_LOG_FILE"
+  ROUTEGATE_INSTALLER_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  ROUTEGATE_INSTALLER_STATE_READY=1
+  write_installer_state running "$ROUTEGATE_INSTALLER_STAGE"
+}
+
+print_retry_guidance() {
+  [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]] || return 0
+  printf '[RouteGate Agent] Installer state: %s\n' "$ROUTEGATE_INSTALLER_STATE_FILE" >&2
+  printf '[RouteGate Agent] Installer log: %s\n' "$ROUTEGATE_INSTALLER_LOG_FILE" >&2
+  printf '[RouteGate Agent] Safe retry: return to Connect server, generate a fresh command, and run that command again.\n' >&2
 }
 
 die() {
-  printf '[RouteGate Agent] ERROR: %s\n' "$*" >&2
+  local message="$*"
+  printf '[RouteGate Agent] ERROR: %s\n' "$message" >&2
+  if [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]]; then
+    printf '%s [ERROR] stage=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${ROUTEGATE_INSTALLER_STAGE:-unknown}" "$message" >>"$ROUTEGATE_INSTALLER_LOG_FILE" 2>/dev/null || true
+    write_installer_state failed "${ROUTEGATE_INSTALLER_STAGE:-unknown}" 2>/dev/null || true
+    print_retry_guidance
+  fi
   exit 1
+}
+
+on_error() {
+  local exit_code=$1
+  local line_number=$2
+  trap - ERR
+  set +e
+  printf '[RouteGate Agent] ERROR: Installer stopped at stage %s (line %s, exit %s).\n' "${ROUTEGATE_INSTALLER_STAGE:-unknown}" "$line_number" "$exit_code" >&2
+  if [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]]; then
+    printf '%s [ERROR] stage=%s line=%s exit=%s unexpected command failure\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${ROUTEGATE_INSTALLER_STAGE:-unknown}" "$line_number" "$exit_code" >>"$ROUTEGATE_INSTALLER_LOG_FILE" 2>/dev/null
+    write_installer_state failed "${ROUTEGATE_INSTALLER_STAGE:-unknown}" 2>/dev/null
+    print_retry_guidance
+  fi
+  exit "$exit_code"
 }
 
 cleanup() {
@@ -527,12 +600,31 @@ main() {
   parse_args "$@"
   validate_inputs
   require_supported_host
+
+  initialize_installer_state
+  trap 'on_error $? $LINENO' ERR
+
+  set_installer_stage apt_repository_preflight
   validate_apt_repository_trust
+
+  set_installer_stage dependencies
   install_dependencies
+
+  set_installer_stage bundle
   prepare_bundle
+
+  set_installer_stage agent_install
   install_agent
+
+  set_installer_stage registration
   wait_for_registration
+
+  set_installer_stage updater
   bootstrap_trusted_updater
+
+  ROUTEGATE_INSTALLER_STAGE=complete
+  write_installer_state complete complete
+  log "Agent bootstrap completed successfully."
 }
 
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
