@@ -436,13 +436,21 @@ EOF_SOURCES
 
   cat >"$root/etc/apt/sources.list.d/provider.list" <<'EOF_PROVIDER'
 deb https://mirror.yandex.ru/ubuntu noble main
+deb https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu noble stable
 EOF_PROVIDER
 
-  assert_false     "rejects provider-controlled Ubuntu mirrors outside the trust boundary"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
+  assert_true     "accepts the project-approved Yandex Ubuntu and Docker mirror paths"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
 
   local report
   report=$(apt_repository_trust_report "$root" 2>/dev/null || true)
-  assert_true     "reports the blocked repository URI for operator review"     grep -Fq '[blocked] https://mirror.yandex.ru/ubuntu' <<<"$report"
+  assert_true     "reports the approved Ubuntu mirror as trusted"     grep -Fq '[trusted] https://mirror.yandex.ru/ubuntu' <<<"$report"
+  assert_true     "reports the approved Docker mirror as trusted"     grep -Fq '[trusted] https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu' <<<"$report"
+
+  cat >"$root/etc/apt/sources.list.d/unapproved-yandex.list" <<'EOF_UNAPPROVED'
+deb https://mirror.yandex.ru/unapproved noble main
+EOF_UNAPPROVED
+  assert_false     "does not trust arbitrary paths on mirror.yandex.ru"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
+  rm -f "$root/etc/apt/sources.list.d/unapproved-yandex.list"
 
   rm -f "$root/etc/apt/sources.list.d/provider.list"
   cat >"$root/etc/apt/sources.list.d/disabled.sources" <<'EOF_DISABLED'

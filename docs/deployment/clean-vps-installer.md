@@ -81,8 +81,8 @@ The installer intentionally does **not** install or start sing-box. VPN Core ins
 Before running the installer:
 
 - use a clean Ubuntu 24.04 LTS amd64 VPS;
-- require the active APT sources to resolve only to Canonical Ubuntu archive/security infrastructure (`archive.ubuntu.com`, regional `*.archive.ubuntu.com`, `security.ubuntu.com`, or `ports.ubuntu.com`);
-- treat provider-controlled, organization-controlled, PPA, and other third-party APT mirrors as outside the default clean-host trust boundary until the operator deliberately replaces or removes them;
+- require active APT sources to stay within the RouteGate-approved repository boundary: Canonical Ubuntu archive/security infrastructure (`archive.ubuntu.com`, regional `*.archive.ubuntu.com`, `security.ubuntu.com`, or `ports.ubuntu.com`) plus the explicitly approved Yandex mirror paths listed below;
+- treat other provider-controlled, organization-controlled, PPA, and third-party APT sources as outside the default clean-host trust boundary until the operator deliberately replaces, removes, or explicitly approves them;
 - connect as `root` or a user with working `sudo`;
 - create a DNS `A` record for the chosen FQDN pointing directly to the VPS public IPv4 address;
 - ensure inbound TCP ports 80 and 443 are reachable;
@@ -99,10 +99,17 @@ A "clean Ubuntu VPS" is a trust statement, not only an operating-system version 
 Before the installer performs any APT network operation, RouteGate enumerates active
 `/etc/apt/sources.list`, `*.list`, and deb822 `*.sources` entries.
 
-The default installation boundary accepts only Canonical Ubuntu archive/security
-hosts. Any active provider mirror, PPA, private mirror, or other third-party APT
-source causes a hard stop and is printed as `[blocked]` for operator review.
-Explicitly disabled deb822 stanzas (`Enabled: no`) are ignored.
+The default installation boundary accepts Canonical Ubuntu archive/security
+hosts and these explicitly approved mirror paths:
+
+- `https://mirror.yandex.ru/ubuntu`
+- `https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu`
+
+Only those Yandex paths are approved; arbitrary repositories on
+`mirror.yandex.ru` remain outside the trust boundary. Any other active provider
+mirror, PPA, private mirror, or third-party APT source causes a hard stop and is
+printed as `[blocked]` for operator review. Explicitly disabled deb822 stanzas
+(`Enabled: no`) are ignored.
 
 RouteGate deliberately does **not** auto-rewrite repository configuration. The
 operator must decide whether to replace, remove, or otherwise trust a source before
