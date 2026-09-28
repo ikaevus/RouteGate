@@ -76,6 +76,13 @@ test_validation_helpers() {
   assert_true "accepts a semantic release tag" validate_release_version v1.2.3
   assert_false "rejects a release selector with a slash" validate_release_version feature/test
 
+  assert_true "accepts HTTPS artifact URLs" validate_artifact_url "https://github.com/ikaevus/RouteGate/releases/download/v1.2.3/bundle.tar.gz"
+  assert_true "accepts HTTPS artifact URLs with a query" validate_artifact_url "https://downloads.example.org/bundle.tar.gz?signature=value"
+  assert_false "rejects HTTP artifact URLs" validate_artifact_url "http://downloads.example.org/bundle.tar.gz"
+  assert_false "rejects artifact URL credentials" validate_artifact_url "https://user:pass@downloads.example.org/bundle.tar.gz"
+  assert_false "rejects artifact URL fragments" validate_artifact_url "https://downloads.example.org/bundle.tar.gz#fragment"
+  assert_false "rejects artifact URL whitespace" validate_artifact_url "https://downloads.example.org/bundle file.tar.gz"
+
   assert_true "accepts the supported platform tuple" platform_tuple_supported ubuntu 24.04 amd64 1
   assert_false "rejects Ubuntu 22.04" platform_tuple_supported ubuntu 22.04 amd64 1
   assert_false "rejects arm64 in the installer MVP" platform_tuple_supported ubuntu 24.04 arm64 1
@@ -144,6 +151,15 @@ test_artifact_urls() {
     "constructs versioned release URLs" \
     "https://github.com/ikaevus/RouteGate/releases/download/v1.2.3/routegate-v1.2.3-linux-amd64.tar.gz|https://github.com/ikaevus/RouteGate/releases/download/v1.2.3/SHA256SUMS" \
     "$output"
+}
+
+test_archive_entry_policy() {
+  assert_true \
+    "Clean VPS bundle extraction rejects non-file/non-directory tar entries" \
+    grep -Fq "\$1 !~ /^[-d]/" "$ROOT_DIR/install.sh"
+  assert_true \
+    "Clean VPS bundle extraction reports non-regular entries clearly" \
+    grep -Fq "Release bundle contains a non-regular filesystem entry." "$ROOT_DIR/install.sh"
 }
 
 test_checksum_verification() {
@@ -512,6 +528,7 @@ test_validation_helpers
 test_argument_parsing
 test_artifact_urls
 test_checksum_verification
+test_archive_entry_policy
 test_piped_entrypoint_guard
 test_setup_url_contract
 test_manager_environment_public_url
