@@ -196,7 +196,7 @@ Local-file and explicit-URL modes still require checksum verification. A bundle 
 The installer performs these stages in order:
 
 1. Prompts for missing domain/email values and validates arguments, Ubuntu version, architecture, systemd, required base commands, and privileges.
-2. Enumerates active classic and deb822 APT sources and fails closed unless every active repository is inside the official Ubuntu trust boundary. This happens before any `apt-get update` or package installation.
+2. Enumerates active classic and deb822 APT sources before package operations, labels Canonical Ubuntu sources as official and other sources as external, and leaves the trust decision to the operator.
 3. Shows which required APT dependencies will be reused and which will be installed.
 4. Detects unowned RouteGate files, active web/database services, or listeners on TCP 80/443 before mutation.
 5. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
@@ -336,7 +336,7 @@ Both amd64 and arm64 bundles are published to keep the native packaging contract
 
 - Manager listens only on loopback and is exposed through nginx/HTTPS.
 - PostgreSQL is local-only.
-- The installer fails closed before APT network access when active package sources leave the official Ubuntu repository trust boundary.
+- The installer inventories active APT sources before package operations and warns about external sources without silently rewriting or blocking them.
 - RouteGate does not silently rewrite a host's APT sources; repository trust remains an explicit operator decision.
 - Release checksum verification is mandatory.
 - Archive traversal and archive links are rejected.
