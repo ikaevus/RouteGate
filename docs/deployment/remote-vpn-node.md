@@ -64,6 +64,20 @@ verified bundle source — do not expose a copyable privileged bootstrap command
 The UI must show bootstrap unavailability rather than presenting the
 configuration-only snippet as an installation command.
 
+### Retry and diagnostics
+
+The Agent bootstrap records its current stage and result without storing the
+registration token:
+
+- state: `/var/lib/routegate-agent-installer/state.env`;
+- log: `/var/log/routegate-agent-installer.log`.
+
+Both are root-owned and the log is mode `0600`. On failure the installer prints
+the failed stage plus the safe next action. The supported retry path is to return
+to **Connect server**, generate a fresh command, and run that newly generated
+command. If the Agent already exchanged the registration token successfully, its
+existing persistent identity for the same Manager is preserved.
+
 ## Security properties
 
 - registration tokens are bound to one node, stored only as SHA-256 hashes,
