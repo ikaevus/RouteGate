@@ -267,7 +267,6 @@ jobs:
       ROUTEGATE_E2E_DATABASE_URL: postgres://routegate:routegate_e2e_password@127.0.0.1:5432/routegate_remote_bootstrap_e2e?sslmode=disable
       ROUTEGATE_E2E_PUBLIC_URL: https://localhost:18443
       ROUTEGATE_E2E_MANAGER_ADDR: 127.0.0.1:18080
-      ROUTEGATE_E2E_WORK_DIR: ${{ runner.temp }}/routegate-remote-bootstrap-e2e
       ROUTEGATE_E2E_COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout exact commit under test
