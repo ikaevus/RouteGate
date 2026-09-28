@@ -644,6 +644,9 @@ publish_bootstrap_artifacts() {
   }
   install -d -m 0755 "$BOOTSTRAP_ROOT" || return 1
   staging=$(mktemp -d "${BOOTSTRAP_ROOT}/.${EXPECTED_COMMIT}.XXXXXX") || return 1
+  # mktemp creates directories with mode 0700. nginx runs as an unprivileged
+  # worker and must be able to traverse the published commit directory.
+  chmod 0755 "$staging" || { rm -rf -- "$staging"; return 1; }
   install -m 0644 "$BUNDLE_FILE" "$staging/routegate-production-like-linux-amd64.tar.gz" || {
     rm -rf -- "$staging"
     return 1
