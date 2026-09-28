@@ -349,6 +349,126 @@ PY
   log "nginx subscription proxy route=reconciled"
 }
 
+reconcile_bootstrap_artifact_route() {
+  local template="$WORK_DIR/nginx/routegate.conf.example"
+  local candidate
+  local route_count
+
+  [[ -f "$template" && ! -L "$template" ]] \
+    || { printf '[production-like] release bundle is missing nginx route template.\n' >&2; return 1; }
+  [[ -f "$NGINX_SITE" && ! -L "$NGINX_SITE" ]] \
+    || { printf '[production-like] RouteGate nginx site is missing or unsafe: %s\n' "$NGINX_SITE" >&2; return 1; }
+  [[ -x "$NGINX_BIN" ]] \
+    || { printf '[production-like] nginx binary is unavailable: %s\n' "$NGINX_BIN" >&2; return 1; }
+
+  route_count=$(grep -Ec '^[[:space:]]*location[[:space:]]+\^~[[:space:]]+/bootstrap/[[:space:]]*\{' "$NGINX_SITE" || true)
+  if [[ "$route_count" == "1" ]]; then
+    grep -Fq 'root /var/www/routegate;' "$NGINX_SITE" \
+      || { printf '[production-like] existing bootstrap route does not use the fixed RouteGate document root.\n' >&2; return 1; }
+    grep -Fq 'try_files $uri =404;' "$NGINX_SITE" \
+      || { printf '[production-like] existing bootstrap route may fall back to the SPA.\n' >&2; return 1; }
+    log "nginx bootstrap artifact route=present"
+    return 0
+  fi
+  [[ "$route_count" == "0" ]] \
+    || { printf '[production-like] expected at most one bootstrap artifact route, found %s.\n' "$route_count" >&2; return 1; }
+
+  grep -Eq '^[[:space:]]*location[[:space:]]+\^~[[:space:]]+/bootstrap/[[:space:]]*\{' "$template" \
+    || { printf '[production-like] bundle nginx template has no /bootstrap/ route.\n' >&2; return 1; }
+  grep -Fq 'root /var/www/routegate;' "$template" \
+    || { printf '[production-like] bundle /bootstrap/ route does not pin the RouteGate document root.\n' >&2; return 1; }
+  grep -Fq 'try_files $uri =404;' "$template" \
+    || { printf '[production-like] bundle /bootstrap/ route does not fail closed.\n' >&2; return 1; }
+
+  if [[ -z "$NGINX_BACKUP" ]]; then
+    NGINX_BACKUP="$BACKUP_DIR/nginx-routegate.conf"
+    cp -a -- "$NGINX_SITE" "$NGINX_BACKUP" || return 1
+  fi
+  candidate=$(mktemp "$(dirname "$NGINX_SITE")/.routegate-bootstrap-route.XXXXXX") || return 1
+
+  if ! python3 - "$NGINX_SITE" "$template" "$candidate" <<'PY'
+from pathlib import Path
+import sys
+
+live_path, template_path, output_path = map(Path, sys.argv[1:])
+live = live_path.read_text().splitlines(keepends=True)
+template = template_path.read_text().splitlines(keepends=True)
+
+def extract_location(lines, marker):
+    starts = [i for i, line in enumerate(lines) if line.strip() == marker]
+    if len(starts) != 1:
+        raise SystemExit(f"expected one {marker!r} block, found {len(starts)}")
+    start = starts[0]
+    depth = 0
+    block = []
+    for line in lines[start:]:
+        block.append(line)
+        depth += line.count("{") - line.count("}")
+        if depth == 0:
+            break
+    if not block or depth != 0:
+        raise SystemExit(f"unterminated {marker!r} block")
+    return block
+
+block = extract_location(template, "location ^~ /bootstrap/ {")
+block_text = "".join(block)
+required = (
+    "root /var/www/routegate;",
+    "try_files $uri =404;",
+    "default_type application/octet-stream;",
+)
+for directive in required:
+    if directive not in block_text:
+        raise SystemExit(f"bootstrap block is missing {directive!r}")
+
+anchor_positions = [i for i, line in enumerate(live) if line.strip() == "location /sub/ {"]
+if not anchor_positions:
+    anchor_positions = [i for i, line in enumerate(live) if line.strip() == "location /api/ {"]
+if len(anchor_positions) != 1:
+    raise SystemExit(f"expected one live insertion anchor, found {len(anchor_positions)}")
+insert_at = anchor_positions[0]
+indent = live[insert_at][: len(live[insert_at]) - len(live[insert_at].lstrip())]
+base_indent = block[0][: len(block[0]) - len(block[0].lstrip())]
+rendered = []
+for line in block:
+    if line.strip():
+        if not line.startswith(base_indent):
+            raise SystemExit("bootstrap block indentation is inconsistent")
+        rendered.append(indent + line[len(base_indent):])
+    else:
+        rendered.append(line)
+
+if rendered and not rendered[-1].endswith("\n"):
+    rendered[-1] += "\n"
+rendered.append("\n")
+output_path.write_text("".join(live[:insert_at] + rendered + live[insert_at:]))
+PY
+  then
+    rm -f -- "$candidate"
+    return 1
+  fi
+
+  cat -- "$candidate" > "$NGINX_SITE" || { rm -f -- "$candidate"; return 1; }
+  rm -f -- "$candidate"
+
+  if ! "$NGINX_BIN" -t; then
+    cp -a -- "$NGINX_BACKUP" "$NGINX_SITE"
+    "$NGINX_BIN" -t >/dev/null 2>&1 || true
+    printf '[production-like] nginx validation rejected the /bootstrap/ route; original site restored.\n' >&2
+    return 1
+  fi
+  if ! systemctl reload nginx; then
+    cp -a -- "$NGINX_BACKUP" "$NGINX_SITE"
+    "$NGINX_BIN" -t >/dev/null 2>&1 || true
+    systemctl reload nginx >/dev/null 2>&1 || true
+    printf '[production-like] nginx reload failed for the /bootstrap/ route; original site restored.\n' >&2
+    return 1
+  fi
+
+  NGINX_MUTATED=1
+  log "nginx bootstrap artifact route=reconciled"
+}
+
 reconcile_hysteria_acme_bridge() {
   local template="$WORK_DIR/nginx/routegate.conf.example"
   local candidate
@@ -893,6 +1013,9 @@ reconcile_subscription_proxy_route
 STAGE=nginx_hysteria_acme_bridge
 reconcile_hysteria_acme_bridge
 
+STAGE=nginx_bootstrap_artifacts
+reconcile_bootstrap_artifact_route
+
 STAGE=observability_validation
 chmod 0700 "$VALIDATION_SCRIPT"
 "$VALIDATION_SCRIPT" "$EXPECTED_COMMIT"
@@ -906,7 +1029,18 @@ public_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/")
 [[ "$public_status" == 200 ]]
 subscription_probe_status=$(curl -sS -o /dev/null -w '%{http_code}' "$PUBLIC_URL/sub/routegate-deploy-probe")
 [[ "$subscription_probe_status" == 404 ]]
-log "subscription proxy probe=http_${subscription_probe_status}"
+log "subscription proxy probe=http_$subscription_probe_status"
+
+bootstrap_checksum_url="$PUBLIC_URL/bootstrap/$EXPECTED_COMMIT/SHA256SUMS"
+bootstrap_checksum_probe=$(curl -fsSL --max-time 30 "$bootstrap_checksum_url")
+bootstrap_amd64_sha=$(awk '$2 == "routegate-production-like-linux-amd64.tar.gz" || $2 == "*routegate-production-like-linux-amd64.tar.gz" {print $1; exit}' <<<"$bootstrap_checksum_probe")
+bootstrap_arm64_sha=$(awk '$2 == "routegate-production-like-linux-arm64.tar.gz" || $2 == "*routegate-production-like-linux-arm64.tar.gz" {print $1; exit}' <<<"$bootstrap_checksum_probe")
+[[ "$bootstrap_amd64_sha" =~ ^[a-fA-F0-9]{64}$ ]]
+[[ "$bootstrap_arm64_sha" =~ ^[a-fA-F0-9]{64}$ ]]
+[[ "$bootstrap_amd64_sha" == "$(bootstrap_checksum_for routegate-production-like-linux-amd64.tar.gz)" ]]
+[[ "$bootstrap_arm64_sha" == "$(bootstrap_checksum_for routegate-production-like-linux-arm64.tar.gz)" ]]
+log "bootstrap public checksum probe=verified"
+
 log_runtime_diagnostics
 
 STAGE=complete
