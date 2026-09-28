@@ -105,8 +105,8 @@ BUNDLE_FILE=${2:?bundle path is required}
 EXPECTED_BUNDLE_SHA=${3:?bundle sha256 is required}
 VALIDATION_SCRIPT=${4:?validation script path is required}
 UPDATE_CORE=${5:?update core path is required}
-BOOTSTRAP_ARM64_BUNDLE=${6:?arm64 bootstrap bundle path is required}
-BOOTSTRAP_CHECKSUMS=${7:?bootstrap checksum file path is required}
+BOOTSTRAP_ARM64_BUNDLE=${6:-}
+BOOTSTRAP_CHECKSUMS=${7:-}
 PUBLIC_URL=${ROUTEGATE_PUBLIC_URL_OVERRIDE:-https://us.routegate.org}
 BOOTSTRAP_ROOT=${ROUTEGATE_BOOTSTRAP_ROOT:-/var/www/routegate/bootstrap}
 BOOTSTRAP_DIR="${BOOTSTRAP_ROOT}/${EXPECTED_COMMIT}"
@@ -499,6 +499,14 @@ verify_bootstrap_bundle() {
 }
 
 verify_bootstrap_artifacts() {
+  if [[ -z "$BOOTSTRAP_ARM64_BUNDLE" && -z "$BOOTSTRAP_CHECKSUMS" ]]; then
+    log "bootstrap artifact publication=not requested"
+    return 0
+  fi
+  [[ -n "$BOOTSTRAP_ARM64_BUNDLE" && -n "$BOOTSTRAP_CHECKSUMS" ]] || {
+    printf '[production-like] bootstrap artifacts must provide both arm64 bundle and SHA256SUMS\n' >&2
+    return 1
+  }
   [[ -f "$BOOTSTRAP_CHECKSUMS" && ! -L "$BOOTSTRAP_CHECKSUMS" ]] || {
     printf '[production-like] bootstrap checksum file is missing or unsafe\n' >&2
     return 1
@@ -509,12 +517,12 @@ verify_bootstrap_artifacts() {
 
 publish_bootstrap_artifacts() {
   local staging
-  install -d -m 0755 "$BOOTSTRAP_ROOT" || return 1
+  [[ -n "$BOOTSTRAP_ARM64_BUNDLE" && -n "$BOOTSTRAP_CHECKSUMS" ]] || return 0
   [[ ! -L "$BOOTSTRAP_ROOT" ]] || {
     printf '[production-like] bootstrap artifact root must not be a symlink\n' >&2
     return 1
   }
-
+  install -d -m 0755 "$BOOTSTRAP_ROOT" || return 1
   staging=$(mktemp -d "${BOOTSTRAP_ROOT}/.${EXPECTED_COMMIT}.XXXXXX") || return 1
   install -m 0644 "$BUNDLE_FILE" "$staging/routegate-production-like-linux-amd64.tar.gz" || {
     rm -rf -- "$staging"
