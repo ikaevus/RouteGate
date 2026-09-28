@@ -666,10 +666,7 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
     : '';
-  const manualSetupCommand = configSnippet
-    ? `sudo install -d -m 0755 /etc/routegate\nsudo tee /etc/routegate/agent.yaml >/dev/null <<'ROUTEGATE_AGENT_CONFIG'\n${configSnippet}\nROUTEGATE_AGENT_CONFIG\nsudo chmod 0600 /etc/routegate/agent.yaml`
-    : '';
-  const setupCommand = registrationToken?.bootstrapCommand || manualSetupCommand;
+  const setupCommand = registrationToken?.bootstrapCommand?.trim() ?? '';
 
   return (
     <section className="page server-details-page">
@@ -1386,7 +1383,33 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                   </div>
                   <ol className="agent-onboarding-steps">
                     <li><strong>{t('serverDetails.agentStepPrepareTitle')}</strong><span>{t('serverDetails.agentStepPrepareDescription')}</span></li>
-                    <li><strong>{t('serverDetails.agentStepInstallTitle')}</strong><span>{t('serverDetails.agentStepInstallDescription')}</span><pre className="code-block agent-setup-command">{setupCommand}</pre><div className="agent-setup-actions"><button className="primary-button" type="button" aria-label={t('serverDetails.copySetupCommand')} onClick={() => void copySetupCommand(setupCommand)}>{t('serverDetails.copySetupCommand')}</button>{isSetupCommandCopied && <span role="status" aria-live="polite">{t('serverDetails.setupCommandCopied')}</span>}</div></li>
+                    <li>
+                      <strong>{t('serverDetails.agentStepInstallTitle')}</strong>
+                      {setupCommand ? (
+                        <>
+                          <span>{t('serverDetails.agentStepInstallDescription')}</span>
+                          <pre className="code-block agent-setup-command">{setupCommand}</pre>
+                          <div className="agent-setup-actions">
+                            <button
+                              className="primary-button"
+                              type="button"
+                              aria-label={t('serverDetails.copySetupCommand')}
+                              onClick={() => void copySetupCommand(setupCommand)}
+                            >
+                              {t('serverDetails.copySetupCommand')}
+                            </button>
+                            {isSetupCommandCopied && (
+                              <span role="status" aria-live="polite">{t('serverDetails.setupCommandCopied')}</span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="form-message form-message-error" role="alert">
+                          <strong>{t('serverDetails.bootstrapUnavailableTitle')}</strong>
+                          <p>{t('serverDetails.bootstrapUnavailableDescription')}</p>
+                        </div>
+                      )}
+                    </li>
                     <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>
                   </ol>
 
