@@ -42,6 +42,11 @@ ROUTEGATE_PROMETHEUS_TOKEN_FILE="/etc/prometheus/routegate.token"
 ROUTEGATE_PROMETHEUS_STORAGE="/var/lib/prometheus/routegate"
 ROUTEGATE_PROMETHEUS_OVERRIDE="/etc/systemd/system/prometheus.service.d/routegate.conf"
 ROUTEGATE_PROMETHEUS_INSTALL_MASK="/etc/systemd/system/prometheus.service"
+ROUTEGATE_INSTALL_STAGE="arguments"
+
+set_install_stage() {
+  ROUTEGATE_INSTALL_STAGE=$1
+}
 
 usage() {
   cat <<'USAGE'
@@ -98,18 +103,19 @@ warn() {
 
 die() {
   local message="$*"
-  printf '[RouteGate] ERROR: %s\n' "$message" >&2
+  printf '[RouteGate] ERROR at stage %s: %s\n' "$ROUTEGATE_INSTALL_STAGE" "$message" >&2
   if [[ -n "${ROUTEGATE_LOG_FILE:-}" && -e "${ROUTEGATE_LOG_FILE:-}" ]]; then
-    printf '%s [ERROR] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$message" >>"$ROUTEGATE_LOG_FILE"
+    printf '%s [ERROR] stage=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ROUTEGATE_INSTALL_STAGE" "$message" >>"$ROUTEGATE_LOG_FILE"
   fi
+  printf '[RouteGate] Next action: resolve the error; review the installer log and routegate-recovery status if available before retrying this installer.\n' >&2
   exit 1
 }
 
 on_error() {
   local exit_code=$?
   local line_number=${1:-unknown}
-  warn "Installation stopped at line ${line_number} (exit ${exit_code})."
-  warn "Review ${ROUTEGATE_LOG_FILE} and the relevant systemd journal before retrying."
+  warn "Installation stopped at stage ${ROUTEGATE_INSTALL_STAGE}, line ${line_number} (exit ${exit_code})."
+  warn "Next action: review ${ROUTEGATE_LOG_FILE} and routegate-recovery status if available; resolve the error before retrying."
   exit "$exit_code"
 }
 
@@ -1761,35 +1767,52 @@ main() {
   trap cleanup EXIT
 
   parse_args "$@"
+  set_install_stage host_preflight
   require_root
   initialize_logging
   acquire_install_lock
+  set_install_stage input_preflight
   prompt_for_inputs
   validate_inputs
   validate_platform
   verify_completed_install_before_repository_preflight
+  set_install_stage apt_repository_preflight
   validate_apt_repository_trust
   print_dependency_plan
+  set_install_stage conflict_preflight
   detect_conflicts
+  set_install_stage dns_preflight
   validate_dns
   confirm_installation
   initialize_install_state
+  set_install_stage dependencies
   install_dependencies
+  set_install_stage bundle
   prepare_bundle
+  set_install_stage platform_files
   install_files
   load_or_create_secrets
 
+  set_install_stage postgresql
   configure_postgresql "$ROUTEGATE_DB_PASSWORD"
+  set_install_stage manager
   write_manager_environment "$ROUTEGATE_DB_PASSWORD" "$ROUTEGATE_ADMIN_PASSWORD"
   start_manager
+  set_install_stage monitoring
   configure_managed_prometheus
+  set_install_stage nginx_tls
   configure_nginx_and_tls
+  set_install_stage agent
   bootstrap_local_agent "$ROUTEGATE_ADMIN_PASSWORD"
+  set_install_stage admin_setup
   create_initial_setup_link "$ROUTEGATE_ADMIN_PASSWORD"
   remove_bootstrap_environment
   write_initial_credentials "$ROUTEGATE_ADMIN_PASSWORD"
+  set_install_stage verification
   verify_final_state
+  set_install_stage updater
   bootstrap_trusted_updater
+  set_install_stage complete
   write_install_state
   print_success
 }
