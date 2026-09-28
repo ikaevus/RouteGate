@@ -101,7 +101,7 @@ print_retry_guidance() {
     printf '[RouteGate Agent] Installer state: %s\n' "$ROUTEGATE_INSTALLER_STATE_FILE" >&2
     printf '[RouteGate Agent] Installer log: %s\n' "$ROUTEGATE_INSTALLER_LOG_FILE" >&2
   fi
-  printf '[RouteGate Agent] Next action: resolve the error, return to Connect server, generate a fresh command, and retry on a supported host.\n' >&2
+  printf '[RouteGate Agent] Safe retry: return to Connect server, generate a fresh command, and run it on a supported host after resolving the error.\n' >&2
 }
 
 die() {
