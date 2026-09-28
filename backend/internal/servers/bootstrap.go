@@ -33,9 +33,9 @@ func buildAgentBootstrapCommand(publicURL, registrationToken, version, commit, i
 
 	installerURL := agentInstallerBaseURL + "/" + commit + "/install-agent.sh"
 	command := "tmp=$(mktemp) || exit 1; " +
-		"trap \'rm -f \"$tmp\"\' EXIT; " +
-		"curl -fL --proto \'=https\' --tlsv1.2 --retry 3 --connect-timeout 15 " + shellSingleQuote(installerURL) + " -o \"$tmp\" && " +
-		"printf \'%s  %s\\n\' " + shellSingleQuote(installerSHA256) + " \"$tmp\" | sha256sum -c - && " +
+		"trap 'rm -f \"$tmp\"' EXIT; " +
+		"curl -fL --proto '=https' --tlsv1.2 --retry 3 --connect-timeout 15 " + shellSingleQuote(installerURL) + " -o \"$tmp\" && " +
+		"printf '%s  %s\\n' " + shellSingleQuote(installerSHA256) + " \"$tmp\" | sha256sum -c - && " +
 		"sudo env ROUTEGATE_MANAGER_URL=" + shellSingleQuote(managerURL) +
 		" ROUTEGATE_REGISTRATION_TOKEN=" + shellSingleQuote(registrationToken) +
 		" ROUTEGATE_VERSION=" + shellSingleQuote(version)
@@ -91,5 +91,5 @@ func normalizeBootstrapManagerURL(value string) string {
 }
 
 func shellSingleQuote(value string) string {
-	return "\'" + strings.ReplaceAll(value, "\'", "\'\"\'\"\'") + "\'"
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
