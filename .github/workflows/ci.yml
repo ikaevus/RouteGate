@@ -242,6 +242,69 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  remote-node-bootstrap:
+    name: Manager command to Agent heartbeat
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: routegate_remote_bootstrap_e2e
+          POSTGRES_USER: routegate
+          POSTGRES_PASSWORD: routegate_e2e_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U routegate -d routegate_remote_bootstrap_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ROUTEGATE_E2E_DATABASE_URL: postgres://routegate:routegate_e2e_password@127.0.0.1:5432/routegate_remote_bootstrap_e2e?sslmode=disable
+      ROUTEGATE_E2E_PUBLIC_URL: https://localhost:18443
+      ROUTEGATE_E2E_MANAGER_ADDR: 127.0.0.1:18080
+      ROUTEGATE_E2E_WORK_DIR: ${{ runner.temp }}/routegate-remote-bootstrap-e2e
+      ROUTEGATE_E2E_COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact commit under test
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ env.ROUTEGATE_E2E_COMMIT }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+          cache-dependency-path: |
+            backend/go.sum
+            agent/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Exercise real generated bootstrap
+        run: |
+          chmod +x scripts/remote-node-bootstrap-e2e.sh
+          scripts/remote-node-bootstrap-e2e.sh
+
+      # The Manager command and local Agent config contain credentials. Keep
+      # failure diagnostics on the ephemeral runner rather than uploading logs.
+      - name: Show installer stage on failure
+        if: failure()
+        run: |
+          if sudo test -f /var/lib/routegate-agent-installer/state.env; then
+            sudo sed -n '/^STATUS=/p; /^STAGE=/p' /var/lib/routegate-agent-installer/state.env
+          fi
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
