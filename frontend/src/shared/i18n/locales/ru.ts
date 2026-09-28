@@ -588,6 +588,8 @@ export const ru: Record<TranslationKey, string> = {
   'serverDetails.agentStepConfigureDescription': 'Сгенерированная конфигурация указывает адрес Manager и разрешает однократную регистрацию этого сервера. Бинарный файл Agent должен быть уже собран или установлен. Выполните этот блок на целевом сервере:',
   'serverDetails.copySetupCommand': 'Копировать команду установки',
   'serverDetails.setupCommandCopied': 'Команда установки скопирована.',
+  'serverDetails.bootstrapUnavailableTitle': 'Автоматическая установка Agent недоступна для этой сборки Manager.',
+  'serverDetails.bootstrapUnavailableDescription': 'Не используйте только конфигурационный фрагмент как установщик. Разверните сборку Manager с полными bootstrap-метаданными, затем создайте новый токен регистрации.',
   'serverDetails.agentStepStartTitle': 'Запустите Agent',
   'serverDetails.agentStepStartDescription': 'Запустите установленный бинарный файл в текущем терминале. Для постоянной работы настройте его с помощью systemd unit из репозитория.',
   'serverDetails.agentStepWaitTitle': 'Дождитесь подключения сервера',
