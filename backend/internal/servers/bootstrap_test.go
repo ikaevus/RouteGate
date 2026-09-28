@@ -1,6 +1,7 @@
 package servers
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -22,9 +23,26 @@ func TestBuildAgentBootstrapCommand(t *testing.T) {
 	if managerURL != "https://manager.routegate.example" {
 		t.Fatalf("manager URL = %q", managerURL)
 	}
-	want := "tmp=$(mktemp) || exit 1; trap 'rm -f \"$tmp\"' EXIT; curl -fL --proto '=https' --tlsv1.2 --retry 3 --connect-timeout 15 'https://raw.githubusercontent.com/ikaevus/RouteGate/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/install-agent.sh' -o \"$tmp\" && printf '%s  %s\\n' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \"$tmp\" | sha256sum -c - && sudo env ROUTEGATE_MANAGER_URL='https://manager.routegate.example' ROUTEGATE_REGISTRATION_TOKEN='rg_reg_secret' ROUTEGATE_VERSION='v1.2.3' bash \"$tmp\""
-	if command != want {
-		t.Fatalf("bootstrap command = %q, want %q", command, want)
+	for _, fragment := range []string{
+		"( tmp=$(mktemp)",
+		"trap 'rm -f \"$tmp\"' EXIT",
+		"https://raw.githubusercontent.com/ikaevus/RouteGate/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/install-agent.sh",
+		"'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \"$tmp\" | sha256sum -c -",
+		"ROUTEGATE_MANAGER_URL='https://manager.routegate.example'",
+		"ROUTEGATE_REGISTRATION_TOKEN='rg_reg_secret'",
+		"ROUTEGATE_VERSION='v1.2.3'",
+		"Bootstrap failed at stage temporary file",
+		"Bootstrap failed at stage installer download",
+		"Bootstrap failed at stage installer checksum",
+		"Bootstrap failed at stage Agent installation",
+		"Next action: resolve the error, open Connect server, and generate a fresh command.",
+	} {
+		if !strings.Contains(command, fragment) {
+			t.Fatalf("bootstrap command does not contain %q: %q", fragment, command)
+		}
+	}
+	if err := exec.Command("bash", "-n", "-c", command).Run(); err != nil {
+		t.Fatalf("generated bootstrap command has invalid shell syntax: %v", err)
 	}
 }
 
