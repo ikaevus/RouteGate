@@ -12,6 +12,7 @@ ROUTEGATE_BUNDLE_FILE="${ROUTEGATE_BUNDLE_FILE:-}"
 ROUTEGATE_CHECKSUM_FILE="${ROUTEGATE_CHECKSUM_FILE:-}"
 ROUTEGATE_BUNDLE_URL="${ROUTEGATE_BUNDLE_URL:-}"
 ROUTEGATE_CHECKSUM_URL="${ROUTEGATE_CHECKSUM_URL:-}"
+ROUTEGATE_BUNDLE_BASE_URL="${ROUTEGATE_BUNDLE_BASE_URL:-}"
 ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.2}"
 ROUTEGATE_MTG_VERSION="${ROUTEGATE_MTG_VERSION:-2.2.8}"
 
@@ -40,6 +41,7 @@ Options:
   --checksum-file PATH       SHA256SUMS file for --bundle-file.
   --bundle-url URL           Use an explicit release bundle URL.
   --checksum-url URL         SHA256SUMS URL for --bundle-url.
+  --bundle-base-url URL      Base URL containing versioned bundles and SHA256SUMS.
   --help                     Show this help.
 
 Supported target: Ubuntu 24.04 LTS, amd64 or arm64, systemd.
@@ -99,6 +101,11 @@ parse_args() {
         ROUTEGATE_CHECKSUM_URL="$2"
         shift 2
         ;;
+      --bundle-base-url)
+        (($# >= 2)) || die "--bundle-base-url requires a value."
+        ROUTEGATE_BUNDLE_BASE_URL="$2"
+        shift 2
+        ;;
       --help|-h)
         usage
         exit 0
@@ -115,6 +122,14 @@ validate_release_version() {
 validate_manager_url() {
   local value=${1%/}
   [[ "$value" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ ]]
+}
+
+validate_bundle_base_url() {
+  local value=${1%/}
+  [[ "$value" == https://* ]] || return 1
+  [[ "$value" != *"?"* && "$value" != *"#"* && "$value" != *"@"* ]] || return 1
+  [[ "$value" != *[[:space:]]* ]] || return 1
+  [[ "$value" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?(/[-A-Za-z0-9._~/%]+)*$ ]]
 }
 
 validate_registration_token() {
@@ -266,9 +281,14 @@ validate_apt_repository_trust() {
 
 validate_inputs() {
   ROUTEGATE_MANAGER_URL=${ROUTEGATE_MANAGER_URL%/}
+  ROUTEGATE_BUNDLE_BASE_URL=${ROUTEGATE_BUNDLE_BASE_URL%/}
   validate_manager_url "$ROUTEGATE_MANAGER_URL" || die "ROUTEGATE_MANAGER_URL must be a public HTTPS origin without a path, query, or fragment."
   validate_registration_token "$ROUTEGATE_REGISTRATION_TOKEN" || die "ROUTEGATE_REGISTRATION_TOKEN is invalid. Create a fresh token in RouteGate Manager."
   validate_release_version "$ROUTEGATE_VERSION" || die "ROUTEGATE_VERSION contains unsupported characters."
+  if [[ -n "$ROUTEGATE_BUNDLE_BASE_URL" ]]; then
+    validate_bundle_base_url "$ROUTEGATE_BUNDLE_BASE_URL" || die "ROUTEGATE_BUNDLE_BASE_URL must be an HTTPS URL without credentials, query, fragment, or whitespace."
+    [[ "$ROUTEGATE_VERSION" != "latest" ]] || die "ROUTEGATE_BUNDLE_BASE_URL requires an explicit --version."
+  fi
 
   if [[ -n "$ROUTEGATE_BUNDLE_FILE" || -n "$ROUTEGATE_CHECKSUM_FILE" ]]; then
     [[ -n "$ROUTEGATE_BUNDLE_FILE" && -n "$ROUTEGATE_CHECKSUM_FILE" ]] || die "--bundle-file and --checksum-file must be provided together."
@@ -277,6 +297,7 @@ validate_inputs() {
     [[ -n "$ROUTEGATE_BUNDLE_URL" && -n "$ROUTEGATE_CHECKSUM_URL" ]] || die "--bundle-url and --checksum-url must be provided together."
   fi
   [[ -z "$ROUTEGATE_BUNDLE_FILE" || -z "$ROUTEGATE_BUNDLE_URL" ]] || die "Choose either a local bundle or an explicit bundle URL."
+  [[ -z "$ROUTEGATE_BUNDLE_BASE_URL" || ( -z "$ROUTEGATE_BUNDLE_FILE" && -z "$ROUTEGATE_BUNDLE_URL" ) ]] || die "Choose only one bundle source: local files, explicit URLs, or bundle base URL."
 }
 
 require_supported_host() {
@@ -451,6 +472,11 @@ prepare_bundle() {
     ROUTEGATE_BUNDLE_NAME=$(basename "${ROUTEGATE_BUNDLE_URL%%\?*}")
     curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$bundle_path" "$ROUTEGATE_BUNDLE_URL"
     curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$checksum_path" "$ROUTEGATE_CHECKSUM_URL"
+  elif [[ -n "$ROUTEGATE_BUNDLE_BASE_URL" ]]; then
+    resolve_release_version
+    ROUTEGATE_BUNDLE_NAME="routegate-${ROUTEGATE_RESOLVED_VERSION}-linux-${ROUTEGATE_ARCH}.tar.gz"
+    curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$bundle_path" "${ROUTEGATE_BUNDLE_BASE_URL}/${ROUTEGATE_BUNDLE_NAME}"
+    curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$checksum_path" "${ROUTEGATE_BUNDLE_BASE_URL}/SHA256SUMS"
   else
     resolve_release_version
     ROUTEGATE_BUNDLE_NAME="routegate-${ROUTEGATE_RESOLVED_VERSION}-linux-${ROUTEGATE_ARCH}.tar.gz"

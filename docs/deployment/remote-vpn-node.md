@@ -30,16 +30,24 @@ Hysteria and WireGuard stay inactive until a validated config apply.
 The command is generated from `ROUTEGATE_PUBLIC_URL`, which must be a public
 HTTPS origin without a path, query, or fragment.
 
-For released Manager builds, the generated command is also bound to the exact
-Manager build identity. Manager embeds the full Git commit and SHA-256 of
-`install-agent.sh` at release build time. The onboarding command downloads the
-installer from that exact commit, verifies the embedded SHA-256 locally, and only
-then executes it with the matching RouteGate release version. Mutable
-`main`-branch installer execution is not part of the release onboarding path.
+The generated command is bound to the exact Manager build identity. Manager
+embeds the full Git commit and SHA-256 of `install-agent.sh` at build time. The
+onboarding command downloads the installer from that exact commit, verifies the
+embedded SHA-256 locally, and only then executes it.
 
-Development or non-release builds that do not carry a release version, full Git
-commit, and installer checksum do not expose a copyable privileged bootstrap
-command.
+Published release builds download the matching GitHub Release bundle and verify
+its `SHA256SUMS`. The production-like deployment additionally publishes
+commit-addressed amd64/arm64 bundles under the Manager HTTPS origin; its Manager
+binary embeds that immutable bundle base URL, and the Agent installer verifies
+the hosted bundle against the checksum file before installation. This keeps
+exact-main validation and remote-node onboarding on the same commit without
+pretending a development build is a published GitHub release.
+
+Builds that lack a complete trusted identity — public HTTPS origin, full Git
+commit, installer checksum, and either a published release tag or an explicit
+verified bundle source — do not expose a copyable privileged bootstrap command.
+The UI must show bootstrap unavailability rather than presenting the
+configuration-only snippet as an installation command.
 
 ## Security properties
 
@@ -50,9 +58,10 @@ command.
 - the Agent installer URL is pinned to the exact Manager build commit;
 - the downloaded Agent installer must match the SHA-256 embedded into the Manager
   binary at build time before `sudo` executes it;
-- the bootstrap passes the exact Manager release version to the installer, which
-  prevents onboarding from silently drifting to a different published release;
-- release bundles are verified against the published `SHA256SUMS` file;
+- the bootstrap passes the exact Manager build version and, when needed, its
+  commit-addressed bundle source to the installer;
+- release or Manager-hosted bundles are verified against their `SHA256SUMS`
+  file before extraction;
 - the pinned Hysteria binary is verified against its upstream `hashes.txt`;
 - Agent replaces the bootstrap token with its persistent dedicated credential
   and saves the config with mode `0600`;

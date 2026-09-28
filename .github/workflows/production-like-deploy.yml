@@ -53,13 +53,17 @@ jobs:
         env:
           VERSION: production-like
           COMMIT: ${{ env.TARGET_SHA }}
-          ARCHITECTURES: amd64
+          AGENT_BUNDLE_BASE_URL: https://us.routegate.org/bootstrap/${{ env.TARGET_SHA }}
+          ARCHITECTURES: amd64 arm64
           OUTPUT_DIR: ${{ runner.temp }}/routegate-dist
         run: |
           set -euo pipefail
           ./scripts/build-release-bundle.sh
           bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
+          arm64_bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-arm64.tar.gz"
           test -s "$bundle"
+          test -s "$arm64_bundle"
+          test -s "${OUTPUT_DIR}/SHA256SUMS"
           listing="${RUNNER_TEMP}/routegate-production-like-bundle.files"
           tar -tzf "$bundle" > "$listing"
           grep -Fxq './metadata/manifest.env' "$listing"
@@ -104,12 +108,18 @@ jobs:
           SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
           SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
           bundle="${RUNNER_TEMP}/routegate-dist/routegate-production-like-linux-amd64.tar.gz"
+          arm64_bundle="${RUNNER_TEMP}/routegate-dist/routegate-production-like-linux-arm64.tar.gz"
+          checksums="${RUNNER_TEMP}/routegate-dist/SHA256SUMS"
           bundle_sha="$(sha256sum "$bundle" | awk '{print $1}')"
           remote_bundle="/tmp/routegate-deploy-${TARGET_SHA}.tar.gz"
+          remote_arm64_bundle="/tmp/routegate-bootstrap-arm64-${TARGET_SHA}.tar.gz"
+          remote_checksums="/tmp/routegate-bootstrap-${TARGET_SHA}.SHA256SUMS"
           remote_deploy="/tmp/routegate-deploy-${TARGET_SHA}.sh"
           remote_validate="/tmp/routegate-deploy-validate-${TARGET_SHA}.sh"
           remote_core="/tmp/routegate-update-core-${TARGET_SHA}.sh"
           "${SCP[@]}" "$bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_bundle"
+          "${SCP[@]}" "$arm64_bundle" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_arm64_bundle"
+          "${SCP[@]}" "$checksums" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_checksums"
           "${SCP[@]}" scripts/deploy-production-like-bundle.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_deploy"
           "${SCP[@]}" scripts/validate-production-like-deploy.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_validate"
           "${SCP[@]}" scripts/routegate-update-core.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_core"
@@ -136,9 +146,9 @@ jobs:
 
           set +e
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate' '$remote_core'"
+            "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_deploy' '$TARGET_SHA' '$remote_bundle' '$bundle_sha' '$remote_validate' '$remote_core' '$remote_arm64_bundle' '$remote_checksums'"
           rc=$?
           set -e
           "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            "rm -f '$remote_deploy' '$remote_validate' '$remote_core' '$remote_bundle'" || true
+            "rm -f '$remote_deploy' '$remote_validate' '$remote_core' '$remote_bundle' '$remote_arm64_bundle' '$remote_checksums'" || true
           exit "$rc"

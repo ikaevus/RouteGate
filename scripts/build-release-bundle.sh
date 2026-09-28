@@ -10,6 +10,7 @@ VERSION="${VERSION:-}"
 COMMIT="${COMMIT:-}"
 BUILD_DATE="${BUILD_DATE:-}"
 AGENT_INSTALLER_SHA256=""
+AGENT_BUNDLE_BASE_URL="${AGENT_BUNDLE_BASE_URL:-}"
 ARCHITECTURES="${ARCHITECTURES:-amd64 arm64}"
 
 log() {
@@ -75,7 +76,7 @@ build_architecture() {
     cd "$ROOT_DIR/backend"
     CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
       -trimpath \
-      -ldflags "-s -w -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=${VERSION} -X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=${COMMIT} -X github.com/ikaevus/routegate/backend/internal/buildinfo.BuildDate=${BUILD_DATE} -X github.com/ikaevus/routegate/backend/internal/buildinfo.AgentInstallerSHA256=${AGENT_INSTALLER_SHA256}" \
+      -ldflags "-s -w -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=${VERSION} -X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=${COMMIT} -X github.com/ikaevus/routegate/backend/internal/buildinfo.BuildDate=${BUILD_DATE} -X github.com/ikaevus/routegate/backend/internal/buildinfo.AgentInstallerSHA256=${AGENT_INSTALLER_SHA256} -X github.com/ikaevus/routegate/backend/internal/buildinfo.AgentBundleBaseURL=${AGENT_BUNDLE_BASE_URL}" \
       -o "$stage_dir/bin/routegate-manager" \
       ./cmd/routegate-manager
   )

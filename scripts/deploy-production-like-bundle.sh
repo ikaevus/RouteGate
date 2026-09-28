@@ -105,7 +105,11 @@ BUNDLE_FILE=${2:?bundle path is required}
 EXPECTED_BUNDLE_SHA=${3:?bundle sha256 is required}
 VALIDATION_SCRIPT=${4:?validation script path is required}
 UPDATE_CORE=${5:?update core path is required}
+BOOTSTRAP_ARM64_BUNDLE=${6:-}
+BOOTSTRAP_CHECKSUMS=${7:-}
 PUBLIC_URL=${ROUTEGATE_PUBLIC_URL_OVERRIDE:-https://us.routegate.org}
+BOOTSTRAP_ROOT=${ROUTEGATE_BOOTSTRAP_ROOT:-/var/www/routegate/bootstrap}
+BOOTSTRAP_DIR="${BOOTSTRAP_ROOT}/${EXPECTED_COMMIT}"
 NGINX_SITE=${ROUTEGATE_NGINX_SITE:-/etc/nginx/sites-available/routegate}
 NGINX_BIN=${ROUTEGATE_NGINX_BIN:-/usr/sbin/nginx}
 WORK_DIR=$(mktemp -d /tmp/routegate-production-like.XXXXXX)
@@ -454,6 +458,102 @@ PY
   log "nginx Hysteria2 ACME bridge=reconciled"
 }
 
+bootstrap_checksum_for() {
+  local name=$1
+  awk -v name="$name" '$2 == name || $2 == "*" name {print $1; exit}' "$BOOTSTRAP_CHECKSUMS"
+}
+
+verify_bootstrap_bundle() {
+  local bundle=$1
+  local name=$2
+  local arch=$3
+  local expected actual manifest version commit os manifest_arch
+
+  [[ -f "$bundle" && ! -L "$bundle" ]] || {
+    printf '[production-like] bootstrap bundle is missing or unsafe: %s\n' "$bundle" >&2
+    return 1
+  }
+  expected=$(bootstrap_checksum_for "$name")
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || {
+    printf '[production-like] bootstrap checksum entry is missing for %s\n' "$name" >&2
+    return 1
+  }
+  actual=$(sha256sum "$bundle" | awk '{print $1}')
+  [[ "$actual" == "$expected" ]] || {
+    printf '[production-like] bootstrap bundle checksum mismatch for %s\n' "$name" >&2
+    return 1
+  }
+
+  manifest=$(tar -xOf "$bundle" ./metadata/manifest.env 2>/dev/null) || {
+    printf '[production-like] bootstrap bundle manifest is unavailable for %s\n' "$name" >&2
+    return 1
+  }
+  version=$(sed -n 's/^VERSION=//p' <<<"$manifest" | head -n1)
+  commit=$(sed -n 's/^COMMIT=//p' <<<"$manifest" | head -n1)
+  os=$(sed -n 's/^OS=//p' <<<"$manifest" | head -n1)
+  manifest_arch=$(sed -n 's/^ARCH=//p' <<<"$manifest" | head -n1)
+  [[ "$version" == "production-like" && "$commit" == "$EXPECTED_COMMIT" && "$os" == "linux" && "$manifest_arch" == "$arch" ]] || {
+    printf '[production-like] bootstrap bundle identity mismatch for %s\n' "$name" >&2
+    return 1
+  }
+}
+
+verify_bootstrap_artifacts() {
+  if [[ -z "$BOOTSTRAP_ARM64_BUNDLE" && -z "$BOOTSTRAP_CHECKSUMS" ]]; then
+    log "bootstrap artifact publication=not requested"
+    return 0
+  fi
+  [[ -n "$BOOTSTRAP_ARM64_BUNDLE" && -n "$BOOTSTRAP_CHECKSUMS" ]] || {
+    printf '[production-like] bootstrap artifacts must provide both arm64 bundle and SHA256SUMS\n' >&2
+    return 1
+  }
+  [[ -f "$BOOTSTRAP_CHECKSUMS" && ! -L "$BOOTSTRAP_CHECKSUMS" ]] || {
+    printf '[production-like] bootstrap checksum file is missing or unsafe\n' >&2
+    return 1
+  }
+  verify_bootstrap_bundle "$BUNDLE_FILE" "routegate-production-like-linux-amd64.tar.gz" amd64
+  verify_bootstrap_bundle "$BOOTSTRAP_ARM64_BUNDLE" "routegate-production-like-linux-arm64.tar.gz" arm64
+}
+
+publish_bootstrap_artifacts() {
+  local staging
+  [[ -n "$BOOTSTRAP_ARM64_BUNDLE" && -n "$BOOTSTRAP_CHECKSUMS" ]] || return 0
+  [[ ! -L "$BOOTSTRAP_ROOT" ]] || {
+    printf '[production-like] bootstrap artifact root must not be a symlink\n' >&2
+    return 1
+  }
+  install -d -m 0755 "$BOOTSTRAP_ROOT" || return 1
+  staging=$(mktemp -d "${BOOTSTRAP_ROOT}/.${EXPECTED_COMMIT}.XXXXXX") || return 1
+  install -m 0644 "$BUNDLE_FILE" "$staging/routegate-production-like-linux-amd64.tar.gz" || {
+    rm -rf -- "$staging"
+    return 1
+  }
+  install -m 0644 "$BOOTSTRAP_ARM64_BUNDLE" "$staging/routegate-production-like-linux-arm64.tar.gz" || {
+    rm -rf -- "$staging"
+    return 1
+  }
+  install -m 0644 "$BOOTSTRAP_CHECKSUMS" "$staging/SHA256SUMS" || {
+    rm -rf -- "$staging"
+    return 1
+  }
+
+  if [[ -e "$BOOTSTRAP_DIR" || -L "$BOOTSTRAP_DIR" ]]; then
+    [[ -d "$BOOTSTRAP_DIR" && ! -L "$BOOTSTRAP_DIR" ]] || {
+      rm -rf -- "$staging"
+      printf '[production-like] existing bootstrap artifact path is unsafe: %s\n' "$BOOTSTRAP_DIR" >&2
+      return 1
+    }
+    rm -rf -- "$BOOTSTRAP_DIR" || {
+      rm -rf -- "$staging"
+      return 1
+    }
+  fi
+  mv -- "$staging" "$BOOTSTRAP_DIR" || return 1
+
+  find "$BOOTSTRAP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +2 -exec rm -rf -- {} + || return 1
+  log "bootstrap artifacts published commit=$EXPECTED_COMMIT"
+}
+
 runtime_status() {
   local label=$1
   local service=$2
@@ -666,6 +766,8 @@ rollback_database_to_backup() {
 cleanup() {
   rm -rf "$WORK_DIR"
   rm -f "$BUNDLE_FILE" "$VALIDATION_SCRIPT" "$UPDATE_CORE"
+  [[ -z "$BOOTSTRAP_ARM64_BUNDLE" ]] || rm -f "$BOOTSTRAP_ARM64_BUNDLE"
+  [[ -z "$BOOTSTRAP_CHECKSUMS" ]] || rm -f "$BOOTSTRAP_CHECKSUMS"
 }
 
 rollback() {
@@ -729,6 +831,7 @@ rg_update_verify_and_extract_bundle \
   amd64 \
   "$WORK_DIR"
 EXPECTED_SCHEMA=$RG_UPDATE_EXPECTED_SCHEMA
+verify_bootstrap_artifacts
 
 set -a
 # shellcheck disable=SC1091
@@ -757,6 +860,9 @@ wait_for_active_agent_jobs "$DB_URL" 360 2
 STAGE=deploy_files
 MUTATED=1
 rg_update_apply_platform_files "$WORK_DIR"
+
+STAGE=bootstrap_artifacts
+publish_bootstrap_artifacts
 
 STAGE=maintenance_dispatch
 install_maintenance_dispatch

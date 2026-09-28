@@ -518,6 +518,7 @@ EOF_BACKUP_META
 rg_update_apply_platform_files() {
   local work_dir=$1
   local manager_bin agent_bin migrations_dir frontend_dir manager_unit agent_unit
+  local bootstrap_dir bootstrap_backup=""
 
   manager_bin=$(rg_update_path /usr/local/bin/routegate-manager) || return 1
   agent_bin=$(rg_update_path /usr/local/bin/routegate-agent) || return 1
@@ -525,6 +526,7 @@ rg_update_apply_platform_files() {
   frontend_dir=$(rg_update_path /var/www/routegate) || return 1
   manager_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service) || return 1
   agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service) || return 1
+  bootstrap_dir="$frontend_dir/bootstrap"
 
   systemctl stop "$RG_UPDATE_AGENT_SERVICE" || return 1
   systemctl stop "$RG_UPDATE_MANAGER_SERVICE" || return 1
@@ -536,8 +538,39 @@ rg_update_apply_platform_files() {
   chown -R "$RG_UPDATE_MANAGER_OWNER" "$(dirname "$migrations_dir")" || return 1
 
   install -d -m 0755 "$frontend_dir" || return 1
-  find "$frontend_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
-  cp -a "$work_dir/frontend/." "$frontend_dir/" || return 1
+  if [[ -e "$bootstrap_dir" || -L "$bootstrap_dir" ]]; then
+    [[ -d "$bootstrap_dir" && ! -L "$bootstrap_dir" ]] || {
+      rg_update_die "bootstrap artifact directory is unsafe: $bootstrap_dir"
+      return 1
+    }
+    bootstrap_backup=$(mktemp -d /tmp/routegate-bootstrap-preserve.XXXXXX) || return 1
+    cp -a "$bootstrap_dir" "$bootstrap_backup/bootstrap" || {
+      rm -rf -- "$bootstrap_backup"
+      return 1
+    }
+  fi
+
+  find "$frontend_dir" -mindepth 1 -maxdepth 1 ! -name bootstrap -exec rm -rf -- {} + || {
+    [[ -z "$bootstrap_backup" ]] || rm -rf -- "$bootstrap_backup"
+    return 1
+  }
+  cp -a "$work_dir/frontend/." "$frontend_dir/" || {
+    [[ -z "$bootstrap_backup" ]] || rm -rf -- "$bootstrap_backup"
+    return 1
+  }
+
+  if [[ -n "$bootstrap_backup" ]]; then
+    rm -rf -- "$bootstrap_dir" || {
+      rm -rf -- "$bootstrap_backup"
+      return 1
+    }
+    cp -a "$bootstrap_backup/bootstrap" "$bootstrap_dir" || {
+      rm -rf -- "$bootstrap_backup"
+      return 1
+    }
+    rm -rf -- "$bootstrap_backup"
+  fi
+
   chown -R root:root "$frontend_dir" || return 1
   find "$frontend_dir" -type d -exec chmod 0755 {} + || return 1
   find "$frontend_dir" -type f -exec chmod 0644 {} + || return 1
@@ -546,7 +579,7 @@ rg_update_apply_platform_files() {
   install -m 0644 "$work_dir/systemd/routegate-agent.service" "$agent_unit" || return 1
   systemctl daemon-reload || return 1
 
-  rg_update_log "platform files applied; VPN runtimes were left untouched"
+  rg_update_log "platform files applied; VPN runtimes and bootstrap artifacts were left untouched"
 }
 
 rg_update_wait_manager() {
