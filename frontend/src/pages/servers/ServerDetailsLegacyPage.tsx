@@ -259,7 +259,6 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
   const wasJustCreated = Boolean(
     (routeLocation.state as { serverCreated?: boolean } | null)?.serverCreated,
   );
-  const openRegistrationTokenDialogOnSuccess = useRef(false);
   const [registrationToken, setRegistrationToken] = useState<RegistrationTokenResponse | null>(null);
   const [isRegistrationTokenDialogOpen, setIsRegistrationTokenDialogOpen] = useState(false);
   const [isRegistrationTokenCopied, setIsRegistrationTokenCopied] = useState(false);
@@ -311,8 +310,6 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
   const registrationTokenMutation = useMutation({
     mutationFn: () => createServerRegistrationToken(serverId ?? ''),
     onMutate: () => {
-      setRegistrationToken(null);
-      setIsRegistrationTokenDialogOpen(false);
       setIsRegistrationTokenCopied(false);
       setIsSetupCommandCopied(false);
       setStatusCheckError(false);
@@ -320,14 +317,24 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
     },
     onSuccess: (response) => {
       setRegistrationToken(response);
-      if (openRegistrationTokenDialogOnSuccess.current) {
-        setIsRegistrationTokenDialogOpen(true);
-      }
+      setIsRegistrationTokenDialogOpen(true);
     },
   });
 
-  const createRegistrationToken = (showDialog: boolean) => {
-    openRegistrationTokenDialogOnSuccess.current = showDialog;
+  const openRegistrationOnboarding = () => {
+    const expiresAt = registrationToken ? new Date(registrationToken.expiresAt).getTime() : 0;
+    const canReuseCurrentToken = Boolean(
+      registrationToken
+      && Number.isFinite(expiresAt)
+      && expiresAt > Date.now()
+      && registrationToken.bootstrapCommand?.trim(),
+    );
+
+    if (canReuseCurrentToken) {
+      setIsRegistrationTokenDialogOpen(true);
+      return;
+    }
+
     registrationTokenMutation.mutate();
   };
 
@@ -905,13 +912,13 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                 className="primary-button"
                 type="button"
                 disabled={registrationTokenMutation.isPending || !serverId}
-                onClick={() => createRegistrationToken(true)}
+                onClick={openRegistrationOnboarding}
               >
                 {registrationTokenMutation.isPending
                   ? t('serverDetails.generating')
                   : t('serverDetails.createRegistrationToken')}
               </button>
-              {registrationTokenMutation.isError && openRegistrationTokenDialogOnSuccess.current && (
+              {registrationTokenMutation.isError && (
                 <div className="form-message form-message-error" role="alert">
                   {t('serverDetails.registrationTokenError')}
                 </div>
@@ -993,34 +1000,6 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
           </div>
         </form>
       </div>
-
-      </div>
-      <div className="server-workspace-domain" hidden={activeSection !== 'connection'}>
-      {server.deploymentRole !== 'management' && <div className="panel token-panel">
-        <div className="panel-title">{t('serverDetails.registrationTokenTitle')}</div>
-        <p className="muted-text">
-          {t('serverDetails.registrationTokenSubtitle')}
-        </p>
-        <button
-          className="primary-button"
-          type="button"
-          disabled={registrationTokenMutation.isPending || !serverId}
-          onClick={() => createRegistrationToken(false)}
-        >
-          {registrationTokenMutation.isPending ? t('serverDetails.generating') : t('serverDetails.generateRegistrationToken')}
-        </button>
-
-        {registrationTokenMutation.isError && !openRegistrationTokenDialogOnSuccess.current && (
-          <div className="form-message form-message-error" role="alert">{t('serverDetails.registrationTokenError')}</div>
-        )}
-
-        {registrationToken && (
-          <RegistrationTokenResult
-            registrationToken={registrationToken}
-            configSnippet={configSnippet}
-          />
-        )}
-      </div>}
 
       </div>
       <div className="server-workspace-domain" hidden={activeSection !== 'deployments'}>
@@ -1426,6 +1405,24 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                     isCopied={isRegistrationTokenCopied}
                     isConfigCollapsible
                   />
+                  <div className="agent-setup-actions">
+                    <button
+                      className="small-button"
+                      type="button"
+                      disabled={registrationTokenMutation.isPending}
+                      onClick={() => registrationTokenMutation.mutate()}
+                    >
+                      {registrationTokenMutation.isPending
+                        ? t('serverDetails.regeneratingRegistrationToken')
+                        : t('serverDetails.regenerateRegistrationToken')}
+                    </button>
+                    <span className="muted-text">{t('serverDetails.registrationTokenRotationHint')}</span>
+                  </div>
+                  {registrationTokenMutation.isError && (
+                    <div className="form-message form-message-error" role="alert">
+                      {t('serverDetails.registrationTokenError')}
+                    </div>
+                  )}
                 </>
               )}
             </div>
