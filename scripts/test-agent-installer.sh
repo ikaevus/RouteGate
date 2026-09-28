@@ -80,15 +80,27 @@ assert_equal "writes the Manager URL" "https://manager.routegate.org" "$(config_
 assert_equal "writes the one-time registration token" "$valid_token" "$(config_value "$config_path" registration_token)"
 
 assert_true "VPN installer explicitly installs Python for updater verification" \
-  grep -Fq 'jq python3 tar wireguard-tools' "$ROOT_DIR/install-agent.sh"
-assert_true "VPN installer pins the supported Hysteria2 runtime" \
-  grep -Fq 'ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.2}"' "$ROOT_DIR/install-agent.sh"
+  grep -Fq 'ca-certificates curl iproute2 jq python3 tar' "$ROOT_DIR/install-agent.sh"
+assert_false "VPN bootstrap does not install WireGuard tooling" \
+  grep -Fq 'wireguard-tools' "$ROOT_DIR/install-agent.sh"
+assert_false "VPN bootstrap does not install iptables" \
+  grep -Eq 'apt-get install .*iptables' "$ROOT_DIR/install-agent.sh"
+assert_false "VPN bootstrap does not install Hysteria directly" \
+  grep -Fq 'github.com/apernet/hysteria/releases' "$ROOT_DIR/install-agent.sh"
+assert_false "VPN bootstrap does not install MTProto directly" \
+  grep -Fq 'github.com/9seconds/mtg/releases' "$ROOT_DIR/install-agent.sh"
+assert_false "VPN bootstrap does not enable protocol runtime services" \
+  grep -Eq 'systemctl enable (hysteria-server|routegate-mtproto)' "$ROOT_DIR/install-agent.sh"
+assert_false "VPN bootstrap does not mutate WireGuard forwarding state" \
+  grep -Fq '99-routegate-wireguard.conf' "$ROOT_DIR/install-agent.sh"
 assert_true "VPN installer requires updater bootstrap helper in the release bundle" \
   grep -Fq 'routegate-update-bootstrap.sh' "$ROOT_DIR/install-agent.sh"
 assert_true "VPN installer clears RG_UPDATE_ROOT before privileged bootstrap" \
   grep -Fq 'env -u RG_UPDATE_ROOT bash "$helper"' "$ROOT_DIR/install-agent.sh"
 
 main_body=$(sed -n '/^main() {/,/^}/p' "$ROOT_DIR/install-agent.sh")
+assert_false "VPN bootstrap main path has no protocol runtime install step" \
+  grep -Eq 'install_(hysteria2|mtproto|wireguard|sing_box)' <<<"$main_body"
 registration_line=$(grep -n 'wait_for_registration' <<<"$main_body" | tail -n1 | cut -d: -f1)
 bootstrap_line=$(grep -n 'bootstrap_trusted_updater' <<<"$main_body" | tail -n1 | cut -d: -f1)
 assert_true "VPN updater bootstrap runs after Agent registration" \

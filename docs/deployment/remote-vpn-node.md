@@ -5,17 +5,22 @@
 RG-114B adds a supported one-command path for attaching an Ubuntu host to an
 existing RouteGate Management or Hybrid Node.
 
-The remote host receives only:
+The remote host bootstrap receives only the RouteGate control-plane pieces
+needed to establish a managed node:
 
 - RouteGate Agent;
 - the Agent systemd unit;
 - Agent state and configuration directories;
-- checksum-verified Hysteria plus its inactive RouteGate-owned systemd unit;
-- native WireGuard tooling.
+- the trusted RouteGate updater boundary.
 
-It does not receive Manager, PostgreSQL, the Admin UI, or nginx. sing-box
-installation remains a separate allow-listed Manager → Agent operation.
-Hysteria and WireGuard stay inactive until a validated config apply.
+It does not receive Manager, PostgreSQL, the Admin UI, nginx, or any VPN
+protocol runtime during bootstrap.
+
+WireGuard, Hysteria2, MTProto and sing-box are installed later through the
+existing allow-listed Manager → Agent runtime installation operations, only
+when RouteGate needs the runtime for the protocol the administrator selects.
+Runtime installers leave a newly installed service unconfigured/inactive until
+the validated configuration apply owns activation.
 
 ## Guided workflow
 
@@ -26,6 +31,9 @@ Hysteria and WireGuard stay inactive until a validated config apply.
 4. Run it on a clean Ubuntu 24.04 LTS amd64 or arm64 host with `sudo`.
 5. Keep the onboarding dialog open; Manager checks the connection every five
    seconds and shows the registered Agent after its first heartbeat.
+6. After the node is connected, choose/configure the VPN protocol. RouteGate
+   installs the required VPN runtime through Agent as the next managed action;
+   do not install protocol runtimes manually on the host.
 
 The onboarding dialog is the only registration-token surface in the Admin UI.
 Reopening it in the same browser session reuses the currently displayed token
@@ -70,7 +78,8 @@ configuration-only snippet as an installation command.
   commit-addressed bundle source to the installer;
 - release or Manager-hosted bundles are verified against their `SHA256SUMS`
   file before extraction;
-- the pinned Hysteria binary is verified against its upstream `hashes.txt`;
+- protocol runtime downloads and checksum verification happen in the Agent's
+  dedicated runtime installation operations, not in the node bootstrap;
 - Agent replaces the bootstrap token with its persistent dedicated credential
   and saves the config with mode `0600`;
 - only Manager connects to PostgreSQL;
