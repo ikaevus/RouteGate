@@ -20,12 +20,19 @@ Hysteria and WireGuard stay inactive until a validated config apply.
 ## Guided workflow
 
 1. In Manager, create a node with the `VPN Node` role.
-2. Open the node and choose **Connect server**.
-3. Generate the one-time registration token.
-4. Copy the generated installation command.
-5. Run it on a clean Ubuntu 24.04 LTS amd64 or arm64 host with `sudo`.
-6. Keep the onboarding dialog open; Manager checks the connection every five
+2. Open the node and choose **Connect server**. RouteGate creates the
+   short-lived registration token as part of this single onboarding workflow.
+3. Copy the generated installation command.
+4. Run it on a clean Ubuntu 24.04 LTS amd64 or arm64 host with `sudo`.
+5. Keep the onboarding dialog open; Manager checks the connection every five
    seconds and shows the registered Agent after its first heartbeat.
+
+The onboarding dialog is the only registration-token surface in the Admin UI.
+Reopening it in the same browser session reuses the currently displayed token
+until it expires. **Generate new token** is an explicit rotation action: Manager
+invalidates the previous unused token before returning the replacement. Thus a
+node has at most one usable registration token after a generation request
+completes.
 
 The command is generated from `ROUTEGATE_PUBLIC_URL`, which must be a public
 HTTPS origin without a path, query, or fragment.
@@ -52,7 +59,8 @@ configuration-only snippet as an installation command.
 ## Security properties
 
 - registration tokens are bound to one node, stored only as SHA-256 hashes,
-  expire, and can be consumed once;
+  expire, can be consumed once, and explicit rotation invalidates the previous
+  unused token;
 - the raw token appears only in the one-time Manager response and copied command;
 - the installer does not print the token;
 - the Agent installer URL is pinned to the exact Manager build commit;
