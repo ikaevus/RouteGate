@@ -34,7 +34,9 @@ EOF_LIST
 deb https://example.invalid/ubuntu noble main
 EOF_UNTRUSTED
 
-  assert_false     "Agent installer rejects third-party APT repositories by default"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
+  assert_false     "Agent installer classifies third-party APT repositories as external"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
+
+  assert_true     "Agent installer keeps external APT sources advisory"     bash -c 'source "$1"; validate_apt_repository_trust >/dev/null 2>&1'       _ "$ROOT_DIR/install-agent.sh"
 }
 
 valid_token="rg_reg_$(printf 'a%.0s' {1..43})"
@@ -46,6 +48,10 @@ assert_true "accepts a non-default HTTPS port" validate_manager_url "https://man
 assert_false "rejects HTTP Manager URL" validate_manager_url "http://manager.routegate.org"
 assert_false "rejects Manager URL path" validate_manager_url "https://manager.routegate.org/api"
 assert_false "rejects Manager URL query" validate_manager_url "https://manager.routegate.org/?token=value"
+assert_true "accepts HTTPS Agent bundle base URL" validate_bundle_base_url "https://manager.routegate.org/bootstrap/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+assert_false "rejects HTTP Agent bundle base URL" validate_bundle_base_url "http://manager.routegate.org/bootstrap/commit"
+assert_false "rejects Agent bundle base URL credentials" validate_bundle_base_url "https://user:pass@manager.routegate.org/bootstrap/commit"
+assert_false "rejects Agent bundle base URL query" validate_bundle_base_url "https://manager.routegate.org/bootstrap/commit?token=value"
 assert_true "accepts a generated registration token shape" validate_registration_token "$valid_token"
 assert_false "rejects an Agent bearer token" validate_registration_token "rg_agent_$(printf 'a%.0s' {1..43})"
 assert_equal "maps x86_64 to amd64" amd64 "$(platform_architecture x86_64)"
