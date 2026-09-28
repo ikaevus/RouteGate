@@ -34,9 +34,7 @@ EOF_LIST
 deb https://example.invalid/ubuntu noble main
 EOF_UNTRUSTED
 
-  assert_false     "Agent installer classifies third-party APT repositories as external"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
-
-  assert_true     "Agent installer uses advisory language for external APT sources"     grep -Fq 'WARNING: External or unclassified APT sources are configured.' "$ROOT_DIR/install-agent.sh"
+  assert_false     "Agent installer rejects third-party APT repositories by default"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
 }
 
 valid_token="rg_reg_$(printf 'a%.0s' {1..43})"
