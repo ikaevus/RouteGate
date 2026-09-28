@@ -61,8 +61,17 @@ function formatServerLoad(load?: DashboardServerLoad): string {
 }
 
 function getRegionCountryCode(region: string): string | null {
-  const match = region.trim().match(/,\s*([A-Za-z]{2})$/);
-  return match?.[1]?.toUpperCase() ?? null;
+  const country = region.trim().split(',').at(-1)?.trim() ?? '';
+  if (/^[A-Za-z]{2}$/.test(country)) return country.toUpperCase();
+
+  const countryNames: Record<string, string> = {
+    finland: 'FI',
+    russia: 'RU',
+    'russian federation': 'RU',
+    'united states': 'US',
+    'united states of america': 'US',
+  };
+  return countryNames[country.toLowerCase()] ?? null;
 }
 
 
