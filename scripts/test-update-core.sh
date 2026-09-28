@@ -207,6 +207,32 @@ mutate_fake_host() {
   printf 'mutated=1\n' >"$root/etc/routegate/manager.env"
 }
 
+test_platform_apply_preserves_bootstrap_artifacts() {
+  local fake_root="$TMP_DIR/root-platform-apply"
+  local stage="$TMP_DIR/stage-platform-apply"
+  local stub_dir="$TMP_DIR/stubs-platform-apply"
+  local old_path=$PATH
+  local commit="cccccccccccccccccccccccccccccccccccccccc"
+
+  populate_fake_host "$fake_root"
+  make_stage "$stage" "$commit"
+  mkdir -p "$fake_root/var/www/routegate/bootstrap/previous-commit"
+  printf 'previous-bundle\n' >"$fake_root/var/www/routegate/bootstrap/previous-commit/routegate-production-like-linux-amd64.tar.gz"
+  install_command_stubs "$stub_dir"
+
+  PATH="$stub_dir:$PATH"
+  RG_UPDATE_ROOT="$fake_root"
+  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
+
+  rg_update_apply_platform_files "$stage"
+
+  assert_file_content "$fake_root/var/www/routegate/index.html" "frontend-new"
+  assert_file_content "$fake_root/var/www/routegate/bootstrap/previous-commit/routegate-production-like-linux-amd64.tar.gz" "previous-bundle"
+
+  PATH=$old_path
+  RG_UPDATE_ROOT=""
+}
+
 test_backup_restore_round_trip() {
   local fake_root="$TMP_DIR/root"
   local backup="$TMP_DIR/backups/roundtrip"
@@ -328,6 +354,7 @@ test_restore_reports_manager_readiness_failure() {
 test_bundle_verification
 test_metadata_is_never_evaluated
 test_unsafe_archive_is_rejected
+test_platform_apply_preserves_bootstrap_artifacts
 test_backup_restore_round_trip
 test_restore_reports_systemd_failure_after_restoring_files
 test_restore_reports_database_failure_after_restoring_files
