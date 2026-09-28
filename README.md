@@ -201,7 +201,7 @@ See [Updates, Releases, and Versioning](docs/architecture/versioning-and-updates
 
 ## Install RouteGate
 
-The current public clean-host installation contract is **Ubuntu 24.04 LTS on amd64 or arm64** with native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS.
+The current public clean-host installation contract is **Ubuntu 24.04 LTS on amd64** with native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS. Remote VPN Node onboarding supports amd64 and arm64.
 
 Before installation:
 
