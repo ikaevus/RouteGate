@@ -438,12 +438,11 @@ EOF_SOURCES
 deb https://mirror.yandex.ru/ubuntu noble main
 EOF_PROVIDER
 
-  assert_false     "classifies provider-controlled Ubuntu mirrors as external"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
+  assert_false     "rejects provider-controlled Ubuntu mirrors outside the trust boundary"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
 
   local report
   report=$(apt_repository_trust_report "$root" 2>/dev/null || true)
-  assert_true     "reports the external repository URI for operator review"     grep -Fq '[external] https://mirror.yandex.ru/ubuntu' <<<"$report"
-  assert_true     "external repository inventory uses advisory warning language"     grep -Fq 'WARNING: External or unclassified APT sources are configured.' "$ROOT_DIR/install.sh"
+  assert_true     "reports the blocked repository URI for operator review"     grep -Fq '[blocked] https://mirror.yandex.ru/ubuntu' <<<"$report"
 
   rm -f "$root/etc/apt/sources.list.d/provider.list"
   cat >"$root/etc/apt/sources.list.d/disabled.sources" <<'EOF_DISABLED'
