@@ -47,7 +47,7 @@ enabled but cannot start successfully until the Agent applies a validated
 ```text
 Clean Ubuntu 24.04 LTS VPS
         ↓
-APT repository inventory
+official Ubuntu APT repository trust preflight
         ↓
 one copy-paste installer command
         ↓
@@ -81,7 +81,8 @@ The installer intentionally does **not** install or start sing-box. VPN Core ins
 Before running the installer:
 
 - use a clean Ubuntu 24.04 LTS amd64 VPS;
-- review the active APT sources and make an explicit operator trust decision for provider, organization, PPA, or other third-party repositories;
+- require the active APT sources to resolve only to Canonical Ubuntu archive/security infrastructure (`archive.ubuntu.com`, regional `*.archive.ubuntu.com`, `security.ubuntu.com`, or `ports.ubuntu.com`);
+- treat provider-controlled, organization-controlled, PPA, and other third-party APT mirrors as outside the default clean-host trust boundary until the operator deliberately replaces or removes them;
 - connect as `root` or a user with working `sudo`;
 - create a DNS `A` record for the chosen FQDN pointing directly to the VPS public IPv4 address;
 - ensure inbound TCP ports 80 and 443 are reachable;
@@ -92,19 +93,22 @@ Already installed compatible APT packages are not conflicts. Active database/web
 
 The installer does not provision the VPS and does not modify SSH authentication policy.
 
-### APT repository inventory
+### APT repository trust preflight
 
-Before the installer performs APT network operations, RouteGate enumerates active
+A "clean Ubuntu VPS" is a trust statement, not only an operating-system version check.
+Before the installer performs any APT network operation, RouteGate enumerates active
 `/etc/apt/sources.list`, `*.list`, and deb822 `*.sources` entries.
 
-Canonical Ubuntu archive/security hosts are shown as `[official]`. Provider
-mirrors, PPAs, private mirrors, and other repositories are shown as `[external]`
-for operator visibility. External sources are advisory and do not block
-installation; RouteGate uses the host package sources as configured by the
-operator. Explicitly disabled deb822 stanzas (`Enabled: no`) are ignored.
+The default installation boundary accepts only Canonical Ubuntu archive/security
+hosts. Any active provider mirror, PPA, private mirror, or other third-party APT
+source causes a hard stop and is printed as `[blocked]` for operator review.
+Explicitly disabled deb822 stanzas (`Enabled: no`) are ignored.
 
-RouteGate deliberately does **not** auto-rewrite repository configuration. Package
-source trust remains an operator decision rather than a silent RouteGate mutation.
+RouteGate deliberately does **not** auto-rewrite repository configuration. The
+operator must decide whether to replace, remove, or otherwise trust a source before
+retrying installation. This keeps package provenance outside RouteGate's silent
+mutation surface and prevents a hosting image from implicitly extending the
+project's supply-chain trust boundary.
 
 
 ## Install RouteGate
@@ -196,7 +200,7 @@ Local-file and explicit-URL modes still require checksum verification. A bundle 
 The installer performs these stages in order:
 
 1. Prompts for missing domain/email values and validates arguments, Ubuntu version, architecture, systemd, required base commands, and privileges.
-2. Enumerates active classic and deb822 APT sources before package operations, labels Canonical Ubuntu sources as official and other sources as external, and leaves the trust decision to the operator.
+2. Enumerates active classic and deb822 APT sources and fails closed unless every active repository is inside the official Ubuntu trust boundary. This happens before any `apt-get update` or package installation.
 3. Shows which required APT dependencies will be reused and which will be installed.
 4. Detects unowned RouteGate files, active web/database services, or listeners on TCP 80/443 before mutation.
 5. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
@@ -336,7 +340,7 @@ Both amd64 and arm64 bundles are published to keep the native packaging contract
 
 - Manager listens only on loopback and is exposed through nginx/HTTPS.
 - PostgreSQL is local-only.
-- The installer inventories active APT sources before package operations and warns about external sources without silently rewriting or blocking them.
+- The installer fails closed before APT network access when active package sources leave the official Ubuntu repository trust boundary.
 - RouteGate does not silently rewrite a host's APT sources; repository trust remains an explicit operator decision.
 - Release checksum verification is mandatory.
 - Archive traversal and archive links are rejected.
