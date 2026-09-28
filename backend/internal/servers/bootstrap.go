@@ -32,10 +32,10 @@ func buildAgentBootstrapCommand(publicURL, registrationToken, version, commit, i
 	}
 
 	installerURL := agentInstallerBaseURL + "/" + commit + "/install-agent.sh"
-	command := "tmp=$(mktemp) || exit 1; " +
+	command := "( tmp=$(mktemp)" + bootstrapFailure("temporary file") +
 		"trap 'rm -f \"$tmp\"' EXIT; " +
-		"curl -fL --proto '=https' --tlsv1.2 --retry 3 --connect-timeout 15 " + shellSingleQuote(installerURL) + " -o \"$tmp\" && " +
-		"printf '%s  %s\\n' " + shellSingleQuote(installerSHA256) + " \"$tmp\" | sha256sum -c - && " +
+		"curl -fL --proto '=https' --tlsv1.2 --retry 3 --connect-timeout 15 " + shellSingleQuote(installerURL) + " -o \"$tmp\"" + bootstrapFailure("installer download") +
+		"printf '%s  %s\\n' " + shellSingleQuote(installerSHA256) + " \"$tmp\" | sha256sum -c -" + bootstrapFailure("installer checksum") +
 		"sudo env ROUTEGATE_MANAGER_URL=" + shellSingleQuote(managerURL) +
 		" ROUTEGATE_REGISTRATION_TOKEN=" + shellSingleQuote(registrationToken) +
 		" ROUTEGATE_VERSION=" + shellSingleQuote(version)
@@ -43,8 +43,13 @@ func buildAgentBootstrapCommand(publicURL, registrationToken, version, commit, i
 	if bundleBaseURL != "" {
 		command += " ROUTEGATE_BUNDLE_BASE_URL=" + shellSingleQuote(bundleBaseURL)
 	}
-	command += " bash \"$tmp\""
+	command += " bash \"$tmp\"" + bootstrapFailure("Agent installation") + ")"
 	return managerURL, command
+}
+
+func bootstrapFailure(stage string) string {
+	message := "[RouteGate Agent] Bootstrap failed at stage " + stage + ". Next action: resolve the error, open Connect server, and generate a fresh command."
+	return " || { printf '%s\\n' " + shellSingleQuote(message) + " >&2; exit 1; }; "
 }
 
 func bootstrapBuildIdentityValid(version, commit, installerSHA256, bundleBaseURL string) bool {
