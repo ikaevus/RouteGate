@@ -216,10 +216,12 @@ validate_verifier_parent() {
 
 verifier_supports_policy() {
   local path=$1
-  local version_line
-  version_line=$("$path" --version 2>/dev/null | head -n1) || return 1
+  local version_line help_text
+  version_line=$("$path" --version 2>/dev/null) || return 1
+  version_line=${version_line%%$'\n'*}
   [[ "$version_line" == "gh version ${GH_VERIFIER_VERSION} "* ]] || return 1
-  "$path" attestation verify --help 2>/dev/null | grep -Fq -- '--predicate-type'
+  help_text=$("$path" attestation verify --help 2>/dev/null) || return 1
+  grep -Fq -- '--predicate-type' <<<"$help_text"
 }
 
 validate_attestation_verifier() {
