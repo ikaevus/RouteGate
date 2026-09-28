@@ -8,7 +8,7 @@ RouteGate's standard first-server layout is a **Hybrid Node**: the same VPS host
 
 Prepare:
 
-- a clean Ubuntu 24.04 LTS VPS on amd64 or arm64;
+- a clean Ubuntu 24.04 LTS VPS on amd64;
 - root access or a user with working `sudo`;
 - a public DNS name such as `vpn.example.com`;
 - a DNS `A` record pointing that name to the VPS public IPv4 address;
