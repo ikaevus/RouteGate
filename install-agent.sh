@@ -267,10 +267,11 @@ apt_repository_trust_report() {
 }
 
 validate_apt_repository_trust() {
+  local root=${1:-}
   local report=""
 
   printf '\n[RouteGate] APT repository inventory\n'
-  if report=$(apt_repository_trust_report ""); then
+  if report=$(apt_repository_trust_report "$root"); then
     printf '%s\n\n' "$report"
     return 0
   fi
