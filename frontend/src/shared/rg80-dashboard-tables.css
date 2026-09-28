@@ -189,6 +189,16 @@
   width: 7px;
 }
 
+.server-country-fi {
+  background:
+    linear-gradient(to bottom, transparent 0 36%, #003580 36% 64%, transparent 64% 100%),
+    linear-gradient(to right, #ffffff 0 30%, #003580 30% 49%, #ffffff 49% 100%);
+}
+
+.server-country-ru {
+  background: linear-gradient(to bottom, #ffffff 0 33%, #0039a6 33% 66%, #d52b1e 66% 100%);
+}
+
 .server-country-sg {
   background: linear-gradient(to bottom, #dc2626 0 50%, #ffffff 50% 100%);
   position: relative;
