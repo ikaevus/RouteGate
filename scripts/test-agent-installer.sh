@@ -79,6 +79,24 @@ assert_true "writes Agent config with mode 0600" test "$(stat -c '%a' "$config_p
 assert_equal "writes the Manager URL" "https://manager.routegate.org" "$(config_value "$config_path" manager_url)"
 assert_equal "writes the one-time registration token" "$valid_token" "$(config_value "$config_path" registration_token)"
 
+state_dir="$TEST_TMP/installer-state"
+mkdir -p "$state_dir"
+ROUTEGATE_INSTALLER_STATE_DIR="$state_dir"
+ROUTEGATE_INSTALLER_STATE_FILE="$state_dir/state.env"
+ROUTEGATE_INSTALLER_LOG_FILE="$state_dir/installer.log"
+ROUTEGATE_INSTALLER_STARTED_AT="2026-09-28T00:00:00Z"
+ROUTEGATE_INSTALLER_STATE_READY=1
+ROUTEGATE_INSTALLER_STAGE="bundle"
+touch "$ROUTEGATE_INSTALLER_LOG_FILE"
+write_installer_state running bundle
+assert_true "persists remote installer state with mode 0600" \
+  test "$(stat -c '%a' "$ROUTEGATE_INSTALLER_STATE_FILE")" = 600
+assert_true "persists the current remote installer stage" \
+  grep -Fxq 'STAGE=bundle' "$ROUTEGATE_INSTALLER_STATE_FILE"
+assert_false "remote installer state never persists the registration token" \
+  grep -Fq "$valid_token" "$ROUTEGATE_INSTALLER_STATE_FILE"
+ROUTEGATE_INSTALLER_STATE_READY=0
+
 assert_true "VPN installer explicitly installs Python for updater verification" \
   grep -Fq 'ca-certificates curl iproute2 jq python3 tar' "$ROOT_DIR/install-agent.sh"
 assert_false "VPN bootstrap does not install WireGuard tooling" \
@@ -105,6 +123,12 @@ registration_line=$(grep -n 'wait_for_registration' <<<"$main_body" | tail -n1 |
 bootstrap_line=$(grep -n 'bootstrap_trusted_updater' <<<"$main_body" | tail -n1 | cut -d: -f1)
 assert_true "VPN updater bootstrap runs after Agent registration" \
   test "$registration_line" -lt "$bootstrap_line"
+assert_true "VPN bootstrap persists a durable completion state" \
+  grep -Fq 'write_installer_state complete complete' <<<"$main_body"
+assert_true "VPN bootstrap exposes safe retry guidance" \
+  grep -Fq 'Safe retry: return to Connect server' "$ROOT_DIR/install-agent.sh"
+assert_true "VPN bootstrap records named stages" \
+  grep -Fq 'set_installer_stage registration' <<<"$main_body"
 
 printf '1..%d\n' "$TESTS_RUN"
 ((TESTS_FAILED == 0))
