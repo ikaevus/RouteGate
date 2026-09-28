@@ -201,7 +201,7 @@ See [Updates, Releases, and Versioning](docs/architecture/versioning-and-updates
 
 ## Install RouteGate
 
-The current public clean-host installation contract is **Ubuntu 24.04 LTS amd64** with native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS.
+The current public clean-host installation contract is **Ubuntu 24.04 LTS on amd64** with native systemd services, local PostgreSQL, nginx, and Let's Encrypt TLS. Remote VPN Node onboarding supports amd64 and arm64.
 
 Before installation:
 
@@ -228,13 +228,17 @@ Published releases built with the current release workflow also attach
 That release-asset path is the preferred high-assurance bootstrap for new
 releases.
 
-Before any APT network operation, the installer also checks the host's active package sources and fails closed unless they are official Ubuntu archive/security repositories. Provider and other third-party mirrors are not silently trusted or rewritten.
+Before any APT network operation, the installer also checks the host's active package sources and fails closed unless they are inside RouteGate's approved repository boundary. Approved provider mirrors are explicit; unrelated third-party sources are not silently trusted or rewritten.
 
 The installer downloads a published RouteGate release bundle and verifies it against `SHA256SUMS`. To install v0.1.0 explicitly, use `--version v0.1.0` as documented in the [Clean VPS Installer guide](docs/deployment/clean-vps-installer.md).
 
 After installation, open the single-use `/setup` link printed by the installer, choose the administrator password, and continue through the guided Dashboard workflow.
 
-On versions that include remote-node onboarding, additional VPN Nodes are attached from Manager: create a VPN Node, choose **Connect server**, and run the generated Agent bootstrap command on the target Ubuntu host.
+For a task-oriented walkthrough, see [Install RouteGate on a new VPS](docs/guides/first-install.md).
+
+On versions that include remote-node onboarding, additional VPN Nodes are attached from Manager: create a VPN Node, choose **Connect server**, and run the generated Agent bootstrap command on the target Ubuntu host. The bootstrap connects Agent first; RouteGate installs the selected protocol runtime later as a separate managed action.
+
+See [Add a remote VPN Node](docs/guides/add-vpn-node.md) for the user-facing onboarding sequence and retry guidance.
 
 In the canonical Hybrid layout, nginx/HTTPS owns TCP `443`; the recommended VLESS / Reality listener uses TCP `8443` to avoid the HTTPS listener conflict.
 

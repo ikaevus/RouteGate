@@ -3,7 +3,7 @@
 ## Status
 
 - Release: RouteGate v0.1.0 MVP
-- Supported live installation target: Ubuntu 24.04 LTS on amd64 or arm64
+- Supported live installation target: Ubuntu 24.04 LTS on amd64
 - Deployment model: native systemd services on one VPS
 - Validation environment: disposable production-like `us.routegate.org`
 - VPN Core: sing-box, installed after first login through RouteGate
