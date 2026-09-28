@@ -47,7 +47,7 @@ enabled but cannot start successfully until the Agent applies a validated
 ```text
 Clean Ubuntu 24.04 LTS VPS
         ↓
-official Ubuntu APT repository trust preflight
+APT repository inventory
         ↓
 one copy-paste installer command
         ↓
@@ -81,8 +81,7 @@ The installer intentionally does **not** install or start sing-box. VPN Core ins
 Before running the installer:
 
 - use a clean Ubuntu 24.04 LTS amd64 VPS;
-- require the active APT sources to resolve only to Canonical Ubuntu archive/security infrastructure (`archive.ubuntu.com`, regional `*.archive.ubuntu.com`, `security.ubuntu.com`, or `ports.ubuntu.com`);
-- treat provider-controlled, organization-controlled, PPA, and other third-party APT mirrors as outside the default clean-host trust boundary until the operator deliberately replaces or removes them;
+- review the active APT sources and make an explicit operator trust decision for provider, organization, PPA, or other third-party repositories;
 - connect as `root` or a user with working `sudo`;
 - create a DNS `A` record for the chosen FQDN pointing directly to the VPS public IPv4 address;
 - ensure inbound TCP ports 80 and 443 are reachable;
@@ -93,22 +92,19 @@ Already installed compatible APT packages are not conflicts. Active database/web
 
 The installer does not provision the VPS and does not modify SSH authentication policy.
 
-### APT repository trust preflight
+### APT repository inventory
 
-A "clean Ubuntu VPS" is a trust statement, not only an operating-system version check.
-Before the installer performs any APT network operation, RouteGate enumerates active
+Before the installer performs APT network operations, RouteGate enumerates active
 `/etc/apt/sources.list`, `*.list`, and deb822 `*.sources` entries.
 
-The default installation boundary accepts only Canonical Ubuntu archive/security
-hosts. Any active provider mirror, PPA, private mirror, or other third-party APT
-source causes a hard stop and is printed as `[blocked]` for operator review.
-Explicitly disabled deb822 stanzas (`Enabled: no`) are ignored.
+Canonical Ubuntu archive/security hosts are shown as `[official]`. Provider
+mirrors, PPAs, private mirrors, and other repositories are shown as `[external]`
+for operator visibility. External sources are advisory and do not block
+installation; RouteGate uses the host package sources as configured by the
+operator. Explicitly disabled deb822 stanzas (`Enabled: no`) are ignored.
 
-RouteGate deliberately does **not** auto-rewrite repository configuration. The
-operator must decide whether to replace, remove, or otherwise trust a source before
-retrying installation. This keeps package provenance outside RouteGate's silent
-mutation surface and prevents a hosting image from implicitly extending the
-project's supply-chain trust boundary.
+RouteGate deliberately does **not** auto-rewrite repository configuration. Package
+source trust remains an operator decision rather than a silent RouteGate mutation.
 
 
 ## Install RouteGate
