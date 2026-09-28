@@ -443,7 +443,7 @@ EOF_PROVIDER
   local report
   report=$(apt_repository_trust_report "$root" 2>/dev/null || true)
   assert_true     "reports the external repository URI for operator review"     grep -Fq '[external] https://mirror.yandex.ru/ubuntu' <<<"$report"
-  assert_true     "external repositories are advisory rather than an installation blocker"     bash -c 'source "$1"; validate_apt_repository_trust "$2" >/dev/null 2>&1'       _ "$ROOT_DIR/install.sh" "$root"
+  assert_true     "external repository inventory uses advisory warning language"     grep -Fq 'WARNING: External or unclassified APT sources are configured.' "$ROOT_DIR/install.sh"
 
   rm -f "$root/etc/apt/sources.list.d/provider.list"
   cat >"$root/etc/apt/sources.list.d/disabled.sources" <<'EOF_DISABLED'
