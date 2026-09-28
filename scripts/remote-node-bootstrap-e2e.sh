@@ -210,7 +210,7 @@ start_https_proxy() {
 
 create_bootstrap_command() {
   local manager_http="http://$MANAGER_ADDR"
-  local login_response admin_token server_response server_id token_response bootstrap_command
+  local login_response admin_token server_response server_id
 
   login_response=$(api_json POST "$manager_http/api/admin/auth/login" \
     "$(jq -nc --arg email "$BOOTSTRAP_EMAIL" --arg password "$BOOTSTRAP_PASSWORD" '{email:$email,password:$password}')")
@@ -221,6 +221,19 @@ create_bootstrap_command() {
     "$admin_token")
   server_id=$(jq -er '.id' <<<"$server_response") || fail "Server creation did not return an id"
 
+  # Keep credentials out of stdout and the workflow log.
+  printf '%s' "$admin_token" >"$WORK_DIR/admin.token"
+  printf '%s' "$server_id" >"$WORK_DIR/server.id"
+  chmod 0600 "$WORK_DIR/admin.token" "$WORK_DIR/server.id"
+  issue_bootstrap_command
+}
+
+issue_bootstrap_command() {
+  local manager_http="http://$MANAGER_ADDR"
+  local admin_token server_id token_response bootstrap_command
+  admin_token=$(cat "$WORK_DIR/admin.token")
+  server_id=$(cat "$WORK_DIR/server.id")
+
   token_response=$(api_json POST "$manager_http/api/v1/servers/$server_id/registration-token" '' "$admin_token")
   bootstrap_command=$(jq -er '.bootstrapCommand | select(length > 0)' <<<"$token_response") \
     || fail "Manager did not return a privileged bootstrap command"
@@ -230,11 +243,33 @@ create_bootstrap_command() {
   grep -Fq "ROUTEGATE_BUNDLE_BASE_URL='$PUBLIC_URL/bootstrap/$COMMIT'" <<<"$bootstrap_command" \
     || fail "Bootstrap command is not pinned to the exact Manager-hosted bundle source"
 
-  # Keep secrets out of stdout. Return the values through files with private mode.
-  printf '%s' "$admin_token" >"$WORK_DIR/admin.token"
-  printf '%s' "$server_id" >"$WORK_DIR/server.id"
   printf '%s' "$bootstrap_command" >"$WORK_DIR/bootstrap.command"
-  chmod 0600 "$WORK_DIR/admin.token" "$WORK_DIR/server.id" "$WORK_DIR/bootstrap.command"
+  chmod 0600 "$WORK_DIR/bootstrap.command"
+}
+
+verify_retry_before_registration() {
+  local checksums="$WORK_DIR/public/bootstrap/$COMMIT/SHA256SUMS"
+  local original="$WORK_DIR/original-SHA256SUMS"
+  cp "$checksums" "$original"
+  printf '%064d  routegate-production-like-linux-amd64.tar.gz\n' 0 >"$checksums"
+
+  log "Testing checksum failure before Agent installation."
+  if bash -lc "$(cat "$WORK_DIR/bootstrap.command")" >"$WORK_DIR/failed-bootstrap.log" 2>&1; then
+    fail "Bootstrap accepted a bundle whose checksum did not match"
+  fi
+  sudo grep -Fxq 'STATUS=failed' /var/lib/routegate-agent-installer/state.env \
+    || fail "Installer did not record the failed status"
+  sudo grep -Fxq 'STAGE=bundle' /var/lib/routegate-agent-installer/state.env \
+    || fail "Installer did not identify the failed bundle stage"
+  [[ ! -e /usr/local/bin/routegate-agent && ! -e /etc/routegate/agent.yaml ]] \
+    || fail "Failed bundle verification partially installed Agent"
+  if grep -Eq 'rg_(reg|agent)_[A-Za-z0-9_-]{43}' "$WORK_DIR/failed-bootstrap.log"; then
+    fail "Installer failure output contained a registration or Agent token"
+  fi
+
+  cp "$original" "$checksums"
+  issue_bootstrap_command
+  log "Checksum failure was recorded without installing Agent; retrying with a fresh Manager command."
 }
 
 run_generated_bootstrap() {
@@ -261,6 +296,10 @@ run_generated_bootstrap() {
     || fail "Remote node bootstrap unexpectedly installed Hysteria"
   [[ ! -e /usr/local/bin/mtg ]] \
     || fail "Remote node bootstrap unexpectedly installed MTProto runtime"
+  [[ ! -e /usr/local/bin/sing-box && ! -e /etc/systemd/system/sing-box.service ]] \
+    || fail "Remote node bootstrap unexpectedly installed sing-box"
+  [[ ! -e /etc/wireguard/routegate-wg0.conf ]] \
+    || fail "Remote node bootstrap unexpectedly configured WireGuard"
   [[ ! -e /etc/sysctl.d/99-routegate-wireguard.conf ]] \
     || fail "Remote node bootstrap unexpectedly mutated WireGuard forwarding state"
 }
@@ -302,6 +341,7 @@ main() {
   start_https_proxy
   create_bootstrap_command
   prepare_official_apt_sources
+  verify_retry_before_registration
   run_generated_bootstrap
   verify_manager_observed_agent
 
