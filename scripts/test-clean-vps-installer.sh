@@ -331,9 +331,21 @@ test_all_in_one_role_contract() {
   assert_true \
     "All-in-One installer creates a Hybrid Node" \
     grep -Fq 'deploymentRole:"hybrid"' "$ROOT_DIR/install.sh"
-  assert_true \
-    "All-in-One installer pins the supported Hysteria2 runtime" \
-    grep -Fq 'ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.2}"' "$ROOT_DIR/install.sh"
+  assert_false \
+    "All-in-One platform installer does not preinstall Hysteria2" \
+    grep -Fq 'github.com/apernet/hysteria/releases' "$ROOT_DIR/install.sh"
+  assert_false \
+    "All-in-One platform installer does not preinstall MTProto" \
+    grep -Fq 'github.com/9seconds/mtg/releases' "$ROOT_DIR/install.sh"
+  assert_false \
+    "All-in-One platform installer does not preinstall WireGuard tooling" \
+    grep -Fxq wireguard-tools < <(platform_packages)
+  assert_false \
+    "All-in-One platform installer defers iptables to WireGuard runtime installation" \
+    grep -Fxq iptables < <(platform_packages)
+  assert_false \
+    "All-in-One platform installer does not set WireGuard forwarding sysctl" \
+    grep -Fq '99-routegate-wireguard.conf' "$ROOT_DIR/install.sh"
   assert_true \
     "Hybrid nginx config exposes the loopback Hysteria2 ACME bridge" \
     grep -Fq 'proxy_pass http://127.0.0.1:9080;' "$ROOT_DIR/deploy/nginx/routegate.conf.example"
@@ -361,6 +373,11 @@ test_all_in_one_role_contract() {
   assert_true \
     "production-like bootstrap commit directory is nginx-traversable" \
     grep -Fq 'chmod 0755 "$staging"' "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
+  local install_files_body
+  install_files_body=$(sed -n '/^install_files() {/,/^}/p' "$ROOT_DIR/install.sh")
+  assert_false \
+    "All-in-One install_files has no protocol runtime install step" \
+    grep -Eq 'install_(hysteria2|mtproto|wireguard|sing_box)' <<<"$install_files_body"
 }
 
 test_certificate_and_recovery_contract() {
