@@ -472,6 +472,21 @@ apt_repository_host_trusted() {
   esac
 }
 
+apt_repository_uri_trusted() {
+  local uri=${1%/}
+  case "$uri" in
+    https://mirror.yandex.ru/ubuntu|https://mirror.yandex.ru/ubuntu/*)
+      return 0
+      ;;
+    https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu|https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 apt_repository_trust_report() {
   local root=$1
   local uri host
@@ -489,7 +504,7 @@ apt_repository_trust_report() {
   for uri in "${uris[@]}"; do
     found=1
     host=$(apt_repository_host "$uri" 2>/dev/null || true)
-    if [[ -n "$host" ]] && apt_repository_host_trusted "$host"; then
+    if { [[ -n "$host" ]] && apt_repository_host_trusted "$host"; } || apt_repository_uri_trusted "$uri"; then
       printf '  [trusted] %s\n' "$uri"
     else
       printf '  [blocked] %s\n' "$uri"
