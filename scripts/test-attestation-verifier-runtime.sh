@@ -184,6 +184,27 @@ test_clean_vps_preflights_verifier_path() {
     || fail "Clean VPS preflight did not report the pinned verifier path"
 }
 
+test_chatty_verifier_does_not_trip_pipefail() {
+  local fixture="$TMP_DIR/chatty-gh"
+  cat >"$fixture" <<'EOF_GH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ${1:-} == --version ]]; then
+  printf 'gh version 2.97.0 (fixture)\n'
+elif [[ ${1:-} == attestation && ${2:-} == verify && ${3:-} == --help ]]; then
+  printf '      --predicate-type string\n'
+else
+  exit 1
+fi
+for ((i=0; i<2048; i++)); do
+  printf 'additional output %080d\n' "$i"
+done
+EOF_GH
+  chmod 0755 "$fixture"
+  verifier_supports_policy "$fixture" \
+    || fail "valid verifier with long version/help output failed capability check"
+}
+
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "run this test as root"
 
 test_pinned_release_contract
@@ -193,5 +214,6 @@ test_tampered_metadata_fails_closed
 test_writable_or_unexpected_state_fails_closed
 test_unsafe_archive_rejected
 test_clean_vps_preflights_verifier_path
+test_chatty_verifier_does_not_trip_pipefail
 
 printf 'RouteGate pinned attestation verifier runtime tests passed.\n'
