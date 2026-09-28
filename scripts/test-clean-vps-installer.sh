@@ -346,6 +346,18 @@ test_all_in_one_role_contract() {
   assert_true \
     "production-like Hysteria2 bridge updates validate nginx before reload" \
     grep -Fq "nginx validation rejected the Hysteria2 ACME bridge" "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
+  assert_true \
+    "nginx serves bootstrap artifacts without SPA fallback" \
+    grep -Fq 'location ^~ /bootstrap/' "$ROOT_DIR/deploy/nginx/routegate.conf.example"
+  assert_true \
+    "nginx bootstrap route fails closed on missing artifacts" \
+    grep -Fq 'try_files $uri =404;' "$ROOT_DIR/deploy/nginx/routegate.conf.example"
+  assert_true \
+    "production-like updates reconcile the bootstrap artifact route" \
+    grep -Fq 'reconcile_bootstrap_artifact_route' "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
+  assert_true \
+    "production-like deploy verifies the public bootstrap checksum file" \
+    grep -Fq 'bootstrap public checksum probe=verified' "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
 }
 
 test_certificate_and_recovery_contract() {

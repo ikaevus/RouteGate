@@ -18,6 +18,15 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Content-Security-Policy "base-uri 'self'; frame-ancestors 'self'; object-src 'none'" always;
 
+    # Commit-addressed Agent bootstrap artifacts are static release files.
+    # Serve them directly and never fall back to the SPA entry point.
+    location ^~ /bootstrap/ {
+        root /var/www/routegate;
+        try_files $uri =404;
+        default_type application/octet-stream;
+        add_header Cache-Control "no-store";
+    }
+
     # Subscription URLs contain bearer credentials in the path. Proxy them
     # directly to Manager and never persist the token-bearing request URI in
     # the default nginx access log.
