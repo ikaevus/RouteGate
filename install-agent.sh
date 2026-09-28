@@ -97,20 +97,21 @@ initialize_installer_state() {
 }
 
 print_retry_guidance() {
-  [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]] || return 0
-  printf '[RouteGate Agent] Installer state: %s\n' "$ROUTEGATE_INSTALLER_STATE_FILE" >&2
-  printf '[RouteGate Agent] Installer log: %s\n' "$ROUTEGATE_INSTALLER_LOG_FILE" >&2
-  printf '[RouteGate Agent] Safe retry: return to Connect server, generate a fresh command, and run that command again.\n' >&2
+  if [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]]; then
+    printf '[RouteGate Agent] Installer state: %s\n' "$ROUTEGATE_INSTALLER_STATE_FILE" >&2
+    printf '[RouteGate Agent] Installer log: %s\n' "$ROUTEGATE_INSTALLER_LOG_FILE" >&2
+  fi
+  printf '[RouteGate Agent] Safe retry: return to Connect server, generate a fresh command, and run it on a supported host after resolving the error.\n' >&2
 }
 
 die() {
   local message="$*"
-  printf '[RouteGate Agent] ERROR: %s\n' "$message" >&2
+  printf '[RouteGate Agent] ERROR at stage %s: %s\n' "${ROUTEGATE_INSTALLER_STAGE:-preflight}" "$message" >&2
   if [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]]; then
     printf '%s [ERROR] stage=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${ROUTEGATE_INSTALLER_STAGE:-unknown}" "$message" >>"$ROUTEGATE_INSTALLER_LOG_FILE" 2>/dev/null || true
     write_installer_state failed "${ROUTEGATE_INSTALLER_STAGE:-unknown}" 2>/dev/null || true
-    print_retry_guidance
   fi
+  print_retry_guidance
   exit 1
 }
 
@@ -123,8 +124,8 @@ on_error() {
   if [[ "${ROUTEGATE_INSTALLER_STATE_READY:-0}" == "1" ]]; then
     printf '%s [ERROR] stage=%s line=%s exit=%s unexpected command failure\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${ROUTEGATE_INSTALLER_STAGE:-unknown}" "$line_number" "$exit_code" >>"$ROUTEGATE_INSTALLER_LOG_FILE" 2>/dev/null
     write_installer_state failed "${ROUTEGATE_INSTALLER_STAGE:-unknown}" 2>/dev/null
-    print_retry_guidance
   fi
+  print_retry_guidance
   exit "$exit_code"
 }
 
@@ -376,7 +377,7 @@ validate_apt_repository_trust() {
   fi
 
   printf '%s\n\n' "$report"
-  die "Host APT sources are outside the RouteGate clean-host trust boundary. Use official Ubuntu archive/security repositories before installation."
+  die "Host APT sources are outside the RouteGate-approved boundary. Use Ubuntu archive/security repositories or the approved Yandex mirror paths (mirror.yandex.ru/ubuntu and mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu), then retry."
 }
 
 validate_inputs() {
