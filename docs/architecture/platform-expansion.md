@@ -72,9 +72,11 @@ source published by the production-like deploy workflow. In both cases the
 installer verifies `SHA256SUMS` before extraction. Builds without a complete
 trusted build identity and usable bundle source do not expose a privileged
 bootstrap command, and the UI fails closed rather than substituting a
-configuration-only snippet. The installer installs only Agent and its managed
-runtime dependencies, exchanges the token, and starts heartbeats. It does not
-install Manager, PostgreSQL, or the Web UI/nginx on the remote node.
+configuration-only snippet. The installer installs only Agent and its trusted
+updater boundary, exchanges the token, and starts heartbeats. It does not
+install Manager, PostgreSQL, the Web UI/nginx, or protocol runtimes on the
+remote node. VPN runtimes are installed later through Agent's allow-listed
+runtime installation operations when the selected protocol requires them.
 
 Manager inventory responses aggregate assigned role, Agent heartbeat freshness,
 Agent protocol compatibility, and the versioned RouteGate capability block into
