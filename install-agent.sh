@@ -13,8 +13,6 @@ ROUTEGATE_CHECKSUM_FILE="${ROUTEGATE_CHECKSUM_FILE:-}"
 ROUTEGATE_BUNDLE_URL="${ROUTEGATE_BUNDLE_URL:-}"
 ROUTEGATE_CHECKSUM_URL="${ROUTEGATE_CHECKSUM_URL:-}"
 ROUTEGATE_BUNDLE_BASE_URL="${ROUTEGATE_BUNDLE_BASE_URL:-}"
-ROUTEGATE_HYSTERIA_VERSION="${ROUTEGATE_HYSTERIA_VERSION:-2.12.2}"
-ROUTEGATE_MTG_VERSION="${ROUTEGATE_MTG_VERSION:-2.2.8}"
 
 ROUTEGATE_AGENT_CONFIG="${ROUTEGATE_AGENT_CONFIG:-/etc/routegate/agent.yaml}"
 ROUTEGATE_AGENT_BINARY="${ROUTEGATE_AGENT_BINARY:-/usr/local/bin/routegate-agent}"
@@ -331,81 +329,7 @@ install_dependencies() {
   log "Installing Agent bootstrap dependencies."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update >/dev/null
-  apt-get install -y ca-certificates curl iproute2 iptables jq python3 tar wireguard-tools >/dev/null
-}
-
-install_hysteria2_runtime() {
-  local source_dir=$1
-  local asset="hysteria-linux-${ROUTEGATE_ARCH}"
-  local binary_path="$ROUTEGATE_WORK_DIR/$asset"
-  local hashes_path="$ROUTEGATE_WORK_DIR/hysteria-hashes.txt"
-  local release_base="https://github.com/apernet/hysteria/releases/download/app%2Fv${ROUTEGATE_HYSTERIA_VERSION}"
-  local expected actual
-
-  [[ "$ROUTEGATE_HYSTERIA_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-    || die "ROUTEGATE_HYSTERIA_VERSION must be a numeric semantic version."
-  [[ -f "$source_dir/systemd/hysteria-server.service" ]] \
-    || die "Release bundle is missing the Hysteria2 systemd unit."
-  if [[ -e /usr/local/bin/hysteria || -e /etc/systemd/system/hysteria-server.service ]]; then
-    grep -Fq "Description=RouteGate managed Hysteria2 server" /etc/systemd/system/hysteria-server.service 2>/dev/null \
-      || die "An unmanaged Hysteria installation already exists; RouteGate will not overwrite it."
-  fi
-
-  log "Installing checksum-verified Hysteria ${ROUTEGATE_HYSTERIA_VERSION}."
-  curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$binary_path" "$release_base/$asset"
-  curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$hashes_path" "$release_base/hashes.txt"
-  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name {print $1; exit}' "$hashes_path")
-  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "No valid Hysteria2 SHA-256 entry was found."
-  actual=$(sha256sum "$binary_path" | awk '{print $1}')
-  [[ "$actual" == "$expected" ]] || die "Hysteria2 binary checksum verification failed."
-
-  install -m 0755 "$binary_path" /usr/local/bin/hysteria
-  install -m 0644 "$source_dir/systemd/hysteria-server.service" /etc/systemd/system/hysteria-server.service
-  install -d -m 0700 /etc/hysteria /var/lib/hysteria /var/lib/hysteria/acme
-  systemctl enable hysteria-server.service >/dev/null
-}
-
-install_mtproto_runtime() {
-  local source_dir=$1
-  local asset="mtg-${ROUTEGATE_MTG_VERSION}-linux-${ROUTEGATE_ARCH}.tar.gz"
-  local archive_path="$ROUTEGATE_WORK_DIR/$asset"
-  local checksums_path="$ROUTEGATE_WORK_DIR/mtg-checksums.txt"
-  local release_base="https://github.com/9seconds/mtg/releases/download/v${ROUTEGATE_MTG_VERSION}"
-  local extract_dir="$ROUTEGATE_WORK_DIR/mtg-extracted"
-  local expected actual binary_path
-
-  [[ "$ROUTEGATE_MTG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-    || die "ROUTEGATE_MTG_VERSION must be a numeric semantic version."
-  [[ -f "$source_dir/systemd/routegate-mtproto.service" ]] \
-    || die "Release bundle is missing the MTProto systemd unit."
-  if [[ -e /usr/local/bin/mtg || -e /etc/systemd/system/routegate-mtproto.service ]]; then
-    grep -Fq "Description=RouteGate managed MTProto proxy" /etc/systemd/system/routegate-mtproto.service 2>/dev/null \
-      || die "An unmanaged mtg installation already exists; RouteGate will not overwrite it."
-  fi
-
-  log "Installing checksum-verified mtg ${ROUTEGATE_MTG_VERSION}."
-  curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$archive_path" "$release_base/$asset"
-  curl -fL --retry 3 --connect-timeout 15 --max-time 60 -o "$checksums_path" "$release_base/mtg-${ROUTEGATE_MTG_VERSION}-checksums.txt"
-  expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name {print $1; exit}' "$checksums_path")
-  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || die "No valid mtg SHA-256 entry was found."
-  actual=$(sha256sum "$archive_path" | awk '{print $1}')
-  [[ "$actual" == "$expected" ]] || die "mtg archive checksum verification failed."
-  if tar -tzf "$archive_path" | awk '$0 ~ /^\// || $0 ~ /(^|\/)\.\.(\/|$)/ {found=1} END {exit !found}'; then
-    die "mtg archive contains an unsafe path."
-  fi
-  if tar -tvzf "$archive_path" | awk '$1 ~ /^[lh]/ {found=1} END {exit !found}'; then
-    die "mtg archive contains a symbolic or hard link."
-  fi
-  mkdir -p "$extract_dir"
-  tar -xzf "$archive_path" -C "$extract_dir"
-  binary_path="$extract_dir/mtg-${ROUTEGATE_MTG_VERSION}-linux-${ROUTEGATE_ARCH}/mtg"
-  [[ -f "$binary_path" ]] || die "mtg archive does not contain the expected versioned binary path."
-  [[ $(find "$extract_dir" -type f -name mtg | wc -l) -eq 1 ]] || die "mtg archive contains an ambiguous binary layout."
-
-  install -m 0755 "$binary_path" /usr/local/bin/mtg
-  install -m 0644 "$source_dir/systemd/routegate-mtproto.service" /etc/systemd/system/routegate-mtproto.service
-  install -d -m 0700 /etc/routegate-mtproto
-  systemctl enable routegate-mtproto.service >/dev/null
+  apt-get install -y ca-certificates curl iproute2 jq python3 tar >/dev/null
 }
 
 resolve_release_version() {
@@ -555,13 +479,8 @@ EOF_CONFIG
 install_agent() {
   local source_dir="$ROUTEGATE_WORK_DIR/extracted"
   install -d -m 0700 /var/lib/routegate-agent /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups /var/lib/routegate-agent/mtproto-configs /var/lib/routegate-agent/mtproto-backups
-  install -d -m 0700 /etc/wireguard
-  printf 'net.ipv4.ip_forward=1\n' > /etc/sysctl.d/99-routegate-wireguard.conf
-  sysctl -p /etc/sysctl.d/99-routegate-wireguard.conf >/dev/null
   install -m 0755 "$source_dir/bin/routegate-agent" "$ROUTEGATE_AGENT_BINARY"
   install -m 0644 "$source_dir/systemd/routegate-agent.service" "$ROUTEGATE_AGENT_SERVICE"
-  install_hysteria2_runtime "$source_dir"
-  install_mtproto_runtime "$source_dir"
 
   if [[ -r "$ROUTEGATE_AGENT_CONFIG" ]] && [[ $(config_value "$ROUTEGATE_AGENT_CONFIG" agent_token) == rg_agent_* ]]; then
     local configured_manager
@@ -583,6 +502,7 @@ wait_for_registration() {
     agent_token=$(config_value "$ROUTEGATE_AGENT_CONFIG" agent_token || true)
     if [[ "$agent_token" == rg_agent_* ]]; then
       log "VPN Node connected to ${ROUTEGATE_MANAGER_URL}."
+      log "Protocol runtimes are installed later by RouteGate when you configure a VPN protocol."
       return
     fi
     systemctl is-active --quiet routegate-agent.service || break
