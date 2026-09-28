@@ -40,6 +40,7 @@ type Handler struct {
 	buildVersion              string
 	buildCommit               string
 	agentInstallerSHA256      string
+	agentBundleBaseURL        string
 	service                   *Service
 	servers                   serverRepository
 	registrationTokens        registrationTokenRepository
@@ -58,6 +59,7 @@ func NewHandler(logger *slog.Logger, pool *pgxpool.Pool, publicURL string) *Hand
 		buildVersion:              build.Version,
 		buildCommit:               build.GitCommit,
 		agentInstallerSHA256:      build.AgentInstallerSHA256,
+		agentBundleBaseURL:        build.AgentBundleBaseURL,
 		service:                   NewService(repository),
 		servers:                   repository,
 		registrationTokens:        agents.NewRepository(pool),
@@ -341,10 +343,10 @@ func (h *Handler) CreateRegistrationToken(w http.ResponseWriter, r *http.Request
 		Metadata: map[string]any{
 			"token_preview":      audit.MaskSecret(rawToken),
 			"expires_at":         expiresAt,
-			"bootstrap_available": agentBootstrapAvailable(h.publicURL, h.buildVersion, h.buildCommit, h.agentInstallerSHA256),
+			"bootstrap_available": agentBootstrapAvailable(h.publicURL, h.buildVersion, h.buildCommit, h.agentInstallerSHA256, h.agentBundleBaseURL),
 		},
 	})
-	managerURL, bootstrapCommand := buildAgentBootstrapCommand(h.publicURL, rawToken, h.buildVersion, h.buildCommit, h.agentInstallerSHA256)
+	managerURL, bootstrapCommand := buildAgentBootstrapCommand(h.publicURL, rawToken, h.buildVersion, h.buildCommit, h.agentInstallerSHA256, h.agentBundleBaseURL)
 	httpx.WriteJSON(w, http.StatusCreated, RegistrationTokenResponse{
 		ServerID:          serverID,
 		RegistrationToken: rawToken,
