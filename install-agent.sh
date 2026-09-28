@@ -203,6 +203,20 @@ validate_bundle_base_url() {
   [[ "$value" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?(/[-A-Za-z0-9._~/%]+)*$ ]]
 }
 
+validate_artifact_url() {
+  local value=$1
+  local remainder authority
+
+  [[ "$value" == https://* ]] || return 1
+  [[ "$value" != *[[:space:]]* && "$value" != *"#"* ]] || return 1
+
+  remainder=${value#https://}
+  authority=${remainder%%/*}
+  authority=${authority%%\?*}
+  [[ -n "$authority" && "$authority" != *"@"* ]] || return 1
+  [[ "$authority" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$ ]]
+}
+
 validate_registration_token() {
   [[ "$1" =~ ^rg_reg_[A-Za-z0-9_-]{43}$ ]]
 }
@@ -381,6 +395,8 @@ validate_inputs() {
   fi
   if [[ -n "$ROUTEGATE_BUNDLE_URL" || -n "$ROUTEGATE_CHECKSUM_URL" ]]; then
     [[ -n "$ROUTEGATE_BUNDLE_URL" && -n "$ROUTEGATE_CHECKSUM_URL" ]] || die "--bundle-url and --checksum-url must be provided together."
+    validate_artifact_url "$ROUTEGATE_BUNDLE_URL" || die "--bundle-url must be an HTTPS URL without credentials, fragments, or whitespace."
+    validate_artifact_url "$ROUTEGATE_CHECKSUM_URL" || die "--checksum-url must be an HTTPS URL without credentials, fragments, or whitespace."
   fi
   [[ -z "$ROUTEGATE_BUNDLE_FILE" || -z "$ROUTEGATE_BUNDLE_URL" ]] || die "Choose either a local bundle or an explicit bundle URL."
   [[ -z "$ROUTEGATE_BUNDLE_BASE_URL" || ( -z "$ROUTEGATE_BUNDLE_FILE" && -z "$ROUTEGATE_BUNDLE_URL" ) ]] || die "Choose only one bundle source: local files, explicit URLs, or bundle base URL."
@@ -442,8 +458,8 @@ extract_bundle() {
   if tar -tzf "$bundle_path" | awk '$0 ~ /^\// || $0 ~ /(^|\/)\.\.(\/|$)/ {found=1} END {exit !found}'; then
     die "Release bundle contains an unsafe path."
   fi
-  if tar -tvzf "$bundle_path" | awk '$1 ~ /^[lh]/ {found=1} END {exit !found}'; then
-    die "Release bundle contains a symbolic or hard link."
+  if tar -tvzf "$bundle_path" | awk '$1 !~ /^[-d]/ {found=1} END {exit !found}'; then
+    die "Release bundle contains a non-regular filesystem entry."
   fi
   tar -xzf "$bundle_path" -C "$extract_dir"
 

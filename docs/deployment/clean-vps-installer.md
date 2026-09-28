@@ -190,13 +190,15 @@ rm -f routegate-install-v0.1.0.sh
 --version VERSION      Release tag; defaults to latest.
 --bundle-file PATH     Local release bundle for controlled E2E/offline staging.
 --checksum-file PATH   Matching SHA256SUMS file for --bundle-file.
---bundle-url URL       Explicit bundle URL.
---checksum-url URL     Matching SHA256SUMS URL.
+--bundle-url URL       Explicit HTTPS bundle URL.
+--checksum-url URL     Matching HTTPS SHA256SUMS URL.
 --yes                  Skip the final confirmation prompt.
 --help                 Show command help.
 ```
 
-Local-file and explicit-URL modes still require checksum verification. A bundle without a matching SHA-256 entry is rejected.
+Local-file and explicit-URL modes still require checksum verification. Explicit
+remote artifact URLs must use HTTPS and cannot contain credentials, fragments,
+or whitespace. A bundle without a matching SHA-256 entry is rejected.
 
 ## What the installer does
 
