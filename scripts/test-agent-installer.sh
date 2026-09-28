@@ -36,7 +36,7 @@ EOF_UNTRUSTED
 
   assert_false     "Agent installer classifies third-party APT repositories as external"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
 
-  assert_true     "Agent installer keeps external APT sources advisory"     bash -c 'source "$1"; validate_apt_repository_trust >/dev/null 2>&1'       _ "$ROOT_DIR/install-agent.sh"
+  assert_true     "Agent installer keeps external APT sources advisory"     bash -c 'source "$1"; validate_apt_repository_trust "$2" >/dev/null 2>&1'       _ "$ROOT_DIR/install-agent.sh" "$root"
 }
 
 valid_token="rg_reg_$(printf 'a%.0s' {1..43})"
