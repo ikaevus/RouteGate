@@ -358,6 +358,9 @@ test_all_in_one_role_contract() {
   assert_true \
     "production-like deploy verifies the public bootstrap checksum file" \
     grep -Fq 'bootstrap public checksum probe=verified' "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
+  assert_true \
+    "production-like bootstrap commit directory is nginx-traversable" \
+    grep -Fq 'chmod 0755 "$staging"' "$ROOT_DIR/scripts/deploy-production-like-bundle.sh"
 }
 
 test_certificate_and_recovery_contract() {
