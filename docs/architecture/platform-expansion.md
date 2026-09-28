@@ -61,17 +61,20 @@ The existing one-time token design remains the foundation:
 
 RG-114B implements this sequence with the Agent-only `install-agent.sh`
 installer. Manager returns a copyable command containing its configured public
-HTTPS origin and the one-time token. For release builds, that command is bound
-to the Manager's exact Git commit and the SHA-256 of `install-agent.sh`
-embedded during the release build. The remote host downloads that exact script,
-verifies the embedded checksum before privileged execution, and receives the
-matching RouteGate release version explicitly. Mutable `main`-branch bootstrap
-is therefore outside the release onboarding trust boundary. Non-release builds
-without a complete trusted build identity do not expose the copyable privileged
-bootstrap command. The installer then downloads the matching published release
-bundle, verifies `SHA256SUMS`, installs only Agent and its systemd unit,
-exchanges the token, and starts heartbeats. It does not install Manager,
-PostgreSQL, Web UI/nginx, or a VPN Core.
+HTTPS origin and the one-time token. The command is bound to the Manager's exact
+Git commit and the SHA-256 of `install-agent.sh` embedded at build time. The
+remote host downloads that exact script and verifies the embedded checksum
+before privileged execution.
+
+Published releases resolve their matching GitHub Release bundle. The
+production-like exact-main build instead embeds a commit-addressed HTTPS bundle
+source published by the production-like deploy workflow. In both cases the
+installer verifies `SHA256SUMS` before extraction. Builds without a complete
+trusted build identity and usable bundle source do not expose a privileged
+bootstrap command, and the UI fails closed rather than substituting a
+configuration-only snippet. The installer installs only Agent and its managed
+runtime dependencies, exchanges the token, and starts heartbeats. It does not
+install Manager, PostgreSQL, or the Web UI/nginx on the remote node.
 
 Manager inventory responses aggregate assigned role, Agent heartbeat freshness,
 Agent protocol compatibility, and the versioned RouteGate capability block into
