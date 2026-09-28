@@ -92,6 +92,10 @@ existing persistent identity for the same Manager is preserved.
   commit-addressed bundle source to the installer;
 - release or Manager-hosted bundles are verified against their `SHA256SUMS`
   file before extraction;
+- explicit remote bundle/checksum overrides, when used, must be HTTPS URLs
+  without embedded credentials, fragments, or whitespace;
+- release bundle extraction accepts only regular files and directories after
+  path traversal checks;
 - protocol runtime downloads and checksum verification happen in the Agent's
   dedicated runtime installation operations, not in the node bootstrap;
 - Agent replaces the bootstrap token with its persistent dedicated credential
