@@ -31,7 +31,7 @@ EOF_LIST
   assert_true     "Agent installer accepts official Ubuntu repositories"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"
 
   cat >"$root/etc/apt/sources.list.d/yandex-approved.list" <<'EOF_YANDEX'
-deb https://mirror.yandex.ru/ubuntu noble main
+deb http://mirror.yandex.ru/ubuntu noble main
 deb https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu noble stable
 EOF_YANDEX
   assert_true     "Agent installer accepts project-approved Yandex mirror paths"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install-agent.sh" "$root"

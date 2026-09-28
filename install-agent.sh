@@ -241,10 +241,10 @@ apt_repository_host_trusted() {
 apt_repository_uri_trusted() {
   local uri=${1%/}
   case "$uri" in
-    https://mirror.yandex.ru/ubuntu|https://mirror.yandex.ru/ubuntu/*)
+    http://mirror.yandex.ru/ubuntu|http://mirror.yandex.ru/ubuntu/*|https://mirror.yandex.ru/ubuntu|https://mirror.yandex.ru/ubuntu/*)
       return 0
       ;;
-    https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu|https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu/*)
+    http://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu|http://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu/*|https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu|https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu/*)
       return 0
       ;;
     *)

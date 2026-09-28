@@ -435,7 +435,7 @@ EOF_SOURCES
   assert_true     "accepts official Ubuntu archive and security repositories"     bash -c 'source "$1"; apt_repository_trust_report "$2" >/dev/null'       _ "$ROOT_DIR/install.sh" "$root"
 
   cat >"$root/etc/apt/sources.list.d/provider.list" <<'EOF_PROVIDER'
-deb https://mirror.yandex.ru/ubuntu noble main
+deb http://mirror.yandex.ru/ubuntu noble main
 deb https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu noble stable
 EOF_PROVIDER
 
@@ -443,7 +443,7 @@ EOF_PROVIDER
 
   local report
   report=$(apt_repository_trust_report "$root" 2>/dev/null || true)
-  assert_true     "reports the approved Ubuntu mirror as trusted"     grep -Fq '[trusted] https://mirror.yandex.ru/ubuntu' <<<"$report"
+  assert_true     "reports the approved Ubuntu mirror as trusted"     grep -Fq '[trusted] http://mirror.yandex.ru/ubuntu' <<<"$report"
   assert_true     "reports the approved Docker mirror as trusted"     grep -Fq '[trusted] https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu' <<<"$report"
 
   cat >"$root/etc/apt/sources.list.d/unapproved-yandex.list" <<'EOF_UNAPPROVED'

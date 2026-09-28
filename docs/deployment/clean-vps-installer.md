@@ -102,8 +102,8 @@ Before the installer performs any APT network operation, RouteGate enumerates ac
 The default installation boundary accepts Canonical Ubuntu archive/security
 hosts and these explicitly approved mirror paths:
 
-- `https://mirror.yandex.ru/ubuntu`
-- `https://mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu`
+- `mirror.yandex.ru/ubuntu` over HTTP or HTTPS;
+- `mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu` over HTTP or HTTPS.
 
 Only those Yandex paths are approved; arbitrary repositories on
 `mirror.yandex.ru` remain outside the trust boundary. Any other active provider
