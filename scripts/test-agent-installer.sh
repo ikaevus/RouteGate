@@ -57,6 +57,11 @@ assert_true "accepts HTTPS Agent bundle base URL" validate_bundle_base_url "http
 assert_false "rejects HTTP Agent bundle base URL" validate_bundle_base_url "http://manager.routegate.org/bootstrap/commit"
 assert_false "rejects Agent bundle base URL credentials" validate_bundle_base_url "https://user:pass@manager.routegate.org/bootstrap/commit"
 assert_false "rejects Agent bundle base URL query" validate_bundle_base_url "https://manager.routegate.org/bootstrap/commit?token=value"
+assert_true "accepts HTTPS Agent artifact URL" validate_artifact_url "https://manager.routegate.org/bootstrap/commit/bundle.tar.gz"
+assert_true "accepts signed HTTPS Agent artifact URL query" validate_artifact_url "https://downloads.example.org/bundle.tar.gz?signature=value"
+assert_false "rejects HTTP Agent artifact URL" validate_artifact_url "http://downloads.example.org/bundle.tar.gz"
+assert_false "rejects Agent artifact URL credentials" validate_artifact_url "https://user:pass@downloads.example.org/bundle.tar.gz"
+assert_false "rejects Agent artifact URL fragment" validate_artifact_url "https://downloads.example.org/bundle.tar.gz#fragment"
 assert_true "accepts a generated registration token shape" validate_registration_token "$valid_token"
 assert_false "rejects an Agent bearer token" validate_registration_token "rg_agent_$(printf 'a%.0s' {1..43})"
 assert_equal "maps x86_64 to amd64" amd64 "$(platform_architecture x86_64)"
@@ -111,6 +116,8 @@ assert_false "VPN bootstrap does not enable protocol runtime services" \
   grep -Eq 'systemctl enable (hysteria-server|routegate-mtproto)' "$ROOT_DIR/install-agent.sh"
 assert_false "VPN bootstrap does not mutate WireGuard forwarding state" \
   grep -Fq '99-routegate-wireguard.conf' "$ROOT_DIR/install-agent.sh"
+assert_true "VPN installer rejects non-file/non-directory release bundle entries" \
+  grep -Fq "\$1 !~ /^[-d]/" "$ROOT_DIR/install-agent.sh"
 assert_true "VPN installer requires updater bootstrap helper in the release bundle" \
   grep -Fq 'routegate-update-bootstrap.sh' "$ROOT_DIR/install-agent.sh"
 assert_true "VPN installer clears RG_UPDATE_ROOT before privileged bootstrap" \
