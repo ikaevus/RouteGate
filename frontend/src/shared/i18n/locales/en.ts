@@ -586,6 +586,8 @@ export const en = {
   'serverDetails.agentStepConfigureDescription': 'The generated configuration identifies this Manager and authorizes the one-time registration of this server. The Agent binary must already be built or installed. Run this block on the target server:',
   'serverDetails.copySetupCommand': 'Copy installation command',
   'serverDetails.setupCommandCopied': 'Installation command copied.',
+  'serverDetails.bootstrapUnavailableTitle': 'Automatic Agent installation is unavailable for this Manager build.',
+  'serverDetails.bootstrapUnavailableDescription': 'Do not use the configuration-only snippet as an installer. Deploy a Manager build with complete bootstrap metadata, then generate a fresh registration token.',
   'serverDetails.agentStepStartTitle': 'Start Agent',
   'serverDetails.agentStepStartDescription': 'Start the installed binary in the foreground. For continuous operation, configure it with the systemd unit supplied in the repository.',
   'serverDetails.agentStepWaitTitle': 'Wait for the server connection',
