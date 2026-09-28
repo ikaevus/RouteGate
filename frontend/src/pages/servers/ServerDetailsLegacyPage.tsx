@@ -326,8 +326,7 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
     const canReuseCurrentToken = Boolean(
       registrationToken
       && Number.isFinite(expiresAt)
-      && expiresAt > Date.now()
-      && registrationToken.bootstrapCommand?.trim(),
+      && expiresAt > Date.now(),
     );
 
     if (canReuseCurrentToken) {
