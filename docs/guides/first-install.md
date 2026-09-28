@@ -10,12 +10,14 @@ Prepare:
 
 - a clean Ubuntu 24.04 LTS VPS on amd64;
 - root access or a user with working `sudo`;
-- a public DNS name such as `vpn.example.com`;
+- a stable public DNS name you control, such as `routegate.example.com` (a subdomain is sufficient and must be set up before installation);
 - a DNS `A` record pointing that name to the VPS public IPv4 address;
 - inbound TCP ports 80 and 443 reachable from the Internet;
 - a working SSH session that you can keep open during installation.
 
 Do not manually install PostgreSQL, nginx, RouteGate Agent, or VPN protocol runtimes first. The installer and RouteGate workflow own those components.
+
+The public DNS name is required for the Manager. RouteGate does not support an IP-only Manager installation. An additional remote VPN Node does not need its own DNS name merely to connect its Agent to this Manager.
 
 ## 1. Download the installer
 
