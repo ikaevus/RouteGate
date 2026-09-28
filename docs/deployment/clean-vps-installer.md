@@ -3,44 +3,35 @@
 ## Status
 
 - Release: RouteGate v0.1.0 MVP
-- Supported live installation target: Ubuntu 24.04 LTS on amd64
+- Supported live installation target: Ubuntu 24.04 LTS on amd64 or arm64
 - Deployment model: native systemd services on one VPS
 - Validation environment: disposable production-like `us.routegate.org`
 - VPN Core: sing-box, installed after first login through RouteGate
 
 The Clean VPS Installer is the canonical public installation boundary for the RouteGate MVP. The operator supplies a supported Ubuntu host, DNS, and working SSH/sudo access. RouteGate owns the management-platform installation from that point forward.
 
-### RG-114E WireGuard runtime
+### VPN runtime ownership
 
-Post-MVP RG-114E adds `wireguard-tools` and `iptables` to the supported
-installer dependencies, creates dedicated mode-0700 WireGuard Agent storage,
-and installs a RouteGate-owned sysctl setting for IPv4 forwarding. It does not
-start a WireGuard interface during platform installation. The first validated
-WireGuard Config Deploy owns enabling and starting the fixed
-`wg-quick@routegate-wg0` unit, just as the existing VLESS path defers sing-box
-startup until it has a valid config.
+The Clean VPS Installer installs the RouteGate platform and local Agent, but it
+does **not** preinstall protocol runtimes.
 
-### RG-114F Hysteria2 runtime
+After the first administrator signs in, RouteGate installs the runtime required
+by the selected protocol through the same allow-listed Manager → Agent
+operations used by remote VPN Nodes:
 
-RG-114F installs a pinned upstream Hysteria binary only after verifying its
-published SHA-256 value, installs a fixed hardened systemd unit, and creates
-mode-0700 config and ACME state directories. The unit is enabled but not
-started without a validated config. The Hysteria2 adapter itself is restricted
-to VPN-capable nodes. On the All-in-One Hybrid Node, Hysteria keeps an
-independent certificate by binding its HTTP-01 challenge service to
-`127.0.0.1:9080`; the RouteGate nginx default-host bridge forwards only the
-challenge path for a separate Hysteria DNS hostname. Production-like updates
-reconcile this bridge atomically on existing All-in-One installations, validate
-the complete nginx configuration, and restore the previous site on failure.
+- VLESS / Shadowsocks → sing-box;
+- WireGuard → native `wireguard-tools` plus RouteGate-managed forwarding prerequisites;
+- Hysteria2 → checksum-verified Hysteria;
+- MTProto → checksum-verified mtg.
 
-### RG-114G MTProto runtime
+This gives one runtime installation owner for Hybrid and remote VPN Nodes. A
+runtime is installed only when it is needed, remains unconfigured/inactive
+until validated Config Deploy, and is not part of the platform bootstrap
+success boundary.
 
-The All-in-One and remote VPN Node installers also install the pinned mtg 2.2.8
-runtime for amd64 or arm64. They verify the upstream SHA-256 checksum before
-extraction, reject unsafe archive layouts, refuse to replace unmanaged mtg
-files, and install the hardened `routegate-mtproto.service`. The service is
-enabled but cannot start successfully until the Agent applies a validated
-`/etc/routegate-mtproto/config.toml`.
+The Hybrid nginx configuration still contains the Hysteria2 ACME challenge
+bridge required if Hysteria2 is selected later. Production-like updates
+reconcile that bridge atomically and validate nginx before reload.
 
 ## Canonical product flow
 
@@ -61,9 +52,11 @@ single-use /setup administrator activation
         ↓
 Guided Workflow / Next Action First
         ↓
-Install sing-box through RouteGate
+Choose a VPN protocol
         ↓
-recommended VLESS / Reality configuration
+RouteGate installs the required VPN runtime through Agent
+        ↓
+recommended protocol configuration
         ↓
 first VPN account
         ↓
@@ -74,7 +67,10 @@ persistent client profile / QR / VLESS link
 
 The operator does not manually install PostgreSQL, copy migrations, assemble systemd units, configure nginx, or register the local Agent.
 
-The installer intentionally does **not** install or start sing-box. VPN Core installation remains a deliberate, allow-listed post-login action. Installing sing-box may leave the service installed but inactive/unconfigured; the first successful Config Deploy owns the first real startup with a valid generated configuration.
+The installer intentionally does **not** install or start any VPN runtime.
+VPN Core installation remains a deliberate, allow-listed post-login action.
+The first successful Config Deploy owns real startup with a validated generated
+configuration.
 
 ## Requirements
 
@@ -207,12 +203,12 @@ Local-file and explicit-URL modes still require checksum verification. A bundle 
 The installer performs these stages in order:
 
 1. Prompts for missing domain/email values and validates arguments, Ubuntu version, architecture, systemd, required base commands, and privileges.
-2. Enumerates active classic and deb822 APT sources and fails closed unless every active repository is inside the official Ubuntu trust boundary. This happens before any `apt-get update` or package installation.
+2. Enumerates active classic and deb822 APT sources and fails closed unless every active repository is inside the RouteGate-approved repository boundary. This happens before any `apt-get update` or package installation.
 3. Shows which required APT dependencies will be reused and which will be installed.
 4. Detects unowned RouteGate files, active web/database services, or listeners on TCP 80/443 before mutation.
 5. Verifies that the FQDN resolves to an IPv4 address detected for the VPS.
 6. Creates root-owned installation state and recovery storage.
-7. Installs required APT packages including PostgreSQL, nginx, Certbot, curl, jq, OpenSSL, and runtime utilities.
+7. Installs required platform APT packages including PostgreSQL, nginx, Certbot, curl, jq, OpenSSL, and Agent bootstrap utilities. Protocol-specific packages are deferred to the Agent runtime installation workflow.
 8. Resolves the requested RouteGate release, downloads the native bundle, verifies `SHA256SUMS`, rejects unsafe archive paths/links, and validates the manifest.
 9. Installs Manager, Agent, migrations, frontend assets, nginx configuration, and systemd units.
 10. Creates a dedicated local PostgreSQL role/database with a generated password and loopback-only listening.
