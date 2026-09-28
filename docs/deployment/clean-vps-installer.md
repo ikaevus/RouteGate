@@ -38,7 +38,7 @@ reconcile that bridge atomically and validate nginx before reload.
 ```text
 Clean Ubuntu 24.04 LTS VPS
         ↓
-official Ubuntu APT repository trust preflight
+RouteGate-approved APT repository trust preflight
         ↓
 one copy-paste installer command
         ↓
@@ -345,7 +345,7 @@ Both amd64 and arm64 bundles are published to keep the native packaging contract
 
 - Manager listens only on loopback and is exposed through nginx/HTTPS.
 - PostgreSQL is local-only.
-- The installer fails closed before APT network access when active package sources leave the official Ubuntu repository trust boundary.
+- The installer fails closed before APT network access when active package sources leave the RouteGate-approved repository boundary (Ubuntu archive/security or the two approved Yandex mirror paths above).
 - RouteGate does not silently rewrite a host's APT sources; repository trust remains an explicit operator decision.
 - Release checksum verification is mandatory.
 - Archive traversal and archive links are rejected.
