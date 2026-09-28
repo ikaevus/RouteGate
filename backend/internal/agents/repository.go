@@ -344,8 +344,38 @@ func (r *Repository) CompleteConfigTask(ctx context.Context, input CompleteConfi
 }
 
 func (r *Repository) CreateRegistrationToken(ctx context.Context, input CreateRegistrationTokenInput) (ServerRegistrationToken, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ServerRegistrationToken{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Serialize token rotation per server so there is never more than one
+	// usable registration token after a create request completes. This keeps
+	// every onboarding surface aligned on one credential and makes an explicit
+	// regeneration invalidate the previous token immediately.
+	var lockedServerID string
+	if err := tx.QueryRow(ctx, `
+		SELECT id::text
+		FROM servers
+		WHERE id = $1::uuid
+		FOR UPDATE
+	`, input.ServerID).Scan(&lockedServerID); err != nil {
+		return ServerRegistrationToken{}, err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE server_registration_tokens
+		SET expires_at = now()
+		WHERE server_id = $1::uuid
+		  AND used_at IS NULL
+		  AND (expires_at IS NULL OR expires_at > now())
+	`, input.ServerID); err != nil {
+		return ServerRegistrationToken{}, err
+	}
+
 	var token ServerRegistrationToken
-	err := r.pool.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO server_registration_tokens (server_id, token_hash, expires_at)
 		VALUES ($1::uuid, $2, $3)
 		RETURNING id::text, server_id::text, token_hash, expires_at, used_at, created_at
@@ -356,8 +386,14 @@ func (r *Repository) CreateRegistrationToken(ctx context.Context, input CreateRe
 		&token.ExpiresAt,
 		&token.UsedAt,
 		&token.CreatedAt,
-	)
-	return token, err
+	); err != nil {
+		return ServerRegistrationToken{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return ServerRegistrationToken{}, err
+	}
+	return token, nil
 }
 
 func (r *Repository) ConsumeValidRegistrationTokenByHash(ctx context.Context, tokenHash string) (ServerRegistrationToken, error) {

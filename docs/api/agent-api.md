@@ -16,7 +16,7 @@ Administrators read registered Agents through the authenticated Manager API:
 GET /api/v1/agents
 ```
 
-Registration uses a short-lived server registration token. A successful registration returns a persistent Agent credential, which is then used for heartbeat, task polling, task completion, and traffic reporting.
+Registration uses a short-lived server registration token. Manager keeps only one usable unused registration token per server after token generation completes; requesting a replacement immediately expires the previous unused token. A successful registration returns a persistent Agent credential, which is then used for heartbeat, task polling, task completion, and traffic reporting.
 
 For distributed VPN Nodes, administrators normally do not build or configure
 Agent manually. Manager returns a one-command Agent bootstrap instruction from
