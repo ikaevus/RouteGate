@@ -365,7 +365,7 @@ reconcile_bootstrap_artifact_route() {
   if [[ "$route_count" == "1" ]]; then
     grep -Fq 'root /var/www/routegate;' "$NGINX_SITE" \
       || { printf '[production-like] existing bootstrap route does not use the fixed RouteGate document root.\n' >&2; return 1; }
-    grep -Fq 'try_files $uri =404;' "$NGINX_SITE" \
+    grep -Fq "try_files \$uri =404;" "$NGINX_SITE" \
       || { printf '[production-like] existing bootstrap route may fall back to the SPA.\n' >&2; return 1; }
     log "nginx bootstrap artifact route=present"
     return 0
@@ -377,7 +377,7 @@ reconcile_bootstrap_artifact_route() {
     || { printf '[production-like] bundle nginx template has no /bootstrap/ route.\n' >&2; return 1; }
   grep -Fq 'root /var/www/routegate;' "$template" \
     || { printf '[production-like] bundle /bootstrap/ route does not pin the RouteGate document root.\n' >&2; return 1; }
-  grep -Fq 'try_files $uri =404;' "$template" \
+  grep -Fq "try_files \$uri =404;" "$template" \
     || { printf '[production-like] bundle /bootstrap/ route does not fail closed.\n' >&2; return 1; }
 
   if [[ -z "$NGINX_BACKUP" ]]; then
