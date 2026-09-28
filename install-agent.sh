@@ -248,7 +248,7 @@ apt_repository_trust_report() {
   mapfile -t uris < <(apt_source_uris "$root" | sort -u)
 
   if ((${#uris[@]} == 0)); then
-    printf '  [external] no active APT repository URIs detected\n'
+    printf '  [blocked] no active APT repository URIs detected\n'
     return 1
   fi
 
@@ -256,9 +256,9 @@ apt_repository_trust_report() {
     found=1
     host=$(apt_repository_host "$uri" 2>/dev/null || true)
     if [[ -n "$host" ]] && apt_repository_host_trusted "$host"; then
-      printf '  [official] %s\n' "$uri"
+      printf '  [trusted] %s\n' "$uri"
     else
-      printf '  [external] %s\n' "$uri"
+      printf '  [blocked] %s\n' "$uri"
       blocked=1
     fi
   done
@@ -269,15 +269,14 @@ apt_repository_trust_report() {
 validate_apt_repository_trust() {
   local report=""
 
-  printf '\n[RouteGate] APT repository inventory\n'
+  printf '\n[RouteGate] APT repository trust preflight\n'
   if report=$(apt_repository_trust_report ""); then
     printf '%s\n\n' "$report"
     return 0
   fi
 
-  printf '%s\n' "$report"
-  printf '[RouteGate Agent] WARNING: External or unclassified APT sources are configured. RouteGate will use the host package sources as configured by the operator.\n\n' >&2
-  return 0
+  printf '%s\n\n' "$report"
+  die "Host APT sources are outside the RouteGate clean-host trust boundary. Use official Ubuntu archive/security repositories before installation."
 }
 
 validate_inputs() {
