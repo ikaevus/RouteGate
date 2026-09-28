@@ -765,7 +765,9 @@ rollback_database_to_backup() {
 
 cleanup() {
   rm -rf "$WORK_DIR"
-  rm -f "$BUNDLE_FILE" "$BOOTSTRAP_ARM64_BUNDLE" "$BOOTSTRAP_CHECKSUMS" "$VALIDATION_SCRIPT" "$UPDATE_CORE"
+  rm -f "$BUNDLE_FILE" "$VALIDATION_SCRIPT" "$UPDATE_CORE"
+  [[ -z "$BOOTSTRAP_ARM64_BUNDLE" ]] || rm -f "$BOOTSTRAP_ARM64_BUNDLE"
+  [[ -z "$BOOTSTRAP_CHECKSUMS" ]] || rm -f "$BOOTSTRAP_CHECKSUMS"
 }
 
 rollback() {
