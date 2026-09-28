@@ -376,7 +376,7 @@ validate_apt_repository_trust() {
   fi
 
   printf '%s\n\n' "$report"
-  die "Host APT sources are outside the RouteGate clean-host trust boundary. Use official Ubuntu archive/security repositories before installation."
+  die "Host APT sources are outside the RouteGate-approved boundary. Use Ubuntu archive/security repositories or the approved Yandex mirror paths (mirror.yandex.ru/ubuntu and mirror.yandex.ru/mirrors/download.docker.com/linux/ubuntu), then retry."
 }
 
 validate_inputs() {
