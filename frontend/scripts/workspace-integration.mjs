@@ -81,6 +81,36 @@ try {
   await page.waitForURL(`${serverWorkspace}/overview`);
   await page.locator('.server-workspace-overview').waitFor();
   assert.equal(await page.locator('.server-workspace-overview .primary-button').getAttribute('href'), `/servers/${server.id}/connection`);
+
+  // Agent onboarding owns a single registration-token surface. Reopening the
+  // workflow reuses the raw token already held by this browser session; only
+  // the explicit rotation action is allowed to replace it.
+  await page.locator('.workspace-nav-link[href$="/connection"]').click();
+  const connectionPanel = page.locator('.server-connection-panel');
+  const connectServerButton = connectionPanel.getByRole('button', { name: 'Connect server', exact: true });
+  await connectServerButton.click();
+  const onboardingDialog = page.locator('.agent-onboarding-dialog');
+  await onboardingDialog.waitFor();
+  const registrationTokenField = onboardingDialog.locator('.registration-token-field code');
+  const firstRegistrationToken = (await registrationTokenField.innerText()).trim();
+  assert.match(firstRegistrationToken, /^rg_reg_/);
+  assert.equal(await page.locator('.token-panel').count(), 0);
+
+  await onboardingDialog.locator('.registration-token-dialog-close').click();
+  await connectServerButton.click();
+  await onboardingDialog.waitFor();
+  assert.equal((await registrationTokenField.innerText()).trim(), firstRegistrationToken);
+
+  await onboardingDialog.getByRole('button', { name: 'Generate new token', exact: true }).click();
+  await page.waitForFunction(
+    previous => document.querySelector('.agent-onboarding-dialog .registration-token-field code')?.textContent?.trim() !== previous,
+    firstRegistrationToken,
+  );
+  const rotatedRegistrationToken = (await registrationTokenField.innerText()).trim();
+  assert.match(rotatedRegistrationToken, /^rg_reg_/);
+  assert.notEqual(rotatedRegistrationToken, firstRegistrationToken);
+  await onboardingDialog.locator('.registration-token-dialog-close').click();
+
   for (const section of ['connection', 'services', 'routing', 'deployments', 'settings']) {
     await page.locator(`.workspace-nav-link[href$="/${section}"]`).click();
     await page.locator(`.workspace-nav-link[aria-current="page"][href$="/${section}"]`).waitFor();
