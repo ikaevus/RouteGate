@@ -576,7 +576,7 @@ export const en = {
   'serverDetails.deploymentNextValidate': 'Next: validate the selected config version.',
   'serverDetails.deploymentNextApply': 'Rendering passed static validation. Review the selected version, then apply it through Agent.',
   'serverDetails.deploymentValidationFailed': 'Validation failed. Correct the settings and render a new version.',
-  'serverDetails.deploymentNextCheck': 'Request sent. Check the result in deployment history and test the VPN port from outside.',
+  'serverDetails.deploymentNextCheck': 'This version was applied before. If settings changed, render a new version. Check deployment history and test the VPN port from outside.',
   'serverDetails.registrationToken': 'Registration token',
   'serverDetails.copyRegistrationToken': 'Copy',
   'serverDetails.registrationTokenCopied': 'Copied!',

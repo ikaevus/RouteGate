@@ -578,7 +578,7 @@ export const ru: Record<TranslationKey, string> = {
   'serverDetails.deploymentNextValidate': 'Следующий шаг: проверьте выбранную версию конфигурации.',
   'serverDetails.deploymentNextApply': 'Рендеринг прошёл статическую проверку. Просмотрите выбранную версию, затем примените её на Agent.',
   'serverDetails.deploymentValidationFailed': 'Проверка не пройдена. Исправьте настройки и отрендерите новую версию.',
-  'serverDetails.deploymentNextCheck': 'Запрос отправлен. Проверьте результат в истории развёртываний и доступность VPN-порта снаружи.',
+  'serverDetails.deploymentNextCheck': 'Эта версия уже применялась. Если настройки изменились, отрендерите новую версию. Проверьте историю развёртываний и доступность VPN-порта снаружи.',
   'serverDetails.registrationToken': 'Токен регистрации',
   'serverDetails.copyRegistrationToken': 'Копировать',
   'serverDetails.registrationTokenCopied': 'Скопировано!',
