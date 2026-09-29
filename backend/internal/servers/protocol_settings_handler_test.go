@@ -168,6 +168,23 @@ func TestUpdateProtocolSettingsRejectsInvalidRealityHostname(t *testing.T) {
 	}
 }
 
+func TestUpdateProtocolSettingsRejectsVLESSTransportsTheNodeDoesNotServe(t *testing.T) {
+	for _, network := range []string{"ws", "grpc", "http", "udp"} {
+		fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
+		handler := testHandler(&fakeServerRepository{}, &fakeRegistrationTokenRepository{})
+		request := httptest.NewRequest(http.MethodPatch, "/api/v1/servers/server-id/protocol-settings", strings.NewReader(`{"vlessNetwork":"`+network+`"}`))
+		request.SetPathValue("server_id", "server-id")
+		response := httptest.NewRecorder()
+		handler.UpdateProtocolSettings(response, request)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "raw TCP only") {
+			t.Fatalf("network %q: status = %d; body=%s", network, response.Code, response.Body.String())
+		}
+		if fakeProtocolSettingsInput.VLESSNetwork != nil {
+			t.Fatalf("network %q must not be stored", network)
+		}
+	}
+}
+
 func TestUpdateProtocolSettingsRejectsNodeHostnameAsRealityServerName(t *testing.T) {
 	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
 	handler := testHandler(&fakeServerRepository{getByID: Server{ID: "server-id", Name: "RU VPS", Hostname: "ru.routegate.org"}}, &fakeRegistrationTokenRepository{})

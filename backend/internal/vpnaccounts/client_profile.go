@@ -447,9 +447,13 @@ func buildClientVLESSLink(subscription SubscriptionProfile, profile ClientProfil
 	if uuid == "" {
 		return "", "", "", "", "", errors.New("VLESS UUID is required")
 	}
-	serverName := strings.TrimSpace(profile.ServerNameOverride)
-	if serverName == "" {
-		serverName = strings.TrimSpace(server.RealityServerName)
+	// The node's Reality inbound accepts only its own server name, so an
+	// override can at most change letter case. Any other value (including an
+	// override left behind after the node's name changed) would make every
+	// handshake fall through to the target site and break the client.
+	serverName := strings.TrimSpace(server.RealityServerName)
+	if override := strings.TrimSpace(profile.ServerNameOverride); override != "" && strings.EqualFold(override, serverName) {
+		serverName = override
 	}
 	if serverName == "" {
 		return "", "", "", "", "", errors.New("Reality server name is required")

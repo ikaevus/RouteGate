@@ -342,7 +342,7 @@ func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
 		return errors.New("vlessPort must be between 1 and 65535")
 	}
 	if input.VLESSNetwork != nil && !validVLESSNetwork(*input.VLESSNetwork) {
-		return errors.New("vlessNetwork must be one of: tcp, ws, grpc, http")
+		return errors.New("vlessNetwork must be tcp: the managed VLESS / Reality inbound serves raw TCP only")
 	}
 	if input.VLESSFlow != nil && !validVLESSFlow(*input.VLESSFlow) {
 		return errors.New("vlessFlow must be empty or xtls-rprx-vision")
@@ -387,9 +387,13 @@ func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
 	return nil
 }
 
+// validVLESSNetwork accepts only transports the node runtime serves. The
+// rendered sing-box VLESS inbound sets no transport, so any other value would
+// either be rejected by the database or hand clients a link the node cannot
+// accept.
 func validVLESSNetwork(network string) bool {
 	switch strings.ToLower(network) {
-	case "", "tcp", "ws", "grpc", "http":
+	case "", "tcp":
 		return true
 	default:
 		return false

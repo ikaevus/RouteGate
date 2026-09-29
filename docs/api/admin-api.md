@@ -38,16 +38,28 @@ are saved in one atomic database update. Saving settings does not apply a
 runtime configuration.
 
 Client material (subscriptions and connection links) always describes the
-node's last Agent-confirmed apply. Each rendered config version records the
-client-facing node parameters it deploys (protocol, ports, VLESS flow, Reality
-public key, Short ID and server name, WireGuard/Hysteria2/Shadowsocks/MTProto
-endpoint parameters). Saved settings reach clients only after a version that
-contains them is applied successfully; a failed or rejected apply leaves
-clients on the previous parameters, and re-applying an older version switches
-clients back to that version. Until a node has any successful apply, client
-connection endpoints return `client_connection_unavailable`. Client-only
-values that the node does not enforce, such as the WireGuard DNS pushed to
-clients, take effect immediately. When a Reality config is applied, Agent resolves the
+node's last Agent-confirmed apply. Each config version records the
+client-facing parameters it deploys, derived from its own rendered config:
+node protocol, ports, VLESS flow and transport, Reality public key (derived
+from the deployed private key), Short ID and server name, and the
+WireGuard/Hysteria2/Shadowsocks/MTProto endpoint parameters. Saved settings
+reach clients only after a version that contains them is applied
+successfully; a failed or rejected apply leaves clients on the previous
+parameters, and re-applying an older version switches clients back to that
+version. Until a node has any successful apply, client connection endpoints
+return `client_connection_unavailable`. The WireGuard DNS pushed to clients
+is not part of the node runtime and takes effect immediately.
+
+`vlessNetwork` accepts only `tcp`: the managed VLESS / Reality inbound serves
+raw TCP. A per-client Reality server name override is used only when it
+matches the node's applied server name (ignoring case); any other value would
+fail every Reality handshake.
+
+Versions rendered before migration `000156` get their snapshot when Manager
+starts: it derives the parameters from each stored rendered config and logs
+`backfilled applied client settings`. A version that cannot be derived is
+logged as an error with its `config_version_id` and keeps serving the node's
+saved settings until the next successful apply. When a Reality config is applied, Agent resolves the
 handshake target and completes a TLS 1.3 handshake from the VPN node before
 replacing the running config; if that fails, the apply job fails at the
 `validate` stage and the running VPN service is left unchanged.

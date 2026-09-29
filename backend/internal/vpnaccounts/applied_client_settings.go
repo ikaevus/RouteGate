@@ -11,16 +11,17 @@ import (
 var ErrNodeConfigNotApplied = errors.New("the VPN node configuration has not been applied yet; render and apply it in the node's Deployments before sharing client access")
 
 // useAppliedClientSettings replaces the node parameters that clients must match
-// with those of the last successfully applied config version. Settings saved
-// after that apply stay invisible to clients until a later apply succeeds, so
-// a rejected or failed apply cannot hand clients parameters the running node
-// does not use.
+// with those derived from the last successfully applied config version.
+// Settings saved after that apply stay invisible to clients until a later apply
+// succeeds, and settings the node runtime never honours (such as a non-TCP
+// VLESS transport) are replaced by what the node actually serves.
 func (s *SubscriptionServer) useAppliedClientSettings(applied platform.AppliedClientSettings) {
 	s.VLESSPort = applied.VLESSPort
 	if s.VLESSPort <= 0 {
 		s.VLESSPort = defaultSingBoxServerPort
 	}
 	s.VLESSFlow = applied.VLESSFlow
+	s.VLESSNetwork = applied.VLESSNetwork
 	s.RealityPublicKey = applied.RealityPublicKey
 	s.RealityShortID = applied.RealityShortID
 	s.RealityServerName = applied.RealityServerName
@@ -30,7 +31,9 @@ func (s *SubscriptionServer) useAppliedClientSettings(applied platform.AppliedCl
 	s.Hysteria2Port = applied.Hysteria2Port
 	s.Hysteria2Domain = applied.Hysteria2Domain
 	s.ShadowsocksPort = applied.ShadowsocksPort
+	s.ShadowsocksMethod = applied.ShadowsocksMethod
 	s.ShadowsocksServerKey = applied.ShadowsocksServerKey
 	s.MTProtoPort = applied.MTProtoPort
 	s.MTProtoSecret = applied.MTProtoSecret
+	s.MTProtoFrontingDomain = applied.MTProtoFrontingDomain
 }

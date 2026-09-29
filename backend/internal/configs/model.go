@@ -3,8 +3,6 @@ package configs
 import (
 	"encoding/json"
 	"time"
-
-	"github.com/ikaevus/routegate/backend/internal/platform"
 )
 
 const (
@@ -262,9 +260,6 @@ type CreateConfigVersionInput struct {
 	Status         string
 	ConfigHash     string
 	RenderedConfig RenderedConfig
-	// ClientSettings is the client-facing node configuration this version was
-	// rendered from. Subscriptions serve it once the version is applied.
-	ClientSettings *platform.AppliedClientSettings
 }
 
 type CreateConfigApplyJobInput struct {
