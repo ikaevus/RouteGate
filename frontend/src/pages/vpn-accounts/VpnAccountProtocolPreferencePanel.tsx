@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getProtocolSettings, getServers } from '../../entities/server/api/serverApi';
 import type { ProtocolSettingsResponse } from '../../entities/server/api/serverApi';
 import {
-  getVpnAccountClientConnection,
+  getVpnAccountClientProfileState,
   updateVpnAccountClientProfile,
   type ClientProtocol,
   type ClientProtocolPreference,
   type UpdateVpnClientProfileRequest,
-  type VpnClientConnectionResponse,
-  type VpnClientProfile,
 } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
@@ -20,24 +18,21 @@ import {
   ensureProtocolRuntime,
   type ProtocolDeploymentStage,
 } from './protocolDeploymentWorkflow';
+import {
+  activationConfirmed,
+  canApplyProtocolSet,
+  ordered,
+  protocolOrder,
+  protocolPreferenceView,
+  sameProtocols,
+} from './protocolPreferenceModel';
 import './multi-protocol-access.css';
 
 type Props = { accountId: string };
 
-type MultiProtocolProfile = VpnClientProfile & {
-  enabledProtocols?: ClientProtocol[];
-  activeProtocols?: ClientProtocol[];
-};
-
-type MultiProtocolConnection = VpnClientConnectionResponse & {
-  profile: MultiProtocolProfile;
-};
-
 type MultiProtocolUpdate = UpdateVpnClientProfileRequest & {
   enabledProtocols: ClientProtocol[];
 };
-
-const protocolOrder: ClientProtocol[] = ['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'];
 
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
@@ -73,6 +68,12 @@ function getCopy() {
       settingsLoadError: 'Не удалось проверить готовность протоколов назначенного VPN-узла.',
       hysteria2NotReady: 'Для Hysteria2 необходимы отдельный TLS-домен и email для ACME.',
       errorDetail: 'Причина',
+      awaitingApply: 'Клиентский доступ для этого аккаунта ещё не развёрнут на узле. Ссылки и подписка появятся после успешного применения.',
+      awaitingFirstApply: 'На узле ещё нет ни одной успешно применённой конфигурации. Ссылки и подписка появятся после первого успешного применения.',
+      applyAction: 'Нажмите «Применить набор протоколов»: панель сформирует конфигурацию узла и передаст её Agent. Также это можно сделать в разделе конфигураций узла.',
+      savedSet: 'Сохранённый набор',
+      servedSet: 'Фактически активен',
+      unavailable: 'Клиентское подключение сейчас недоступно.',
       stages: {
         saving_preference: 'Сохраняю желаемый набор…', checking_runtime: 'Проверяю VPN runtimes…',
         installing_runtime: 'Устанавливаю необходимый runtime…', rendering_config: 'Формирую общую конфигурацию узла…',
@@ -105,6 +106,12 @@ function getCopy() {
     settingsLoadError: 'Could not verify protocol readiness on the assigned VPN node.',
     hysteria2NotReady: 'Hysteria2 requires a dedicated TLS domain and an ACME email address.',
     errorDetail: 'Reason',
+    awaitingApply: 'Client access for this account is not deployed on the node yet. Links and the subscription appear after a successful apply.',
+    awaitingFirstApply: 'The node has no successfully applied configuration yet. Links and the subscription appear after the first successful apply.',
+    applyAction: 'Press "Apply protocol set": the panel renders the node configuration and sends it to the Agent. You can also do this from the node configuration page.',
+    savedSet: 'Saved set',
+    servedSet: 'Actually active',
+    unavailable: 'The client connection is currently unavailable.',
     stages: {
       saving_preference: 'Saving desired protocol set…', checking_runtime: 'Checking VPN runtimes…',
       installing_runtime: 'Installing required runtime…', rendering_config: 'Rendering combined node configuration…',
@@ -123,17 +130,6 @@ function protocolLabel(protocol: string, copy: ReturnType<typeof getCopy>): stri
     case 'mtproto': return copy.mtproto;
     default: return protocol || '—';
   }
-}
-
-function ordered(values: readonly ClientProtocol[]): ClientProtocol[] {
-  const selected = new Set(values);
-  return protocolOrder.filter((protocol) => selected.has(protocol));
-}
-
-function sameProtocols(left: readonly ClientProtocol[], right: readonly ClientProtocol[]): boolean {
-  const a = ordered(left);
-  const b = ordered(right);
-  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 function protocolIsReady(protocol: ClientProtocol, settings: ProtocolSettingsResponse): boolean {
@@ -157,16 +153,18 @@ function mutationErrorDetail(error: unknown, copy: ReturnType<typeof getCopy>): 
 export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const copy = getCopy();
   const queryClient = useQueryClient();
-  const queryKey = ['vpn-account-client-connection', accountId] as const;
+  // The profile state never carries client links, so it stays readable and
+  // editable while client access is withheld until the node applies it.
+  const queryKey = ['vpn-account-client-profile', accountId] as const;
   const [primary, setPrimary] = useState<ClientProtocolPreference>('auto');
   const [enabledProtocols, setEnabledProtocols] = useState<ClientProtocol[]>(['vless']);
   const [saved, setSaved] = useState(false);
   const [deploymentStage, setDeploymentStage] = useState<ProtocolDeploymentStage | null>(null);
   const [focusedProtocol, setFocusedProtocol] = useState<ClientProtocol>('vless');
 
-  const connectionQuery = useQuery({
+  const stateQuery = useQuery({
     queryKey,
-    queryFn: () => getVpnAccountClientConnection(accountId) as Promise<MultiProtocolConnection>,
+    queryFn: () => getVpnAccountClientProfileState(accountId),
   });
   const accountQuery = useQuery({ queryKey: ['vpn-account', accountId], queryFn: () => getVpnAccount(accountId) });
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
@@ -180,31 +178,25 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const assignedServer = (serversQuery.data?.items ?? []).find((server) => server.id === assignedServerId);
   const nodeDefault = (protocolSettingsQuery.data?.protocol ?? 'vless') as ClientProtocol;
 
+  const view = stateQuery.data ? protocolPreferenceView(stateQuery.data) : null;
+
   useEffect(() => {
-    const profile = connectionQuery.data?.profile;
-    if (!profile) return;
-    setPrimary(profile.protocol ?? 'auto');
-    const desired = profile.enabledProtocols?.length
-      ? profile.enabledProtocols
-      : profile.activeProtocols?.length
-        ? profile.activeProtocols
-        : [connectionQuery.data?.protocol ?? 'vless'];
-    setEnabledProtocols(ordered(desired));
-  }, [connectionQuery.data]);
+    if (!stateQuery.data) return;
+    setPrimary(stateQuery.data.profile.protocol ?? 'auto');
+    setEnabledProtocols(protocolPreferenceView(stateQuery.data).desired);
+  }, [stateQuery.data]);
 
   useEffect(() => {
     setSaved(false);
     setDeploymentStage(null);
   }, [accountId]);
 
-  const profile = connectionQuery.data?.profile;
-  const activeProtocols = ordered(profile?.activeProtocols?.length
-    ? profile.activeProtocols
-    : connectionQuery.data?.protocol ? [connectionQuery.data.protocol] : []);
-  const storedDesired = ordered(profile?.enabledProtocols?.length ? profile.enabledProtocols : activeProtocols);
+  const profile = stateQuery.data?.profile;
+  const activeProtocols = view?.active ?? [];
+  const storedDesired = view?.desired ?? [];
   const currentPrimary = profile?.protocol ?? 'auto';
   const changed = primary !== currentPrimary || !sameProtocols(enabledProtocols, storedDesired);
-  const activationPending = !sameProtocols(storedDesired, activeProtocols);
+  const activationPending = view?.activationPending ?? false;
   const autoInvalid = primary === 'auto' && !enabledProtocols.includes(nodeDefault);
   const unreadyProtocols = protocolSettingsQuery.data
     ? enabledProtocols.filter((protocol) => !protocolIsReady(protocol, protocolSettingsQuery.data))
@@ -253,22 +245,20 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
       }
       await deployPendingProtocol(assignedServer.id, setDeploymentStage);
 
-      const connection = await getVpnAccountClientConnection(accountId) as MultiProtocolConnection;
-      const activated = connection.profile.activeProtocols?.length
-        ? connection.profile.activeProtocols
-        : [connection.protocol];
-      if (!sameProtocols(activated, enabledProtocols)) {
+      const state = await getVpnAccountClientProfileState(accountId);
+      if (!activationConfirmed(state, enabledProtocols)) {
         throw new Error('protocol_set_activation_not_confirmed');
       }
-      return connection;
+      return state;
     },
     onMutate: () => {
       setSaved(false);
       setDeploymentStage('saving_preference');
     },
-    onSuccess: async (connection) => {
-      queryClient.setQueryData(queryKey, connection);
+    onSuccess: async (state) => {
+      queryClient.setQueryData(queryKey, state);
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['servers'] }),
@@ -276,14 +266,17 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
         queryClient.invalidateQueries({ queryKey: ['server-config-versions', assignedServerId] }),
         queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', assignedServerId] }),
       ]);
-      setPrimary(connection.profile.protocol ?? 'auto');
-      setEnabledProtocols(ordered(connection.profile.enabledProtocols ?? connection.profile.activeProtocols ?? [connection.protocol]));
+      setPrimary(state.profile.protocol ?? 'auto');
+      setEnabledProtocols(protocolPreferenceView(state).desired);
       setDeploymentStage('completed');
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2600);
     },
     onError: async () => {
-      await queryClient.invalidateQueries({ queryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
+      ]);
     },
   });
 
@@ -305,11 +298,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
 
   const stageText = deploymentStage ? copy.stages[deploymentStage] : null;
   const errorDetail = mutationErrorDetail(saveMutation.error, copy);
-  const canRetry = !changed && activationPending;
-  const activeSummary = useMemo(
-    () => activeProtocols.length ? activeProtocols.map((protocol) => protocolLabel(protocol, copy)).join(' · ') : '—',
-    [activeProtocols, copy],
-  );
+  const canRetry = !changed && activationPending && !view?.awaitingDeployment;
+  const protocolList = (values: readonly ClientProtocol[]) =>
+    values.length ? values.map((protocol) => protocolLabel(protocol, copy)).join(' · ') : '—';
+  const awaitingText = view?.status === 'awaiting_first_apply' ? copy.awaitingFirstApply : copy.awaitingApply;
   const focusedReady = protocolSettingsQuery.data
     ? protocolIsReady(focusedProtocol, protocolSettingsQuery.data)
     : null;
@@ -322,11 +314,11 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
       <Section
         title={copy.title}
         description={copy.subtitle}
-        aside={connectionQuery.data && <span className="status-pill">{copy.active}: {activeSummary}</span>}
+        aside={stateQuery.data && <span className="status-pill">{copy.active}: {protocolList(activeProtocols)}</span>}
       >
-        {connectionQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
-        {connectionQuery.isError && <div className="form-message form-message-error">{copy.loadError}</div>}
-        {connectionQuery.data && (
+        {stateQuery.isLoading && <p className="empty-state">{copy.loading}</p>}
+        {stateQuery.isError && <div className="form-message form-message-error">{copy.loadError}</div>}
+        {stateQuery.data && (
           <div className="vpn-protocol-list-detail">
             <div className="vpn-protocol-list" role="group" aria-label={copy.enabled}>
               {protocolOrder.map((protocol) => {
@@ -384,7 +376,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
         )}
       </Section>
 
-      {connectionQuery.data && (
+      {stateQuery.data && (
         <Section title={copy.applyTitle} description={copy.applySubtitle}>
           <div className="vpn-account-protocol-preference-content">
             <div className="vpn-account-create-grid">
@@ -410,7 +402,30 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
             </div>
 
             <div className="form-message">{copy.safety}</div>
-            {activationPending && !saveMutation.isPending && <div className="form-message form-message-warning">{copy.pending}</div>}
+            {view?.awaitingDeployment && !saveMutation.isPending && (
+              <div className="form-message form-message-warning" role="status">
+                <div>{awaitingText}</div>
+                <div>{copy.savedSet}: {protocolList(view.desired)}</div>
+                <div>{copy.servedSet}: {protocolList(view.active)}</div>
+                <div>{copy.applyAction}</div>
+                {view.message && <small>{copy.errorDetail}: {view.message}</small>}
+              </div>
+            )}
+            {!view?.awaitingDeployment && activationPending && !saveMutation.isPending && (
+              <div className="form-message form-message-warning">
+                <div>{copy.pending}</div>
+                <div>{copy.savedSet}: {protocolList(storedDesired)}</div>
+                <div>{copy.servedSet}: {protocolList(activeProtocols)}</div>
+              </div>
+            )}
+            {(view?.status === 'unassigned' || (!assignedServer && accountQuery.isSuccess)) && (
+              <div className="form-message form-message-warning">{copy.noServer}</div>
+            )}
+            {view?.status === 'unavailable' && (
+              <div className="form-message form-message-warning">
+                {copy.unavailable}{view.message && <div>{copy.errorDetail}: {view.message}</div>}
+              </div>
+            )}
             {validationMessage && (
               <div className="form-message form-message-warning vpn-protocol-readiness-warning">
                 <span>{validationMessage}</span>
@@ -438,7 +453,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
               <button
                 className="primary-button"
                 type="button"
-                disabled={(!changed && !activationPending) || saveMutation.isPending || Boolean(validationMessage) || !assignedServer}
+                disabled={!view || !canApplyProtocolSet(view, changed) || saveMutation.isPending || Boolean(validationMessage) || !assignedServer}
                 onClick={() => saveMutation.mutate()}
               >
                 {saveMutation.isPending ? stageText ?? copy.saving : canRetry ? copy.retry : copy.save}

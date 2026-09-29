@@ -67,6 +67,28 @@ A multi-protocol set is served whole or not at all. Saving the account's
 client profile still works; the response then carries the profile without
 links, and preferences are validated against the node's saved settings.
 
+`GET /api/v1/vpn-accounts/{id}/client-profile` (`vpn_users:read`) returns the
+account's saved preferences independently of client access, and never any
+links:
+
+```json
+{
+  "vpnAccountId": "…",
+  "profile": { "protocol": "auto", "enabledProtocols": ["vless", "shadowsocks"], "activeProtocols": [], "…": "…" },
+  "activeProtocol": "vless",
+  "connectionStatus": "awaiting_apply",
+  "connectionMessage": "the node has not received this account's vless access yet; render and successfully apply a new configuration for the node, then retry"
+}
+```
+
+`profile.enabledProtocols` is the saved desired set; `profile.activeProtocols`
+is the set the node actually serves now (empty until the account is deployed).
+`connectionStatus` is `ready`, `awaiting_apply` (the active version does not
+include this account's access), `awaiting_first_apply` (the node has no
+successful apply), `unassigned` or `unavailable`. Clients keep using
+`GET …/client-connection`, which still answers `409
+client_connection_unavailable` while access is withheld.
+
 MTProto is the exception: its proxy uses one node-wide secret and the render
 does not list MTProto accounts. MTProto material is served whenever the
 account's MTProto protocol is active and the applied version runs the MTProto
