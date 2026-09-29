@@ -22,8 +22,11 @@ of aborting the script.
 
 ## Where and how to run
 
-On the Manager host, against the Manager database. VPN nodes (FI, RU) need no
-access: all node and account data is in the Manager database. Load the URL
+On the Manager host, against the Manager database only. No VPN node is
+accessed: all node and account data the checks read is in the Manager
+database. Nodes excluded from changes (FI, which runs Hiddify) are not touched
+by these checks, the update or a rollback; if the Manager database lists such
+a node, its rows are only read. Load the URL
 from the Manager environment file without printing it, and keep the output
 next to the update notes:
 
@@ -68,8 +71,9 @@ P2 states:
     protocol or one of its active protocol rows (`not_deployed_by_active_render`)
     was not deployed. A connection is served whole or not at all, so the
     account also loses the protocols that work today. **Blocking**: fixing it
-    needs a render and apply on that node, which requires a separate decision
-    for FI.
+    needs a render and apply on that node. Never render or apply on a node
+    excluded from changes (FI with Hiddify); there the result blocks the
+    update until the owner decides.
 - `withheld_first_apply`: the node has never had a successful apply, so all
   its accounts lose their links. **Blocking** on a node with users.
 
@@ -226,5 +230,6 @@ the update; after rollback B the new build upgraded the database again.
   refused (incomplete settings, deployment role).
 - Unknown protocol names in an old render sort alphabetically after the known
   ones; Go appends them in map order. Manager never renders such names.
-- The rehearsal data is synthetic; renders made by older releases on FI may
-  differ, which is why the preflight must run on FI before the update.
+- The rehearsal data is synthetic; renders made by older releases may differ,
+  which is why the preflight must run against the Manager database (on the
+  Manager host, never on a VPN node) before the update.
