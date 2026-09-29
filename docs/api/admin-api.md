@@ -28,6 +28,14 @@ RG-114E adds:
 generates a new server keypair and selects the recommended native WireGuard
 settings. The server private key is never returned by the Admin API.
 
+`POST /api/v1/servers/{server_id}/protocol-settings/recommended` configures
+VLESS / Reality. It requires JSON `{"serverName":"www.example.com"}` with an
+explicit external TLS handshake hostname. RouteGate rejects an IP address or
+the node's own hostname. The Manager validates syntax; the administrator must
+check DNS and TLS reachability from the VPN node. The new keypair, Short ID,
+hostname and VLESS settings are saved in one atomic database update. Saving
+settings does not apply a runtime configuration.
+
 VPN account credential and token-protected subscription responses select their
 shape from the assigned server protocol. WireGuard delivery returns the peer
 private/public keys, assigned address, server public key, DNS value, and a

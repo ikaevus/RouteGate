@@ -47,29 +47,29 @@ type Server struct {
 }
 
 type ProtocolSettings struct {
-	ServerID          string    `json:"serverId"`
-	Protocol          string    `json:"protocol"`
-	VLESSPort         int       `json:"vlessPort"`
-	VLESSFlow         string    `json:"vlessFlow,omitempty"`
-	VLESSNetwork      string    `json:"vlessNetwork,omitempty"`
-	RealityPublicKey  string    `json:"realityPublicKey,omitempty"`
-	RealityShortID    string    `json:"realityShortId,omitempty"`
-	RealityServerName string    `json:"realityServerName,omitempty"`
-	WireGuardPort      int       `json:"wireGuardPort"`
-	WireGuardAddress   string    `json:"wireGuardAddress"`
-	WireGuardDNS       string    `json:"wireGuardDns"`
-	WireGuardPublicKey string    `json:"wireGuardPublicKey,omitempty"`
-	Hysteria2Port       int       `json:"hysteria2Port"`
-	Hysteria2Domain     string    `json:"hysteria2Domain,omitempty"`
-	Hysteria2ACMEEmail  string    `json:"hysteria2AcmeEmail,omitempty"`
-	Hysteria2MasqueradeURL string `json:"hysteria2MasqueradeUrl,omitempty"`
-	ShadowsocksPort      int    `json:"shadowsocksPort"`
-	ShadowsocksMethod    string `json:"shadowsocksMethod"`
-	ShadowsocksServerKey string `json:"-"`
-	MTProtoPort           int    `json:"mtprotoPort"`
-	MTProtoSecret         string `json:"-"`
-	MTProtoFrontingDomain string `json:"mtprotoFrontingDomain"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	ServerID               string    `json:"serverId"`
+	Protocol               string    `json:"protocol"`
+	VLESSPort              int       `json:"vlessPort"`
+	VLESSFlow              string    `json:"vlessFlow,omitempty"`
+	VLESSNetwork           string    `json:"vlessNetwork,omitempty"`
+	RealityPublicKey       string    `json:"realityPublicKey,omitempty"`
+	RealityShortID         string    `json:"realityShortId,omitempty"`
+	RealityServerName      string    `json:"realityServerName,omitempty"`
+	WireGuardPort          int       `json:"wireGuardPort"`
+	WireGuardAddress       string    `json:"wireGuardAddress"`
+	WireGuardDNS           string    `json:"wireGuardDns"`
+	WireGuardPublicKey     string    `json:"wireGuardPublicKey,omitempty"`
+	Hysteria2Port          int       `json:"hysteria2Port"`
+	Hysteria2Domain        string    `json:"hysteria2Domain,omitempty"`
+	Hysteria2ACMEEmail     string    `json:"hysteria2AcmeEmail,omitempty"`
+	Hysteria2MasqueradeURL string    `json:"hysteria2MasqueradeUrl,omitempty"`
+	ShadowsocksPort        int       `json:"shadowsocksPort"`
+	ShadowsocksMethod      string    `json:"shadowsocksMethod"`
+	ShadowsocksServerKey   string    `json:"-"`
+	MTProtoPort            int       `json:"mtprotoPort"`
+	MTProtoSecret          string    `json:"-"`
+	MTProtoFrontingDomain  string    `json:"mtprotoFrontingDomain"`
+	UpdatedAt              time.Time `json:"updatedAt"`
 }
 
 type RealityKeypair struct {
@@ -108,27 +108,34 @@ type UpdateServerGeographyInput struct {
 }
 
 type UpdateProtocolSettingsInput struct {
-	Protocol          *string
-	VLESSPort         *int
-	VLESSFlow         *string
-	VLESSNetwork      *string
-	RealityPublicKey  *string
-	RealityShortID    *string
-	RealityServerName *string
-	WireGuardPort      *int
-	WireGuardAddress   *string
-	WireGuardDNS       *string
-	Hysteria2Port       *int
-	Hysteria2Domain     *string
-	Hysteria2ACMEEmail  *string
+	Protocol               *string
+	VLESSPort              *int
+	VLESSFlow              *string
+	VLESSNetwork           *string
+	RealityPublicKey       *string
+	RealityShortID         *string
+	RealityServerName      *string
+	WireGuardPort          *int
+	WireGuardAddress       *string
+	WireGuardDNS           *string
+	Hysteria2Port          *int
+	Hysteria2Domain        *string
+	Hysteria2ACMEEmail     *string
 	Hysteria2MasqueradeURL *string
-	ShadowsocksPort         *int
-	MTProtoPort              *int
+	ShadowsocksPort        *int
+	MTProtoPort            *int
 }
 
 type UpdateRealityKeypairInput struct {
 	PrivateKey string
 	PublicKey  string
+}
+
+type RecommendedRealityInput struct {
+	PrivateKey string
+	PublicKey  string
+	ShortID    string
+	ServerName string
 }
 
 type UpdateWireGuardKeypairInput struct {

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   configureRecommendedProtocolSettings,
   configureRecommendedWireGuard,
@@ -150,7 +150,11 @@ function getCopy() {
       defaultSaved: 'Основной протокол изменён.',
       saveFirst: 'Сначала сохраните изменённые параметры протокола.',
       vlessTitle: 'Настроить VLESS / Reality автоматически',
-      vlessDescription: 'RouteGate выберет безопасные параметры, сгенерирует Reality keypair и Short ID и использует hostname узла как SNI.',
+      vlessDescription: 'Укажите внешний HTTPS-сайт для Reality. RouteGate создаст ключи и Short ID; доступность сайта с VPN-узла нужно проверить отдельно.',
+      handshakeLabel: 'Имя внешнего TLS-сайта для Reality',
+      handshakeHint: 'Например, www.microsoft.com. Сайт должен разрешаться в DNS и отвечать на TLS с этого VPN-узла. Не указывайте hostname самого узла.',
+      firewallHint: 'Откройте входящий TCP-порт VLESS на VPS и в панели провайдера, если там есть отдельный firewall. Agent подключается к Manager исходящим HTTPS.',
+      deployHint: 'Настройки сохранены, но конфигурация узла ещё не обновлена. Откройте «Развёртывания»: рендеринг → просмотр результата проверки → применение → проверка результата Agent.',
       vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
       vlessReason: 'HTTPS RouteGate остаётся на 443, поэтому для VPN рекомендуется отдельный порт 8443 без конфликта с nginx.',
       vlessAction: 'Настроить и сделать основным',
@@ -186,7 +190,7 @@ function getCopy() {
       securityLabel: 'Защита',
       methodLabel: 'Метод',
       pending: 'Настраиваем…',
-      error: 'Не удалось применить рекомендуемые настройки VLESS / Reality. Для автоматической настройки серверу нужен корректный hostname.',
+      error: 'Не удалось сохранить настройки VLESS / Reality. Проверьте имя внешнего TLS-сайта и повторите попытку.',
       advanced: 'Параметры протокола',
       advancedDescription: 'Здесь отображаются только параметры, применимые к выбранному протоколу.',
       hysteriaHybridNotice: 'Для Hysteria2 на гибридном узле нужен отдельный домен с прямой DNS-записью на этот узел. TCP 443 остаётся у RouteGate, а UDP 443 используется Hysteria2.',
@@ -202,7 +206,11 @@ function getCopy() {
     defaultSaved: 'Node default protocol changed.',
     saveFirst: 'Save the changed protocol settings first.',
     vlessTitle: 'Configure VLESS / Reality automatically',
-    vlessDescription: 'RouteGate will choose safe settings, generate the Reality keypair and Short ID, and use the node hostname as SNI.',
+    vlessDescription: 'Choose an external HTTPS site for Reality. RouteGate generates keys and a Short ID; verify that the site is reachable from this VPN node.',
+    handshakeLabel: 'External TLS site for Reality',
+    handshakeHint: 'For example, www.microsoft.com. The site must resolve in DNS and answer TLS from this VPN node. Do not use the node hostname.',
+    firewallHint: 'Open the inbound VLESS TCP port on the VPS and in the provider firewall if it has one. Agent connects to Manager with outbound HTTPS.',
+    deployHint: 'Settings are saved, but the node configuration is not yet updated. Open Deployments: render → review validation → apply → check the Agent result.',
     vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
     vlessReason: 'RouteGate HTTPS stays on 443, so VPN uses a separate 8443 port without conflicting with nginx.',
     vlessAction: 'Configure and make default',
@@ -238,7 +246,7 @@ function getCopy() {
     securityLabel: 'Security',
     methodLabel: 'Method',
     pending: 'Configuring…',
-    error: 'Could not apply recommended VLESS / Reality settings. Automatic setup requires a valid server hostname.',
+    error: 'Could not save VLESS / Reality settings. Check the external TLS site name and try again.',
     advanced: 'Protocol parameters',
     advancedDescription: 'Only controls applicable to the selected protocol are shown here.',
     hysteriaHybridNotice: 'Hysteria2 on a Hybrid Node requires a dedicated hostname with a direct DNS record to this node. TCP 443 remains assigned to RouteGate, while Hysteria2 uses UDP 443.',
@@ -268,6 +276,7 @@ export function ServerProtocolSettingsPanel({
   const [searchParams] = useSearchParams();
   const copy = getCopy();
   const [form, setForm] = useState<ProtocolSettingsFormState>(emptyFormState);
+  const [handshakeName, setHandshakeName] = useState('');
   const [editingProtocol, setEditingProtocol] = useState<ManagedProtocol>('vless');
   const requested = requestedProtocol(searchParams.get('protocol'));
   const selectionScope = useRef('');
@@ -305,7 +314,7 @@ export function ServerProtocolSettingsPanel({
   });
 
   const recommendedSettingsMutation = useMutation({
-    mutationFn: () => configureRecommendedProtocolSettings(serverId),
+    mutationFn: () => configureRecommendedProtocolSettings(serverId, handshakeName.trim()),
     onSuccess: async (response) => {
       setForm(toFormState(response));
       await queryClient.invalidateQueries({ queryKey: ['server-protocol-settings', serverId] });
@@ -462,14 +471,16 @@ export function ServerProtocolSettingsPanel({
               </div>
               <div className="protocol-recommended-actions">
                 {isVless ? (
-                  <button
-                    className="primary-button"
-                    type="button"
-                    disabled={mutationPending}
-                    onClick={() => recommendedSettingsMutation.mutate()}
-                  >
-                    {recommendedSettingsMutation.isPending ? copy.pending : copy.vlessAction}
-                  </button>
+                  <>
+                    <label className="field">
+                      <span>{copy.handshakeLabel}</span>
+                      <input value={handshakeName} placeholder="www.microsoft.com" autoComplete="off" onChange={(event) => setHandshakeName(event.target.value)} />
+                      <small>{copy.handshakeHint}</small>
+                    </label>
+                    <button className="primary-button" type="button" disabled={mutationPending || !handshakeName.trim()} onClick={() => recommendedSettingsMutation.mutate()}>
+                      {recommendedSettingsMutation.isPending ? copy.pending : copy.vlessAction}
+                    </button>
+                  </>
                 ) : isWireGuard ? (
                   <button
                     className="primary-button"
@@ -484,10 +495,13 @@ export function ServerProtocolSettingsPanel({
             </div>
           )}
 
-          {recommendedSettingsMutation.isError && <div className="form-message form-message-error">{copy.error}</div>}
-          {recommendedSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
+          {recommendedSettingsMutation.isError && <div className="form-message form-message-error">{mutationErrorMessage(recommendedSettingsMutation.error, copy.error)}</div>}
+          {recommendedSettingsMutation.isSuccess && <div className="form-message">{copy.deployHint}</div>}
           {wireGuardSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
           {wireGuardSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
+          {(recommendedSettingsMutation.isSuccess || updateSettingsMutation.isSuccess) && (
+            <Link className="text-link" to={`/servers/${encodeURIComponent(serverId)}/deployments`}>{t('serverWorkspace.deployments')} →</Link>
+          )}
 
         {updateSettingsMutation.isError && (
           <div className="form-message form-message-error protocol-settings-feedback">
@@ -495,12 +509,13 @@ export function ServerProtocolSettingsPanel({
           </div>
         )}
         {isVless && realityKeypairMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.keypairError')}</div>}
-        {updateSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
+        {updateSettingsMutation.isSuccess && <div className="form-message">{copy.deployHint}</div>}
         {isVless && realityKeypairMutation.isSuccess && <div className="form-message">{t('protocolSettings.keypairGenerated')}</div>}
 
         {settingsQuery.data && (
           <>
             {isVless && portNumber === 443 && <div className="protocol-port-warning">{copy.port443Warning}</div>}
+            {isVless && <p className="protocol-settings-hint">{copy.firewallHint}</p>}
             {isVless && realityTouched && !realityComplete && <div className="form-message form-message-error">{copy.incompleteReality}</div>}
             {editingProtocol === 'hysteria2' && deploymentRole === 'hybrid' && (
               <div className="protocol-port-warning">{copy.hysteriaHybridNotice}</div>
@@ -546,7 +561,7 @@ export function ServerProtocolSettingsPanel({
                   <label className="field"><span>{t('protocolSettings.vlessNetwork')}</span><select value={form.vlessNetwork} onChange={(event) => updateField('vlessNetwork', event.target.value)}><option value="">{t('protocolSettings.default')}</option><option value="tcp">tcp</option><option value="ws">ws</option><option value="grpc">grpc</option><option value="http">http</option></select></label>
                   <label className="field"><span>{t('protocolSettings.realityPublicKey')}</span><input value={form.realityPublicKey} onChange={(event) => updateField('realityPublicKey', event.target.value)} /></label>
                   <label className="field"><span>{t('protocolSettings.realityShortId')}</span><input value={form.realityShortId} onChange={(event) => updateField('realityShortId', event.target.value)} /></label>
-                  <label className="field"><span>{t('protocolSettings.realityServerName')}</span><input value={form.realityServerName} onChange={(event) => updateField('realityServerName', event.target.value)} /></label>
+                  <label className="field"><span>{t('protocolSettings.realityServerName')}</span><input value={form.realityServerName} onChange={(event) => updateField('realityServerName', event.target.value)} /><small>{copy.handshakeHint}</small></label>
                 </>
               )}
             </div>

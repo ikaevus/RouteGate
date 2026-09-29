@@ -83,9 +83,16 @@
 }
 
 .protocol-recommended-actions {
-  align-items: center;
+  align-items: stretch;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: min(320px, 100%);
 }
+
+.protocol-recommended-actions .field { min-width: 0; }
+.protocol-recommended-actions .field input { width: 100%; }
 
 .protocol-recommended-actions .primary-button,
 .protocol-recommended-actions .small-button {
@@ -456,6 +463,8 @@
   .protocol-recommended-actions .small-button {
     width: 100%;
   }
+
+  .protocol-recommended-actions { width: 100%; }
 
   .protocol-server-table,
   .vpn-accounts-table {

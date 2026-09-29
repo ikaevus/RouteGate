@@ -14,6 +14,7 @@ import (
 var fakeProtocolSettingsResult ProtocolSettings
 var fakeProtocolSettingsInput UpdateProtocolSettingsInput
 var fakeRealityKeypairInput UpdateRealityKeypairInput
+var fakeRecommendedRealityInput RecommendedRealityInput
 
 func (f *fakeServerRepository) GetProtocolSettings(context.Context, string) (ProtocolSettings, error) {
 	return fakeProtocolSettingsResult, nil
@@ -50,6 +51,21 @@ func (f *fakeServerRepository) UpdateRealityKeypair(_ context.Context, serverID 
 	result := fakeProtocolSettingsResult
 	result.ServerID = serverID
 	result.RealityPublicKey = input.PublicKey
+	fakeProtocolSettingsResult = result
+	return result, nil
+}
+
+func (f *fakeServerRepository) ConfigureRecommendedReality(_ context.Context, serverID string, input RecommendedRealityInput) (ProtocolSettings, error) {
+	fakeRecommendedRealityInput = input
+	result := fakeProtocolSettingsResult
+	result.ServerID = serverID
+	result.Protocol = "vless"
+	result.VLESSPort = 8443
+	result.VLESSFlow = "xtls-rprx-vision"
+	result.VLESSNetwork = "tcp"
+	result.RealityPublicKey = input.PublicKey
+	result.RealityShortID = input.ShortID
+	result.RealityServerName = input.ServerName
 	fakeProtocolSettingsResult = result
 	return result, nil
 }
@@ -141,6 +157,17 @@ func TestUpdateProtocolSettingsRejectsInvalidPort(t *testing.T) {
 	}
 }
 
+func TestUpdateProtocolSettingsRejectsInvalidRealityHostname(t *testing.T) {
+	handler := testHandler(&fakeServerRepository{}, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/servers/server-id/protocol-settings", strings.NewReader(`{"realityServerName":"https://www.example.com"}`))
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+	handler.UpdateProtocolSettings(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+}
+
 func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing.T) {
 	fakeProtocolSettingsResult = ProtocolSettings{
 		ServerID:  "server-id",
@@ -149,6 +176,7 @@ func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing
 	}
 	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
 	fakeRealityKeypairInput = UpdateRealityKeypairInput{}
+	fakeRecommendedRealityInput = RecommendedRealityInput{}
 	repository := &fakeServerRepository{
 		getByID: Server{
 			ID:       "server-id",
@@ -160,7 +188,7 @@ func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing
 	handler.generateRealityKeypair = func() (RealityKeypair, error) {
 		return RealityKeypair{PrivateKey: "private-key-secret", PublicKey: "public-key"}, nil
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/recommended", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/recommended", strings.NewReader(`{"serverName":" WWW.Microsoft.com "}`))
 	request.SetPathValue("server_id", "server-id")
 	response := httptest.NewRecorder()
 
@@ -169,27 +197,18 @@ func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
-	if fakeRealityKeypairInput.PrivateKey != "private-key-secret" || fakeRealityKeypairInput.PublicKey != "public-key" {
-		t.Fatalf("unexpected keypair storage input: %+v", fakeRealityKeypairInput)
+	if fakeRecommendedRealityInput.PrivateKey != "private-key-secret" || fakeRecommendedRealityInput.PublicKey != "public-key" || fakeRealityKeypairInput.PrivateKey != "" {
+		t.Fatalf("recommended settings did not use the atomic write: %+v", fakeRecommendedRealityInput)
 	}
-	if fakeProtocolSettingsInput.VLESSPort == nil || *fakeProtocolSettingsInput.VLESSPort != 8443 {
-		t.Fatalf("recommended VLESS port = %+v, want 8443", fakeProtocolSettingsInput.VLESSPort)
+	if fakeRecommendedRealityInput.ServerName != "www.microsoft.com" {
+		t.Fatalf("unexpected recommended server name: %q", fakeRecommendedRealityInput.ServerName)
 	}
-	if fakeProtocolSettingsInput.VLESSFlow == nil || *fakeProtocolSettingsInput.VLESSFlow != "xtls-rprx-vision" {
-		t.Fatalf("unexpected recommended flow: %+v", fakeProtocolSettingsInput.VLESSFlow)
-	}
-	if fakeProtocolSettingsInput.VLESSNetwork == nil || *fakeProtocolSettingsInput.VLESSNetwork != "tcp" {
-		t.Fatalf("unexpected recommended network: %+v", fakeProtocolSettingsInput.VLESSNetwork)
-	}
-	if fakeProtocolSettingsInput.RealityServerName == nil || *fakeProtocolSettingsInput.RealityServerName != "us.routegate.org" {
-		t.Fatalf("unexpected recommended server name: %+v", fakeProtocolSettingsInput.RealityServerName)
-	}
-	if fakeProtocolSettingsInput.RealityShortID == nil {
+	if fakeRecommendedRealityInput.ShortID == "" {
 		t.Fatal("recommended Reality short ID was not generated")
 	}
-	decodedShortID, err := hex.DecodeString(*fakeProtocolSettingsInput.RealityShortID)
+	decodedShortID, err := hex.DecodeString(fakeRecommendedRealityInput.ShortID)
 	if err != nil || len(decodedShortID) != realityShortIDBytes {
-		t.Fatalf("recommended short ID = %q, want %d random bytes encoded as hex", *fakeProtocolSettingsInput.RealityShortID, realityShortIDBytes)
+		t.Fatalf("recommended short ID = %q, want %d random bytes encoded as hex", fakeRecommendedRealityInput.ShortID, realityShortIDBytes)
 	}
 	if strings.Contains(response.Body.String(), "private-key-secret") || strings.Contains(response.Body.String(), "privateKey") {
 		t.Fatalf("response exposed private key: %s", response.Body.String())
@@ -202,25 +221,28 @@ func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing
 	if payload.VLESS.Port != 8443 || payload.VLESS.Flow != "xtls-rprx-vision" || payload.VLESS.Network != "tcp" {
 		t.Fatalf("unexpected recommended VLESS response: %+v", payload.VLESS)
 	}
-	if !payload.Reality.Enabled || payload.Reality.PublicKey != "public-key" || payload.Reality.ServerName != "us.routegate.org" || payload.Reality.ShortID == "" {
+	if !payload.Reality.Enabled || payload.Reality.PublicKey != "public-key" || payload.Reality.ServerName != "www.microsoft.com" || payload.Reality.ShortID == "" {
 		t.Fatalf("unexpected recommended Reality response: %+v", payload.Reality)
 	}
 }
 
-func TestConfigureRecommendedProtocolSettingsRequiresHostname(t *testing.T) {
-	fakeProtocolSettingsResult = ProtocolSettings{ServerID: "server-id", VLESSPort: 443}
-	repository := &fakeServerRepository{
-		getByID: Server{ID: "server-id", Name: "US production VPS"},
-	}
-	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/recommended", nil)
-	request.SetPathValue("server_id", "server-id")
-	response := httptest.NewRecorder()
-
-	handler.ConfigureRecommendedProtocolSettings(response, request)
-
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+func TestConfigureRecommendedProtocolSettingsRejectsUnsafeHandshakeNameBeforeKeyRotation(t *testing.T) {
+	handler := testHandler(&fakeServerRepository{getByID: Server{ID: "server-id", Name: "RU VPS", Hostname: "ru.routegate.org"}}, &fakeRegistrationTokenRepository{})
+	for _, body := range []string{`{}`, `{"serverName":"ru.routegate.org"}`, `{"serverName":"https://www.microsoft.com"}`, `{"serverName":"127.0.0.1"}`} {
+		t.Run(body, func(t *testing.T) {
+			generated := false
+			handler.generateRealityKeypair = func() (RealityKeypair, error) {
+				generated = true
+				return RealityKeypair{}, nil
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/servers/server-id/protocol-settings/recommended", strings.NewReader(body))
+			request.SetPathValue("server_id", "server-id")
+			response := httptest.NewRecorder()
+			handler.ConfigureRecommendedProtocolSettings(response, request)
+			if response.Code != http.StatusBadRequest || generated {
+				t.Fatalf("status = %d, key generated = %v; body=%s", response.Code, generated, response.Body.String())
+			}
+		})
 	}
 }
 

@@ -34,8 +34,16 @@ the validated configuration apply owns activation.
 6. After the node is connected, choose/configure the VPN protocol. RouteGate
    installs the required VPN runtime through Agent as the next managed action;
    do not install protocol runtimes manually on the host.
+7. For VLESS / Reality, explicitly choose an external TLS handshake hostname
+   and check its DNS and TLS reachability from the VPN node. The node hostname
+   is not an automatic Reality target. Save settings, render and review a
+   validated config version, apply it, and check the Agent result. Open the
+   selected inbound VPN port in host and provider firewalls before testing a
+   client; Agent's Manager connection itself needs outbound HTTPS only.
 
 The onboarding dialog is the only registration-token surface in the Admin UI.
+Its generated command already includes the displayed token; the raw value and
+manual Agent configuration are folded into technical details for recovery.
 Reopening it in the same browser session reuses the currently displayed token
 until it expires. **Generate new token** is an explicit rotation action: Manager
 invalidates the previous unused token before returning the replacement. Thus a

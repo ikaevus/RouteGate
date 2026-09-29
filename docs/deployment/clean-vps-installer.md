@@ -278,7 +278,7 @@ nginx / RouteGate HTTPS    TCP 443
 VLESS / Reality            TCP 8443
 ```
 
-The recommended Reality flow uses TCP and `xtls-rprx-vision`, generates a fresh Reality keypair and Short ID, and uses the server hostname as the initial Reality server name/handshake target. Manual protocol settings remain available as an advanced workflow.
+The recommended Reality flow uses TCP and `xtls-rprx-vision`, generates a fresh Reality keypair and Short ID, and requires an explicitly chosen external HTTPS handshake hostname. The node's own hostname is not automatically substituted. Check DNS and TLS connectivity to this destination from the VPN node; Manager validates the name's syntax but cannot establish that the node can reach it. Manual protocol settings remain available as an advanced workflow. Open the selected VPN listener port in the host and provider firewalls before client testing.
 
 ## State, logs, and retry behavior
 

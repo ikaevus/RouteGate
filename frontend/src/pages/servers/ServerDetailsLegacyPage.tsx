@@ -1018,6 +1018,20 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
           </button>
         </div>
 
+        {!configVersionsQuery.isPending && !configVersionsQuery.isError && (
+          <p className="form-message" role="status">
+            {t(!selectedVersion
+              ? 'serverDetails.deploymentNextRender'
+              : selectedVersion.status === 'validated' && !selectedVersion.appliedAt
+                ? 'serverDetails.deploymentNextApply'
+                : selectedVersion.appliedAt
+                  ? 'serverDetails.deploymentNextCheck'
+                  : selectedVersion.status === 'validation_failed'
+                    ? 'serverDetails.deploymentValidationFailed'
+                    : 'serverDetails.deploymentNextValidate')}
+          </p>
+        )}
+
         <details className="server-deployment-help">
           <summary>{t('serverDetails.versionPolicy')}</summary>
           <p className="muted-text">{t('serverDetails.configVersionsImmutableHint')}</p>
@@ -1348,6 +1362,9 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                   <button className="primary-button" type="button" onClick={() => setIsRegistrationTokenDialogOpen(false)}>
                     {t('common.close')}
                   </button>
+                  <Link className="text-link" to={sectionPath('services')} onClick={() => setIsRegistrationTokenDialogOpen(false)}>
+                    {t('serverDetails.agentNextAction')} →
+                  </Link>
                 </div>
               ) : (
                 <>
@@ -1388,22 +1405,26 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                         </div>
                       )}
                     </li>
-                    <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>
+                    {setupCommand && <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>}
                   </ol>
 
-                  <div className="agent-registration-waiting" role="status" aria-live="polite">
+                  {setupCommand && <div className="agent-registration-waiting" role="status" aria-live="polite">
                     <div><strong>{t('serverDetails.waitingForAgent')}</strong><p>{t('serverDetails.waitingForAgentDescription')}</p></div>
                     <button className="small-button" type="button" aria-label={t('serverDetails.checkAgentStatus')} disabled={serverQuery.isFetching} onClick={() => void checkAgentStatus()}>{serverQuery.isFetching ? t('serverDetails.checkingAgentStatus') : t('serverDetails.checkAgentStatus')}</button>
-                  </div>
-                  {statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
+                  </div>}
+                  {setupCommand && statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
 
-                  <RegistrationTokenResult
-                    registrationToken={registrationToken}
-                    configSnippet={configSnippet}
-                    onCopy={() => void copyRegistrationToken()}
-                    isCopied={isRegistrationTokenCopied}
-                    isConfigCollapsible
-                  />
+                  <details className="server-deployment-help">
+                    <summary>{t('serverDetails.manualRegistrationDetails')}</summary>
+                    <p>{t(setupCommand ? 'serverDetails.sameRegistrationToken' : 'serverDetails.tokenWithoutBootstrap')}</p>
+                    <RegistrationTokenResult
+                      registrationToken={registrationToken}
+                      configSnippet={configSnippet}
+                      onCopy={() => void copyRegistrationToken()}
+                      isCopied={isRegistrationTokenCopied}
+                      isConfigCollapsible
+                    />
+                  </details>
                   <div className="agent-setup-actions">
                     <button
                       className="small-button"
