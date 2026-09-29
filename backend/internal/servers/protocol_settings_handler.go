@@ -6,9 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/mail"
 	"net/netip"
-	"net/http"
 	"net/url"
 	"strings"
 
@@ -20,16 +20,14 @@ import (
 )
 
 const (
-	recommendedVLESSPort    = 8443
-	recommendedVLESSFlow    = "xtls-rprx-vision"
-	recommendedVLESSNetwork = "tcp"
-	realityShortIDBytes     = 8
+	realityShortIDBytes = 8
 )
 
 type protocolSettingsRepository interface {
 	GetProtocolSettings(context.Context, string) (ProtocolSettings, error)
 	UpdateProtocolSettings(context.Context, string, UpdateProtocolSettingsInput) (ProtocolSettings, error)
 	UpdateRealityKeypair(context.Context, string, UpdateRealityKeypairInput) (ProtocolSettings, error)
+	ConfigureRecommendedReality(context.Context, string, RecommendedRealityInput) (ProtocolSettings, error)
 	ConfigureRecommendedWireGuard(context.Context, string, UpdateWireGuardKeypairInput) (ProtocolSettings, error)
 }
 
@@ -85,22 +83,22 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	}
 
 	input := UpdateProtocolSettingsInput{
-		Protocol:                  request.Protocol,
-		VLESSPort:                 request.VLESSPort,
-		VLESSFlow:                 request.VLESSFlow,
-		VLESSNetwork:              request.VLESSNetwork,
-		RealityPublicKey:          request.RealityPublicKey,
-		RealityShortID:            request.RealityShortID,
-		RealityServerName:         request.RealityServerName,
-		WireGuardPort:             request.WireGuardPort,
-		WireGuardAddress:          request.WireGuardAddress,
-		WireGuardDNS:              request.WireGuardDNS,
-		Hysteria2Port:             request.Hysteria2Port,
-		Hysteria2Domain:           request.Hysteria2Domain,
-		Hysteria2ACMEEmail:        request.Hysteria2ACMEEmail,
-		Hysteria2MasqueradeURL:    request.Hysteria2MasqueradeURL,
-		ShadowsocksPort:           request.ShadowsocksPort,
-		MTProtoPort:               request.MTProtoPort,
+		Protocol:               request.Protocol,
+		VLESSPort:              request.VLESSPort,
+		VLESSFlow:              request.VLESSFlow,
+		VLESSNetwork:           request.VLESSNetwork,
+		RealityPublicKey:       request.RealityPublicKey,
+		RealityShortID:         request.RealityShortID,
+		RealityServerName:      request.RealityServerName,
+		WireGuardPort:          request.WireGuardPort,
+		WireGuardAddress:       request.WireGuardAddress,
+		WireGuardDNS:           request.WireGuardDNS,
+		Hysteria2Port:          request.Hysteria2Port,
+		Hysteria2Domain:        request.Hysteria2Domain,
+		Hysteria2ACMEEmail:     request.Hysteria2ACMEEmail,
+		Hysteria2MasqueradeURL: request.Hysteria2MasqueradeURL,
+		ShadowsocksPort:        request.ShadowsocksPort,
+		MTProtoPort:            request.MTProtoPort,
 	}
 	if err := validateProtocolSettingsInput(input); err != nil {
 		writeInvalidRequest(w, err.Error())
@@ -197,9 +195,25 @@ func (h *Handler) ConfigureRecommendedProtocolSettings(w http.ResponseWriter, r 
 		return
 	}
 
-	serverName := recommendedRealityServerName(server)
-	if serverName == "" {
-		writeInvalidRequest(w, "A valid server hostname is required for recommended Reality setup.")
+	var request struct {
+		ServerName string `json:"serverName"`
+	}
+	if r.Body == nil {
+		writeInvalidRequest(w, "Provide a Reality handshake server name in the request body.")
+		return
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeInvalidRequest(w, "Provide a Reality handshake server name in the request body.")
+		return
+	}
+	serverName := strings.ToLower(strings.TrimSpace(request.ServerName))
+	if !validHysteria2ServerName(serverName) || isIPAddress(serverName) {
+		writeInvalidRequest(w, "Reality handshake server name must be a valid DNS hostname.")
+		return
+	}
+	if strings.EqualFold(serverName, strings.TrimSuffix(strings.TrimSpace(server.Hostname), ".")) ||
+		strings.EqualFold(serverName, strings.TrimSuffix(strings.TrimSpace(server.Name), ".")) {
+		writeInvalidRequest(w, "Use an external TLS site for Reality, not this VPN node's hostname.")
 		return
 	}
 
@@ -217,40 +231,27 @@ func (h *Handler) ConfigureRecommendedProtocolSettings(w http.ResponseWriter, r 
 		return
 	}
 
-	if _, err := repository.UpdateRealityKeypair(r.Context(), serverID, UpdateRealityKeypairInput{
+	settings, err := repository.ConfigureRecommendedReality(r.Context(), serverID, RecommendedRealityInput{
 		PrivateKey: keypair.PrivateKey,
 		PublicKey:  keypair.PublicKey,
-	}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeServerNotFound(w)
-			return
-		}
-		h.databaseError(w, "store recommended Reality keypair", err)
-		return
-	}
-
-	port := recommendedVLESSPort
-	flow := recommendedVLESSFlow
-	network := recommendedVLESSNetwork
-	protocol := "vless"
-	settings, err := repository.UpdateProtocolSettings(r.Context(), serverID, UpdateProtocolSettingsInput{
-		Protocol:          &protocol,
-		VLESSPort:         &port,
-		VLESSFlow:         &flow,
-		VLESSNetwork:      &network,
-		RealityShortID:    &shortID,
-		RealityServerName: &serverName,
+		ShortID:    shortID,
+		ServerName: serverName,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeServerNotFound(w)
 		return
 	}
 	if err != nil {
-		h.databaseError(w, "apply recommended protocol settings", err)
+		h.databaseError(w, "store recommended Reality settings", err)
 		return
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
+}
+
+func isIPAddress(value string) bool {
+	_, err := netip.ParseAddr(value)
+	return err == nil
 }
 
 func (h *Handler) GenerateRealityKeypair(w http.ResponseWriter, r *http.Request) {
@@ -331,6 +332,10 @@ func validateProtocolSettingsInput(input UpdateProtocolSettingsInput) error {
 	if input.VLESSFlow != nil && !validVLESSFlow(*input.VLESSFlow) {
 		return errors.New("vlessFlow must be empty or xtls-rprx-vision")
 	}
+	if input.RealityServerName != nil && *input.RealityServerName != "" &&
+		(!validHysteria2ServerName(strings.ToLower(*input.RealityServerName)) || isIPAddress(*input.RealityServerName)) {
+		return errors.New("realityServerName must be a DNS hostname")
+	}
 	if input.WireGuardPort != nil && (*input.WireGuardPort < 1 || *input.WireGuardPort > 65535) {
 		return errors.New("wireGuardPort must be between 1 and 65535")
 	}
@@ -391,20 +396,6 @@ func generateRealityShortID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(value), nil
-}
-
-func recommendedRealityServerName(server Server) string {
-	for _, candidate := range []string{server.Hostname, server.Name} {
-		candidate = strings.ToLower(strings.TrimSpace(candidate))
-		if validRecommendedRealityServerName(candidate) {
-			return candidate
-		}
-	}
-	return ""
-}
-
-func validRecommendedRealityServerName(value string) bool {
-	return strings.Contains(value, ".") && !strings.ContainsAny(value, " \t\r\n/:\\")
 }
 
 func validHysteria2ServerName(value string) bool {

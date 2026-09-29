@@ -103,6 +103,8 @@ choose protocol
 
 A successful runtime installation is not the same as a successful VPN deployment. RouteGate treats configuration apply and health verification as separate steps.
 
+For automatic VLESS / Reality setup, provide an external HTTPS hostname that resolves and completes a TLS handshake from the VPN node. RouteGate does not substitute the node's own DNS name. A syntactically valid name is not proof of reachability; test it from the node before using it. If the chosen VPN port is 8443/TCP, allow inbound traffic in the host firewall and the provider's firewall, if present. The Clean VPS Installer opens HTTP/HTTPS for the Manager but does not automatically open every possible VPN protocol port.
+
 ## 6. Create the first VPN account
 
 After the server configuration is healthy, create a VPN account and generate the client delivery/profile required for your client application.

@@ -258,9 +258,11 @@ export function updateProtocolSettings(
 
 export function configureRecommendedProtocolSettings(
   serverId: string,
+  serverName: string,
 ): Promise<ProtocolSettingsResponse> {
-  return apiPost<undefined, ProtocolSettingsResponse>(
+  return apiPost<{ serverName: string }, ProtocolSettingsResponse>(
     `/api/v1/servers/${encodeURIComponent(serverId)}/protocol-settings/recommended`,
+    { serverName },
   );
 }
 

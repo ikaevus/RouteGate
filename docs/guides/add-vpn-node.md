@@ -50,7 +50,7 @@ Connection → Connect server
 
 RouteGate creates one short-lived registration token for this onboarding session and displays a generated installation command.
 
-The onboarding dialog is the supported registration-token surface. **Generate new token** is an explicit rotation action and invalidates the previous unused token.
+The generated command is the primary onboarding path. It already contains the one-time registration token. The raw token and manual Agent configuration are available under technical details for exceptional recovery; they are the same credential, not another registration mechanism. **Generate new token** is an explicit rotation action and invalidates the previous unused token.
 
 ## 3. Copy the generated command
 
@@ -101,6 +101,10 @@ At this point server onboarding is complete.
 Choose the protocol you want to use on this server.
 
 RouteGate installs the required runtime through Agent as the next managed action, then continues through configuration render, validation, apply, and health checking.
+
+For VLESS / Reality, enter an external HTTPS hostname that resolves and accepts a TLS handshake **from this VPN node**. The node's own hostname or IP is not a suitable automatic Reality handshake target. RouteGate checks the name's syntax, but it cannot infer reachability from the Manager. For example, on the VPN node test a candidate with `getent ahostsv4 www.microsoft.com` and `timeout 10 openssl s_client -connect www.microsoft.com:443 -servername www.microsoft.com -brief </dev/null`. Choose a site that works from this node and network.
+
+After saving protocol settings, open the server's **Deployments** workspace. Render a new version, review the validation result (rendering can already mark it validated), apply the validated version, and check the Agent deployment result. Saving settings alone does not change the running VPN service. For VLESS on TCP 8443, allow inbound TCP 8443 in the VPS host firewall and any separate provider firewall; keep SSH access intact. If UFW is active, `sudo ufw allow 8443/tcp` opens that host port; verify the firewall's actual state first. The remote Agent needs outbound HTTPS to Manager, not an inbound management port. Check the selected port from outside the VPS after applying. Other protocols use the port and transport shown in their settings.
 
 This separation is intentional:
 

@@ -117,6 +117,36 @@ func (r *Repository) UpdateRealityKeypair(ctx context.Context, serverID string, 
 	`, serverID, input.PrivateKey, input.PublicKey))
 }
 
+// ConfigureRecommendedReality updates the keypair and the matching handshake
+// settings in one statement, so a failed write cannot leave a partial rotation.
+func (r *Repository) ConfigureRecommendedReality(ctx context.Context, serverID string, input RecommendedRealityInput) (ProtocolSettings, error) {
+	return scanProtocolSettings(r.pool.QueryRow(ctx, `
+		UPDATE servers
+		SET vpn_protocol = 'vless',
+			vless_port = 8443,
+			vless_flow = 'xtls-rprx-vision',
+			vless_network = 'tcp',
+			reality_private_key = $2,
+			reality_public_key = $3,
+			reality_short_id = $4,
+			reality_server_name = $5,
+			protocol_updated_at = now(),
+			updated_at = now()
+		WHERE id = $1::uuid
+		RETURNING
+			id::text, vpn_protocol, vless_port,
+			COALESCE(vless_flow, ''), COALESCE(vless_network, ''),
+			COALESCE(reality_public_key, ''), COALESCE(reality_short_id, ''),
+			COALESCE(reality_server_name, ''), wireguard_port,
+			wireguard_address::text, wireguard_dns::text,
+			COALESCE(wireguard_public_key, ''), hysteria2_port,
+			hysteria2_domain, hysteria2_acme_email, hysteria2_masquerade_url,
+			shadowsocks_port, shadowsocks_method, shadowsocks_server_key,
+			mtproto_port, mtproto_secret, mtproto_fronting_domain,
+			GREATEST(protocol_updated_at, vpn_accounts_config_updated_at)
+	`, serverID, input.PrivateKey, input.PublicKey, input.ShortID, input.ServerName))
+}
+
 func (r *Repository) ConfigureRecommendedWireGuard(ctx context.Context, serverID string, input UpdateWireGuardKeypairInput) (ProtocolSettings, error) {
 	return scanProtocolSettings(r.pool.QueryRow(ctx, `
 		UPDATE servers
