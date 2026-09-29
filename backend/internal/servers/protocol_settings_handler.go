@@ -106,7 +106,8 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 	}
 
 	serverID := r.PathValue("server_id")
-	if request.Protocol != nil || request.Hysteria2Domain != nil {
+	realityServerNameChanged := request.RealityServerName != nil && *request.RealityServerName != ""
+	if request.Protocol != nil || request.Hysteria2Domain != nil || realityServerNameChanged {
 		server, err := h.servers.GetServerByID(r.Context(), serverID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeServerNotFound(w)
@@ -114,6 +115,10 @@ func (h *Handler) UpdateProtocolSettings(w http.ResponseWriter, r *http.Request)
 		}
 		if err != nil {
 			h.databaseError(w, "get server for protocol topology validation", err)
+			return
+		}
+		if realityServerNameChanged && realityServerNameIsNode(server, *request.RealityServerName) {
+			writeInvalidRequest(w, realityServerNameIsNodeMessage)
 			return
 		}
 		role := platform.EffectiveDeploymentRole(server.DeploymentRole)
@@ -211,9 +216,8 @@ func (h *Handler) ConfigureRecommendedProtocolSettings(w http.ResponseWriter, r 
 		writeInvalidRequest(w, "Reality handshake server name must be a valid DNS hostname.")
 		return
 	}
-	if strings.EqualFold(serverName, strings.TrimSuffix(strings.TrimSpace(server.Hostname), ".")) ||
-		strings.EqualFold(serverName, strings.TrimSuffix(strings.TrimSpace(server.Name), ".")) {
-		writeInvalidRequest(w, "Use an external TLS site for Reality, not this VPN node's hostname.")
+	if realityServerNameIsNode(server, serverName) {
+		writeInvalidRequest(w, realityServerNameIsNodeMessage)
 		return
 	}
 
@@ -247,6 +251,17 @@ func (h *Handler) ConfigureRecommendedProtocolSettings(w http.ResponseWriter, r 
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, newProtocolSettingsResponse(settings))
+}
+
+const realityServerNameIsNodeMessage = "Use an external TLS site for Reality, not this VPN node's hostname."
+
+// realityServerNameIsNode reports whether a Reality handshake name points back
+// at the node itself. Reality must borrow another site's TLS handshake; the
+// node hostname usually has no TLS 1.3 site behind it (or no DNS record).
+func realityServerNameIsNode(server Server, name string) bool {
+	name = strings.TrimSuffix(strings.TrimSpace(name), ".")
+	return strings.EqualFold(name, strings.TrimSuffix(strings.TrimSpace(server.Hostname), ".")) ||
+		strings.EqualFold(name, strings.TrimSuffix(strings.TrimSpace(server.Name), "."))
 }
 
 func isIPAddress(value string) bool {
