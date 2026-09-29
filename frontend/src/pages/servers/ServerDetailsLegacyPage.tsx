@@ -1405,18 +1405,18 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                         </div>
                       )}
                     </li>
-                    <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>
+                    {setupCommand && <li><strong>{t('serverDetails.agentStepWaitTitle')}</strong><span>{t('serverDetails.agentStepWaitDescription')}</span></li>}
                   </ol>
 
-                  <div className="agent-registration-waiting" role="status" aria-live="polite">
+                  {setupCommand && <div className="agent-registration-waiting" role="status" aria-live="polite">
                     <div><strong>{t('serverDetails.waitingForAgent')}</strong><p>{t('serverDetails.waitingForAgentDescription')}</p></div>
                     <button className="small-button" type="button" aria-label={t('serverDetails.checkAgentStatus')} disabled={serverQuery.isFetching} onClick={() => void checkAgentStatus()}>{serverQuery.isFetching ? t('serverDetails.checkingAgentStatus') : t('serverDetails.checkAgentStatus')}</button>
-                  </div>
-                  {statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
+                  </div>}
+                  {setupCommand && statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
 
                   <details className="server-deployment-help">
                     <summary>{t('serverDetails.manualRegistrationDetails')}</summary>
-                    <p>{t('serverDetails.sameRegistrationToken')}</p>
+                    <p>{t(setupCommand ? 'serverDetails.sameRegistrationToken' : 'serverDetails.tokenWithoutBootstrap')}</p>
                     <RegistrationTokenResult
                       registrationToken={registrationToken}
                       configSnippet={configSnippet}

@@ -573,6 +573,7 @@ export const ru: Record<TranslationKey, string> = {
   'serverDetails.registrationTokenRotationHint': 'Новый токен сразу делает предыдущий недействительным.',
   'serverDetails.manualRegistrationDetails': 'Ручная регистрация (технические детали)',
   'serverDetails.sameRegistrationToken': 'Это тот же одноразовый токен, который уже включён в команду выше. Обычно копировать его отдельно не нужно.',
+  'serverDetails.tokenWithoutBootstrap': 'Сам по себе токен не устанавливает Agent. Разверните Manager с данными для установки, затем создайте новую команду.',
   'serverDetails.agentNextAction': 'Настроить VPN-сервис',
   'serverDetails.deploymentNextRender': 'Следующий шаг: после сохранения настроек протокола создайте снимок конфигурации кнопкой «Отрендерить конфиг».',
   'serverDetails.deploymentNextValidate': 'Следующий шаг: проверьте выбранную версию конфигурации.',

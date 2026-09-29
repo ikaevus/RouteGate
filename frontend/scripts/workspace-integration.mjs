@@ -118,7 +118,11 @@ try {
   await connectServerButton.click();
   const onboardingDialog = page.locator('.agent-onboarding-dialog');
   await onboardingDialog.waitFor();
+  await onboardingDialog.getByText('Automatic Agent installation is unavailable for this Manager build.').waitFor();
+  assert.equal(await onboardingDialog.locator('.agent-setup-command').count(), 0);
+  assert.equal(await onboardingDialog.locator('.agent-registration-waiting').count(), 0);
   await onboardingDialog.getByText('Manual registration (technical details)', { exact: true }).click();
+  await onboardingDialog.getByText('This token cannot install Agent by itself.', { exact: false }).waitFor();
   const registrationTokenField = onboardingDialog.locator('.registration-token-field code');
   const firstRegistrationToken = (await registrationTokenField.innerText()).trim();
   assert.match(firstRegistrationToken, /^rg_reg_/);

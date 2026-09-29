@@ -571,6 +571,7 @@ export const en = {
   'serverDetails.registrationTokenRotationHint': 'Generating a new token immediately invalidates the previous one.',
   'serverDetails.manualRegistrationDetails': 'Manual registration (technical details)',
   'serverDetails.sameRegistrationToken': 'This is the same one-time token already included in the command above. You normally do not need to copy it separately.',
+  'serverDetails.tokenWithoutBootstrap': 'This token cannot install Agent by itself. Deploy a Manager build with bootstrap metadata, then generate a fresh command.',
   'serverDetails.agentNextAction': 'Configure VPN service',
   'serverDetails.deploymentNextRender': 'Next: after saving protocol settings, create a config snapshot with Render config.',
   'serverDetails.deploymentNextValidate': 'Next: validate the selected config version.',
