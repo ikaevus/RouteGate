@@ -499,3 +499,47 @@ func TestGetPublicSubscriptionRejectsInactiveAccountAsNotFound(t *testing.T) {
 		t.Fatalf("expected inactive account token not marked used, got %q", repo.usedTokenID)
 	}
 }
+
+// The JSON subscription follows the same deployment gate as every other
+// delivery path: no client material before the node's first successful apply
+// or for access the applied version does not deploy.
+func TestGetPublicSubscriptionWithholdsUndeployedAccess(t *testing.T) {
+	server := func() *SubscriptionServer {
+		return &SubscriptionServer{
+			ID: "server-1", Name: "Finland", Hostname: "fi.routegate.example",
+			VLESSPort: 443, VLESSFlow: "xtls-rprx-vision", VLESSNetwork: "tcp",
+			RealityPublicKey: "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0", RealityShortID: "0123456789abcdef", RealityServerName: "www.example.com",
+		}
+	}
+	firstRun := server()
+	firstRun.AwaitingFirstApply = true
+	undeployed := server()
+	undeployed.deployment = &accountDeployment{accountsKnown: true}
+	noProxy := server()
+	noProxy.VPNProtocol = ClientProtocolMTProto
+	noProxy.deployment = &accountDeployment{accountsKnown: true, protocols: []string{ClientProtocolVLESS}}
+
+	for name, candidate := range map[string]*SubscriptionServer{"first run": firstRun, "account not deployed": undeployed, "MTProto proxy not applied": noProxy} {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeAccountRepository{
+				findToken: SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", Status: SubscriptionTokenStatusActive},
+				profile: SubscriptionProfile{
+					Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusActive, ServerID: "server-1", VLESSUUID: testVLESSUUID},
+					Server:  candidate,
+				},
+			}
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/fixed-token", nil)
+			request.SetPathValue("token", "fixed-token")
+			response := httptest.NewRecorder()
+			newTestHandler(repo).GetPublicSubscription(response, request)
+
+			var body PublicSubscriptionResponse
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body.Config.Status != "unavailable" || body.Config.Rendered != nil || body.Config.Message == "" {
+				t.Fatalf("config = %+v, want withheld with a reason", body.Config)
+			}
+		})
+	}
+}

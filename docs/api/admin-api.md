@@ -97,6 +97,25 @@ does not list MTProto accounts. MTProto material is served whenever the
 account's MTProto protocol is active and the applied version runs the MTProto
 proxy, so existing MTProto clients keep working; an apply without the proxy
 deactivates MTProto for all accounts of the node.
+A version that runs the proxy also records accounts served only through it
+(primary `mtproto`, no listed protocols), so re-applying it restores their
+MTProto access. A previously issued MTProto link keeps working for as long as
+the node runs the proxy with the same secret, whatever Manager reports.
+
+Only protocol choices an administrator saved decide what the next render
+deploys (`vpn_account_protocols.desired_explicit`). Rows Manager seeds on its
+own, from the applied version or the account's primary protocol, record the
+active state only. An account without saved choices deploys its primary
+protocol; for `auto` that is the node's saved default, so switching the node
+protocol moves such accounts on the next successful apply, and a seeded row
+of the previous protocol, such as MTProto, cannot keep its proxy running.
+Profile edits resolve `auto` against the same saved default, and clients keep
+the previously applied connection until that apply succeeds. Rows that
+existed before this rule are kept as explicit choices.
+
+The JSON subscription (`GET /api/v1/subscriptions/{token}`) follows the same
+deployment rule as the other delivery paths and reports `unavailable` instead
+of rendering access the node does not serve.
 
 Compatibility limit: a version whose rendered config does not list its
 accounts (renders from before per-account protocol lists, or an entry

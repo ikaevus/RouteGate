@@ -79,6 +79,20 @@ type SingBoxRoute struct {
 }
 
 func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscriptionConfig {
+	// Like every other delivery path, the public subscription never hands out
+	// access the node's applied configuration does not serve.
+	if profile.Server != nil {
+		protocol, configType := publicSubscriptionProtocol(profile.Server)
+		var err error
+		if profile.Server.AwaitingFirstApply {
+			err = ErrNodeConfigNotApplied
+		} else {
+			err = profile.Server.requireDeployed(protocol)
+		}
+		if err != nil {
+			return PublicSubscriptionConfig{Type: configType, Format: ClientConfigFormat, Status: "unavailable", Message: err.Error()}
+		}
+	}
 	if profile.Server != nil && profile.Server.VPNProtocol == "mtproto" {
 		config := PublicSubscriptionConfig{Type: "mtproto", Format: ClientConfigFormat}
 		rendered, err := RenderMTProtoClientURI(profile)
@@ -150,6 +164,17 @@ func renderPublicSubscriptionConfig(profile SubscriptionProfile) PublicSubscript
 		Content: rendered,
 	}
 	return config
+}
+
+// publicSubscriptionProtocol is the protocol renderPublicSubscriptionConfig
+// renders for the server, with the config type it reports.
+func publicSubscriptionProtocol(server *SubscriptionServer) (string, string) {
+	switch server.VPNProtocol {
+	case ClientProtocolMTProto, ClientProtocolShadowsocks, ClientProtocolHysteria2, ClientProtocolWireGuard:
+		return server.VPNProtocol, server.VPNProtocol
+	default:
+		return ClientProtocolVLESS, "sing-box"
+	}
 }
 
 func RenderShadowsocksClientURI(profile SubscriptionProfile) (string, error) {

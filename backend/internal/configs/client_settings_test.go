@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,5 +159,47 @@ func TestClientSettingsRecordRenderedAccountPrimaryProtocol(t *testing.T) {
 	}
 	if account := got.Accounts["account-1"]; account.Primary != "" {
 		t.Fatalf("a primary the version does not deploy must be dropped, got %q", account.Primary)
+	}
+}
+
+// Accounts served only through the node-wide MTProto proxy have no per-account
+// entry in the rendered config. The snapshot records them with their MTProto
+// primary and no protocols, so re-applying the version restores MTProto, and
+// never records them when the version does not run the proxy.
+func TestClientSettingsRecordMTProtoOnlyAccounts(t *testing.T) {
+	secret := "ee" + "00112233445566778899aabbccddeeff" + "7777772e636c6f7564666c6172652e636f6d"
+	info := ServerConfigInfo{
+		ID: "server-id", Name: "RU", DeploymentRole: string(platform.DeploymentRoleVPN),
+		VPNProtocol: platform.VPNProtocolMTProto,
+		MTProtoPort: 9443, MTProtoSecret: secret, MTProtoFrontingDomain: "www.cloudflare.com",
+		VPNAccounts: []VPNAccountConfigInfo{{
+			ID: "account-1", DisplayName: "Account", Status: "active", TrafficEnforcementStatus: "normal",
+			VPNProtocol: platform.VPNProtocolMTProto, VPNProtocols: []string{platform.VPNProtocolMTProto},
+		}},
+	}
+	primaries := map[string]string{"account-1": platform.VPNProtocolMTProto}
+	got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info), primaries)
+	if err != nil {
+		t.Fatalf("derive client settings: %v", err)
+	}
+	account, listed := got.Accounts["account-1"]
+	if !listed || account.Primary != platform.VPNProtocolMTProto || account.Protocols == nil || len(account.Protocols) != 0 {
+		t.Fatalf("MTProto-only account = %+v (listed %v)", account, listed)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"protocols":[]`) {
+		t.Fatalf("the apply trigger needs an empty protocol array: %s", encoded)
+	}
+
+	vless, _, _ := renderedClientSettingsFixture(t, "", "")
+	got, err = clientSettingsFromRenderedJSON(renderedJSON(t, vless), map[string]string{"account-2": platform.VPNProtocolMTProto})
+	if err != nil {
+		t.Fatalf("derive client settings: %v", err)
+	}
+	if _, listed := got.Accounts["account-2"]; listed {
+		t.Fatal("an MTProto primary must not be recorded for a version without the proxy")
 	}
 }

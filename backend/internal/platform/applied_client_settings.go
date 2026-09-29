@@ -33,8 +33,10 @@ type AppliedClientSettings struct {
 	//
 	// An empty object means the version deploys no account; nil (JSON null)
 	// means the rendered config does not reliably list its accounts, so
-	// per-account deployment is unknown. MTProto never appears here: its
-	// proxy uses one node-wide secret and does not enumerate accounts.
+	// per-account deployment is unknown. MTProto is never listed as a
+	// protocol: its proxy uses one node-wide secret and does not enumerate
+	// accounts. An account served only through that proxy appears with
+	// primary "mtproto" and no protocols.
 	Accounts map[string]AppliedAccountProtocols `json:"accounts"`
 }
 

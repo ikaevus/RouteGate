@@ -293,10 +293,12 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 	// does not deploy yet must still be selectable.
 	preflight := subscription.withSavedServerSettings()
 
+	// The protocol "auto" stands for is likewise the one the next render
+	// deploys: the node's saved default, even before it has been applied.
 	candidate := clientProfileFromRequest(accountID, request)
-	requestedProtocols := effectiveRequestedProtocols(candidate, subscription.Server)
+	requestedProtocols := effectiveRequestedProtocols(candidate, preflight.Server)
 	if request.EnabledProtocols != nil && request.Protocol == ClientProtocolAuto {
-		primary := resolveEffectiveClientProtocol(candidate, subscription.Server)
+		primary := resolveEffectiveClientProtocol(candidate, preflight.Server)
 		if !containsClientProtocol(requestedProtocols, primary) {
 			writeInvalidRequest(w, "enabledProtocols must include the node-default protocol while protocol is auto")
 			return

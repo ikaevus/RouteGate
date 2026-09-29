@@ -78,6 +78,12 @@ func (s *Service) Render(ctx context.Context, serverID string) (RenderConfigResp
 
 	primaries := make(map[string]string, len(info.VPNAccounts))
 	for _, account := range info.VPNAccounts {
+		// Only accounts the render actually serves may be recorded as
+		// MTProto-primary: the proxy does not enumerate accounts.
+		if normalizeAccountProtocol(account.VPNProtocol) == platform.VPNProtocolMTProto &&
+			(account.Status != "active" || account.TrafficEnforcementStatus == "over_limit") {
+			continue
+		}
 		primaries[account.ID] = account.VPNProtocol
 	}
 	version, err := s.repository.CreateConfigVersion(ctx, CreateConfigVersionInput{

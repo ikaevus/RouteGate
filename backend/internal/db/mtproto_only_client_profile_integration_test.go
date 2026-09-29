@@ -27,7 +27,9 @@ func TestMTProtoOnlyNodeProfileMatchesServedConnection(t *testing.T) {
 	subscription := newSubscriptionProbe(t, ctx, pool, accounts)
 	handler := subscription.handler
 
+	secret := nodeMTProtoSecret(t, ctx, pool, serverID)
 	v1 := renderVersion(t, ctx, render, serverID)
+	assertVersionMTProto(t, ctx, pool, v1, secret, true)
 	finishApply(t, ctx, pool, serverID, v1, "succeeded")
 
 	state := readClientProfileState(t, handler, accountID)
@@ -44,11 +46,13 @@ func TestMTProtoOnlyNodeProfileMatchesServedConnection(t *testing.T) {
 		t.Fatalf("subscription on MTProto-only node: status=%d body_has_link=%v", status, strings.Contains(body, "://"))
 	}
 
-	// The next applied version no longer runs the MTProto proxy.
+	// The next version must really drop the MTProto proxy and its shared
+	// secret: seeded protocol rows must not keep it in the render.
 	if _, err := pool.Exec(ctx, `UPDATE servers SET vpn_protocol = 'vless' WHERE id = $1::uuid`, serverID); err != nil {
 		t.Fatalf("switch node away from MTProto: %v", err)
 	}
 	v2 := renderVersion(t, ctx, render, serverID)
+	assertVersionMTProto(t, ctx, pool, v2, secret, false)
 	finishApply(t, ctx, pool, serverID, v2, "succeeded")
 
 	state = readClientProfileState(t, handler, accountID)
@@ -66,5 +70,8 @@ func TestMTProtoOnlyNodeProfileMatchesServedConnection(t *testing.T) {
 	if status, body := subscription.fetch(t, accountID); strings.Contains(body, "tg://") {
 		t.Fatalf("subscription serves MTProto without the applied proxy: status=%d", status)
 	}
-	t.Logf("after the proxy was removed: status=%s primary=%s active=%v", state.ConnectionStatus, state.ActiveProtocol, state.Profile.ActiveProtocols)
+	if state.ConnectionStatus != vpnaccounts.ClientConnectionStatusReady || !containsString(state.Profile.ActiveProtocols, "vless") {
+		t.Fatalf("after the proxy was removed the account must be served its VLESS access: status=%s active=%v message=%q",
+			state.ConnectionStatus, state.Profile.ActiveProtocols, state.ConnectionMessage)
+	}
 }

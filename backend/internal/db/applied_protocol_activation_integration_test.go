@@ -82,10 +82,11 @@ func TestActiveProtocolsFollowTheAppliedVersion(t *testing.T) {
 	assertActiveProtocols(t, ctx, accounts, subscription, multiID, shadowsocksOnly)
 
 	// The successful apply of v2 releases exactly what v2 deploys. The single
-	// account keeps Shadowsocks next to the new node default because its
-	// deployed Shadowsocks row stays a desired protocol (existing seeding).
+	// account never chose protocols, so "auto" follows the node's new default:
+	// its seeded Shadowsocks row does not keep Shadowsocks deployed.
+	vlessOnly := protocolExpectation{"vless", []string{"vless"}}
 	finishApply(t, ctx, pool, serverID, v2, "succeeded")
-	assertActiveProtocols(t, ctx, accounts, subscription, singleID, protocolExpectation{"vless", []string{"vless", "shadowsocks"}})
+	assertActiveProtocols(t, ctx, accounts, subscription, singleID, vlessOnly)
 	assertActiveProtocols(t, ctx, accounts, subscription, multiID, protocolExpectation{"vless", []string{"vless", "shadowsocks"}})
 
 	// A preference saved after v2 must not become active through a rollback.
@@ -102,7 +103,7 @@ func TestActiveProtocolsFollowTheAppliedVersion(t *testing.T) {
 
 	// Re-applying v2 moves both accounts forward again.
 	finishApply(t, ctx, pool, serverID, v2, "succeeded")
-	assertActiveProtocols(t, ctx, accounts, subscription, singleID, protocolExpectation{"vless", []string{"vless", "shadowsocks"}})
+	assertActiveProtocols(t, ctx, accounts, subscription, singleID, vlessOnly)
 	assertActiveProtocols(t, ctx, accounts, subscription, multiID, protocolExpectation{"vless", []string{"vless", "shadowsocks"}})
 }
 
@@ -183,12 +184,13 @@ func assertActiveProtocols(t *testing.T, ctx context.Context, accounts *vpnaccou
 		t.Fatalf("client material (%s %v) differs from the active version (%s %v)", connection.Protocol, got, deployedPrimary, deployed)
 	}
 
+	// Links are matched per line: "ss://" also occurs inside "vless://".
 	body := subscription.body(t, accountID)
-	if !strings.Contains(body, protocolLinkScheme[want.primary]) {
+	if !bodyHasLink(body, protocolLinkScheme[want.primary]) {
 		t.Fatalf("subscription does not serve the applied primary %s: %q", want.primary, body)
 	}
 	for protocol, scheme := range protocolLinkScheme {
-		if !containsString(want.active, protocol) && strings.Contains(body, scheme) {
+		if !containsString(want.active, protocol) && bodyHasLink(body, scheme) {
 			t.Fatalf("subscription serves %s which the applied version does not deploy: %q", protocol, body)
 		}
 	}

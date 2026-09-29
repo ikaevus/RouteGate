@@ -340,7 +340,8 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			s.mtproto_secret,
 			s.mtproto_fronting_domain,
 			(s.id IS NOT NULL AND s.active_config_version_id IS NULL),
-			acv.client_settings
+			acv.client_settings,
+			COALESCE(NULLIF(s.vpn_protocol, 'auto'), 'vless')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
 		LEFT JOIN config_versions acv ON acv.id = s.active_config_version_id
@@ -581,6 +582,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	var shadowsocksPort, mtprotoPort sql.NullInt32
 	var awaitingFirstApply bool
 	var appliedClientSettings []byte
+	var savedNodeProtocol sql.NullString
 
 	err := row.Scan(
 		&profile.Account.ID,
@@ -627,6 +629,7 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&mtprotoFrontingDomain,
 		&awaitingFirstApply,
 		&appliedClientSettings,
+		&savedNodeProtocol,
 	)
 	if err != nil {
 		return SubscriptionProfile{}, err
@@ -672,6 +675,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 			server.VLESSPort = int(vlessPort.Int32)
 		}
 		saved := server
+		// The next render resolves "auto" to the node's saved default, not to
+		// the applied version's protocol or the stored profile's preference.
+		saved.VPNProtocol = savedNodeProtocol.String
 		profile.savedServer = &saved
 		server.AwaitingFirstApply = awaitingFirstApply
 		if len(appliedClientSettings) > 0 {

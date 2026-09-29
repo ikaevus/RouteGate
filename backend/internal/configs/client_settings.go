@@ -153,5 +153,18 @@ func renderedAccountDeployments(payload []byte, config RenderedConfig, primaries
 		}
 		accounts[account.ID] = applied
 	}
+	// Accounts served only through the node-wide MTProto proxy have no
+	// per-account entry in the rendered config. Record them with their
+	// primary and no listed protocol, so (re)applying this version restores
+	// their MTProto primary, for example on a rollback to an MTProto version.
+	if mtprotoDeployed {
+		for accountID, requested := range primaries {
+			if _, listed := accounts[accountID]; listed || strings.TrimSpace(accountID) == "" ||
+				normalizeAccountProtocol(requested) != platform.VPNProtocolMTProto {
+				continue
+			}
+			accounts[accountID] = platform.AppliedAccountProtocols{Primary: platform.VPNProtocolMTProto, Protocols: []string{}}
+		}
+	}
 	return accounts
 }
