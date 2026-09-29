@@ -118,6 +118,7 @@ try {
   await connectServerButton.click();
   const onboardingDialog = page.locator('.agent-onboarding-dialog');
   await onboardingDialog.waitFor();
+  await onboardingDialog.getByText('Manual registration (technical details)', { exact: true }).click();
   const registrationTokenField = onboardingDialog.locator('.registration-token-field code');
   const firstRegistrationToken = (await registrationTokenField.innerText()).trim();
   assert.match(firstRegistrationToken, /^rg_reg_/);
@@ -126,6 +127,7 @@ try {
   await onboardingDialog.locator('.registration-token-dialog-close').click();
   await connectServerButton.click();
   await onboardingDialog.waitFor();
+  await onboardingDialog.getByText('Manual registration (technical details)', { exact: true }).click();
   assert.equal((await registrationTokenField.innerText()).trim(), firstRegistrationToken);
 
   await onboardingDialog.getByRole('button', { name: 'Generate new token', exact: true }).click();

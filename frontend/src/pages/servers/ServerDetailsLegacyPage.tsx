@@ -1414,19 +1414,17 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                   </div>
                   {statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
 
-                  {setupCommand && (
-                    <details className="server-deployment-help">
-                      <summary>{t('serverDetails.manualRegistrationDetails')}</summary>
-                      <p>{t('serverDetails.sameRegistrationToken')}</p>
-                      <RegistrationTokenResult
-                        registrationToken={registrationToken}
-                        configSnippet={configSnippet}
-                        onCopy={() => void copyRegistrationToken()}
-                        isCopied={isRegistrationTokenCopied}
-                        isConfigCollapsible
-                      />
-                    </details>
-                  )}
+                  <details className="server-deployment-help">
+                    <summary>{t('serverDetails.manualRegistrationDetails')}</summary>
+                    <p>{t('serverDetails.sameRegistrationToken')}</p>
+                    <RegistrationTokenResult
+                      registrationToken={registrationToken}
+                      configSnippet={configSnippet}
+                      onCopy={() => void copyRegistrationToken()}
+                      isCopied={isRegistrationTokenCopied}
+                      isConfigCollapsible
+                    />
+                  </details>
                   <div className="agent-setup-actions">
                     <button
                       className="small-button"
