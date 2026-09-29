@@ -12,7 +12,13 @@ Both files run in one `READ ONLY` transaction that ends with `ROLLBACK`. They
 print node names, account ids, counts, reason codes and booleans only — no keys,
 passwords, MTProto secrets, subscription tokens or rendered configs. The
 postflight file fails on schema 155 (its columns do not exist yet) and is not a
-substitute for the preflight file.
+substitute for the preflight file; the preflight file also runs on schema 158,
+which is used to verify a rollback.
+
+JSON values are read with `jsonb_typeof` guards and without casts that can
+fail: malformed rendered configs (non-numeric or out-of-range ports, flags of
+the wrong type, sections of the wrong type) produce reason codes in P4 instead
+of aborting the script.
 
 ## Where and how to run
 
@@ -58,16 +64,29 @@ P2 states:
   - `in_active_render = f` (for example, created after the last apply): the
     node has no credentials for it, so its current link does not work either.
     Not blocking; tell the owner.
-  - `in_active_render = t`: the render deployed the account, but one of its
-    active protocol rows (`not_deployed_by_active_render`) was not deployed.
-    A protocol set is served whole or not at all, so the account also loses
-    its working protocols. **Blocking**: fixing it needs a render and apply on
-    that node, which requires a separate decision for FI.
+  - `in_active_render = t`: the render deployed the account, but its primary
+    protocol or one of its active protocol rows (`not_deployed_by_active_render`)
+    was not deployed. A connection is served whole or not at all, so the
+    account also loses the protocols that work today. **Blocking**: fixing it
+    needs a render and apply on that node, which requires a separate decision
+    for FI.
 - `withheld_first_apply`: the node has never had a successful apply, so all
   its accounts lose their links. **Blocking** on a node with users.
 
-P2/P3 model the deployment rules only; a link can additionally be refused for
-an incomplete setting, exactly as today.
+P2/P3 and Q4/Q5 share one model of `vpnaccounts.BuildClientConnection`, the
+path of `GET /client-connection`, `/sub/`, the JSON subscription, devices and
+deliveries. The account's primary protocol (`vpn_client_profiles.active_protocol`)
+is built first, then every active protocol row is checked, so the checked set
+is the union of the primary and the active rows, without duplicates. It also
+includes the rows `GetClientProtocolSets` seeds from the snapshot on the first
+read after the update (a listed account's deployed protocols it has no row
+for), so the prediction does not change once the backend has read an account.
+A new profile's primary is the listed account's first protocol in Go order
+(vless, wireguard, hysteria2, shadowsocks, mtproto), as in
+`configs.renderedAccountProtocols`.
+
+The model covers the deployment rule only; a link can additionally be refused
+for an incomplete setting or an unsupported deployment role, exactly as today.
 
 ## Reading the postflight (schema 158)
 
@@ -147,18 +166,65 @@ stays applied on the node.
 
 ## Rehearsal
 
-Both files and both rollback methods were rehearsed on a local PostgreSQL 16
-database migrated to `000155` by the `main` build and seeded by its own code
-(render, apply, failed apply, account created after apply, suspended account,
-pending preference, multi-protocol set, MTProto proxy, a node never applied, a
-version without `vpnAccounts` and one with an unparsable Reality key). The
-database was then upgraded by `db.Migrate` and
-`configs.Repository.BackfillClientSettings`, as Manager does at start:
+`rehearsal/rehearse.sh` repeats the whole check on a disposable database. It
+refuses any database URL that does not contain `rehearsal`, because the seed
+step drops the public schema; never point it at a Manager database.
 
-- preflight P2/P3 predicted exactly the post-update Q4/Q5 result, and both
-  matched `vpnaccounts.BuildClientConnection` for every active account;
-- rollback A produced a schema identical to a fresh `000155` database;
-  rollback B produced the same schema except comments inside the restored
-  trigger function; the old build applied no migration and served the same
-  client connections as before the update; after rollback B the new build
-  upgraded the database again.
+```bash
+REHEARSAL_DATABASE_URL='postgres://user:pass@127.0.0.1:5432/routegate_rehearsal?sslmode=disable' \
+  docs/operations/applied-client-settings/rehearsal/rehearse.sh
+```
+
+It needs `git`, `go` and `psql`, and:
+
+1. seeds schema `000155` with the base build's own code: a temporary git
+   worktree of `BASE_REF` (default: `36a2b72`, the last `main` commit on
+   schema 155) runs `rehearsal/seed_schema155_test.go.txt`;
+2. runs `preflight-schema-155.sql` with psql (it must succeed; the postflight
+   file must fail on this schema) and records the P2/P3/P4 prediction through
+   `backend/internal/db/applied_client_settings_rehearsal_test.go`, which reads
+   the statements from the committed SQL files;
+3. upgrades with `db.Migrate` and `configs.Repository.BackfillClientSettings`,
+   as Manager does at start;
+4. runs `postflight-schema-158.sql` (and the preflight file again) with psql,
+   then compares the prediction, Q4/Q5 before and after the backend has read
+   every account, and `vpnaccounts.BuildClientConnection` for every active
+   account, and P4 with the versions the backfill left without a snapshot;
+5. fails if any psql or test output contains a key, secret, VLESS UUID,
+   account credential or token hash present in the database.
+
+The seed covers: render, apply and a failed apply; an account created after
+the apply; a suspended account; a pending preference; an active WireGuard row
+the render did not deploy; a primary drifted to WireGuard while the active rows
+and the render hold VLESS only; an MTProto proxy; a node never applied; a
+version without `vpnAccounts`; an unparsable Reality key; and malformed ports:
+`"abc"`, `1e30`, `-1`, `8443.9` (Go truncates it: valid), a port beyond the
+`bigint` range as a string and as a number, a Shadowsocks port `"8388x"`, and
+Reality `enabled` as the string `"true"` (Go ignores it: valid).
+
+Result on PostgreSQL 16: the prediction, Q4/Q5 (before and after backend reads)
+and `BuildClientConnection` agreed for all 13 active accounts on 8 nodes
+(4 withheld: the post-apply account, the WireGuard row, the WireGuard primary
+and the never-applied node); P4 named exactly the 7 versions the backfill left
+without a snapshot; both SQL files completed on the malformed data; 82 secret
+values were checked and none appeared in the output. The previous revision of
+the files missed the WireGuard-primary account and aborted with
+`value "99999999999999999999999999" is out of range for type bigint`.
+
+Rollback was rehearsed separately on the same kind of database: rollback A
+produced a schema identical to a fresh `000155` database; rollback B produced
+the same schema except comments inside the restored trigger function; the old
+build applied no migration and served the same client connections as before
+the update; after rollback B the new build upgraded the database again.
+
+## Limitations
+
+- P4's WireGuard, Hysteria2 and MTProto text checks and its JSON type checks
+  are structural approximations of the Go parsers; Q3 and the Manager start
+  log are definitive.
+- The model covers the deployment rule, not other reasons a link can be
+  refused (incomplete settings, deployment role).
+- Unknown protocol names in an old render sort alphabetically after the known
+  ones; Go appends them in map order. Manager never renders such names.
+- The rehearsal data is synthetic; renders made by older releases on FI may
+  differ, which is why the preflight must run on FI before the update.

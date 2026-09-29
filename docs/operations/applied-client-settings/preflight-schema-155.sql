@@ -4,7 +4,9 @@
 -- Read only: the whole file runs in one READ ONLY transaction and ends with
 -- ROLLBACK. It prints no keys, passwords, secrets or tokens: rendered configs
 -- are inspected only for structure, and MTProto is reported as a boolean.
--- It does not reference columns added by migrations 000156-000158.
+-- It does not reference columns added by migrations 000156-000158. Values are
+-- read with jsonb_typeof guards and without casts that can fail, so malformed
+-- rendered configs yield reason codes instead of aborting the script.
 --
 --   psql "$DATABASE_URL" -X -f preflight-schema-155.sql
 \set ON_ERROR_STOP on
@@ -24,197 +26,307 @@ SELECT s.name, s.id AS server_id, s.status, s.vpn_protocol AS saved_protocol,
 FROM servers s
 ORDER BY has_applied_version, s.name;
 
--- Predicts, from the active render, what each active account is served right
--- after the update, with the same rules as the post-update query Q4:
---   * a node's active version yields a snapshot unless it cannot be derived
---     (structural mirror of configs.clientSettingsFromRenderedJSON; such a node
---     keeps serving saved settings unchecked, as before the update);
---   * accounts are checked per account when "vpnAccounts" is present (null
---     counts as empty) and every entry has an id and a protocol or credential;
---   * an account is served its active protocol rows, or else its primary, and
---     every one of them must be deployed for it (MTProto: the node-wide proxy
---     runs). A multi-protocol set is served whole or not at all, so an active
---     row the render did not deploy withholds the whole set.
+-- Deployment model (identical in P2/P3 and in the postflight Q4/Q5). It mirrors
+-- vpnaccounts.BuildClientConnection, which GET /client-connection, /sub/, the
+-- JSON subscription, devices and deliveries share:
+--   * nothing is served before a node's first successful apply;
+--   * a node whose active version has no snapshot serves saved settings
+--     without checks (as before the update);
+--   * the primary (vpn_client_profiles.active_protocol; a missing profile is
+--     created from the applied version) is built first, then every active
+--     protocol row, including rows GetClientProtocolSets seeds from the
+--     snapshot on first read; each must be deployed for the account (MTProto:
+--     the node-wide proxy runs), otherwise the whole connection is withheld;
+--   * per-account checks need a listed account set (compatibility otherwise).
+-- It covers the deployment rule only; a link can still be refused for an
+-- incomplete setting or an unsupported deployment role, as before.
+-- P2 and P3 share one CTE; keep them identical.
 \echo '== P2. Predicted state after the update, per node'
 \echo '   withheld_first_apply: BLOCKING (node never applied); withheld_until_apply: those accounts get'
 \echo '   "awaiting apply" instead of a link until the next successful apply of that node'
-WITH nodes AS (
-  SELECT s.id AS server_id, s.name, s.vpn_protocol, cv.id AS version_id, cv.rendered_config AS rc
-  FROM servers s LEFT JOIN config_versions cv ON cv.id = s.active_config_version_id
-), node_entries AS (
-  SELECT n.server_id, e,
-         -- protocols the render deployed for the entry (configs.renderedAccountProtocols)
-         ARRAY(SELECT DISTINCT x FROM unnest(
-           ARRAY(SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END))
-           || CASE WHEN COALESCE(e ->> 'vlessUuid', '') <> '' THEN ARRAY['vless'] ELSE '{}' END
-           || CASE WHEN COALESCE(e ->> 'wireGuardPublicKey', '') <> '' OR COALESCE(e ->> 'wireGuardAddress', '') <> '' THEN ARRAY['wireguard'] ELSE '{}' END
-           || CASE WHEN COALESCE(e ->> 'hysteria2Username', '') <> '' THEN ARRAY['hysteria2'] ELSE '{}' END
-           || CASE WHEN COALESCE(e ->> 'shadowsocksUsername', '') <> '' THEN ARRAY['shadowsocks'] ELSE '{}' END) x) AS protocols
-  FROM nodes n
+WITH rendered_entries AS (
+  -- configs.renderedAccountProtocols: listed protocols plus the credentials the
+  -- render issued, in Go order (vless, wireguard, hysteria2, shadowsocks, mtproto)
+  SELECT s.id AS server_id,
+         CASE WHEN jsonb_typeof(e -> 'id') = 'string' THEN e -> 'id' #>> '{}' ELSE '' END AS account_id,
+         ARRAY(SELECT x FROM (SELECT DISTINCT x FROM unnest(ARRAY(SELECT CASE WHEN lower(btrim(x #>> '{}')) = 'auto' THEN 'vless' ELSE lower(btrim(x #>> '{}')) END
+                  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END) x
+                  WHERE jsonb_typeof(x) = 'string')
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'vlessUuid') = 'string' THEN e -> 'vlessUuid' #>> '{}' ELSE '' END) <> '' THEN ARRAY['vless'] ELSE '{}' END
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'wireGuardPublicKey') = 'string' THEN e -> 'wireGuardPublicKey' #>> '{}' ELSE '' END) <> '' OR btrim(CASE WHEN jsonb_typeof(e -> 'wireGuardAddress') = 'string' THEN e -> 'wireGuardAddress' #>> '{}' ELSE '' END) <> '' THEN ARRAY['wireguard'] ELSE '{}' END
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'hysteria2Username') = 'string' THEN e -> 'hysteria2Username' #>> '{}' ELSE '' END) <> '' THEN ARRAY['hysteria2'] ELSE '{}' END
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'shadowsocksUsername') = 'string' THEN e -> 'shadowsocksUsername' #>> '{}' ELSE '' END) <> '' THEN ARRAY['shadowsocks'] ELSE '{}' END) x WHERE x IS NOT NULL AND x <> '') d ORDER BY array_position(ARRAY['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'], x) NULLS LAST, x) AS protocols
+  FROM servers s
+  JOIN config_versions cv ON cv.id = s.active_config_version_id
   CROSS JOIN LATERAL jsonb_array_elements(
-    CASE WHEN jsonb_typeof(n.rc -> 'vpnAccounts') = 'array' THEN n.rc -> 'vpnAccounts' ELSE '[]'::jsonb END) e
-), node_state AS (
-  SELECT n.*,
-         n.version_id IS NULL AS awaiting_first_apply,
-         -- snapshot derivation (structural mirror of configs.clientSettingsFromRenderedJSON)
-         n.version_id IS NOT NULL AND (
-           jsonb_typeof(n.rc -> 'vpnAccounts') NOT IN ('array', 'null')
-           OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements(
-               CASE WHEN jsonb_typeof(n.rc -> 'singBox' -> 'inbounds') = 'array' THEN n.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
-             WHERE (lower(i ->> 'type') = 'vless'
-                    AND (NOT (COALESCE(i ->> 'listen_port', '') ~ '^[0-9]+$' AND (i ->> 'listen_port')::bigint BETWEEN 1 AND 65535)
-                         OR (COALESCE((i -> 'tls' -> 'reality' ->> 'enabled')::boolean, FALSE)
-                             AND COALESCE(i -> 'tls' -> 'reality' ->> 'private_key', '') !~ '^\s*[A-Za-z0-9_-]{43}\s*$')))
-                OR (lower(i ->> 'type') = 'shadowsocks'
-                    AND (NOT COALESCE(i ->> 'listen_port', '') ~ '^[0-9]+$' OR (i ->> 'listen_port')::bigint < 1
-                         OR COALESCE(i ->> 'method', '') = '' OR btrim(COALESCE(i ->> 'password', '')) = '')))
-           OR (btrim(COALESCE(n.rc ->> 'wireGuard', '')) <> ''
-               AND NOT (n.rc ->> 'wireGuard' ~ '(?m)^\s*PrivateKey\s*=\s*[A-Za-z0-9+/]{43}=\s*$'
-                        AND n.rc ->> 'wireGuard' ~ '(?m)^\s*ListenPort\s*=\s*[0-9]+\s*$'
-                        AND n.rc ->> 'wireGuard' ~ '(?m)^\s*Address\s*='))
-           OR (btrim(COALESCE(n.rc ->> 'hysteria2', '')) <> ''
-               AND NOT (n.rc ->> 'hysteria2' ~ 'domains' AND n.rc ->> 'hysteria2' ~ 'listen'))
-           OR (btrim(COALESCE(n.rc ->> 'mtproto', '')) <> ''
-               AND NOT (n.rc ->> 'mtproto' ~ '(?m)^secret = "ee[0-9a-f]{68}"$'
-                        AND n.rc ->> 'mtproto' ~ '(?m)^bind-to = "0\.0\.0\.0:[0-9]+"$'))
-         ) AS no_snapshot,
-         -- per-account checks need a listed account set (configs.renderedAccountDeployments)
-         n.rc ? 'vpnAccounts' AND NOT EXISTS (
-           SELECT 1 FROM node_entries ne
-           WHERE ne.server_id = n.server_id AND (COALESCE(ne.e ->> 'id', '') = '' OR cardinality(ne.protocols) = 0)
-         ) AS accounts_known,
-         COALESCE(n.rc ->> 'mtproto', '') <> '' AS proxy
-  FROM nodes n
-), accounts AS (
-  SELECT ns.name, ns.server_id, a.id, ns.awaiting_first_apply, ns.no_snapshot, ns.accounts_known, ns.proxy,
-         ne.protocols AS deployed, ne.e IS NOT NULL AS listed,
-         COALESCE(cp.active_protocol, ne.protocols[1], ns.rc -> 'metadata' -> 'vpnCore' ->> 'protocol', ns.vpn_protocol, 'vless') AS raw_primary,
-         COALESCE((SELECT array_agg(p.protocol ORDER BY p.protocol) FROM vpn_account_protocols p
+    CASE WHEN jsonb_typeof(cv.rendered_config -> 'vpnAccounts') = 'array' THEN cv.rendered_config -> 'vpnAccounts' ELSE '[]'::jsonb END) e
+  WHERE jsonb_typeof(e) = 'object'
+),
+snapshot_nodes AS (
+  -- what Manager derives at start from each node's active render
+  SELECT s.id AS server_id, s.name,
+         cv.id IS NULL AS awaiting_first_apply,
+         cv.id IS NOT NULL AND concat_ws(', ',
+           CASE WHEN jsonb_typeof(cv.rendered_config) IS DISTINCT FROM 'object' THEN 'rendered_config_not_object' END,
+           CASE WHEN COALESCE(jsonb_typeof(cv.rendered_config -> 'vpnAccounts'), 'null') NOT IN ('array', 'null')
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'vpnAccounts') = 'array' THEN cv.rendered_config -> 'vpnAccounts' ELSE '[]'::jsonb END) e
+                             WHERE CASE WHEN jsonb_typeof(e) <> 'object' THEN TRUE
+                                        ELSE EXISTS (SELECT 1 FROM jsonb_each(e) kv
+                                                     WHERE kv.key IN ('id', 'displayName', 'status', 'vlessUuid', 'wireGuardPublicKey',
+                                                                      'wireGuardAddress', 'hysteria2Username', 'shadowsocksUsername')
+                                                       AND jsonb_typeof(kv.value) NOT IN ('string', 'null'))
+                                             OR COALESCE(jsonb_typeof(e -> 'protocols'), 'null') NOT IN ('array', 'null')
+                                             OR EXISTS (SELECT 1 FROM jsonb_array_elements(
+                                                          CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END) p
+                                                        WHERE jsonb_typeof(p) <> 'string') END)
+                THEN 'vpn_accounts_malformed' END,
+           CASE WHEN COALESCE(jsonb_typeof(cv.rendered_config -> 'singBox'), 'null') NOT IN ('object', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds'), 'null') NOT IN ('array', 'null')
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i WHERE jsonb_typeof(i) <> 'object')
+                THEN 'singbox_inbounds_malformed' END,
+           CASE WHEN COALESCE(jsonb_typeof(cv.rendered_config -> 'wireGuard'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'hysteria2'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'mtproto'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'metadata'), 'null') NOT IN ('object', 'null')
+                THEN 'section_type_mismatch' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'vless'
+                               AND NOT COALESCE(CASE WHEN jsonb_typeof(i -> 'listen_port') = 'number' THEN trunc((i -> 'listen_port')::numeric) END BETWEEN 1 AND 65535, FALSE))
+                THEN 'vless_listen_port_invalid' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'vless'
+                               AND COALESCE(i -> 'tls' -> 'reality' -> 'enabled' = 'true'::jsonb, FALSE)
+                               AND (CASE WHEN jsonb_typeof(i -> 'tls' -> 'reality' -> 'private_key') = 'string' THEN i -> 'tls' -> 'reality' -> 'private_key' #>> '{}' ELSE '' END) !~ '^\s*[A-Za-z0-9_-]{43}\s*$')
+                THEN 'reality_private_key_unparsable' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'shadowsocks'
+                               AND (NOT COALESCE(CASE WHEN jsonb_typeof(i -> 'listen_port') = 'number' THEN trunc((i -> 'listen_port')::numeric) END >= 1, FALSE)
+                                    OR (CASE WHEN jsonb_typeof(i -> 'method') = 'string' THEN i -> 'method' #>> '{}' ELSE '' END) = '' OR btrim(CASE WHEN jsonb_typeof(i -> 'password') = 'string' THEN i -> 'password' #>> '{}' ELSE '' END) = ''))
+                THEN 'shadowsocks_inbound_incomplete' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) <> ''
+                 AND NOT ((CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*PrivateKey\s*=\s*[A-Za-z0-9+/]{43}=\s*$'
+                          AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*ListenPort\s*=\s*[0-9]{1,5}\s*$'
+                          AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*Address\s*=')
+                THEN 'wireguard_section_unparsable' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'hysteria2') = 'string' THEN cv.rendered_config -> 'hysteria2' #>> '{}' ELSE '' END) <> '' AND NOT ((CASE WHEN jsonb_typeof(cv.rendered_config -> 'hysteria2') = 'string' THEN cv.rendered_config -> 'hysteria2' #>> '{}' ELSE '' END) ~ 'domains' AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'hysteria2') = 'string' THEN cv.rendered_config -> 'hysteria2' #>> '{}' ELSE '' END) ~ 'listen')
+                THEN 'hysteria2_section_unparsable' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) <> ''
+                 AND NOT ((CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) ~ '(?n)^secret = "ee[0-9a-f]{68}"$'
+                          AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) ~ '(?n)^bind-to = "0\.0\.0\.0:[0-9]{1,5}"$')
+                THEN 'mtproto_section_unparsable' END
+         ) = '' AS has_snapshot,
+         -- configs.renderedAccountDeployments: known when "vpnAccounts" is present
+         -- (null = empty) and every entry has an id and a protocol or credential
+         cv.rendered_config ? 'vpnAccounts' AND NOT EXISTS (
+           SELECT 1 FROM rendered_entries re
+           WHERE re.server_id = s.id AND (re.account_id = '' OR cardinality(re.protocols) = 0)) AS accounts_known,
+         btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) <> '' AS proxy,
+         CASE WHEN jsonb_typeof(cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol') = 'string' THEN cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol' #>> '{}' ELSE '' END AS node_protocol
+  FROM servers s LEFT JOIN config_versions cv ON cv.id = s.active_config_version_id
+),
+snapshot_entries AS (
+  SELECT server_id, account_id, NULL::text AS primary_protocol, protocols FROM rendered_entries
+),
+accounts AS (
+  SELECT sn.name, sn.server_id, a.id, sn.awaiting_first_apply, sn.has_snapshot, sn.accounts_known, sn.proxy,
+         se.account_id IS NOT NULL AS listed,
+         COALESCE(se.protocols, '{}') AS deployed,
+         cp.vpn_account_id IS NOT NULL AS has_profile,
+         -- vpnaccounts.GetActiveClientProtocol; a missing profile is created
+         -- from the applied version first (appliedPrimaryProtocolSQL)
+         COALESCE(cp.active_protocol,
+                  NULLIF(se.primary_protocol, ''),
+                  se.protocols[1],
+                  CASE WHEN sn.has_snapshot THEN NULLIF(sn.node_protocol, '') END,
+                  'vless') AS raw_primary,
+         COALESCE((SELECT array_agg(p.protocol) FROM vpn_account_protocols p
+                   WHERE p.vpn_account_id = a.id), '{}') AS existing_rows,
+         COALESCE((SELECT array_agg(p.protocol) FROM vpn_account_protocols p
                    WHERE p.vpn_account_id = a.id AND p.active_enabled), '{}') AS active_rows
-  FROM node_state ns
-  JOIN vpn_accounts a ON a.server_id = ns.server_id AND a.status = 'active'
+  FROM snapshot_nodes sn
+  JOIN vpn_accounts a ON a.server_id = sn.server_id AND a.status = 'active'
   LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
-  LEFT JOIN node_entries ne ON ne.server_id = ns.server_id AND ne.e ->> 'id' = a.id::text
-), evaluated AS (
+  LEFT JOIN snapshot_entries se ON se.server_id = sn.server_id AND se.account_id = a.id::text
+), served AS (
   SELECT ac.*,
-         CASE WHEN ac.raw_primary IN ('vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto')
-              THEN ac.raw_primary ELSE 'vless' END AS primary_protocol,
-         (SELECT array_agg(proto ORDER BY proto)
-          FROM unnest(CASE WHEN cardinality(ac.active_rows) > 0 THEN ac.active_rows
-                           ELSE ARRAY[CASE WHEN ac.raw_primary IN ('vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto')
-                                           THEN ac.raw_primary ELSE 'vless' END] END) proto
-          WHERE NOT (CASE WHEN proto = 'mtproto' THEN ac.proxy
-                          WHEN NOT ac.accounts_known THEN TRUE
-                          ELSE COALESCE(proto = ANY (ac.deployed), FALSE) END)) AS undeployed
+         CASE WHEN lower(btrim(ac.raw_primary)) IN ('vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto')
+              THEN lower(btrim(ac.raw_primary)) ELSE 'vless' END AS primary_protocol,
+         -- rows GetClientProtocolSets seeds (active) before the set is checked
+         ARRAY(SELECT s FROM unnest(CASE WHEN ac.has_snapshot AND ac.accounts_known THEN ac.deployed
+                                         ELSE ARRAY[COALESCE(NULLIF(ac.raw_primary, ''), 'vless')] END) s
+               WHERE NOT s = ANY (ac.existing_rows)) AS seeded_rows
   FROM accounts ac
+), evaluated AS (
+  SELECT sv.*,
+         -- the primary is built first, then every active protocol is checked
+         ARRAY(SELECT x FROM (SELECT DISTINCT x FROM unnest(sv.active_rows || sv.seeded_rows || ARRAY[sv.primary_protocol]) x WHERE x IS NOT NULL AND x <> '') d ORDER BY array_position(ARRAY['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'], x) NULLS LAST, x) AS checked,
+         ARRAY(SELECT proto FROM unnest(ARRAY(SELECT x FROM (SELECT DISTINCT x FROM unnest(sv.active_rows || sv.seeded_rows || ARRAY[sv.primary_protocol]) x WHERE x IS NOT NULL AND x <> '') d ORDER BY array_position(ARRAY['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'], x) NULLS LAST, x)) proto
+               WHERE NOT (CASE WHEN NOT sv.has_snapshot THEN TRUE
+                               WHEN proto = 'mtproto' THEN sv.proxy
+                               WHEN NOT sv.accounts_known THEN TRUE
+                               ELSE proto = ANY (sv.deployed) END)) AS undeployed
+  FROM served sv
 ), classified AS (
   SELECT ev.*,
          CASE WHEN awaiting_first_apply THEN 'withheld_first_apply'
-              WHEN no_snapshot THEN 'unchecked_no_snapshot'
-              WHEN NOT accounts_known AND undeployed IS NULL THEN 'served_compatibility_mode'
-              WHEN undeployed IS NULL THEN 'served'
-              ELSE 'withheld_until_apply' END AS state_after_update
+              WHEN NOT has_snapshot THEN 'unchecked_no_snapshot'
+              WHEN cardinality(undeployed) = 0 AND NOT accounts_known THEN 'served_compatibility_mode'
+              WHEN cardinality(undeployed) = 0 THEN 'served'
+              ELSE 'withheld_until_apply' END AS state
   FROM evaluated ev
 )
-SELECT name, state_after_update, count(*) AS active_accounts,
+SELECT name, state AS state_after_update, count(*) AS active_accounts,
        bool_or(proxy) AS mtproto_proxy_running
 FROM classified
-GROUP BY name, state_after_update
-ORDER BY name, state_after_update;
+GROUP BY name, state
+ORDER BY name, state;
 
 \echo '== P3. Active accounts that will not be served a link after the update (ids only)'
-WITH nodes AS (
-  SELECT s.id AS server_id, s.name, s.vpn_protocol, cv.id AS version_id, cv.rendered_config AS rc
-  FROM servers s LEFT JOIN config_versions cv ON cv.id = s.active_config_version_id
-), node_entries AS (
-  SELECT n.server_id, e,
-         -- protocols the render deployed for the entry (configs.renderedAccountProtocols)
-         ARRAY(SELECT DISTINCT x FROM unnest(
-           ARRAY(SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END))
-           || CASE WHEN COALESCE(e ->> 'vlessUuid', '') <> '' THEN ARRAY['vless'] ELSE '{}' END
-           || CASE WHEN COALESCE(e ->> 'wireGuardPublicKey', '') <> '' OR COALESCE(e ->> 'wireGuardAddress', '') <> '' THEN ARRAY['wireguard'] ELSE '{}' END
-           || CASE WHEN COALESCE(e ->> 'hysteria2Username', '') <> '' THEN ARRAY['hysteria2'] ELSE '{}' END
-           || CASE WHEN COALESCE(e ->> 'shadowsocksUsername', '') <> '' THEN ARRAY['shadowsocks'] ELSE '{}' END) x) AS protocols
-  FROM nodes n
+\echo '   BLOCKING: in_active_render = t (the account loses protocols that work today)'
+WITH rendered_entries AS (
+  -- configs.renderedAccountProtocols: listed protocols plus the credentials the
+  -- render issued, in Go order (vless, wireguard, hysteria2, shadowsocks, mtproto)
+  SELECT s.id AS server_id,
+         CASE WHEN jsonb_typeof(e -> 'id') = 'string' THEN e -> 'id' #>> '{}' ELSE '' END AS account_id,
+         ARRAY(SELECT x FROM (SELECT DISTINCT x FROM unnest(ARRAY(SELECT CASE WHEN lower(btrim(x #>> '{}')) = 'auto' THEN 'vless' ELSE lower(btrim(x #>> '{}')) END
+                  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END) x
+                  WHERE jsonb_typeof(x) = 'string')
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'vlessUuid') = 'string' THEN e -> 'vlessUuid' #>> '{}' ELSE '' END) <> '' THEN ARRAY['vless'] ELSE '{}' END
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'wireGuardPublicKey') = 'string' THEN e -> 'wireGuardPublicKey' #>> '{}' ELSE '' END) <> '' OR btrim(CASE WHEN jsonb_typeof(e -> 'wireGuardAddress') = 'string' THEN e -> 'wireGuardAddress' #>> '{}' ELSE '' END) <> '' THEN ARRAY['wireguard'] ELSE '{}' END
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'hysteria2Username') = 'string' THEN e -> 'hysteria2Username' #>> '{}' ELSE '' END) <> '' THEN ARRAY['hysteria2'] ELSE '{}' END
+           || CASE WHEN btrim(CASE WHEN jsonb_typeof(e -> 'shadowsocksUsername') = 'string' THEN e -> 'shadowsocksUsername' #>> '{}' ELSE '' END) <> '' THEN ARRAY['shadowsocks'] ELSE '{}' END) x WHERE x IS NOT NULL AND x <> '') d ORDER BY array_position(ARRAY['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'], x) NULLS LAST, x) AS protocols
+  FROM servers s
+  JOIN config_versions cv ON cv.id = s.active_config_version_id
   CROSS JOIN LATERAL jsonb_array_elements(
-    CASE WHEN jsonb_typeof(n.rc -> 'vpnAccounts') = 'array' THEN n.rc -> 'vpnAccounts' ELSE '[]'::jsonb END) e
-), node_state AS (
-  SELECT n.*,
-         n.version_id IS NULL AS awaiting_first_apply,
-         -- snapshot derivation (structural mirror of configs.clientSettingsFromRenderedJSON)
-         n.version_id IS NOT NULL AND (
-           jsonb_typeof(n.rc -> 'vpnAccounts') NOT IN ('array', 'null')
-           OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements(
-               CASE WHEN jsonb_typeof(n.rc -> 'singBox' -> 'inbounds') = 'array' THEN n.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
-             WHERE (lower(i ->> 'type') = 'vless'
-                    AND (NOT (COALESCE(i ->> 'listen_port', '') ~ '^[0-9]+$' AND (i ->> 'listen_port')::bigint BETWEEN 1 AND 65535)
-                         OR (COALESCE((i -> 'tls' -> 'reality' ->> 'enabled')::boolean, FALSE)
-                             AND COALESCE(i -> 'tls' -> 'reality' ->> 'private_key', '') !~ '^\s*[A-Za-z0-9_-]{43}\s*$')))
-                OR (lower(i ->> 'type') = 'shadowsocks'
-                    AND (NOT COALESCE(i ->> 'listen_port', '') ~ '^[0-9]+$' OR (i ->> 'listen_port')::bigint < 1
-                         OR COALESCE(i ->> 'method', '') = '' OR btrim(COALESCE(i ->> 'password', '')) = '')))
-           OR (btrim(COALESCE(n.rc ->> 'wireGuard', '')) <> ''
-               AND NOT (n.rc ->> 'wireGuard' ~ '(?m)^\s*PrivateKey\s*=\s*[A-Za-z0-9+/]{43}=\s*$'
-                        AND n.rc ->> 'wireGuard' ~ '(?m)^\s*ListenPort\s*=\s*[0-9]+\s*$'
-                        AND n.rc ->> 'wireGuard' ~ '(?m)^\s*Address\s*='))
-           OR (btrim(COALESCE(n.rc ->> 'hysteria2', '')) <> ''
-               AND NOT (n.rc ->> 'hysteria2' ~ 'domains' AND n.rc ->> 'hysteria2' ~ 'listen'))
-           OR (btrim(COALESCE(n.rc ->> 'mtproto', '')) <> ''
-               AND NOT (n.rc ->> 'mtproto' ~ '(?m)^secret = "ee[0-9a-f]{68}"$'
-                        AND n.rc ->> 'mtproto' ~ '(?m)^bind-to = "0\.0\.0\.0:[0-9]+"$'))
-         ) AS no_snapshot,
-         -- per-account checks need a listed account set (configs.renderedAccountDeployments)
-         n.rc ? 'vpnAccounts' AND NOT EXISTS (
-           SELECT 1 FROM node_entries ne
-           WHERE ne.server_id = n.server_id AND (COALESCE(ne.e ->> 'id', '') = '' OR cardinality(ne.protocols) = 0)
-         ) AS accounts_known,
-         COALESCE(n.rc ->> 'mtproto', '') <> '' AS proxy
-  FROM nodes n
-), accounts AS (
-  SELECT ns.name, ns.server_id, a.id, ns.awaiting_first_apply, ns.no_snapshot, ns.accounts_known, ns.proxy,
-         ne.protocols AS deployed, ne.e IS NOT NULL AS listed,
-         COALESCE(cp.active_protocol, ne.protocols[1], ns.rc -> 'metadata' -> 'vpnCore' ->> 'protocol', ns.vpn_protocol, 'vless') AS raw_primary,
-         COALESCE((SELECT array_agg(p.protocol ORDER BY p.protocol) FROM vpn_account_protocols p
+    CASE WHEN jsonb_typeof(cv.rendered_config -> 'vpnAccounts') = 'array' THEN cv.rendered_config -> 'vpnAccounts' ELSE '[]'::jsonb END) e
+  WHERE jsonb_typeof(e) = 'object'
+),
+snapshot_nodes AS (
+  -- what Manager derives at start from each node's active render
+  SELECT s.id AS server_id, s.name,
+         cv.id IS NULL AS awaiting_first_apply,
+         cv.id IS NOT NULL AND concat_ws(', ',
+           CASE WHEN jsonb_typeof(cv.rendered_config) IS DISTINCT FROM 'object' THEN 'rendered_config_not_object' END,
+           CASE WHEN COALESCE(jsonb_typeof(cv.rendered_config -> 'vpnAccounts'), 'null') NOT IN ('array', 'null')
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'vpnAccounts') = 'array' THEN cv.rendered_config -> 'vpnAccounts' ELSE '[]'::jsonb END) e
+                             WHERE CASE WHEN jsonb_typeof(e) <> 'object' THEN TRUE
+                                        ELSE EXISTS (SELECT 1 FROM jsonb_each(e) kv
+                                                     WHERE kv.key IN ('id', 'displayName', 'status', 'vlessUuid', 'wireGuardPublicKey',
+                                                                      'wireGuardAddress', 'hysteria2Username', 'shadowsocksUsername')
+                                                       AND jsonb_typeof(kv.value) NOT IN ('string', 'null'))
+                                             OR COALESCE(jsonb_typeof(e -> 'protocols'), 'null') NOT IN ('array', 'null')
+                                             OR EXISTS (SELECT 1 FROM jsonb_array_elements(
+                                                          CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END) p
+                                                        WHERE jsonb_typeof(p) <> 'string') END)
+                THEN 'vpn_accounts_malformed' END,
+           CASE WHEN COALESCE(jsonb_typeof(cv.rendered_config -> 'singBox'), 'null') NOT IN ('object', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds'), 'null') NOT IN ('array', 'null')
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i WHERE jsonb_typeof(i) <> 'object')
+                THEN 'singbox_inbounds_malformed' END,
+           CASE WHEN COALESCE(jsonb_typeof(cv.rendered_config -> 'wireGuard'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'hysteria2'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'mtproto'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(cv.rendered_config -> 'metadata'), 'null') NOT IN ('object', 'null')
+                THEN 'section_type_mismatch' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'vless'
+                               AND NOT COALESCE(CASE WHEN jsonb_typeof(i -> 'listen_port') = 'number' THEN trunc((i -> 'listen_port')::numeric) END BETWEEN 1 AND 65535, FALSE))
+                THEN 'vless_listen_port_invalid' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'vless'
+                               AND COALESCE(i -> 'tls' -> 'reality' -> 'enabled' = 'true'::jsonb, FALSE)
+                               AND (CASE WHEN jsonb_typeof(i -> 'tls' -> 'reality' -> 'private_key') = 'string' THEN i -> 'tls' -> 'reality' -> 'private_key' #>> '{}' ELSE '' END) !~ '^\s*[A-Za-z0-9_-]{43}\s*$')
+                THEN 'reality_private_key_unparsable' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(cv.rendered_config -> 'singBox' -> 'inbounds') = 'array' THEN cv.rendered_config -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'shadowsocks'
+                               AND (NOT COALESCE(CASE WHEN jsonb_typeof(i -> 'listen_port') = 'number' THEN trunc((i -> 'listen_port')::numeric) END >= 1, FALSE)
+                                    OR (CASE WHEN jsonb_typeof(i -> 'method') = 'string' THEN i -> 'method' #>> '{}' ELSE '' END) = '' OR btrim(CASE WHEN jsonb_typeof(i -> 'password') = 'string' THEN i -> 'password' #>> '{}' ELSE '' END) = ''))
+                THEN 'shadowsocks_inbound_incomplete' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) <> ''
+                 AND NOT ((CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*PrivateKey\s*=\s*[A-Za-z0-9+/]{43}=\s*$'
+                          AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*ListenPort\s*=\s*[0-9]{1,5}\s*$'
+                          AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'wireGuard') = 'string' THEN cv.rendered_config -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*Address\s*=')
+                THEN 'wireguard_section_unparsable' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'hysteria2') = 'string' THEN cv.rendered_config -> 'hysteria2' #>> '{}' ELSE '' END) <> '' AND NOT ((CASE WHEN jsonb_typeof(cv.rendered_config -> 'hysteria2') = 'string' THEN cv.rendered_config -> 'hysteria2' #>> '{}' ELSE '' END) ~ 'domains' AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'hysteria2') = 'string' THEN cv.rendered_config -> 'hysteria2' #>> '{}' ELSE '' END) ~ 'listen')
+                THEN 'hysteria2_section_unparsable' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) <> ''
+                 AND NOT ((CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) ~ '(?n)^secret = "ee[0-9a-f]{68}"$'
+                          AND (CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) ~ '(?n)^bind-to = "0\.0\.0\.0:[0-9]{1,5}"$')
+                THEN 'mtproto_section_unparsable' END
+         ) = '' AS has_snapshot,
+         -- configs.renderedAccountDeployments: known when "vpnAccounts" is present
+         -- (null = empty) and every entry has an id and a protocol or credential
+         cv.rendered_config ? 'vpnAccounts' AND NOT EXISTS (
+           SELECT 1 FROM rendered_entries re
+           WHERE re.server_id = s.id AND (re.account_id = '' OR cardinality(re.protocols) = 0)) AS accounts_known,
+         btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) <> '' AS proxy,
+         CASE WHEN jsonb_typeof(cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol') = 'string' THEN cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol' #>> '{}' ELSE '' END AS node_protocol
+  FROM servers s LEFT JOIN config_versions cv ON cv.id = s.active_config_version_id
+),
+snapshot_entries AS (
+  SELECT server_id, account_id, NULL::text AS primary_protocol, protocols FROM rendered_entries
+),
+accounts AS (
+  SELECT sn.name, sn.server_id, a.id, sn.awaiting_first_apply, sn.has_snapshot, sn.accounts_known, sn.proxy,
+         se.account_id IS NOT NULL AS listed,
+         COALESCE(se.protocols, '{}') AS deployed,
+         cp.vpn_account_id IS NOT NULL AS has_profile,
+         -- vpnaccounts.GetActiveClientProtocol; a missing profile is created
+         -- from the applied version first (appliedPrimaryProtocolSQL)
+         COALESCE(cp.active_protocol,
+                  NULLIF(se.primary_protocol, ''),
+                  se.protocols[1],
+                  CASE WHEN sn.has_snapshot THEN NULLIF(sn.node_protocol, '') END,
+                  'vless') AS raw_primary,
+         COALESCE((SELECT array_agg(p.protocol) FROM vpn_account_protocols p
+                   WHERE p.vpn_account_id = a.id), '{}') AS existing_rows,
+         COALESCE((SELECT array_agg(p.protocol) FROM vpn_account_protocols p
                    WHERE p.vpn_account_id = a.id AND p.active_enabled), '{}') AS active_rows
-  FROM node_state ns
-  JOIN vpn_accounts a ON a.server_id = ns.server_id AND a.status = 'active'
+  FROM snapshot_nodes sn
+  JOIN vpn_accounts a ON a.server_id = sn.server_id AND a.status = 'active'
   LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
-  LEFT JOIN node_entries ne ON ne.server_id = ns.server_id AND ne.e ->> 'id' = a.id::text
-), evaluated AS (
+  LEFT JOIN snapshot_entries se ON se.server_id = sn.server_id AND se.account_id = a.id::text
+), served AS (
   SELECT ac.*,
-         CASE WHEN ac.raw_primary IN ('vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto')
-              THEN ac.raw_primary ELSE 'vless' END AS primary_protocol,
-         (SELECT array_agg(proto ORDER BY proto)
-          FROM unnest(CASE WHEN cardinality(ac.active_rows) > 0 THEN ac.active_rows
-                           ELSE ARRAY[CASE WHEN ac.raw_primary IN ('vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto')
-                                           THEN ac.raw_primary ELSE 'vless' END] END) proto
-          WHERE NOT (CASE WHEN proto = 'mtproto' THEN ac.proxy
-                          WHEN NOT ac.accounts_known THEN TRUE
-                          ELSE COALESCE(proto = ANY (ac.deployed), FALSE) END)) AS undeployed
+         CASE WHEN lower(btrim(ac.raw_primary)) IN ('vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto')
+              THEN lower(btrim(ac.raw_primary)) ELSE 'vless' END AS primary_protocol,
+         -- rows GetClientProtocolSets seeds (active) before the set is checked
+         ARRAY(SELECT s FROM unnest(CASE WHEN ac.has_snapshot AND ac.accounts_known THEN ac.deployed
+                                         ELSE ARRAY[COALESCE(NULLIF(ac.raw_primary, ''), 'vless')] END) s
+               WHERE NOT s = ANY (ac.existing_rows)) AS seeded_rows
   FROM accounts ac
+), evaluated AS (
+  SELECT sv.*,
+         -- the primary is built first, then every active protocol is checked
+         ARRAY(SELECT x FROM (SELECT DISTINCT x FROM unnest(sv.active_rows || sv.seeded_rows || ARRAY[sv.primary_protocol]) x WHERE x IS NOT NULL AND x <> '') d ORDER BY array_position(ARRAY['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'], x) NULLS LAST, x) AS checked,
+         ARRAY(SELECT proto FROM unnest(ARRAY(SELECT x FROM (SELECT DISTINCT x FROM unnest(sv.active_rows || sv.seeded_rows || ARRAY[sv.primary_protocol]) x WHERE x IS NOT NULL AND x <> '') d ORDER BY array_position(ARRAY['vless', 'wireguard', 'hysteria2', 'shadowsocks', 'mtproto'], x) NULLS LAST, x)) proto
+               WHERE NOT (CASE WHEN NOT sv.has_snapshot THEN TRUE
+                               WHEN proto = 'mtproto' THEN sv.proxy
+                               WHEN NOT sv.accounts_known THEN TRUE
+                               ELSE proto = ANY (sv.deployed) END)) AS undeployed
+  FROM served sv
 ), classified AS (
   SELECT ev.*,
          CASE WHEN awaiting_first_apply THEN 'withheld_first_apply'
-              WHEN no_snapshot THEN 'unchecked_no_snapshot'
-              WHEN NOT accounts_known AND undeployed IS NULL THEN 'served_compatibility_mode'
-              WHEN undeployed IS NULL THEN 'served'
-              ELSE 'withheld_until_apply' END AS state_after_update
+              WHEN NOT has_snapshot THEN 'unchecked_no_snapshot'
+              WHEN cardinality(undeployed) = 0 AND NOT accounts_known THEN 'served_compatibility_mode'
+              WHEN cardinality(undeployed) = 0 THEN 'served'
+              ELSE 'withheld_until_apply' END AS state
   FROM evaluated ev
 )
-SELECT name, id AS account_id, primary_protocol, active_rows, listed AS in_active_render,
-       undeployed AS not_deployed_by_active_render, state_after_update
+SELECT name, id AS account_id, primary_protocol, checked AS checked_protocols, listed AS in_active_render,
+       undeployed AS not_deployed_by_active_render, state AS state_after_update
 FROM classified
-WHERE state_after_update IN ('withheld_first_apply', 'withheld_until_apply')
+WHERE state IN ('withheld_first_apply', 'withheld_until_apply')
 ORDER BY name, account_id;
 
 -- Mirrors the checks Manager runs when it derives a snapshot at start
 -- (configs.clientSettingsFromRenderedJSON). A failing version keeps no
 -- snapshot; if it is a node's ACTIVE version, that node keeps serving its
 -- saved settings without per-account checks, as before the update.
--- WireGuard/Hysteria2/MTProto checks are structural approximations; the
--- definitive result is post-update query Q3 and the Manager start log.
+-- WireGuard/Hysteria2/MTProto text checks and the JSON type checks are
+-- structural approximations; the definitive result is post-update query Q3
+-- and the Manager start log.
 \echo '== P4. Versions whose snapshot cannot be derived (reason codes only)'
 \echo '   Review: is_active = t rows (that node gets no applied-settings protection)'
 WITH versions AS (
@@ -222,40 +334,55 @@ WITH versions AS (
          COALESCE(s.active_config_version_id = cv.id, FALSE) AS is_active,
          cv.rendered_config AS rc
   FROM config_versions cv LEFT JOIN servers s ON s.id = cv.server_id
-), inbound_checks AS (
-  SELECT v.id,
-         bool_or(lower(i ->> 'type') = 'vless'
-                 AND NOT (COALESCE(i ->> 'listen_port', '') ~ '^[0-9]+$'
-                          AND (i ->> 'listen_port')::bigint BETWEEN 1 AND 65535)) AS vless_port_invalid,
-         bool_or(lower(i ->> 'type') = 'vless'
-                 AND COALESCE((i -> 'tls' -> 'reality' ->> 'enabled')::boolean, FALSE)
-                 AND COALESCE(i -> 'tls' -> 'reality' ->> 'private_key', '') !~ '^\s*[A-Za-z0-9_-]{43}\s*$') AS reality_key_unparsable,
-         bool_or(lower(i ->> 'type') = 'shadowsocks'
-                 AND (NOT COALESCE(i ->> 'listen_port', '') ~ '^[0-9]+$' OR (i ->> 'listen_port')::bigint < 1
-                      OR COALESCE(i ->> 'method', '') = '' OR btrim(COALESCE(i ->> 'password', '')) = '')) AS shadowsocks_incomplete
-  FROM versions v
-  CROSS JOIN LATERAL jsonb_array_elements(
-    CASE WHEN jsonb_typeof(v.rc -> 'singBox' -> 'inbounds') = 'array' THEN v.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
-  GROUP BY v.id
 ), reasons AS (
   SELECT v.server_id, v.version, v.status, v.is_active,
          concat_ws(', ',
-           CASE WHEN jsonb_typeof(v.rc) <> 'object' THEN 'rendered_config_not_object' END,
-           CASE WHEN jsonb_typeof(v.rc -> 'vpnAccounts') NOT IN ('array', 'null') THEN 'vpn_accounts_not_a_list' END,
-           CASE WHEN ic.vless_port_invalid THEN 'vless_listen_port_invalid' END,
-           CASE WHEN ic.reality_key_unparsable THEN 'reality_private_key_unparsable' END,
-           CASE WHEN ic.shadowsocks_incomplete THEN 'shadowsocks_inbound_incomplete' END,
-           CASE WHEN btrim(COALESCE(v.rc ->> 'wireGuard', '')) <> ''
-                 AND NOT (v.rc ->> 'wireGuard' ~ '(?m)^\s*PrivateKey\s*=\s*[A-Za-z0-9+/]{43}=\s*$'
-                          AND v.rc ->> 'wireGuard' ~ '(?m)^\s*ListenPort\s*=\s*[0-9]+\s*$'
-                          AND v.rc ->> 'wireGuard' ~ '(?m)^\s*Address\s*=')
+           CASE WHEN jsonb_typeof(v.rc) IS DISTINCT FROM 'object' THEN 'rendered_config_not_object' END,
+           CASE WHEN COALESCE(jsonb_typeof(v.rc -> 'vpnAccounts'), 'null') NOT IN ('array', 'null')
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.rc -> 'vpnAccounts') = 'array' THEN v.rc -> 'vpnAccounts' ELSE '[]'::jsonb END) e
+                             WHERE CASE WHEN jsonb_typeof(e) <> 'object' THEN TRUE
+                                        ELSE EXISTS (SELECT 1 FROM jsonb_each(e) kv
+                                                     WHERE kv.key IN ('id', 'displayName', 'status', 'vlessUuid', 'wireGuardPublicKey',
+                                                                      'wireGuardAddress', 'hysteria2Username', 'shadowsocksUsername')
+                                                       AND jsonb_typeof(kv.value) NOT IN ('string', 'null'))
+                                             OR COALESCE(jsonb_typeof(e -> 'protocols'), 'null') NOT IN ('array', 'null')
+                                             OR EXISTS (SELECT 1 FROM jsonb_array_elements(
+                                                          CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END) p
+                                                        WHERE jsonb_typeof(p) <> 'string') END)
+                THEN 'vpn_accounts_malformed' END,
+           CASE WHEN COALESCE(jsonb_typeof(v.rc -> 'singBox'), 'null') NOT IN ('object', 'null')
+                  OR COALESCE(jsonb_typeof(v.rc -> 'singBox' -> 'inbounds'), 'null') NOT IN ('array', 'null')
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.rc -> 'singBox' -> 'inbounds') = 'array' THEN v.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i WHERE jsonb_typeof(i) <> 'object')
+                THEN 'singbox_inbounds_malformed' END,
+           CASE WHEN COALESCE(jsonb_typeof(v.rc -> 'wireGuard'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(v.rc -> 'hysteria2'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(v.rc -> 'mtproto'), 'null') NOT IN ('string', 'null')
+                  OR COALESCE(jsonb_typeof(v.rc -> 'metadata'), 'null') NOT IN ('object', 'null')
+                THEN 'section_type_mismatch' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.rc -> 'singBox' -> 'inbounds') = 'array' THEN v.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'vless'
+                               AND NOT COALESCE(CASE WHEN jsonb_typeof(i -> 'listen_port') = 'number' THEN trunc((i -> 'listen_port')::numeric) END BETWEEN 1 AND 65535, FALSE))
+                THEN 'vless_listen_port_invalid' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.rc -> 'singBox' -> 'inbounds') = 'array' THEN v.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'vless'
+                               AND COALESCE(i -> 'tls' -> 'reality' -> 'enabled' = 'true'::jsonb, FALSE)
+                               AND (CASE WHEN jsonb_typeof(i -> 'tls' -> 'reality' -> 'private_key') = 'string' THEN i -> 'tls' -> 'reality' -> 'private_key' #>> '{}' ELSE '' END) !~ '^\s*[A-Za-z0-9_-]{43}\s*$')
+                THEN 'reality_private_key_unparsable' END,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.rc -> 'singBox' -> 'inbounds') = 'array' THEN v.rc -> 'singBox' -> 'inbounds' ELSE '[]'::jsonb END) i
+                             WHERE jsonb_typeof(i) = 'object' AND lower(btrim(CASE WHEN jsonb_typeof(i -> 'type') = 'string' THEN i -> 'type' #>> '{}' ELSE '' END)) = 'shadowsocks'
+                               AND (NOT COALESCE(CASE WHEN jsonb_typeof(i -> 'listen_port') = 'number' THEN trunc((i -> 'listen_port')::numeric) END >= 1, FALSE)
+                                    OR (CASE WHEN jsonb_typeof(i -> 'method') = 'string' THEN i -> 'method' #>> '{}' ELSE '' END) = '' OR btrim(CASE WHEN jsonb_typeof(i -> 'password') = 'string' THEN i -> 'password' #>> '{}' ELSE '' END) = ''))
+                THEN 'shadowsocks_inbound_incomplete' END,
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(v.rc -> 'wireGuard') = 'string' THEN v.rc -> 'wireGuard' #>> '{}' ELSE '' END) <> ''
+                 AND NOT ((CASE WHEN jsonb_typeof(v.rc -> 'wireGuard') = 'string' THEN v.rc -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*PrivateKey\s*=\s*[A-Za-z0-9+/]{43}=\s*$'
+                          AND (CASE WHEN jsonb_typeof(v.rc -> 'wireGuard') = 'string' THEN v.rc -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*ListenPort\s*=\s*[0-9]{1,5}\s*$'
+                          AND (CASE WHEN jsonb_typeof(v.rc -> 'wireGuard') = 'string' THEN v.rc -> 'wireGuard' #>> '{}' ELSE '' END) ~ '(?n)^\s*Address\s*=')
                 THEN 'wireguard_section_unparsable' END,
-           CASE WHEN btrim(COALESCE(v.rc ->> 'hysteria2', '')) <> ''
-                 AND NOT (v.rc ->> 'hysteria2' ~ 'domains' AND v.rc ->> 'hysteria2' ~ 'listen')
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(v.rc -> 'hysteria2') = 'string' THEN v.rc -> 'hysteria2' #>> '{}' ELSE '' END) <> '' AND NOT ((CASE WHEN jsonb_typeof(v.rc -> 'hysteria2') = 'string' THEN v.rc -> 'hysteria2' #>> '{}' ELSE '' END) ~ 'domains' AND (CASE WHEN jsonb_typeof(v.rc -> 'hysteria2') = 'string' THEN v.rc -> 'hysteria2' #>> '{}' ELSE '' END) ~ 'listen')
                 THEN 'hysteria2_section_unparsable' END,
-           CASE WHEN btrim(COALESCE(v.rc ->> 'mtproto', '')) <> ''
-                 AND NOT (v.rc ->> 'mtproto' ~ '(?m)^secret = "ee[0-9a-f]{68}"$'
-                          AND v.rc ->> 'mtproto' ~ '(?m)^bind-to = "0\.0\.0\.0:[0-9]+"$')
+           CASE WHEN btrim(CASE WHEN jsonb_typeof(v.rc -> 'mtproto') = 'string' THEN v.rc -> 'mtproto' #>> '{}' ELSE '' END) <> ''
+                 AND NOT ((CASE WHEN jsonb_typeof(v.rc -> 'mtproto') = 'string' THEN v.rc -> 'mtproto' #>> '{}' ELSE '' END) ~ '(?n)^secret = "ee[0-9a-f]{68}"$'
+                          AND (CASE WHEN jsonb_typeof(v.rc -> 'mtproto') = 'string' THEN v.rc -> 'mtproto' #>> '{}' ELSE '' END) ~ '(?n)^bind-to = "0\.0\.0\.0:[0-9]{1,5}"$')
                 THEN 'mtproto_section_unparsable' END
          ) AS derive_failure,
          CASE
@@ -263,14 +390,17 @@ WITH versions AS (
            WHEN EXISTS (
              SELECT 1 FROM jsonb_array_elements(
                CASE WHEN jsonb_typeof(v.rc -> 'vpnAccounts') = 'array' THEN v.rc -> 'vpnAccounts' ELSE '[]'::jsonb END) e
-             WHERE COALESCE(e ->> 'id', '') = ''
-                OR (COALESCE(e ->> 'vlessUuid', '') = '' AND COALESCE(e ->> 'wireGuardPublicKey', '') = ''
-                    AND COALESCE(e ->> 'wireGuardAddress', '') = '' AND COALESCE(e ->> 'hysteria2Username', '') = ''
-                    AND COALESCE(e ->> 'shadowsocksUsername', '') = ''
-                    AND CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN jsonb_array_length(e -> 'protocols') ELSE 0 END = 0))
+             WHERE jsonb_typeof(e) = 'object'
+               AND (btrim(CASE WHEN jsonb_typeof(e -> 'id') = 'string' THEN e -> 'id' #>> '{}' ELSE '' END) = ''
+                    OR (btrim(CASE WHEN jsonb_typeof(e -> 'vlessUuid') = 'string' THEN e -> 'vlessUuid' #>> '{}' ELSE '' END) = '' AND btrim(CASE WHEN jsonb_typeof(e -> 'wireGuardPublicKey') = 'string' THEN e -> 'wireGuardPublicKey' #>> '{}' ELSE '' END) = ''
+                        AND btrim(CASE WHEN jsonb_typeof(e -> 'wireGuardAddress') = 'string' THEN e -> 'wireGuardAddress' #>> '{}' ELSE '' END) = '' AND btrim(CASE WHEN jsonb_typeof(e -> 'hysteria2Username') = 'string' THEN e -> 'hysteria2Username' #>> '{}' ELSE '' END) = ''
+                        AND btrim(CASE WHEN jsonb_typeof(e -> 'shadowsocksUsername') = 'string' THEN e -> 'shadowsocksUsername' #>> '{}' ELSE '' END) = ''
+                        AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(
+                                          CASE WHEN jsonb_typeof(e -> 'protocols') = 'array' THEN e -> 'protocols' ELSE '[]'::jsonb END) x
+                                        WHERE jsonb_typeof(x) = 'string' AND btrim(x #>> '{}') <> ''))))
              THEN 'account_entry_without_protocol'
          END AS accounts_unknown_reason
-  FROM versions v LEFT JOIN inbound_checks ic ON ic.id = v.id
+  FROM versions v
 )
 SELECT s.name, r.version, r.status, r.is_active,
        NULLIF(r.derive_failure, '') AS snapshot_derive_failure,
@@ -282,7 +412,7 @@ ORDER BY r.is_active DESC, s.name, r.version;
 \echo '== P5. MTProto proxy per node (boolean only) and accounts that use MTProto'
 \echo '   The proxy has one node-wide secret: any issued MTProto link works while the proxy runs'
 SELECT s.name,
-       COALESCE(cv.rendered_config ->> 'mtproto', '') <> '' AS active_version_runs_mtproto_proxy,
+       btrim(CASE WHEN jsonb_typeof(cv.rendered_config -> 'mtproto') = 'string' THEN cv.rendered_config -> 'mtproto' #>> '{}' ELSE '' END) <> '' AS active_version_runs_mtproto_proxy,
        (SELECT count(*) FROM vpn_accounts a JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
          WHERE a.server_id = s.id AND a.status = 'active' AND cp.active_protocol = 'mtproto') AS active_mtproto_primary,
        (SELECT count(*) FROM vpn_accounts a JOIN vpn_account_protocols p ON p.vpn_account_id = a.id
@@ -308,9 +438,9 @@ ORDER BY s.name, p.protocol;
 \echo '== P7. Pending changes: primary preferences and node protocol switches not applied yet'
 SELECT s.name,
        s.vpn_protocol AS saved_node_protocol,
-       COALESCE(cv.rendered_config -> 'metadata' -> 'vpnCore' ->> 'protocol', '-') AS applied_node_protocol,
+       CASE WHEN cv.id IS NOT NULL THEN CASE WHEN jsonb_typeof(cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol') = 'string' THEN cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol' #>> '{}' ELSE '' END END AS applied_node_protocol,
        CASE WHEN cv.id IS NOT NULL
-            THEN s.vpn_protocol IS DISTINCT FROM (cv.rendered_config -> 'metadata' -> 'vpnCore' ->> 'protocol') END AS node_switch_pending,
+            THEN s.vpn_protocol IS DISTINCT FROM CASE WHEN jsonb_typeof(cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol') = 'string' THEN cv.rendered_config -> 'metadata' -> 'vpnCore' -> 'protocol' #>> '{}' ELSE '' END END AS node_switch_pending,
        (SELECT count(*) FROM vpn_accounts a JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
          WHERE a.server_id = s.id AND cp.protocol <> 'auto' AND cp.protocol <> cp.active_protocol) AS explicit_primary_pending,
        (SELECT count(*) FROM vpn_accounts a JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id

@@ -1,0 +1,234 @@
+package db
+
+// Rehearsal seed for the applied-client-settings deployment checks.
+//
+// rehearse.sh copies this file into a temporary worktree of the schema-155
+// base build (as internal/db/zz_rehearsal_seed155_test.go) and runs it there,
+// so the data is produced by the code that runs before the update: migrations
+// up to 000155, client profiles, protocol sets, renders and the apply trigger.
+// It never runs in the RouteGate repository itself.
+
+import (
+	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
+	"io"
+	"log/slog"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/ikaevus/routegate/backend/internal/configs"
+	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
+	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
+)
+
+func TestRehearsalSeed155(t *testing.T) {
+	url := os.Getenv("REHEARSAL_DATABASE_URL")
+	if url == "" || !strings.Contains(url, "rehearsal") {
+		t.Skip("REHEARSAL_DATABASE_URL must name a disposable rehearsal database")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	pool, err := Connect(ctx, url, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	rhExec(t, ctx, pool, `DROP SCHEMA IF EXISTS public CASCADE`)
+	rhExec(t, ctx, pool, `CREATE SCHEMA public`)
+	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
+		t.Fatal(err)
+	}
+	accounts := vpnaccounts.NewRepository(pool)
+	render := configs.NewService(configs.NewRepository(pool))
+
+	// fi-like: a VLESS node with users.
+	a := rhServer(t, ctx, pool, "fi-like", "203.0.113.10")
+	a1, a3, a4 := rhAccount(t, ctx, pool, a), rhAccount(t, ctx, pool, a), rhAccount(t, ctx, pool, a)
+	a2, a6 := rhAccount(t, ctx, pool, a), rhAccount(t, ctx, pool, a)
+	rhRead(t, ctx, accounts, a1, a3, a4, a6)
+	// Active WireGuard row without a rendered WireGuard peer.
+	rhProtocols(t, ctx, accounts, a2, "vless", "vless", "wireguard")
+	rhRenderApply(t, ctx, pool, render, a, "succeeded")
+	rhExec(t, ctx, pool, `UPDATE vpn_accounts SET status = 'suspended' WHERE id = $1::uuid`, a4)
+	a5 := rhAccount(t, ctx, pool, a) // created after the last apply
+	rhRead(t, ctx, accounts, a5)
+	// Primary drifted to WireGuard while the active rows and the render hold VLESS only.
+	rhExec(t, ctx, pool, `UPDATE vpn_client_profiles SET active_protocol = 'wireguard' WHERE vpn_account_id = $1::uuid`, a6)
+	rhProtocols(t, ctx, accounts, a3, "shadowsocks", "vless", "shadowsocks") // pending change
+	rhRenderApply(t, ctx, pool, render, a, "failed")                          // Agent error
+
+	// mtproto-node: runs the MTProto proxy for one account.
+	b := rhServer(t, ctx, pool, "mtproto-node", "203.0.113.20")
+	b1, b2 := rhAccount(t, ctx, pool, b), rhAccount(t, ctx, pool, b)
+	rhProtocols(t, ctx, accounts, b1, "mtproto", "vless", "mtproto")
+	rhRead(t, ctx, accounts, b2)
+	rhRenderApply(t, ctx, pool, render, b, "succeeded")
+
+	// never-applied: users but no successful apply.
+	c := rhServer(t, ctx, pool, "never-applied", "203.0.113.30")
+	rhRead(t, ctx, accounts, rhAccount(t, ctx, pool, c))
+	rhRender(t, ctx, render, c)
+
+	// legacy-list: active version rendered by a release without vpnAccounts.
+	d := rhServer(t, ctx, pool, "legacy-list", "203.0.113.40")
+	rhAccount(t, ctx, pool, d)
+	vd := rhRenderApply(t, ctx, pool, render, d, "succeeded")
+	rhExec(t, ctx, pool, `UPDATE config_versions SET rendered_config = rendered_config - 'vpnAccounts' WHERE id = $1::uuid`, vd)
+
+	// broken-reality: active version with an unparsable Reality private key.
+	e := rhServer(t, ctx, pool, "broken-reality", "203.0.113.50")
+	rhAccount(t, ctx, pool, e)
+	ve := rhRenderApply(t, ctx, pool, render, e, "succeeded")
+	rhSetVLESS(t, ctx, pool, ve, `{tls,reality,private_key}`, `"not-a-key"`)
+
+	// corrupt-ports: versions with malformed ports and flags; the active one
+	// carries a port beyond the bigint range as a string.
+	f := rhServer(t, ctx, pool, "corrupt-ports", "203.0.113.60")
+	rhAccount(t, ctx, pool, f)
+	corrupt := []struct{ path, value string }{
+		{`{listen_port}`, `"abc"`},
+		{`{listen_port}`, `1e30`},
+		{`{listen_port}`, `-1`},
+		{`{listen_port}`, `8443.9`},                          // Go truncates: valid
+		{`{tls,reality,enabled}`, `"true"`},                  // not a JSON boolean: Reality ignored
+		{`{listen_port}`, `"99999999999999999999999999"`},    // active version
+	}
+	for i, c := range corrupt {
+		rhExec(t, ctx, pool, `UPDATE servers SET vless_port = $2 WHERE id = $1::uuid`, f, 20000+i)
+		version := rhRenderApply(t, ctx, pool, render, f, "succeeded")
+		rhSetVLESS(t, ctx, pool, version, c.path, c.value)
+	}
+	// huge-port: the active version's port is a JSON number beyond bigint.
+	g := rhServer(t, ctx, pool, "huge-port", "203.0.113.70")
+	rhAccount(t, ctx, pool, g)
+	vg := rhRenderApply(t, ctx, pool, render, g, "succeeded")
+	rhSetVLESS(t, ctx, pool, vg, `{listen_port}`, `99999999999999999999999999`)
+	// shadowsocks-corrupt: a Shadowsocks node whose active port is a string.
+	h := rhServer(t, ctx, pool, "shadowsocks-corrupt", "203.0.113.80")
+	rhExec(t, ctx, pool, `UPDATE servers SET vpn_protocol = 'shadowsocks' WHERE id = $1::uuid`, h)
+	rhAccount(t, ctx, pool, h)
+	vh := rhRenderApply(t, ctx, pool, render, h, "succeeded")
+	rhExec(t, ctx, pool, `
+		UPDATE config_versions
+		SET rendered_config = jsonb_set(rendered_config, '{singBox,inbounds}', (
+			SELECT jsonb_agg(CASE WHEN i ->> 'type' = 'shadowsocks' THEN jsonb_set(i, '{listen_port}', '"8388x"') ELSE i END ORDER BY n)
+			FROM jsonb_array_elements(rendered_config -> 'singBox' -> 'inbounds') WITH ORDINALITY AS t(i, n)))
+		WHERE id = $1::uuid`, vh)
+}
+
+// rhSetVLESS replaces a value inside every VLESS inbound of a version.
+func rhSetVLESS(t *testing.T, ctx context.Context, pool *pgxpool.Pool, versionID, path, value string) {
+	t.Helper()
+	rhExec(t, ctx, pool, `
+		UPDATE config_versions
+		SET rendered_config = jsonb_set(rendered_config, '{singBox,inbounds}', (
+			SELECT jsonb_agg(CASE WHEN i ->> 'type' = 'vless' THEN jsonb_set(i, $2::text[], $3::jsonb, TRUE) ELSE i END ORDER BY n)
+			FROM jsonb_array_elements(rendered_config -> 'singBox' -> 'inbounds') WITH ORDINALITY AS t(i, n)))
+		WHERE id = $1::uuid`, versionID, path, value)
+}
+
+func rhServer(t *testing.T, ctx context.Context, pool *pgxpool.Pool, name, ip string) string {
+	t.Helper()
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := base64.RawURLEncoding.EncodeToString(key.Bytes())
+	public := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	var id string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO servers (name, status, deployment_role, public_ip, vpn_protocol, vless_port, vless_flow, vless_network,
+			reality_private_key, reality_public_key, reality_short_id, reality_server_name, mtproto_port)
+		VALUES ($1, 'active', 'vpn', $2, 'vless', 8443, 'xtls-rprx-vision', 'tcp', $3, $4, '0123456789abcdef', 'www.microsoft.com', 9443)
+		RETURNING id::text`, name, ip, private, public).Scan(&id); err != nil {
+		t.Fatalf("server %s: %v", name, err)
+	}
+	wg, err := wgcredentials.GenerateKeypair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rhExec(t, ctx, pool, `UPDATE servers SET wireguard_private_key = $2, wireguard_public_key = $3 WHERE id = $1::uuid`, id, wg.PrivateKey, wg.PublicKey)
+	return id
+}
+
+func rhAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, serverID string) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO vpn_accounts (username, protocol, display_name, status, server_id, vless_uuid)
+		VALUES ('acct-' || substr(md5(random()::text), 1, 8), 'sing-box', 'Rehearsal', 'active', $1::uuid, gen_random_uuid())
+		RETURNING id::text`, serverID).Scan(&id); err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	return id
+}
+
+func rhExec(t *testing.T, ctx context.Context, pool *pgxpool.Pool, sql string, args ...any) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, sql, args...); err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+}
+
+// rhRead mimics an administrator opening the account.
+func rhRead(t *testing.T, ctx context.Context, accounts *vpnaccounts.Repository, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if _, err := accounts.GetOrCreateClientProfile(ctx, id); err != nil {
+			t.Fatalf("profile: %v", err)
+		}
+		if _, _, err := accounts.GetClientProtocolSets(ctx, id); err != nil {
+			t.Fatalf("protocol sets: %v", err)
+		}
+	}
+}
+
+func rhProtocols(t *testing.T, ctx context.Context, accounts *vpnaccounts.Repository, id, primary string, enabled ...string) {
+	t.Helper()
+	rhRead(t, ctx, accounts, id)
+	profile, err := accounts.GetOrCreateClientProfile(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := vpnaccounts.UpdateClientProfileRequest{
+		Name: profile.Name, ClientType: profile.ClientType, DeviceType: profile.DeviceType,
+		FingerprintMode: profile.FingerprintMode, Fingerprint: profile.Fingerprint, SpiderX: profile.SpiderX,
+		MTU: profile.MTU, Protocol: primary,
+	}
+	if _, err := accounts.UpdateClientProfileWithProtocols(ctx, id, request, enabled); err != nil {
+		t.Fatalf("save protocols: %v", err)
+	}
+}
+
+func rhRender(t *testing.T, ctx context.Context, render *configs.Service, serverID string) string {
+	t.Helper()
+	response, err := render.Render(ctx, serverID)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !response.ValidationResult.Valid {
+		t.Fatalf("render invalid: %v", response.ValidationResult.Errors)
+	}
+	return response.ConfigVersion.ID
+}
+
+func rhRenderApply(t *testing.T, ctx context.Context, pool *pgxpool.Pool, render *configs.Service, serverID, status string) string {
+	t.Helper()
+	time.Sleep(20 * time.Millisecond)
+	versionID := rhRender(t, ctx, render, serverID)
+	var jobID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO config_apply_jobs (server_id, config_version_id, action, status, request_payload, result_payload)
+		VALUES ($1::uuid, $2::uuid, 'apply', 'pending', '{}'::jsonb, '{}'::jsonb) RETURNING id::text`, serverID, versionID).Scan(&jobID); err != nil {
+		t.Fatalf("apply job: %v", err)
+	}
+	rhExec(t, ctx, pool, `UPDATE config_apply_jobs SET status = $2, completed_at = now() WHERE id = $1::uuid`, jobID, status)
+	return versionID
+}
