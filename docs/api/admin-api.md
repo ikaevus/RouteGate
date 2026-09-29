@@ -35,7 +35,19 @@ the node's own hostname; `PATCH /api/v1/servers/{server_id}/protocol-settings`
 applies the same node-hostname rule to `realityServerName`. The Manager
 validates syntax only. The new keypair, Short ID, hostname and VLESS settings
 are saved in one atomic database update. Saving settings does not apply a
-runtime configuration. When a Reality config is applied, Agent resolves the
+runtime configuration.
+
+Client material (subscriptions and connection links) always describes the
+node's last Agent-confirmed apply. Each rendered config version records the
+client-facing node parameters it deploys (protocol, ports, VLESS flow, Reality
+public key, Short ID and server name, WireGuard/Hysteria2/Shadowsocks/MTProto
+endpoint parameters). Saved settings reach clients only after a version that
+contains them is applied successfully; a failed or rejected apply leaves
+clients on the previous parameters, and re-applying an older version switches
+clients back to that version. Until a node has any successful apply, client
+connection endpoints return `client_connection_unavailable`. Client-only
+values that the node does not enforce, such as the WireGuard DNS pushed to
+clients, take effect immediately. When a Reality config is applied, Agent resolves the
 handshake target and completes a TLS 1.3 handshake from the VPN node before
 replacing the running config; if that fails, the apply job fails at the
 `validate` stage and the running VPN service is left unchanged.

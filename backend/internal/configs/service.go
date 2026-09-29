@@ -76,11 +76,13 @@ func (s *Service) Render(ctx context.Context, serverID string) (RenderConfigResp
 		return RenderConfigResponse{}, err
 	}
 
+	clientSettings := appliedClientSettings(info)
 	version, err := s.repository.CreateConfigVersion(ctx, CreateConfigVersionInput{
 		ServerID:       serverID,
 		Status:         status,
 		ConfigHash:     hash,
 		RenderedConfig: rendered,
+		ClientSettings: &clientSettings,
 	})
 	if err != nil {
 		return RenderConfigResponse{}, err

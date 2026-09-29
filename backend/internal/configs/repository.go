@@ -203,6 +203,12 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 	if err != nil {
 		return ConfigVersion{}, err
 	}
+	var clientSettingsBytes []byte
+	if input.ClientSettings != nil {
+		if clientSettingsBytes, err = json.Marshal(input.ClientSettings); err != nil {
+			return ConfigVersion{}, err
+		}
+	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -259,6 +265,21 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 				return ConfigVersion{}, err
 			}
 			if !newerPreference {
+				// An equivalent render deploys exactly the same node runtime, so
+				// a version rendered before client snapshots existed can adopt
+				// this one. A version that already has a snapshot keeps it.
+				if clientSettingsBytes != nil {
+					if _, err := tx.Exec(ctx, `
+						UPDATE config_versions
+						SET client_settings = $2::jsonb
+						WHERE id = $1::uuid AND client_settings IS NULL
+					`, latest.ID, clientSettingsBytes); err != nil {
+						return ConfigVersion{}, err
+					}
+					if err := tx.Commit(ctx); err != nil {
+						return ConfigVersion{}, err
+					}
+				}
 				return latest, nil
 			}
 		}
@@ -272,9 +293,10 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			version,
 			config_hash,
 			status,
-			rendered_config
+			rendered_config,
+			client_settings
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5::jsonb)
+		VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::jsonb)
 		RETURNING
 			id::text,
 			server_id::text,
@@ -285,7 +307,7 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			created_at,
 			applied_at,
 			pinned
-	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes))
+	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes, clientSettingsBytes))
 	if err != nil {
 		return ConfigVersion{}, err
 	}

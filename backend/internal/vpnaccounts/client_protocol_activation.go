@@ -12,9 +12,15 @@ type activeClientProtocolSource interface {
 func (r *Repository) GetActiveClientProtocol(ctx context.Context, accountID string) (string, error) {
 	var protocol string
 	err := r.pool.QueryRow(ctx, `
-		SELECT COALESCE(cp.active_protocol, s.vpn_protocol, 'vless')
+		SELECT COALESCE(
+			cp.active_protocol,
+			NULLIF(acv.client_settings->>'vpnProtocol', ''),
+			s.vpn_protocol,
+			'vless'
+		)
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN config_versions acv ON acv.id = s.active_config_version_id
 		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
 	`, accountID).Scan(&protocol)

@@ -121,6 +121,10 @@ type SubscriptionServer struct {
 	MTProtoPort           int
 	MTProtoSecret         string
 	MTProtoFrontingDomain string
+	// AwaitingFirstApply is true while the node has no Agent-confirmed config
+	// apply. Its saved settings are not running yet, so no client material is
+	// served for it.
+	AwaitingFirstApply bool
 }
 
 type RoutingProfile struct {

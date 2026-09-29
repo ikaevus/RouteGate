@@ -48,6 +48,9 @@ func buildClientConnectionResponseForProtocol(accountID string, subscription Sub
 	if subscription.Server == nil {
 		return ClientConnectionResponse{}, ErrVPNAccountUnassigned
 	}
+	if subscription.Server.AwaitingFirstApply {
+		return unavailableClientConnection(ErrNodeConfigNotApplied)
+	}
 	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
 	protocol = normalizeConcreteClientProtocol(protocol)
 
