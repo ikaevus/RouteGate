@@ -56,8 +56,29 @@ sets every listed account's active protocol set and primary protocol exactly
 to that version, so re-applying an older version rolls clients back to its
 protocols, and a preference saved after the render stays pending. A client
 profile created later starts from the active version's protocols instead of
-defaulting to VLESS. Accounts a version does not list keep the previous
-timestamp-guarded promotion.
+defaulting to VLESS.
+
+An account the active version does not list (created, activated or given a
+protocol after that render) has no credentials on the node. Every client
+delivery path (the connection endpoint, token subscriptions, devices and each
+member of a multi-protocol set) then returns `client_connection_unavailable`
+naming the next action: render and successfully apply a new configuration.
+A multi-protocol set is served whole or not at all. Saving the account's
+client profile still works; the response then carries the profile without
+links, and preferences are validated against the node's saved settings.
+
+MTProto is the exception: its proxy uses one node-wide secret and the render
+does not list MTProto accounts. MTProto material is served whenever the
+account's MTProto protocol is active and the applied version runs the MTProto
+proxy, so existing MTProto clients keep working; an apply without the proxy
+deactivates MTProto for all accounts of the node.
+
+Compatibility limit: a version whose rendered config does not list its
+accounts (renders from before per-account protocol lists, or an entry
+without an account or protocol) records `accounts: null`. For such a version
+Manager cannot tell deployed from undeployed accounts; client material then
+follows the active protocol flags as before, and the per-account check starts
+with the next successful apply of a version rendered by this Manager.
 
 `vlessNetwork` accepts only `tcp`: the managed VLESS / Reality inbound serves
 raw TCP. A per-client Reality server name override is used only when it

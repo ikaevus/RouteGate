@@ -30,7 +30,12 @@ type AppliedClientSettings struct {
 	// Accounts maps each VPN account rendered into the version to the
 	// protocols the version deploys for it. It is the source of truth for the
 	// account's active protocol set whenever this version is (re)applied.
-	Accounts map[string]AppliedAccountProtocols `json:"accounts,omitempty"`
+	//
+	// An empty object means the version deploys no account; nil (JSON null)
+	// means the rendered config does not reliably list its accounts, so
+	// per-account deployment is unknown. MTProto never appears here: its
+	// proxy uses one node-wide secret and does not enumerate accounts.
+	Accounts map[string]AppliedAccountProtocols `json:"accounts"`
 }
 
 // AppliedAccountProtocols describes what one config version deploys for one

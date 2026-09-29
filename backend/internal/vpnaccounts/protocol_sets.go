@@ -70,10 +70,12 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 			now()
 		FROM vpn_client_profiles cp
 		JOIN vpn_accounts a ON a.id = cp.vpn_account_id`+appliedAccountProtocolsSQL+`
-		CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(
-			applied.account -> 'protocols',
-			jsonb_build_array(COALESCE(NULLIF(cp.active_protocol, ''), 'vless'))
-		)) AS deployed(protocol)
+		CROSS JOIN LATERAL jsonb_array_elements_text(CASE
+			-- The active version lists its accounts: seed exactly what it
+			-- deploys for this account, nothing for an account it omits.
+			WHEN `+appliedAccountsKnownSQL+` THEN COALESCE(applied.account -> 'protocols', '[]'::jsonb)
+			ELSE jsonb_build_array(COALESCE(NULLIF(cp.active_protocol, ''), 'vless'))
+		END) AS deployed(protocol)
 		WHERE cp.vpn_account_id = $1::uuid
 		ON CONFLICT (vpn_account_id, protocol) DO NOTHING
 	`, accountID); err != nil {
@@ -188,7 +190,11 @@ func (r *Repository) UpdateClientProfileWithProtocols(ctx context.Context, accou
 			FROM vpn_accounts a
 			JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id`+appliedAccountProtocolsSQL+`
 			CROSS JOIN LATERAL (
-				SELECT COALESCE((applied.account -> 'protocols') ? $2, cp.active_protocol = $2) AS active
+				SELECT CASE
+					WHEN `+appliedAccountsKnownSQL+` AND $2::text <> 'mtproto'
+						THEN COALESCE((applied.account -> 'protocols') ? $2::text, FALSE)
+					ELSE cp.active_protocol = $2::text
+				END AS active
 			) deployed
 			WHERE a.id = $1::uuid
 			ON CONFLICT (vpn_account_id, protocol) DO UPDATE

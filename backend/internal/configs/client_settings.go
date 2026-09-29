@@ -30,20 +30,7 @@ func clientSettingsFromRenderedJSON(payload []byte, primaries map[string]string)
 		return platform.AppliedClientSettings{}, fmt.Errorf("decode rendered config: %w", err)
 	}
 	settings := platform.AppliedClientSettings{VPNProtocol: config.Metadata.VPNCore.Protocol}
-	for _, account := range config.VPNAccounts {
-		protocols := orderedAccountProtocols(account.Protocols)
-		if strings.TrimSpace(account.ID) == "" || len(protocols) == 0 {
-			continue
-		}
-		if settings.Accounts == nil {
-			settings.Accounts = map[string]platform.AppliedAccountProtocols{}
-		}
-		applied := platform.AppliedAccountProtocols{Protocols: protocols}
-		if primary := normalizeAccountProtocol(primaries[account.ID]); primaries[account.ID] != "" && protocolListContains(protocols, primary) {
-			applied.Primary = primary
-		}
-		settings.Accounts[account.ID] = applied
-	}
+	settings.Accounts = renderedAccountDeployments(payload, config, primaries)
 
 	for _, inbound := range config.SingBox.Inbounds {
 		switch strings.ToLower(strings.TrimSpace(stringValue(inbound["type"]))) {
@@ -134,4 +121,37 @@ func realityPublicKeyFromPrivate(value string) (string, error) {
 		return "", fmt.Errorf("parse Reality private key: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(privateKey.PublicKey().Bytes()), nil
+}
+
+// renderedAccountDeployments lists what the version deploys per account. It
+// returns nil (unknown) unless the rendered config carries a vpnAccounts list
+// whose every entry names an account and at least one protocol, so a legacy
+// or unexpected render never makes deployed accounts look undeployed.
+func renderedAccountDeployments(payload []byte, config RenderedConfig, primaries map[string]string) map[string]platform.AppliedAccountProtocols {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return nil
+	}
+	if _, listed := envelope["vpnAccounts"]; !listed {
+		return nil
+	}
+	mtprotoDeployed := strings.TrimSpace(config.MTProto) != ""
+	accounts := make(map[string]platform.AppliedAccountProtocols, len(config.VPNAccounts))
+	for _, account := range config.VPNAccounts {
+		// Older renders did not record the protocol list; the credentials the
+		// render issued identify the deployed protocols just as reliably.
+		protocols := renderedAccountProtocols(account)
+		if strings.TrimSpace(account.ID) == "" || len(protocols) == 0 {
+			return nil
+		}
+		applied := platform.AppliedAccountProtocols{Protocols: protocols}
+		if requested := primaries[account.ID]; requested != "" {
+			primary := normalizeAccountProtocol(requested)
+			if protocolListContains(protocols, primary) || (primary == platform.VPNProtocolMTProto && mtprotoDeployed) {
+				applied.Primary = primary
+			}
+		}
+		accounts[account.ID] = applied
+	}
+	return accounts
 }

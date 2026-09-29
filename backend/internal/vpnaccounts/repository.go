@@ -671,22 +671,18 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		if vlessPort.Valid {
 			server.VLESSPort = int(vlessPort.Int32)
 		}
+		saved := server
+		profile.savedServer = &saved
 		server.AwaitingFirstApply = awaitingFirstApply
 		if len(appliedClientSettings) > 0 {
 			var applied platform.AppliedClientSettings
 			if err := json.Unmarshal(appliedClientSettings, &applied); err != nil {
 				return SubscriptionProfile{}, fmt.Errorf("decode applied client settings: %w", err)
 			}
-			server.useAppliedClientSettings(applied)
+			server.useAppliedClientSettings(applied, profile.Account.ID)
 		}
 		profile.Server = &server
-		profile.Credentials.VLESS.Flow = server.VLESSFlow
-		profile.Credentials.VLESS.Network = server.VLESSNetwork
-		profile.Credentials.Reality = RealityCredentials{
-			PublicKey:  server.RealityPublicKey,
-			ShortID:    server.RealityShortID,
-			ServerName: server.RealityServerName,
-		}
+		profile.useServerCredentials()
 		profile.Credentials.WireGuard = WireGuardCredentials{
 			PrivateKey: wireGuardPrivateKey.String,
 			PublicKey:  wireGuardPublicKey.String,

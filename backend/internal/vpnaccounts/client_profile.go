@@ -288,6 +288,10 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		h.databaseError(w, "get vpn subscription profile for client preflight", err)
 		return
 	}
+	// Preferences are validated against the node's saved settings: they take
+	// effect only through the next render, so a protocol the applied version
+	// does not deploy yet must still be selectable.
+	preflight := subscription.withSavedServerSettings()
 
 	candidate := clientProfileFromRequest(accountID, request)
 	requestedProtocols := effectiveRequestedProtocols(candidate, subscription.Server)
@@ -301,7 +305,7 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 	for _, protocol := range requestedProtocols {
 		protocolCandidate := candidate
 		protocolCandidate.Protocol = protocol
-		if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, subscription, protocolCandidate); err != nil {
+		if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, preflight, protocolCandidate); err != nil {
 			if writeClientConnectionDomainError(w, err) {
 				return
 			}
@@ -326,9 +330,10 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 			h.databaseError(w, "reload vpn subscription profile after protocol preparation", err)
 			return
 		}
+		preflight = subscription.withSavedServerSettings()
 	}
 	for _, protocol := range requestedProtocols {
-		if _, err := buildClientConnectionResponseForProtocol(accountID, subscription, candidate, protocol); err != nil {
+		if _, err := buildClientConnectionResponseForProtocol(accountID, preflight, candidate, protocol); err != nil {
 			if writeClientConnectionDomainError(w, err) {
 				return
 			}
@@ -363,14 +368,17 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response, err := buildClientConnectionResponseForProtocol(accountID, subscription, savedProfile, activeProtocol)
+	if err == nil {
+		err = attachActiveProtocolConnections(accountID, subscription, savedProfile, &response)
+	}
+	if awaitingNodeDeployment(err) {
+		// The preference is saved; the node simply has not been given this
+		// account's access yet. Report the saved profile without any link.
+		response, err = ClientConnectionResponse{VPNAccountID: accountID, Protocol: activeProtocol, Profile: savedProfile}, nil
+	}
 	if err != nil {
 		h.logger.Error("render persisted vpn client connection", "vpn_account_id", accountID, "error", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The client profile was saved but the active client connection could not be rendered consistently."))
-		return
-	}
-	if err := attachActiveProtocolConnections(accountID, subscription, savedProfile, &response); err != nil {
-		h.logger.Error("render active vpn client protocol set", "vpn_account_id", accountID, "error", err)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The active protocol set could not be rendered consistently."))
 		return
 	}
 	if h.audit != nil {
