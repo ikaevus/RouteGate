@@ -387,7 +387,19 @@ func TestGetSubscriptionQRCodeReturnsPayloadForValidToken(t *testing.T) {
 }
 
 func TestGetPublicSubscriptionMarksTokenUsed(t *testing.T) {
-	repo := &fakeAccountRepository{findToken: SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", Status: SubscriptionTokenStatusActive}}
+	// The JSON subscription renders only a complete, servable connection, so
+	// the node carries the Reality parameters GET /client-connection needs.
+	repo := &fakeAccountRepository{
+		findToken: SubscriptionToken{ID: "token-1", VPNAccountID: "account-1", Status: SubscriptionTokenStatusActive},
+		profile: SubscriptionProfile{
+			Account: Account{ID: "account-1", DisplayName: "Demo", Status: StatusActive, ServerID: "server-1", VLESSUUID: testVLESSUUID},
+			Server: &SubscriptionServer{
+				ID: "server-1", Name: "Finland", PublicIP: "203.0.113.10", Location: "Finland", Provider: "Demo",
+				VLESSPort: defaultSingBoxServerPort, VLESSFlow: "xtls-rprx-vision", VLESSNetwork: "tcp",
+				RealityPublicKey: "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0", RealityShortID: "0123456789abcdef", RealityServerName: "www.example.com",
+			},
+		},
+	}
 	handler := newTestHandler(repo)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/subscriptions/fixed-token", nil)
 	request.SetPathValue("token", "fixed-token")

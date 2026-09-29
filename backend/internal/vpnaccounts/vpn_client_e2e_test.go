@@ -339,3 +339,21 @@ func decodeJSON(t *testing.T, response *httptest.ResponseRecorder, target any) {
 		t.Fatalf("decode response: %v; body=%s", err, response.Body.String())
 	}
 }
+
+// GetOrCreateClientProfile/UpdateClientProfile satisfy clientProfileRepository
+// so the public subscription resolves the served connection through
+// h.clientConnection, like GetClientSubscription does.
+func (r *vpnClientE2ERepository) GetOrCreateClientProfile(_ context.Context, accountID string) (ClientProfile, error) {
+	return ClientProfile{
+		VPNAccountID:        accountID,
+		FingerprintMode:     FingerprintModeAuto,
+		Fingerprint:         DefaultAutoFingerprint,
+		ResolvedFingerprint: DefaultAutoFingerprint,
+		SpiderX:             "/",
+		Protocol:            ClientProtocolAuto,
+	}, nil
+}
+
+func (r *vpnClientE2ERepository) UpdateClientProfile(context.Context, string, UpdateClientProfileRequest) (ClientProfile, error) {
+	return ClientProfile{}, nil
+}

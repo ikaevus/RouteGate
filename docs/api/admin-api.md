@@ -113,9 +113,12 @@ Profile edits resolve `auto` against the same saved default, and clients keep
 the previously applied connection until that apply succeeds. Rows that
 existed before this rule are kept as explicit choices.
 
-The JSON subscription (`GET /api/v1/subscriptions/{token}`) follows the same
-deployment rule as the other delivery paths and reports `unavailable` instead
-of rendering access the node does not serve.
+The JSON subscription (`GET /api/v1/subscriptions/{token}`) resolves the
+connection through the same path as `GET …/client-connection` and `/sub/`:
+it renders the applied primary protocol, never a saved but unapplied
+preference, and reports `unavailable` (with the reason, and the applied
+primary protocol as `config.type`) whenever that connection is withheld. Its
+`server.endpoint` describes the same served protocol.
 
 Compatibility limit: a version whose rendered config does not list its
 accounts (renders from before per-account protocol lists, or an entry
