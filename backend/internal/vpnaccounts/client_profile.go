@@ -104,8 +104,10 @@ type clientProfileRepository interface {
 
 func (r *Repository) GetOrCreateClientProfile(ctx context.Context, vpnAccountID string) (ClientProfile, error) {
 	return scanClientProfile(r.pool.QueryRow(ctx, `
-		INSERT INTO vpn_client_profiles (vpn_account_id)
-		VALUES ($1::uuid)
+		INSERT INTO vpn_client_profiles (vpn_account_id, active_protocol)
+		SELECT a.id, `+appliedPrimaryProtocolSQL+`
+		FROM vpn_accounts a`+appliedAccountProtocolsSQL+`
+		WHERE a.id = $1::uuid
 		ON CONFLICT (vpn_account_id) DO UPDATE
 		SET vpn_account_id = EXCLUDED.vpn_account_id
 		RETURNING

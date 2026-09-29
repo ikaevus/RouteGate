@@ -21,12 +21,29 @@ import (
 //
 // A protocol section that is present but cannot be parsed is an error: a
 // partial snapshot could silently hand clients wrong parameters.
-func clientSettingsFromRenderedJSON(payload []byte) (platform.AppliedClientSettings, error) {
+//
+// primaries carries the primary protocol chosen per account at render time;
+// it may be nil (backfill of versions rendered before it was recorded).
+func clientSettingsFromRenderedJSON(payload []byte, primaries map[string]string) (platform.AppliedClientSettings, error) {
 	var config RenderedConfig
 	if err := json.Unmarshal(payload, &config); err != nil {
 		return platform.AppliedClientSettings{}, fmt.Errorf("decode rendered config: %w", err)
 	}
 	settings := platform.AppliedClientSettings{VPNProtocol: config.Metadata.VPNCore.Protocol}
+	for _, account := range config.VPNAccounts {
+		protocols := orderedAccountProtocols(account.Protocols)
+		if strings.TrimSpace(account.ID) == "" || len(protocols) == 0 {
+			continue
+		}
+		if settings.Accounts == nil {
+			settings.Accounts = map[string]platform.AppliedAccountProtocols{}
+		}
+		applied := platform.AppliedAccountProtocols{Protocols: protocols}
+		if primary := normalizeAccountProtocol(primaries[account.ID]); primaries[account.ID] != "" && protocolListContains(protocols, primary) {
+			applied.Primary = primary
+		}
+		settings.Accounts[account.ID] = applied
+	}
 
 	for _, inbound := range config.SingBox.Inbounds {
 		switch strings.ToLower(strings.TrimSpace(stringValue(inbound["type"]))) {

@@ -260,6 +260,9 @@ type CreateConfigVersionInput struct {
 	Status         string
 	ConfigHash     string
 	RenderedConfig RenderedConfig
+	// AccountPrimaryProtocols is the primary protocol chosen for each account
+	// when the config was rendered; the rendered JSON records only the set.
+	AccountPrimaryProtocols map[string]string
 }
 
 type CreateConfigApplyJobInput struct {

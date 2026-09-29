@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -61,7 +62,7 @@ func renderedJSON(t *testing.T, info ServerConfigInfo) []byte {
 
 func TestClientSettingsAreDerivedFromTheRenderedRuntime(t *testing.T) {
 	info, realityPublic, wireGuardPublic := renderedClientSettingsFixture(t, "", "")
-	got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info))
+	got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info), nil)
 	if err != nil {
 		t.Fatalf("derive client settings: %v", err)
 	}
@@ -70,8 +71,11 @@ func TestClientSettingsAreDerivedFromTheRenderedRuntime(t *testing.T) {
 		RealityPublicKey: realityPublic, RealityShortID: "0123456789abcdef", RealityServerName: "www.microsoft.com",
 		WireGuardPort: 51820, WireGuardAddress: "10.66.0.1/24", WireGuardPublicKey: wireGuardPublic,
 		ShadowsocksPort: 8388, ShadowsocksMethod: shadowsocksMethod, ShadowsocksServerKey: "c2VydmVyLWtleS0xNmJ5dGU=",
+		Accounts: map[string]platform.AppliedAccountProtocols{"account-1": {
+			Protocols: []string{platform.VPNProtocolVLESS, platform.VPNProtocolWireGuard, platform.VPNProtocolShadowsocks},
+		}},
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("client settings = %+v\nwant %+v", got, want)
 	}
 }
@@ -82,7 +86,7 @@ func TestClientSettingsAreDerivedFromTheRenderedRuntime(t *testing.T) {
 func TestClientSettingsIgnoreSavedValuesTheNodeDoesNotServe(t *testing.T) {
 	for _, network := range []string{"ws", "grpc", "http"} {
 		info, realityPublic, _ := renderedClientSettingsFixture(t, "stale-public-key", network)
-		got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info))
+		got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info), nil)
 		if err != nil {
 			t.Fatalf("derive client settings: %v", err)
 		}
@@ -103,10 +107,10 @@ func TestClientSettingsRejectUnparseableProtocolSections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := clientSettingsFromRenderedJSON(payload); err == nil {
+	if _, err := clientSettingsFromRenderedJSON(payload, nil); err == nil {
 		t.Fatal("a broken protocol section must not yield a partial snapshot")
 	}
-	if snapshot := clientSettingsSnapshot(payload); snapshot != nil {
+	if snapshot := clientSettingsSnapshot(payload, nil); snapshot != nil {
 		t.Fatalf("broken rendered config produced snapshot %s", snapshot)
 	}
 }
@@ -126,12 +130,33 @@ func TestClientSettingsCoverHysteria2AndMTProto(t *testing.T) {
 			Hysteria2Password: "hysteria-password",
 		}},
 	}
-	got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info))
+	got, err := clientSettingsFromRenderedJSON(renderedJSON(t, info), nil)
 	if err != nil {
 		t.Fatalf("derive client settings: %v", err)
 	}
 	if got.Hysteria2Port != 443 || got.Hysteria2Domain != "hy.example.com" ||
 		got.MTProtoPort != 9443 || got.MTProtoSecret != secret || got.MTProtoFrontingDomain != "www.cloudflare.com" {
 		t.Fatalf("client settings = %+v", got)
+	}
+}
+
+// The rendered JSON records only each account's protocol set; the primary
+// chosen at render time is kept only when the version deploys it.
+func TestClientSettingsRecordRenderedAccountPrimaryProtocol(t *testing.T) {
+	info, _, _ := renderedClientSettingsFixture(t, "", "")
+	payload := renderedJSON(t, info)
+	got, err := clientSettingsFromRenderedJSON(payload, map[string]string{"account-1": platform.VPNProtocolShadowsocks})
+	if err != nil {
+		t.Fatalf("derive client settings: %v", err)
+	}
+	if account := got.Accounts["account-1"]; account.Primary != platform.VPNProtocolShadowsocks {
+		t.Fatalf("primary = %q, want shadowsocks", account.Primary)
+	}
+	got, err = clientSettingsFromRenderedJSON(payload, map[string]string{"account-1": platform.VPNProtocolHysteria2})
+	if err != nil {
+		t.Fatalf("derive client settings: %v", err)
+	}
+	if account := got.Accounts["account-1"]; account.Primary != "" {
+		t.Fatalf("a primary the version does not deploy must be dropped, got %q", account.Primary)
 	}
 }

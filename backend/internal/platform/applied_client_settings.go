@@ -27,4 +27,16 @@ type AppliedClientSettings struct {
 	MTProtoPort           int    `json:"mtprotoPort"`
 	MTProtoSecret         string `json:"mtprotoSecret"`
 	MTProtoFrontingDomain string `json:"mtprotoFrontingDomain"`
+	// Accounts maps each VPN account rendered into the version to the
+	// protocols the version deploys for it. It is the source of truth for the
+	// account's active protocol set whenever this version is (re)applied.
+	Accounts map[string]AppliedAccountProtocols `json:"accounts,omitempty"`
+}
+
+// AppliedAccountProtocols describes what one config version deploys for one
+// VPN account. Primary is empty when it is unknown (versions rendered before
+// it was recorded) or not part of the deployed set.
+type AppliedAccountProtocols struct {
+	Primary   string   `json:"primary,omitempty"`
+	Protocols []string `json:"protocols"`
 }

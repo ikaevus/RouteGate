@@ -63,12 +63,17 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 		)
 		SELECT
 			cp.vpn_account_id,
-			COALESCE(NULLIF(cp.active_protocol, ''), 'vless'),
+			deployed.protocol,
 			TRUE,
 			TRUE,
 			cp.updated_at,
 			now()
 		FROM vpn_client_profiles cp
+		JOIN vpn_accounts a ON a.id = cp.vpn_account_id`+appliedAccountProtocolsSQL+`
+		CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(
+			applied.account -> 'protocols',
+			jsonb_build_array(COALESCE(NULLIF(cp.active_protocol, ''), 'vless'))
+		)) AS deployed(protocol)
 		WHERE cp.vpn_account_id = $1::uuid
 		ON CONFLICT (vpn_account_id, protocol) DO NOTHING
 	`, accountID); err != nil {
@@ -143,8 +148,10 @@ func (r *Repository) UpdateClientProfileWithProtocols(ctx context.Context, accou
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO vpn_client_profiles (vpn_account_id)
-		VALUES ($1::uuid)
+		INSERT INTO vpn_client_profiles (vpn_account_id, active_protocol)
+		SELECT a.id, `+appliedPrimaryProtocolSQL+`
+		FROM vpn_accounts a`+appliedAccountProtocolsSQL+`
+		WHERE a.id = $1::uuid
 		ON CONFLICT (vpn_account_id) DO NOTHING
 	`, accountID); err != nil {
 		return ClientProfile{}, err
@@ -170,11 +177,20 @@ func (r *Repository) UpdateClientProfileWithProtocols(ctx context.Context, accou
 
 	for _, protocol := range concreteClientProtocols {
 		desired := containsClientProtocol(enabledProtocols, protocol)
+		// A row created here must not lose the active state of a protocol the
+		// node already serves for the account; the desired flag is the new
+		// preference and stays pending until an apply confirms it.
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO vpn_account_protocols (
-				vpn_account_id, protocol, desired_enabled, active_enabled, updated_at
+				vpn_account_id, protocol, desired_enabled, active_enabled, updated_at, activated_at
 			)
-			VALUES ($1::uuid, $2, $3, FALSE, now())
+			SELECT a.id, $2, $3, deployed.active, now(), CASE WHEN deployed.active THEN now() END
+			FROM vpn_accounts a
+			JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id`+appliedAccountProtocolsSQL+`
+			CROSS JOIN LATERAL (
+				SELECT COALESCE((applied.account -> 'protocols') ? $2, cp.active_protocol = $2) AS active
+			) deployed
+			WHERE a.id = $1::uuid
 			ON CONFLICT (vpn_account_id, protocol) DO UPDATE
 			SET
 				desired_enabled = EXCLUDED.desired_enabled,

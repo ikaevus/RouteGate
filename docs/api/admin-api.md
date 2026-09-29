@@ -50,6 +50,15 @@ version. Until a node has any successful apply, client connection endpoints
 return `client_connection_unavailable`. The WireGuard DNS pushed to clients
 is not part of the node runtime and takes effect immediately.
 
+Each config version also records, per rendered account, the protocols it
+deploys and the primary protocol chosen at render time. A successful apply
+sets every listed account's active protocol set and primary protocol exactly
+to that version, so re-applying an older version rolls clients back to its
+protocols, and a preference saved after the render stays pending. A client
+profile created later starts from the active version's protocols instead of
+defaulting to VLESS. Accounts a version does not list keep the previous
+timestamp-guarded promotion.
+
 `vlessNetwork` accepts only `tcp`: the managed VLESS / Reality inbound serves
 raw TCP. A per-client Reality server name override is used only when it
 matches the node's applied server name (ignoring case); any other value would

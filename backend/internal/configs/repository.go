@@ -206,7 +206,7 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 	// A render that cannot yield client settings (for example a version that
 	// failed validation) is stored without a snapshot and never becomes the
 	// source of client material; see clientSettingsFromRenderedJSON.
-	clientSettingsBytes := clientSettingsSnapshot(configBytes)
+	clientSettingsBytes := clientSettingsSnapshot(configBytes, input.AccountPrimaryProtocols)
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -265,7 +265,7 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			if !newerPreference {
 				// An equivalent render deploys exactly the same node runtime;
 				// make sure the reused version carries its own snapshot.
-				if snapshot := clientSettingsSnapshot(latest.RenderedConfig); snapshot != nil {
+				if snapshot := clientSettingsSnapshot(latest.RenderedConfig, input.AccountPrimaryProtocols); snapshot != nil {
 					if _, err := tx.Exec(ctx, `
 						UPDATE config_versions
 						SET client_settings = $2::jsonb
@@ -690,8 +690,8 @@ func scanConfigApplyJob(row scanner) (ConfigApplyJob, error) {
 	return job, nil
 }
 
-func clientSettingsSnapshot(renderedConfig []byte) []byte {
-	settings, err := clientSettingsFromRenderedJSON(renderedConfig)
+func clientSettingsSnapshot(renderedConfig []byte, primaries map[string]string) []byte {
+	settings, err := clientSettingsFromRenderedJSON(renderedConfig, primaries)
 	if err != nil {
 		return nil
 	}
@@ -740,7 +740,7 @@ func (r *Repository) BackfillClientSettings(ctx context.Context) (int, []ClientS
 			rows.Close()
 			return 0, nil, err
 		}
-		settings, deriveErr := clientSettingsFromRenderedJSON(renderedConfig)
+		settings, deriveErr := clientSettingsFromRenderedJSON(renderedConfig, nil)
 		if deriveErr != nil {
 			item.failure.Reason = deriveErr.Error()
 		} else if item.snapshot, err = json.Marshal(settings); err != nil {
