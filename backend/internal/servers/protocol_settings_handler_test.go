@@ -168,6 +168,21 @@ func TestUpdateProtocolSettingsRejectsInvalidRealityHostname(t *testing.T) {
 	}
 }
 
+func TestUpdateProtocolSettingsRejectsNodeHostnameAsRealityServerName(t *testing.T) {
+	fakeProtocolSettingsInput = UpdateProtocolSettingsInput{}
+	handler := testHandler(&fakeServerRepository{getByID: Server{ID: "server-id", Name: "RU VPS", Hostname: "ru.routegate.org"}}, &fakeRegistrationTokenRepository{})
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/servers/server-id/protocol-settings", strings.NewReader(`{"realityServerName":" RU.routegate.org "}`))
+	request.SetPathValue("server_id", "server-id")
+	response := httptest.NewRecorder()
+	handler.UpdateProtocolSettings(response, request)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "not this VPN node's hostname") {
+		t.Fatalf("status = %d; body=%s", response.Code, response.Body.String())
+	}
+	if fakeProtocolSettingsInput.RealityServerName != nil {
+		t.Fatal("node hostname must not be stored as the Reality server name")
+	}
+}
+
 func TestConfigureRecommendedProtocolSettingsGeneratesCompleteProfile(t *testing.T) {
 	fakeProtocolSettingsResult = ProtocolSettings{
 		ServerID:  "server-id",

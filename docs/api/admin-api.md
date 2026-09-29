@@ -31,10 +31,14 @@ settings. The server private key is never returned by the Admin API.
 `POST /api/v1/servers/{server_id}/protocol-settings/recommended` configures
 VLESS / Reality. It requires JSON `{"serverName":"www.example.com"}` with an
 explicit external TLS handshake hostname. RouteGate rejects an IP address or
-the node's own hostname. The Manager validates syntax; the administrator must
-check DNS and TLS reachability from the VPN node. The new keypair, Short ID,
-hostname and VLESS settings are saved in one atomic database update. Saving
-settings does not apply a runtime configuration.
+the node's own hostname; `PATCH /api/v1/servers/{server_id}/protocol-settings`
+applies the same node-hostname rule to `realityServerName`. The Manager
+validates syntax only. The new keypair, Short ID, hostname and VLESS settings
+are saved in one atomic database update. Saving settings does not apply a
+runtime configuration. When a Reality config is applied, Agent resolves the
+handshake target and completes a TLS 1.3 handshake from the VPN node before
+replacing the running config; if that fails, the apply job fails at the
+`validate` stage and the running VPN service is left unchanged.
 
 VPN account credential and token-protected subscription responses select their
 shape from the assigned server protocol. WireGuard delivery returns the peer

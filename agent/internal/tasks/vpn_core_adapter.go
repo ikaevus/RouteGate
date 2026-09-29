@@ -116,17 +116,21 @@ type singBoxVLESSAdapter struct {
 	service     ServiceController
 	descriptor  platform.VPNCoreAdapterDescriptor
 	inboundType string
+	// realityCheck probes Reality handshake targets from this node before the
+	// staged config replaces the running one. Nil skips the probe.
+	realityCheck func(context.Context, string) error
 }
 
 var _ VPNCoreAdapter = singBoxVLESSAdapter{}
 
 func NewSingBoxVLESSAdapter(stagingDir, binary, service string) VPNCoreAdapter {
 	return singBoxVLESSAdapter{
-		stager:      NewStager(stagingDir),
-		validator:   NewValidator(binary),
-		service:     NewServiceController(service),
-		descriptor:  platform.ManagedVPNCoreAdapters()[0],
-		inboundType: platform.VPNProtocolVLESS,
+		stager:       NewStager(stagingDir),
+		validator:    NewValidator(binary),
+		service:      NewServiceController(service),
+		descriptor:   platform.ManagedVPNCoreAdapters()[0],
+		inboundType:  platform.VPNProtocolVLESS,
+		realityCheck: CheckRealityHandshakeTargets,
 	}
 }
 
@@ -134,7 +138,7 @@ func NewSingBoxShadowsocksAdapter(stagingDir, binary, service string) VPNCoreAda
 	return singBoxVLESSAdapter{
 		stager: NewStager(stagingDir), validator: NewValidator(binary),
 		service: NewServiceController(service), descriptor: platform.ManagedVPNCoreAdapters()[3],
-		inboundType: platform.VPNProtocolShadowsocks,
+		inboundType: platform.VPNProtocolShadowsocks, realityCheck: CheckRealityHandshakeTargets,
 	}
 }
 
@@ -147,7 +151,11 @@ func (a singBoxVLESSAdapter) Stage(task ConfigTask) (StageResult, error) {
 }
 
 func (a singBoxVLESSAdapter) Validate(ctx context.Context, configPath string) (ValidationResult, error) {
-	return a.validator.Check(ctx, configPath)
+	result, err := a.validator.Check(ctx, configPath)
+	if err != nil || a.realityCheck == nil {
+		return result, err
+	}
+	return result, a.realityCheck(ctx, configPath)
 }
 
 func (a singBoxVLESSAdapter) Restart(ctx context.Context) (ServiceResult, error) {

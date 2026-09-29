@@ -36,7 +36,9 @@ the validated configuration apply owns activation.
    do not install protocol runtimes manually on the host.
 7. For VLESS / Reality, explicitly choose an external TLS handshake hostname
    and check its DNS and TLS reachability from the VPN node. The node hostname
-   is not an automatic Reality target. Save settings, render and review a
+   is not an automatic Reality target. Agent repeats the DNS and TLS 1.3
+   check from the node during apply and stops before replacing the running
+   config if it fails. Save settings, render and review a
    validated config version, apply it, and check the Agent result. Open the
    selected inbound VPN port in host and provider firewalls before testing a
    client; Agent's Manager connection itself needs outbound HTTPS only.
