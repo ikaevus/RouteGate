@@ -72,16 +72,15 @@ func (h *Handler) GetClientProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := ClientProfileStateResponse{VPNAccountID: accountID, ActiveProtocol: activeProtocol}
-	// The same checks that guard client delivery decide the state; the
-	// rendered links are discarded.
-	_, err = buildClientConnectionResponseForProtocol(accountID, subscription, profile, activeProtocol)
-	if err == nil {
-		var discarded ClientConnectionResponse
-		err = attachActiveProtocolConnections(accountID, subscription, profile, &discarded)
-	}
+	// Evaluate exactly the connection GET /client-connection serves, so both
+	// endpoints agree; the rendered links are discarded.
+	connection, err := h.clientConnection(r.Context(), accountID)
 	switch {
 	case err == nil:
 		response.ConnectionStatus = ClientConnectionStatusReady
+	case errors.Is(err, pgx.ErrNoRows):
+		writeAccountNotFound(w)
+		return
 	case errors.Is(err, ErrVPNAccountUnassigned):
 		response.ConnectionStatus = ClientConnectionStatusUnassigned
 		response.ConnectionMessage = "Assign a VPN node before creating a client connection."
@@ -98,23 +97,24 @@ func (h *Handler) GetClientProfile(w http.ResponseWriter, r *http.Request) {
 		h.databaseError(w, "evaluate vpn client connection state", err)
 		return
 	}
-	// Report as active only what the node really serves for the account.
-	profile.ActiveProtocols = servedProtocols(subscription.Server, profile.ActiveProtocols)
+	// Report as active exactly what the connection serves: nothing while it
+	// is withheld, otherwise every protocol it carries. This includes MTProto
+	// served through the applied node-wide proxy without an active_enabled row.
+	profile.ActiveProtocols = servedProtocols(connection)
+	if err == nil {
+		response.ActiveProtocol = connection.Protocol
+	}
 	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
 	response.Profile = profile
 	httpx.WriteJSON(w, http.StatusOK, response)
 }
 
-// servedProtocols keeps the active protocols the applied configuration
-// actually deploys for the account; nothing is served before the first apply.
-func servedProtocols(server *SubscriptionServer, active []string) []string {
-	if server == nil || server.AwaitingFirstApply {
-		return []string{}
-	}
-	served := make([]string, 0, len(active))
-	for _, protocol := range active {
-		if server.requireDeployed(protocol) == nil {
-			served = append(served, protocol)
+// servedProtocols lists the protocols a built client connection carries.
+func servedProtocols(connection ClientConnectionResponse) []string {
+	served := make([]string, 0, len(connection.Connections))
+	for _, item := range connection.Connections {
+		if item.Protocol != "" && !containsClientProtocol(served, item.Protocol) {
+			served = append(served, item.Protocol)
 		}
 	}
 	return served

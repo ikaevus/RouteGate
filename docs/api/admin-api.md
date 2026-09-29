@@ -82,7 +82,10 @@ links:
 ```
 
 `profile.enabledProtocols` is the saved desired set; `profile.activeProtocols`
-is the set the node actually serves now (empty until the account is deployed).
+is exactly the set `GET …/client-connection` serves now: both endpoints
+evaluate the same connection, so it is empty whenever that endpoint withholds
+access, and includes MTProto served through the applied node-wide proxy even
+without a saved MTProto protocol row.
 `connectionStatus` is `ready`, `awaiting_apply` (the active version does not
 include this account's access), `awaiting_first_apply` (the node has no
 successful apply), `unassigned` or `unavailable`. Clients keep using

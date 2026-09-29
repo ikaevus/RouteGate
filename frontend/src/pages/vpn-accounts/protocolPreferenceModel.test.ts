@@ -16,10 +16,11 @@ function state(
   enabledProtocols: ClientProtocol[] | undefined,
   activeProtocols: ClientProtocol[] | undefined,
   connectionMessage = '',
+  activeProtocol: ClientProtocol = 'vless',
 ): VpnClientProfileStateResponse {
   return {
     vpnAccountId: 'account-id',
-    activeProtocol: 'vless',
+    activeProtocol,
     connectionStatus,
     connectionMessage,
     profile: {
@@ -77,4 +78,20 @@ test('legacy responses without protocol sets fall back to the primary protocol o
   assert.deepEqual(protocolPreferenceView(state('ready', undefined, undefined)).active, ['vless']);
   assert.deepEqual(protocolPreferenceView(state('awaiting_apply', undefined, undefined)).active, []);
   assert.deepEqual(protocolPreferenceView(state('awaiting_apply', undefined, undefined)).desired, ['vless']);
+});
+
+test('MTProto served by the applied node-wide proxy counts as active without a saved protocol row', () => {
+  const view = protocolPreferenceView(state('ready', [], ['mtproto'], '', 'mtproto'));
+  assert.deepEqual(view.active, ['mtproto']);
+  assert.deepEqual(view.desired, ['mtproto']);
+  assert.equal(view.activationPending, false);
+  assert.equal(canApplyProtocolSet(view, false), false);
+  assert.equal(activationConfirmed(state('ready', [], ['mtproto'], '', 'mtproto'), ['mtproto']), true);
+});
+
+test('MTProto is not reported active once the applied version no longer runs the proxy', () => {
+  const view = protocolPreferenceView(state('awaiting_apply', ['mtproto'], [], awaitingMessage, 'mtproto'));
+  assert.deepEqual(view.active, []);
+  assert.equal(view.awaitingDeployment, true);
+  assert.equal(canApplyProtocolSet(view, false), true);
 });
