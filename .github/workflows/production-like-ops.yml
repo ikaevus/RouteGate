@@ -23,6 +23,7 @@ on:
           - restart-mtproto
           - reconcile-mtproto-port-conflict
           - renew-certificate
+          - preflight-applied-client-settings-155
 
 permissions:
   contents: read
@@ -75,6 +76,7 @@ jobs:
               'operation=restart-mtproto') operation=restart-mtproto ;;
               'operation=reconcile-mtproto-port-conflict') operation=reconcile-mtproto-port-conflict ;;
               'operation=renew-certificate') operation=renew-certificate ;;
+              'operation=preflight-applied-client-settings-155') operation=preflight-applied-client-settings-155 ;;
               *)
                 printf 'Unsupported ops request body.\n' >&2
                 exit 2
@@ -83,9 +85,15 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate) ;;
+            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155) ;;
             *) exit 2 ;;
           esac
+          # The database preflight runs with production-like secrets only from
+          # the trusted main workflow definition, never a dispatch from another ref.
+          if [[ "$operation" == "preflight-applied-client-settings-155" && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            printf 'The %s operation can only be dispatched from main.\n' "$operation" >&2
+            exit 2
+          fi
           printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
 
       - name: Setup Go for rollback-cycle validation
@@ -133,11 +141,13 @@ jobs:
           bash -n scripts/production-like-task-diagnostics.sh
           bash -n scripts/deploy-production-like-bundle.sh
           bash -n scripts/validate-production-like-deploy.sh
+          bash -n scripts/production-like-preflight-applied-client-settings.sh
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck -x scripts/production-like-ops.sh
             shellcheck -x scripts/production-like-task-diagnostics.sh
             shellcheck -x scripts/deploy-production-like-bundle.sh
             shellcheck -x scripts/validate-production-like-deploy.sh
+            shellcheck -x scripts/production-like-preflight-applied-client-settings.sh
           fi
 
       - name: Configure SSH
@@ -262,6 +272,24 @@ jobs:
             set -e
             "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
               "rm -f '$remote_bundle_fail' '$remote_bundle_redeploy' '$remote_deploy' '$remote_fail_validate' '$remote_validate' '$remote_core_fail' '$remote_core_redeploy' '$remote_ops' '$remote_cycle'" || true
+          elif [[ "$OPERATION" == "preflight-applied-client-settings-155" ]]; then
+            # Fixed files from the trusted main checkout only: the pinned SQL
+            # (verified again by SHA-256 on the host) and its read-only runner.
+            remote_prefix="/tmp/routegate-preflight-${GITHUB_RUN_ID}"
+            remote_runner="${remote_prefix}.sh"
+            remote_sql="${remote_prefix}.sql"
+            set +e
+            if "${SCP[@]}" scripts/production-like-preflight-applied-client-settings.sh "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_runner" \
+              && "${SCP[@]}" docs/operations/applied-client-settings/preflight-schema-155.sql "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_sql"; then
+              "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+                "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '$remote_runner' '$remote_sql'" >"$output_file" 2>&1
+              rc=$?
+            else
+              printf '[routegate-preflight] ERROR: could not copy the preflight files to the host\n' >"$output_file"
+              rc=4
+            fi
+            set -e
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_runner' '$remote_sql'" || true
           else
             remote_script="/tmp/routegate-ops-${GITHUB_RUN_ID}.sh"
             if [[ "$OPERATION" == "diagnose-agent-task" ]]; then
@@ -284,8 +312,23 @@ jobs:
             "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true
           fi
 
-          cat "$output_file"
+          if [[ "$OPERATION" == "preflight-applied-client-settings-155" ]]; then
+            # The full P0-P7 result (node names, account ids) goes to the
+            # artifact only; the log keeps the runner's status lines.
+            grep -E '^\[routegate-preflight\]' "$output_file" || true
+          else
+            cat "$output_file"
+          fi
           printf 'rc=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Upload full preflight result
+        if: always() && steps.request.outputs.operation == 'preflight-applied-client-settings-155'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: routegate-preflight-applied-client-settings-155-${{ github.run_id }}
+          path: ${{ runner.temp }}/routegate-ops-output.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Publish sanitized audit result
         if: always() && steps.request.outcome == 'success'
@@ -305,7 +348,14 @@ jobs:
           fi
 
           output_file="${RUNNER_TEMP}/routegate-ops-output.txt"
-          if [[ -f "$output_file" ]]; then
+          if [[ "$OPERATION" == "preflight-applied-client-settings-155" ]]; then
+            if [[ -f "$output_file" ]]; then
+              summary=$(grep -E '^\[routegate-preflight\]' "$output_file" || true)
+            else
+              summary='Remote operation did not produce output.'
+            fi
+            summary="${summary}"$'\n\n'"Full P0-P7 result: artifact routegate-preflight-applied-client-settings-155-${GITHUB_RUN_ID} of the run below (kept 7 days). PASSED only means the read-only checks completed; blocking results in P1-P4 still stop the update."
+          elif [[ -f "$output_file" ]]; then
             summary=$(tail -n 80 "$output_file")
           else
             summary='Remote operation did not produce output.'

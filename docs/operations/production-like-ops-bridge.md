@@ -28,6 +28,7 @@ Supported requests:
 - `operation=restart-hysteria2`
 - `operation=restart-mtproto`
 - `operation=renew-certificate`
+- `operation=preflight-applied-client-settings-155`
 
 `diagnose-sing-box` reports only safe runtime metadata: lifecycle state, process
 exit status, installed version, config validation result, and the systemd
@@ -40,6 +41,38 @@ checks the same allow-list before doing anything.
 
 After every issue-triggered run the workflow posts a sanitized result to #268
 and closes the issue again, making the next reopen a distinct audited request.
+
+## Applied-client-settings preflight
+
+`preflight-applied-client-settings-155` runs the read-only deployment checks of
+PR #499 against the Manager database, before that update is merged. It is the
+only database query the bridge runs, and it is fixed:
+
+- the SQL is `docs/operations/applied-client-settings/preflight-schema-155.sql`
+  from the trusted `main` checkout, a byte-for-byte copy of the file in commit
+  `b72637cf122d4d3db0c988ebb436e87bbe00d6a9` (provenance in
+  `docs/operations/applied-client-settings/OPS-PREFLIGHT.md`); the host runner
+  refuses any file whose SHA-256 differs;
+- neither the issue nor the dispatch input can choose SQL, a URL or a ref, and
+  a `workflow_dispatch` of this operation from any ref other than `main` is
+  refused;
+- `scripts/production-like-preflight-applied-client-settings.sh` loads the
+  connection from `/etc/routegate/manager.env` without printing it, checks
+  read-only that the schema is `000155` with no `000156+` migration (and stops
+  otherwise, without migrating or adapting anything), then runs the SQL with
+  `psql -X`, `ON_ERROR_STOP`, no pager, `default_transaction_read_only=on`,
+  statement and lock timeouts; the SQL keeps its own `READ ONLY` transaction
+  ending with `ROLLBACK`;
+- the host lock and the temporary files follow the other operations; both
+  files are removed after the run.
+
+The full P0–P7 output (node names and account ids, no secrets) is uploaded as
+the run artifact `routegate-preflight-applied-client-settings-155-<run id>`,
+kept 7 days. The Actions log and the #268 comment carry only the runner's
+status lines and the artifact reference. `PASSED` means the checks completed;
+their results may still block the update. Runner exit codes: 2 usage or SQL
+checksum mismatch, 3 unexpected schema, 4 psql, environment or connection
+unavailable (never installed or granted automatically), 5 the checks failed.
 
 ## Serialization
 
