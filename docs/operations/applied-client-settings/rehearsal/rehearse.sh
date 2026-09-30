@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Rehearses the applied-client-settings deployment checks on a disposable
-# PostgreSQL database. Never point it at a real Manager database: the seed step
-# drops and recreates the public schema.
+# PostgreSQL database. It DROPS the public schema of the database it connects
+# to, so it runs only when the name of that database (SELECT current_database())
+# ends in "_rehearsal" (^[a-z0-9_]+_rehearsal$). The URL text is never trusted:
+# user names, passwords and parameters do not count. The Go seed and rehearsal
+# tests repeat the same check themselves before changing anything.
 #
 #   REHEARSAL_DATABASE_URL='postgres://user:pass@127.0.0.1:5432/routegate_rehearsal?sslmode=disable' \
 #     docs/operations/applied-client-settings/rehearsal/rehearse.sh
@@ -19,10 +22,15 @@
 set -euo pipefail
 
 : "${REHEARSAL_DATABASE_URL:?set REHEARSAL_DATABASE_URL to a disposable database}"
-case "$REHEARSAL_DATABASE_URL" in
-  *rehearsal*) ;;
-  *) echo "refusing: the database name must contain 'rehearsal'" >&2; exit 2 ;;
-esac
+# Check the database actually connected to before anything else runs. Neither
+# the URL nor psql's connection errors are printed.
+database=$(psql "$REHEARSAL_DATABASE_URL" -X -q -At -c 'SELECT current_database()' 2>/dev/null) || {
+  echo "refusing: cannot connect to REHEARSAL_DATABASE_URL to check the database name" >&2; exit 2; }
+if [[ ! "$database" =~ ^[a-z0-9_]+_rehearsal$ ]]; then
+  echo "refusing: connected database \"$database\" does not end in _rehearsal; the rehearsal drops its public schema" >&2
+  exit 2
+fi
+echo "== 0. disposable database: $database"
 BASE_REF=${BASE_REF:-36a2b726574f2981b38e828119faa514182f9069}
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

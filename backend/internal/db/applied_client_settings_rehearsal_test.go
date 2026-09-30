@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -53,9 +54,6 @@ func TestAppliedClientSettingsRehearsal(t *testing.T) {
 	if url == "" || phase == "" || out == "" {
 		t.Skip("run through docs/operations/applied-client-settings/rehearsal/rehearse.sh")
 	}
-	if !strings.Contains(url, "rehearsal") {
-		t.Fatal("REHEARSAL_DATABASE_URL must name a disposable rehearsal database")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -64,6 +62,9 @@ func TestAppliedClientSettingsRehearsal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	// Every phase, and above all the upgrade that migrates the database, runs
+	// only on a disposable database; the name actually connected to decides.
+	requireRehearsalDatabase(t, ctx, pool)
 
 	switch phase {
 	case "predict":
@@ -120,6 +121,21 @@ func TestAppliedClientSettingsRehearsal(t *testing.T) {
 		t.Logf("backend: %s", summarize(served))
 	default:
 		t.Fatalf("unknown REHEARSAL_PHASE %q", phase)
+	}
+}
+
+// rehearsalDatabaseName is the only kind of database the rehearsal may change:
+// the name of the database actually connected to must end in "_rehearsal".
+var rehearsalDatabaseName = regexp.MustCompile(`^[a-z0-9_]+_rehearsal$`)
+
+func requireRehearsalDatabase(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	var database string
+	if err := pool.QueryRow(ctx, `SELECT current_database()`).Scan(&database); err != nil {
+		t.Fatalf("read current database: %v", err)
+	}
+	if !rehearsalDatabaseName.MatchString(database) {
+		t.Fatalf("refusing to run on database %q: the rehearsal changes the database and runs only on one whose name ends in _rehearsal", database)
 	}
 }
 

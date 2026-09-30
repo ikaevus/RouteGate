@@ -170,9 +170,28 @@ stays applied on the node.
 
 ## Rehearsal
 
-`rehearsal/rehearse.sh` repeats the whole check on a disposable database. It
-refuses any database URL that does not contain `rehearsal`, because the seed
-step drops the public schema; never point it at a Manager database.
+`rehearsal/rehearse.sh` repeats the whole check on a disposable database.
+
+> **Warning:** the rehearsal drops and recreates the `public` schema of the
+> database it connects to and then migrates it. Use it only with a disposable
+> test database created for it; never with a Manager database or any database
+> holding data you need.
+
+Database name rule: the name of the database actually connected to
+(`SELECT current_database()`) must match `^[a-z0-9_]+_rehearsal$`, for example
+`routegate_rehearsal`. The URL text is never trusted: `rehearsal` in the user
+name, password, host or parameters does not count. The check runs on three
+levels, each before it changes anything:
+
+- `rehearse.sh`, before seeding (it prints only the database name, never the
+  URL or psql's connection errors);
+- the seed test, on the same connection that drops the schema, right before
+  `DROP SCHEMA public`;
+- `applied_client_settings_rehearsal_test.go`, before every phase, including
+  the migrations of the upgrade phase.
+
+A database with any other name is refused with an explicit error and left
+unchanged.
 
 ```bash
 REHEARSAL_DATABASE_URL='postgres://user:pass@127.0.0.1:5432/routegate_rehearsal?sslmode=disable' \

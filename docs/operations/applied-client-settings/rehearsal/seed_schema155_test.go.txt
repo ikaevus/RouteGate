@@ -16,7 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"strings"
+	"regexp"
 	"testing"
 	"time"
 
@@ -27,10 +27,14 @@ import (
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
+// rehearsalDatabaseName is the only kind of database the seed may wipe: the
+// name of the database actually connected to must end in "_rehearsal".
+var rehearsalDatabaseName = regexp.MustCompile(`^[a-z0-9_]+_rehearsal$`)
+
 func TestRehearsalSeed155(t *testing.T) {
 	url := os.Getenv("REHEARSAL_DATABASE_URL")
-	if url == "" || !strings.Contains(url, "rehearsal") {
-		t.Skip("REHEARSAL_DATABASE_URL must name a disposable rehearsal database")
+	if url == "" {
+		t.Skip("REHEARSAL_DATABASE_URL is not set")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -40,8 +44,30 @@ func TestRehearsalSeed155(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	rhExec(t, ctx, pool, `DROP SCHEMA IF EXISTS public CASCADE`)
-	rhExec(t, ctx, pool, `CREATE SCHEMA public`)
+	// Check the database actually connected to on the very connection that
+	// drops the schema, right before dropping it; never trust the URL text.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var database string
+	if err := conn.QueryRow(ctx, `SELECT current_database()`).Scan(&database); err != nil {
+		conn.Release()
+		t.Fatalf("read current database: %v", err)
+	}
+	if !rehearsalDatabaseName.MatchString(database) {
+		conn.Release()
+		t.Fatalf("refusing to seed database %q: the rehearsal drops the public schema and runs only on a database whose name ends in _rehearsal", database)
+	}
+	if _, err := conn.Exec(ctx, `DROP SCHEMA IF EXISTS public CASCADE`); err != nil {
+		conn.Release()
+		t.Fatalf("drop schema: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `CREATE SCHEMA public`); err != nil {
+		conn.Release()
+		t.Fatalf("create schema: %v", err)
+	}
+	conn.Release()
 	if err := Migrate(ctx, pool, "../../migrations", logger); err != nil {
 		t.Fatal(err)
 	}
