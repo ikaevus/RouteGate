@@ -37,7 +37,7 @@ func resolveEffectiveClientProtocol(profile ClientProfile, server *SubscriptionS
 }
 
 func unavailableClientConnection(err error) (ClientConnectionResponse, error) {
-	return ClientConnectionResponse{}, fmt.Errorf("%w: %v", ErrClientConnectionUnavailable, err)
+	return ClientConnectionResponse{}, fmt.Errorf("%w: %w", ErrClientConnectionUnavailable, err)
 }
 
 func buildClientConnectionResponse(accountID string, subscription SubscriptionProfile, profile ClientProfile) (ClientConnectionResponse, error) {
@@ -48,8 +48,17 @@ func buildClientConnectionResponseForProtocol(accountID string, subscription Sub
 	if subscription.Server == nil {
 		return ClientConnectionResponse{}, ErrVPNAccountUnassigned
 	}
+	if subscription.Server.AwaitingFirstApply {
+		return unavailableClientConnection(ErrNodeConfigNotApplied)
+	}
 	profile.ResolvedFingerprint = resolveClientFingerprint(profile)
 	protocol = normalizeConcreteClientProtocol(protocol)
+	// Every client delivery path (UI link, token subscription, devices,
+	// delivery previews and each member of a multi-protocol set) passes here,
+	// so no path can hand out access the node has not been given.
+	if err := subscription.Server.requireDeployed(protocol); err != nil {
+		return unavailableClientConnection(err)
+	}
 
 	switch protocol {
 	case ClientProtocolWireGuard:

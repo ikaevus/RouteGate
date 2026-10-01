@@ -43,6 +43,11 @@ func normalizeConcreteClientProtocols(values []string) ([]string, error) {
 	return ordered, nil
 }
 
+// desiredPrimaryProtocolSQL is the protocol the next render deploys for an
+// account without explicit protocol choices: its explicit primary, else the
+// node's saved default. It must match configs.ResolveServerAccountProtocols.
+const desiredPrimaryProtocolSQL = `COALESCE(NULLIF(cp.protocol, 'auto'), NULLIF(s.vpn_protocol, 'auto'), 'vless')`
+
 func containsClientProtocol(protocols []string, protocol string) bool {
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	for _, candidate := range protocols {
@@ -54,8 +59,11 @@ func containsClientProtocol(protocols []string, protocol string) bool {
 }
 
 // GetClientProtocolSets returns the desired and last successfully applied
-// protocol sets. It lazily seeds rows for profiles created after the migration,
-// preserving the legacy active_protocol and requested primary preference.
+// protocol sets. It lazily seeds rows recording what the node's active version
+// deploys for the account. Seeded rows are implicit (desired_explicit FALSE):
+// only protocols an administrator chose decide the desired set, and without
+// such a choice the desired set is the account's primary protocol, the node
+// default for "auto", exactly as the next render deploys it.
 func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string) ([]string, []string, error) {
 	if _, err := r.pool.Exec(ctx, `
 		INSERT INTO vpn_account_protocols (
@@ -63,38 +71,38 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 		)
 		SELECT
 			cp.vpn_account_id,
-			COALESCE(NULLIF(cp.active_protocol, ''), 'vless'),
+			deployed.protocol,
 			TRUE,
 			TRUE,
 			cp.updated_at,
 			now()
 		FROM vpn_client_profiles cp
-		WHERE cp.vpn_account_id = $1::uuid
-		ON CONFLICT (vpn_account_id, protocol) DO NOTHING
-	`, accountID); err != nil {
-		return nil, nil, err
-	}
-	if _, err := r.pool.Exec(ctx, `
-		INSERT INTO vpn_account_protocols (
-			vpn_account_id, protocol, desired_enabled, active_enabled, updated_at
-		)
-		SELECT
-			cp.vpn_account_id,
-			COALESCE(NULLIF(cp.protocol, 'auto'), NULLIF(s.vpn_protocol, 'auto'), 'vless'),
-			TRUE,
-			FALSE,
-			cp.updated_at
-		FROM vpn_client_profiles cp
-		JOIN vpn_accounts a ON a.id = cp.vpn_account_id
-		LEFT JOIN servers s ON s.id = a.server_id
+		JOIN vpn_accounts a ON a.id = cp.vpn_account_id`+appliedAccountProtocolsSQL+`
+		CROSS JOIN LATERAL jsonb_array_elements_text(CASE
+			-- The active version lists its accounts: seed exactly what it
+			-- deploys for this account, nothing for an account it omits.
+			WHEN `+appliedAccountsKnownSQL+` THEN COALESCE(applied.account -> 'protocols', '[]'::jsonb)
+			ELSE jsonb_build_array(COALESCE(NULLIF(cp.active_protocol, ''), 'vless'))
+		END) AS deployed(protocol)
 		WHERE cp.vpn_account_id = $1::uuid
 		ON CONFLICT (vpn_account_id, protocol) DO NOTHING
 	`, accountID); err != nil {
 		return nil, nil, err
 	}
 
+	var primary string
+	if err := r.pool.QueryRow(ctx, `
+		SELECT `+desiredPrimaryProtocolSQL+`
+		FROM vpn_accounts a
+		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
+		WHERE a.id = $1::uuid
+	`, accountID).Scan(&primary); err != nil {
+		return nil, nil, err
+	}
+
 	rows, err := r.pool.Query(ctx, `
-		SELECT protocol, desired_enabled, active_enabled
+		SELECT protocol, desired_enabled AND desired_explicit, active_enabled
 		FROM vpn_account_protocols
 		WHERE vpn_account_id = $1::uuid
 		ORDER BY CASE protocol
@@ -129,6 +137,9 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
+	if len(desired) == 0 {
+		desired = []string{primary}
+	}
 	return desired, active, nil
 }
 
@@ -143,8 +154,10 @@ func (r *Repository) UpdateClientProfileWithProtocols(ctx context.Context, accou
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO vpn_client_profiles (vpn_account_id)
-		VALUES ($1::uuid)
+		INSERT INTO vpn_client_profiles (vpn_account_id, active_protocol)
+		SELECT a.id, `+appliedPrimaryProtocolSQL+`
+		FROM vpn_accounts a`+appliedAccountProtocolsSQL+`
+		WHERE a.id = $1::uuid
 		ON CONFLICT (vpn_account_id) DO NOTHING
 	`, accountID); err != nil {
 		return ClientProfile{}, err
@@ -170,14 +183,28 @@ func (r *Repository) UpdateClientProfileWithProtocols(ctx context.Context, accou
 
 	for _, protocol := range concreteClientProtocols {
 		desired := containsClientProtocol(enabledProtocols, protocol)
+		// A row created here must not lose the active state of a protocol the
+		// node already serves for the account; the desired flag is the new
+		// preference and stays pending until an apply confirms it.
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO vpn_account_protocols (
-				vpn_account_id, protocol, desired_enabled, active_enabled, updated_at
+				vpn_account_id, protocol, desired_enabled, desired_explicit, active_enabled, updated_at, activated_at
 			)
-			VALUES ($1::uuid, $2, $3, FALSE, now())
+			SELECT a.id, $2, $3, TRUE, deployed.active, now(), CASE WHEN deployed.active THEN now() END
+			FROM vpn_accounts a
+			JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id`+appliedAccountProtocolsSQL+`
+			CROSS JOIN LATERAL (
+				SELECT CASE
+					WHEN `+appliedAccountsKnownSQL+` AND $2::text <> 'mtproto'
+						THEN COALESCE((applied.account -> 'protocols') ? $2::text, FALSE)
+					ELSE cp.active_protocol = $2::text
+				END AS active
+			) deployed
+			WHERE a.id = $1::uuid
 			ON CONFLICT (vpn_account_id, protocol) DO UPDATE
 			SET
 				desired_enabled = EXCLUDED.desired_enabled,
+				desired_explicit = TRUE,
 				updated_at = EXCLUDED.updated_at
 		`, accountID, protocol, desired); err != nil {
 			return ClientProfile{}, err

@@ -203,6 +203,10 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 	if err != nil {
 		return ConfigVersion{}, err
 	}
+	// A render that cannot yield client settings (for example a version that
+	// failed validation) is stored without a snapshot and never becomes the
+	// source of client material; see clientSettingsFromRenderedJSON.
+	clientSettingsBytes := clientSettingsSnapshot(configBytes, input.AccountPrimaryProtocols)
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -259,6 +263,20 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 				return ConfigVersion{}, err
 			}
 			if !newerPreference {
+				// An equivalent render deploys exactly the same node runtime;
+				// make sure the reused version carries its own snapshot.
+				if snapshot := clientSettingsSnapshot(latest.RenderedConfig, input.AccountPrimaryProtocols); snapshot != nil {
+					if _, err := tx.Exec(ctx, `
+						UPDATE config_versions
+						SET client_settings = $2::jsonb
+						WHERE id = $1::uuid AND client_settings IS NULL
+					`, latest.ID, snapshot); err != nil {
+						return ConfigVersion{}, err
+					}
+					if err := tx.Commit(ctx); err != nil {
+						return ConfigVersion{}, err
+					}
+				}
 				return latest, nil
 			}
 		}
@@ -272,9 +290,10 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			version,
 			config_hash,
 			status,
-			rendered_config
+			rendered_config,
+			client_settings
 		)
-		VALUES ($1::uuid, $2, $3, $4, $5::jsonb)
+		VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::jsonb)
 		RETURNING
 			id::text,
 			server_id::text,
@@ -285,7 +304,7 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 			created_at,
 			applied_at,
 			pinned
-	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes))
+	`, input.ServerID, nextVersion, input.ConfigHash, input.Status, configBytes, clientSettingsBytes))
 	if err != nil {
 		return ConfigVersion{}, err
 	}
@@ -669,4 +688,87 @@ func scanConfigApplyJob(row scanner) (ConfigApplyJob, error) {
 	job.RequestPayload = requestPayload
 	job.ResultPayload = resultPayload
 	return job, nil
+}
+
+func clientSettingsSnapshot(renderedConfig []byte, primaries map[string]string) []byte {
+	settings, err := clientSettingsFromRenderedJSON(renderedConfig, primaries)
+	if err != nil {
+		return nil
+	}
+	snapshot, err := json.Marshal(settings)
+	if err != nil {
+		return nil
+	}
+	return snapshot
+}
+
+// ClientSettingsBackfillFailure names a config version whose stored rendered
+// config could not yield client settings.
+type ClientSettingsBackfillFailure struct {
+	ServerID  string
+	VersionID string
+	Version   int
+	Active    bool
+	Reason    string
+}
+
+// BackfillClientSettings derives client settings for config versions rendered
+// before snapshots existed, from each version's own rendered config. It never
+// touches servers, apply jobs or node runtimes, and only fills empty
+// snapshots, so it is safe to run on every Manager start.
+func (r *Repository) BackfillClientSettings(ctx context.Context) (int, []ClientSettingsBackfillFailure, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT cv.id::text, cv.server_id::text, cv.version, cv.rendered_config,
+		       COALESCE(s.active_config_version_id = cv.id, FALSE)
+		FROM config_versions cv
+		LEFT JOIN servers s ON s.id = cv.server_id
+		WHERE cv.client_settings IS NULL
+		ORDER BY cv.server_id, cv.version
+	`)
+	if err != nil {
+		return 0, nil, err
+	}
+	type pending struct {
+		failure  ClientSettingsBackfillFailure
+		snapshot []byte
+	}
+	var candidates []pending
+	for rows.Next() {
+		var item pending
+		var renderedConfig []byte
+		if err := rows.Scan(&item.failure.VersionID, &item.failure.ServerID, &item.failure.Version, &renderedConfig, &item.failure.Active); err != nil {
+			rows.Close()
+			return 0, nil, err
+		}
+		settings, deriveErr := clientSettingsFromRenderedJSON(renderedConfig, nil)
+		if deriveErr != nil {
+			item.failure.Reason = deriveErr.Error()
+		} else if item.snapshot, err = json.Marshal(settings); err != nil {
+			rows.Close()
+			return 0, nil, err
+		}
+		candidates = append(candidates, item)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, nil, err
+	}
+
+	filled := 0
+	var failures []ClientSettingsBackfillFailure
+	for _, item := range candidates {
+		if item.snapshot == nil {
+			failures = append(failures, item.failure)
+			continue
+		}
+		tag, err := r.pool.Exec(ctx, `
+			UPDATE config_versions SET client_settings = $2::jsonb
+			WHERE id = $1::uuid AND client_settings IS NULL
+		`, item.failure.VersionID, item.snapshot)
+		if err != nil {
+			return filled, failures, err
+		}
+		filled += int(tag.RowsAffected())
+	}
+	return filled, failures, nil
 }

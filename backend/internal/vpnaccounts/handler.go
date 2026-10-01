@@ -410,6 +410,19 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Serve exactly the connection GET /client-connection and /sub/ serve:
+	// the applied primary protocol, never a saved but unapplied preference,
+	// and nothing the node's applied configuration does not deploy.
+	served, config, err := h.publicSubscriptionServedProfile(r.Context(), profile)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writePublicSubscriptionNotFound(w)
+		return
+	}
+	if err != nil {
+		h.databaseError(w, "resolve public subscription connection", err)
+		return
+	}
+
 	if err := h.accounts.MarkSubscriptionTokenUsed(r.Context(), token.ID); err != nil {
 		h.databaseError(w, "mark subscription token used", err)
 		return
@@ -427,8 +440,8 @@ func (h *Handler) GetPublicSubscription(w http.ResponseWriter, r *http.Request) 
 			ExpiresAt:   profile.Account.ExpiresAt,
 			MaxDevices:  profile.Account.MaxDevices,
 		},
-		Server: publicSubscriptionServer(profile.Server),
-		Config: renderPublicSubscriptionConfig(profile),
+		Server: publicSubscriptionServer(served.Server),
+		Config: config,
 	})
 }
 
@@ -571,6 +584,59 @@ func adminCredentialsResponse(profile SubscriptionProfile) VLESSRealityCredentia
 		}
 	}
 	return response
+}
+
+// publicSubscriptionServedProfile resolves the connection the node serves the
+// account through the shared client connection path and returns the profile
+// to render it from, with Server.VPNProtocol set to that served protocol so
+// the server endpoint and the config describe the same connection. When
+// access is withheld the config reports why and renders nothing.
+func (h *Handler) publicSubscriptionServedProfile(ctx context.Context, profile SubscriptionProfile) (SubscriptionProfile, PublicSubscriptionConfig, error) {
+	if profile.Server == nil {
+		return profile, renderPublicSubscriptionConfig(profile), nil
+	}
+	served := profile
+	server := *profile.Server
+	served.Server = &server
+
+	connection, err := h.clientConnection(ctx, profile.Account.ID)
+	if err == nil {
+		server.VPNProtocol = connection.Protocol
+		return served, renderPublicSubscriptionConfig(served), nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return profile, PublicSubscriptionConfig{}, err
+	}
+	if !errors.Is(err, ErrClientConnectionUnavailable) && !errors.Is(err, ErrVPNAccountUnassigned) {
+		return profile, PublicSubscriptionConfig{}, err
+	}
+	// Describe the applied primary protocol, never a saved preference.
+	if protocol, resolveErr := h.appliedPrimaryProtocol(ctx, profile); resolveErr == nil {
+		server.VPNProtocol = protocol
+	} else {
+		return profile, PublicSubscriptionConfig{}, resolveErr
+	}
+	_, configType := publicSubscriptionProtocol(&server)
+	return served, PublicSubscriptionConfig{
+		Type:    configType,
+		Format:  ClientConfigFormat,
+		Status:  "unavailable",
+		Message: clientConnectionUnavailableMessage(err),
+	}, nil
+}
+
+// appliedPrimaryProtocol is the primary protocol the node's applied
+// configuration serves the account, as resolved for client connections.
+func (h *Handler) appliedPrimaryProtocol(ctx context.Context, profile SubscriptionProfile) (string, error) {
+	repository, ok := h.accounts.(clientProfileRepository)
+	if !ok {
+		return resolveEffectiveClientProtocol(ClientProfile{Protocol: ClientProtocolAuto}, profile.Server), nil
+	}
+	clientProfile, err := repository.GetOrCreateClientProfile(ctx, profile.Account.ID)
+	if err != nil {
+		return "", err
+	}
+	return resolveActiveClientProtocol(ctx, h.accounts, profile.Account.ID, clientProfile, profile.Server)
 }
 
 func publicSubscriptionServer(server *SubscriptionServer) *PublicSubscriptionServer {

@@ -161,6 +161,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/notes", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountNotesHandler.Update))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/credentials", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetCredentials))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-connection", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientConnection))))
+	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientProfile))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.UpdateClientProfile))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/routing-policy", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetRoutingPolicy))))
 	mux.Handle("PUT /api/v1/vpn-accounts/{id}/routing-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.AssignRoutingProfile))))

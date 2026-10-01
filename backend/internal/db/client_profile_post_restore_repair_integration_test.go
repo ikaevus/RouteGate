@@ -109,8 +109,8 @@ func TestClientProfilePostRestoreRepairRestoresObservedInvariants(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000155_config_apply_trigger_invariant_repair" {
-		t.Fatalf("applied schema version = %q, want 000155_config_apply_trigger_invariant_repair", version)
+	if version != "000158_explicit_account_protocol_preferences" {
+		t.Fatalf("applied schema version = %q, want 000158_explicit_account_protocol_preferences", version)
 	}
 }
 

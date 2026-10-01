@@ -119,9 +119,10 @@ func wireGuardPostDown(network string) string {
 }
 
 type parsedWireGuardConfig struct {
-	Address string
-	Port    int
-	Peers   []string
+	Address    string
+	Port       int
+	PrivateKey string
+	Peers      []string
 }
 
 func parseWireGuardServerConfig(payload string) (parsedWireGuardConfig, error) {
@@ -200,5 +201,6 @@ func parseWireGuardServerConfig(payload string) (parsedWireGuardConfig, error) {
 	}
 	parsed.Address = prefix.String()
 	parsed.Port = port
+	parsed.PrivateKey = interfaceValues["PrivateKey"]
 	return parsed, nil
 }

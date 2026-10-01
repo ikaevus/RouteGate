@@ -104,8 +104,10 @@ type clientProfileRepository interface {
 
 func (r *Repository) GetOrCreateClientProfile(ctx context.Context, vpnAccountID string) (ClientProfile, error) {
 	return scanClientProfile(r.pool.QueryRow(ctx, `
-		INSERT INTO vpn_client_profiles (vpn_account_id)
-		VALUES ($1::uuid)
+		INSERT INTO vpn_client_profiles (vpn_account_id, active_protocol)
+		SELECT a.id, `+appliedPrimaryProtocolSQL+`
+		FROM vpn_accounts a`+appliedAccountProtocolsSQL+`
+		WHERE a.id = $1::uuid
 		ON CONFLICT (vpn_account_id) DO UPDATE
 		SET vpn_account_id = EXCLUDED.vpn_account_id
 		RETURNING
@@ -286,11 +288,17 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		h.databaseError(w, "get vpn subscription profile for client preflight", err)
 		return
 	}
+	// Preferences are validated against the node's saved settings: they take
+	// effect only through the next render, so a protocol the applied version
+	// does not deploy yet must still be selectable.
+	preflight := subscription.withSavedServerSettings()
 
+	// The protocol "auto" stands for is likewise the one the next render
+	// deploys: the node's saved default, even before it has been applied.
 	candidate := clientProfileFromRequest(accountID, request)
-	requestedProtocols := effectiveRequestedProtocols(candidate, subscription.Server)
+	requestedProtocols := effectiveRequestedProtocols(candidate, preflight.Server)
 	if request.EnabledProtocols != nil && request.Protocol == ClientProtocolAuto {
-		primary := resolveEffectiveClientProtocol(candidate, subscription.Server)
+		primary := resolveEffectiveClientProtocol(candidate, preflight.Server)
 		if !containsClientProtocol(requestedProtocols, primary) {
 			writeInvalidRequest(w, "enabledProtocols must include the node-default protocol while protocol is auto")
 			return
@@ -299,7 +307,7 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 	for _, protocol := range requestedProtocols {
 		protocolCandidate := candidate
 		protocolCandidate.Protocol = protocol
-		if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, subscription, protocolCandidate); err != nil {
+		if err := validateClientProtocolTopologyForSource(r.Context(), h.accounts, preflight, protocolCandidate); err != nil {
 			if writeClientConnectionDomainError(w, err) {
 				return
 			}
@@ -324,9 +332,10 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 			h.databaseError(w, "reload vpn subscription profile after protocol preparation", err)
 			return
 		}
+		preflight = subscription.withSavedServerSettings()
 	}
 	for _, protocol := range requestedProtocols {
-		if _, err := buildClientConnectionResponseForProtocol(accountID, subscription, candidate, protocol); err != nil {
+		if _, err := buildClientConnectionResponseForProtocol(accountID, preflight, candidate, protocol); err != nil {
 			if writeClientConnectionDomainError(w, err) {
 				return
 			}
@@ -361,14 +370,17 @@ func (h *Handler) UpdateClientProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response, err := buildClientConnectionResponseForProtocol(accountID, subscription, savedProfile, activeProtocol)
+	if err == nil {
+		err = attachActiveProtocolConnections(accountID, subscription, savedProfile, &response)
+	}
+	if awaitingNodeDeployment(err) {
+		// The preference is saved; the node simply has not been given this
+		// account's access yet. Report the saved profile without any link.
+		response, err = ClientConnectionResponse{VPNAccountID: accountID, Protocol: activeProtocol, Profile: savedProfile}, nil
+	}
 	if err != nil {
 		h.logger.Error("render persisted vpn client connection", "vpn_account_id", accountID, "error", err)
 		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The client profile was saved but the active client connection could not be rendered consistently."))
-		return
-	}
-	if err := attachActiveProtocolConnections(accountID, subscription, savedProfile, &response); err != nil {
-		h.logger.Error("render active vpn client protocol set", "vpn_account_id", accountID, "error", err)
-		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("client_connection_inconsistent", "The active protocol set could not be rendered consistently."))
 		return
 	}
 	if h.audit != nil {
@@ -447,9 +459,13 @@ func buildClientVLESSLink(subscription SubscriptionProfile, profile ClientProfil
 	if uuid == "" {
 		return "", "", "", "", "", errors.New("VLESS UUID is required")
 	}
-	serverName := strings.TrimSpace(profile.ServerNameOverride)
-	if serverName == "" {
-		serverName = strings.TrimSpace(server.RealityServerName)
+	// The node's Reality inbound accepts only its own server name, so an
+	// override can at most change letter case. Any other value (including an
+	// override left behind after the node's name changed) would make every
+	// handshake fall through to the target site and break the client.
+	serverName := strings.TrimSpace(server.RealityServerName)
+	if override := strings.TrimSpace(profile.ServerNameOverride); override != "" && strings.EqualFold(override, serverName) {
+		serverName = override
 	}
 	if serverName == "" {
 		return "", "", "", "", "", errors.New("Reality server name is required")

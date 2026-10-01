@@ -3,12 +3,15 @@ package vpnaccounts
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ikaevus/routegate/backend/internal/platform"
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
@@ -322,7 +325,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			COALESCE(s.reality_public_key, ''),
 			COALESCE(s.reality_short_id, ''),
 			COALESCE(s.reality_server_name, ''),
-			COALESCE(NULLIF(cp.protocol, 'auto'), s.vpn_protocol, 'vless'),
+			COALESCE(NULLIF(cp.protocol, 'auto'), NULLIF(acv.client_settings->>'vpnProtocol', ''), s.vpn_protocol, 'vless'),
 			COALESCE(s.wireguard_port, 51820),
 			COALESCE(s.wireguard_address::text, '10.66.0.1/24'),
 			COALESCE(s.wireguard_dns::text, '1.1.1.1'),
@@ -335,9 +338,13 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 			s.shadowsocks_server_key,
 			s.mtproto_port,
 			s.mtproto_secret,
-			s.mtproto_fronting_domain
+			s.mtproto_fronting_domain,
+			(s.id IS NOT NULL AND s.active_config_version_id IS NULL),
+			acv.client_settings,
+			COALESCE(NULLIF(s.vpn_protocol, 'auto'), 'vless')
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN config_versions acv ON acv.id = s.active_config_version_id
 		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		WHERE a.id = $1::uuid
 	`, id))
@@ -573,6 +580,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 	var hysteria2Domain, hysteria2ACMEEmail sql.NullString
 	var shadowsocksMethod, shadowsocksServerKey, mtprotoSecret, mtprotoFrontingDomain sql.NullString
 	var shadowsocksPort, mtprotoPort sql.NullInt32
+	var awaitingFirstApply bool
+	var appliedClientSettings []byte
+	var savedNodeProtocol sql.NullString
 
 	err := row.Scan(
 		&profile.Account.ID,
@@ -617,6 +627,9 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		&mtprotoPort,
 		&mtprotoSecret,
 		&mtprotoFrontingDomain,
+		&awaitingFirstApply,
+		&appliedClientSettings,
+		&savedNodeProtocol,
 	)
 	if err != nil {
 		return SubscriptionProfile{}, err
@@ -661,14 +674,21 @@ func scanSubscriptionProfile(row scanner) (SubscriptionProfile, error) {
 		if vlessPort.Valid {
 			server.VLESSPort = int(vlessPort.Int32)
 		}
-		profile.Server = &server
-		profile.Credentials.VLESS.Flow = server.VLESSFlow
-		profile.Credentials.VLESS.Network = server.VLESSNetwork
-		profile.Credentials.Reality = RealityCredentials{
-			PublicKey:  server.RealityPublicKey,
-			ShortID:    server.RealityShortID,
-			ServerName: server.RealityServerName,
+		saved := server
+		// The next render resolves "auto" to the node's saved default, not to
+		// the applied version's protocol or the stored profile's preference.
+		saved.VPNProtocol = savedNodeProtocol.String
+		profile.savedServer = &saved
+		server.AwaitingFirstApply = awaitingFirstApply
+		if len(appliedClientSettings) > 0 {
+			var applied platform.AppliedClientSettings
+			if err := json.Unmarshal(appliedClientSettings, &applied); err != nil {
+				return SubscriptionProfile{}, fmt.Errorf("decode applied client settings: %w", err)
+			}
+			server.useAppliedClientSettings(applied, profile.Account.ID)
 		}
+		profile.Server = &server
+		profile.useServerCredentials()
 		profile.Credentials.WireGuard = WireGuardCredentials{
 			PrivateKey: wireGuardPrivateKey.String,
 			PublicKey:  wireGuardPublicKey.String,

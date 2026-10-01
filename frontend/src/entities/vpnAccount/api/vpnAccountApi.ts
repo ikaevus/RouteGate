@@ -502,6 +502,34 @@ export function getVpnAccountClientConnection(
   );
 }
 
+export type VpnClientConnectionStatus =
+  | 'ready'
+  | 'awaiting_apply'
+  | 'awaiting_first_apply'
+  | 'unassigned'
+  | 'unavailable';
+
+/**
+ * Saved protocol preferences plus the node's real serving state. It never
+ * carries client links, so it can be shown while access awaits an apply.
+ */
+export interface VpnClientProfileStateResponse {
+  vpnAccountId: string;
+  /** enabledProtocols is the saved desired set; activeProtocols what the node serves now. */
+  profile: VpnClientProfile & { enabledProtocols?: ClientProtocol[]; activeProtocols?: ClientProtocol[] };
+  activeProtocol: ClientProtocol;
+  connectionStatus: VpnClientConnectionStatus;
+  connectionMessage?: string;
+}
+
+export function getVpnAccountClientProfileState(
+  vpnAccountId: string,
+): Promise<VpnClientProfileStateResponse> {
+  return apiGet<VpnClientProfileStateResponse>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(vpnAccountId)}/client-profile`,
+  );
+}
+
 export function updateVpnAccountClientProfile(
   vpnAccountId: string,
   request: UpdateVpnClientProfileRequest,

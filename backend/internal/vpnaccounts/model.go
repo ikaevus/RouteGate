@@ -56,6 +56,9 @@ type SubscriptionProfile struct {
 	Server         *SubscriptionServer
 	Credentials    SubscriptionCredentials
 	RoutingProfile *RoutingProfile
+	// savedServer holds the node's saved (possibly unapplied) settings. It is
+	// used only to validate profile edits, never to serve client material.
+	savedServer *SubscriptionServer
 }
 
 type SubscriptionCredentials struct {
@@ -121,6 +124,13 @@ type SubscriptionServer struct {
 	MTProtoPort           int
 	MTProtoSecret         string
 	MTProtoFrontingDomain string
+	// AwaitingFirstApply is true while the node has no Agent-confirmed config
+	// apply. Its saved settings are not running yet, so no client material is
+	// served for it.
+	AwaitingFirstApply bool
+	// deployment is what the node's active config version deploys for the
+	// account this view was loaded for; nil when no snapshot is available.
+	deployment *accountDeployment
 }
 
 type RoutingProfile struct {

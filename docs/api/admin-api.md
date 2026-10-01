@@ -35,7 +35,108 @@ the node's own hostname; `PATCH /api/v1/servers/{server_id}/protocol-settings`
 applies the same node-hostname rule to `realityServerName`. The Manager
 validates syntax only. The new keypair, Short ID, hostname and VLESS settings
 are saved in one atomic database update. Saving settings does not apply a
-runtime configuration. When a Reality config is applied, Agent resolves the
+runtime configuration.
+
+Client material (subscriptions and connection links) always describes the
+node's last Agent-confirmed apply. Each config version records the
+client-facing parameters it deploys, derived from its own rendered config:
+node protocol, ports, VLESS flow and transport, Reality public key (derived
+from the deployed private key), Short ID and server name, and the
+WireGuard/Hysteria2/Shadowsocks/MTProto endpoint parameters. Saved settings
+reach clients only after a version that contains them is applied
+successfully; a failed or rejected apply leaves clients on the previous
+parameters, and re-applying an older version switches clients back to that
+version. Until a node has any successful apply, client connection endpoints
+return `client_connection_unavailable`. The WireGuard DNS pushed to clients
+is not part of the node runtime and takes effect immediately.
+
+Each config version also records, per rendered account, the protocols it
+deploys and the primary protocol chosen at render time. A successful apply
+sets every listed account's active protocol set and primary protocol exactly
+to that version, so re-applying an older version rolls clients back to its
+protocols, and a preference saved after the render stays pending. A client
+profile created later starts from the active version's protocols instead of
+defaulting to VLESS.
+
+An account the active version does not list (created, activated or given a
+protocol after that render) has no credentials on the node. Every client
+delivery path (the connection endpoint, token subscriptions, devices and each
+member of a multi-protocol set) then returns `client_connection_unavailable`
+naming the next action: render and successfully apply a new configuration.
+A multi-protocol set is served whole or not at all. Saving the account's
+client profile still works; the response then carries the profile without
+links, and preferences are validated against the node's saved settings.
+
+`GET /api/v1/vpn-accounts/{id}/client-profile` (`vpn_users:read`) returns the
+account's saved preferences independently of client access, and never any
+links:
+
+```json
+{
+  "vpnAccountId": "…",
+  "profile": { "protocol": "auto", "enabledProtocols": ["vless", "shadowsocks"], "activeProtocols": [], "…": "…" },
+  "activeProtocol": "vless",
+  "connectionStatus": "awaiting_apply",
+  "connectionMessage": "the node has not received this account's vless access yet; render and successfully apply a new configuration for the node, then retry"
+}
+```
+
+`profile.enabledProtocols` is the saved desired set; `profile.activeProtocols`
+is exactly the set `GET …/client-connection` serves now: both endpoints
+evaluate the same connection, so it is empty whenever that endpoint withholds
+access, and includes MTProto served through the applied node-wide proxy even
+without a saved MTProto protocol row.
+`connectionStatus` is `ready`, `awaiting_apply` (the active version does not
+include this account's access), `awaiting_first_apply` (the node has no
+successful apply), `unassigned` or `unavailable`. Clients keep using
+`GET …/client-connection`, which still answers `409
+client_connection_unavailable` while access is withheld.
+
+MTProto is the exception: its proxy uses one node-wide secret and the render
+does not list MTProto accounts. MTProto material is served whenever the
+account's MTProto protocol is active and the applied version runs the MTProto
+proxy, so existing MTProto clients keep working; an apply without the proxy
+deactivates MTProto for all accounts of the node.
+A version that runs the proxy also records accounts served only through it
+(primary `mtproto`, no listed protocols), so re-applying it restores their
+MTProto access. A previously issued MTProto link keeps working for as long as
+the node runs the proxy with the same secret, whatever Manager reports.
+
+Only protocol choices an administrator saved decide what the next render
+deploys (`vpn_account_protocols.desired_explicit`). Rows Manager seeds on its
+own, from the applied version or the account's primary protocol, record the
+active state only. An account without saved choices deploys its primary
+protocol; for `auto` that is the node's saved default, so switching the node
+protocol moves such accounts on the next successful apply, and a seeded row
+of the previous protocol, such as MTProto, cannot keep its proxy running.
+Profile edits resolve `auto` against the same saved default, and clients keep
+the previously applied connection until that apply succeeds. Rows that
+existed before this rule are kept as explicit choices.
+
+The JSON subscription (`GET /api/v1/subscriptions/{token}`) resolves the
+connection through the same path as `GET …/client-connection` and `/sub/`:
+it renders the applied primary protocol, never a saved but unapplied
+preference, and reports `unavailable` (with the reason, and the applied
+primary protocol as `config.type`) whenever that connection is withheld. Its
+`server.endpoint` describes the same served protocol.
+
+Compatibility limit: a version whose rendered config does not list its
+accounts (renders from before per-account protocol lists, or an entry
+without an account or protocol) records `accounts: null`. For such a version
+Manager cannot tell deployed from undeployed accounts; client material then
+follows the active protocol flags as before, and the per-account check starts
+with the next successful apply of a version rendered by this Manager.
+
+`vlessNetwork` accepts only `tcp`: the managed VLESS / Reality inbound serves
+raw TCP. A per-client Reality server name override is used only when it
+matches the node's applied server name (ignoring case); any other value would
+fail every Reality handshake.
+
+Versions rendered before migration `000156` get their snapshot when Manager
+starts: it derives the parameters from each stored rendered config and logs
+`backfilled applied client settings`. A version that cannot be derived is
+logged as an error with its `config_version_id` and keeps serving the node's
+saved settings until the next successful apply. When a Reality config is applied, Agent resolves the
 handshake target and completes a TLS 1.3 handshake from the VPN node before
 replacing the running config; if that fails, the apply job fails at the
 `validate` stage and the running VPN service is left unchanged.

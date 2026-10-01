@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "i18n:check": "node scripts/i18n-check.mjs",
+    "test:protocol-preference": "node --test src/pages/vpn-accounts/protocolPreferenceModel.test.ts",
     "test:rollout": "node --test src/pages/settings/platformUpdateRolloutModel.test.ts",
     "test:ui": "node --test scripts/shared-ui.test.mjs",
     "preview": "vite preview",

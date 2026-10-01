@@ -8,6 +8,7 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/config"
+	"github.com/ikaevus/routegate/backend/internal/configs"
 	"github.com/ikaevus/routegate/backend/internal/db"
 	"github.com/ikaevus/routegate/backend/internal/delivery"
 	"github.com/ikaevus/routegate/backend/internal/geoip"
@@ -45,6 +46,7 @@ func (a *App) Start(ctx context.Context) error {
 	if err := db.Migrate(ctx, pool, "migrations", a.logger); err != nil {
 		return err
 	}
+	a.backfillClientSettings(ctx, pool)
 	if err := updates.RecoverInterruptedJobs(ctx, a.logger, pool); err != nil {
 		return err
 	}
@@ -124,4 +126,29 @@ func (a *App) Stop(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// backfillClientSettings gives config versions rendered before client
+// snapshots existed a snapshot derived from their own rendered config, so
+// subscriptions for those nodes follow what was actually applied. It only
+// fills empty snapshots and never blocks startup: a version that cannot be
+// derived keeps serving its node's saved settings, as before this change.
+func (a *App) backfillClientSettings(ctx context.Context, pool *pgxpool.Pool) {
+	filled, failures, err := configs.NewRepository(pool).BackfillClientSettings(ctx)
+	if err != nil {
+		a.logger.Error("backfill applied client settings failed", "filled", filled, "error", err)
+		return
+	}
+	if filled > 0 {
+		a.logger.Info("backfilled applied client settings", "config_versions", filled)
+	}
+	for _, failure := range failures {
+		level := slog.LevelWarn
+		if failure.Active {
+			level = slog.LevelError
+		}
+		a.logger.Log(ctx, level, "config version has no derivable client settings; its node keeps serving saved settings to clients",
+			"server_id", failure.ServerID, "config_version_id", failure.VersionID, "version", failure.Version,
+			"active", failure.Active, "reason", failure.Reason)
+	}
 }

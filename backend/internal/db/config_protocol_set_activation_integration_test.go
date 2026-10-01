@@ -55,9 +55,13 @@ func TestEquivalentRenderAfterProtocolSetEditGetsNewActivationTimestamp(t *testi
 	}
 
 	repo := configs.NewRepository(pool)
+	// Both renders deploy Hysteria2 for the account; only a version that lists
+	// the account can activate its protocols.
 	input := configs.CreateConfigVersionInput{
 		ServerID: serverID, Status: configs.StatusValidated,
-		ConfigHash: "identical-render", RenderedConfig: configs.RenderedConfig{},
+		ConfigHash: "identical-render", RenderedConfig: configs.RenderedConfig{
+			VPNAccounts: []configs.ConfigVPNAccount{{ID: accountID, Protocols: []string{"hysteria2"}}},
+		},
 	}
 	first, err := repo.CreateConfigVersion(ctx, input)
 	if err != nil {

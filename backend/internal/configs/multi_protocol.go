@@ -67,9 +67,14 @@ func (r *Repository) ResolveServerAccountProtocols(ctx context.Context, serverID
 		FROM vpn_accounts a
 		JOIN servers s ON s.id = a.server_id
 		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
+		-- Only administrator choices decide what is deployed; seeded rows
+		-- (desired_explicit FALSE) must not keep a previous node protocol,
+		-- such as a seeded MTProto row keeping the node-wide proxy running.
+		-- Without explicit choices the account deploys its primary protocol.
 		LEFT JOIN vpn_account_protocols pap
 			ON pap.vpn_account_id = a.id
 			AND pap.desired_enabled = TRUE
+			AND pap.desired_explicit = TRUE
 		WHERE a.server_id = $1::uuid
 		ORDER BY a.created_at ASC, a.id ASC, pap.protocol ASC
 	`, serverID)

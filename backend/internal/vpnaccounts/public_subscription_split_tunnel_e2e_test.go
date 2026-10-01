@@ -350,3 +350,21 @@ func hasPublicSubscriptionSplitTunnelE2EOutbound(outbounds []SingBoxOutbound, ou
 	}
 	return false
 }
+
+// GetOrCreateClientProfile/UpdateClientProfile satisfy clientProfileRepository
+// so the public subscription resolves the served connection through
+// h.clientConnection, like GetClientSubscription does.
+func (r *publicSubscriptionSplitTunnelE2ERepository) GetOrCreateClientProfile(_ context.Context, accountID string) (ClientProfile, error) {
+	return ClientProfile{
+		VPNAccountID:        accountID,
+		FingerprintMode:     FingerprintModeAuto,
+		Fingerprint:         DefaultAutoFingerprint,
+		ResolvedFingerprint: DefaultAutoFingerprint,
+		SpiderX:             "/",
+		Protocol:            ClientProtocolAuto,
+	}, nil
+}
+
+func (r *publicSubscriptionSplitTunnelE2ERepository) UpdateClientProfile(context.Context, string, UpdateClientProfileRequest) (ClientProfile, error) {
+	return ClientProfile{}, nil
+}
