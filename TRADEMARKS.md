@@ -43,6 +43,21 @@ Official builds, signed releases, support offerings, appliance packaging, and
 managed RouteGate may be provided separately by RouteGate maintainers or
 authorized parties.
 
+## Official Sources and Anti-Confusion
+
+Users should be able to identify the official RouteGate project sources and
+trusted release channels clearly. Official project sources may include the
+RouteGate website, the official RouteGate source repository, and release
+locations linked from those sources.
+
+Do not register, use, or promote confusingly similar names, domains, packages,
+accounts, marks, or service names in a way that suggests affiliation with,
+control by, or endorsement from the RouteGate project.
+
+Do not use RouteGate trademarks or confusingly similar designations to pressure
+users, maintainers, distributors, or service providers into treating an
+unofficial project, fork, package, service, or registration as official.
+
 ## Restricted Uses
 
 Do not use RouteGate trademarks or brand assets to:
