@@ -393,12 +393,22 @@ export function buildVlessRealityShareLink(
   return `vless://${encodeURIComponent(uuid)}@${formatVlessHost(server)}:${serverPort}?${parameters.toString()}#${encodeURIComponent(label)}`;
 }
 
-export async function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
-  const servers = await apiGet<{ items: Array<{ id: string }> }>('/api/v1/servers');
-  if (servers.items.length === 0) return { items: [] };
+export interface ActiveVpnAccountsByServerResponse extends ListVpnAccountsResponse {
+  /** Number of active accounts per server id (all of them, not only the returned items). */
+  activeTotals: Record<string, number>;
+}
 
-  const results = await Promise.all(servers.items.map((server) => apiGet<{ items: VpnAccount[] }>(
-    `/api/v1/vpn-accounts?status=active&serverId=${encodeURIComponent(server.id)}&page=1&pageSize=1`,
+/**
+ * Active accounts per server for Getting Started: the newest `perServer`
+ * accounts of every server (the list API orders by creation, newest first)
+ * plus the total number of active accounts of each server.
+ */
+export async function getVpnAccounts(perServer = 1): Promise<ActiveVpnAccountsByServerResponse> {
+  const servers = await apiGet<{ items: Array<{ id: string }> }>('/api/v1/servers');
+  if (servers.items.length === 0) return { items: [], activeTotals: {} };
+
+  const results = await Promise.all(servers.items.map((server) => apiGet<{ items: VpnAccount[]; total?: number }>(
+    `/api/v1/vpn-accounts?status=active&serverId=${encodeURIComponent(server.id)}&page=1&pageSize=${perServer}`,
   )));
 
   return {
@@ -408,6 +418,10 @@ export async function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
       // Preserve that contract while separating generic metadata edits in the API.
       updatedAt: account.configUpdatedAt ?? account.updatedAt,
     })),
+    activeTotals: Object.fromEntries(servers.items.map((server, index) => [
+      server.id,
+      typeof results[index].total === 'number' ? results[index].total : results[index].items.length,
+    ])),
   };
 }
 
