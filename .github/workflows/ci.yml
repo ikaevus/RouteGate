@@ -127,6 +127,7 @@ jobs:
             scripts/deploy-production-like-bundle.sh \
             scripts/production-like-ops.sh \
             scripts/production-like-preflight-applied-client-settings.sh \
+            scripts/production-like-update-manager.sh \
             scripts/routegate-recovery \
             scripts/routegate-update-bootstrap.sh \
             scripts/routegate-update-core.sh \
@@ -138,6 +139,7 @@ jobs:
             scripts/test-clean-vps-installer.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-production-like-preflight.sh \
+            scripts/test-production-like-update-manager.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-bootstrap.sh \
             scripts/test-update-core.sh \
@@ -156,6 +158,7 @@ jobs:
             scripts/deploy-production-like-bundle.sh \
             scripts/production-like-ops.sh \
             scripts/production-like-preflight-applied-client-settings.sh \
+            scripts/production-like-update-manager.sh \
             scripts/routegate-recovery \
             scripts/routegate-update-bootstrap.sh \
             scripts/routegate-update-core.sh \
@@ -165,6 +168,7 @@ jobs:
             scripts/test-attestation-verifier-runtime.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-production-like-preflight.sh \
+            scripts/test-production-like-update-manager.sh \
             scripts/test-recovery-tool.sh \
             scripts/test-update-bootstrap.sh \
             scripts/test-update-core.sh \
@@ -183,6 +187,7 @@ jobs:
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
           sudo bash scripts/test-production-like-preflight.sh
+          sudo bash scripts/test-production-like-update-manager.sh
           bash scripts/test-recovery-tool.sh
           sudo bash scripts/test-attestation-verifier-runtime.sh
           bash scripts/test-update-bootstrap.sh

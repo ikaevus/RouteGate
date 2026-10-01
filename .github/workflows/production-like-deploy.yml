@@ -1,11 +1,10 @@
 name: Production-like Deploy
 
+# Live deployment is an explicit operator action only. It no longer runs after
+# a green RouteGate CI on main: merging to main builds and tests but never
+# updates the production-like host. Manager-only updates use the
+# update-manager operation of production-like-ops.yml.
 on:
-  workflow_run:
-    workflows:
-      - RouteGate CI
-    types:
-      - completed
   workflow_dispatch:
 
 permissions:
@@ -17,14 +16,12 @@ concurrency:
 
 jobs:
   deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: production-like
     timeout-minutes: 20
     env:
-      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      TARGET_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout exact target commit

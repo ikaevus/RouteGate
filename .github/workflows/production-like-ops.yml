@@ -24,8 +24,15 @@ on:
           - reconcile-mtproto-port-conflict
           - renew-certificate
           - preflight-applied-client-settings-155
+          - update-manager
+      commit:
+        description: update-manager only - full 40-character main commit with a successful RouteGate CI run
+        required: false
+        type: string
+        default: ''
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -42,7 +49,7 @@ jobs:
        github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-24.04
     environment: production-like
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - name: Checkout trusted main
@@ -57,11 +64,19 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_OPERATION: ${{ inputs.operation }}
+          DISPATCH_COMMIT: ${{ inputs.commit }}
           REQUEST_BODY: ${{ github.event.issue.body }}
         run: |
           set -euo pipefail
+          commit=""
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             operation="$DISPATCH_OPERATION"
+            commit="${DISPATCH_COMMIT:-}"
+          elif [[ "$REQUEST_BODY" =~ ^operation=update-manager\ commit=([0-9a-f]{40})$ ]]; then
+            # The only request with a parameter: a full lowercase commit id and
+            # nothing else (no trailing newline, spaces or other text).
+            operation=update-manager
+            commit="${BASH_REMATCH[1]}"
           else
             case "$REQUEST_BODY" in
               'operation=diagnose') operation=diagnose ;;
@@ -85,16 +100,58 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155) ;;
+            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155|update-manager) ;;
             *) exit 2 ;;
           esac
-          # The database preflight runs with production-like secrets only from
-          # the trusted main workflow definition, never a dispatch from another ref.
-          if [[ "$operation" == "preflight-applied-client-settings-155" && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+          # The database preflight and the Manager update run with
+          # production-like secrets only from the trusted main workflow
+          # definition, never a dispatch from another ref.
+          if [[ ( "$operation" == "preflight-applied-client-settings-155" || "$operation" == "update-manager" ) && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
             printf 'The %s operation can only be dispatched from main.\n' "$operation" >&2
             exit 2
           fi
+          if [[ "$operation" == "update-manager" ]]; then
+            [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { printf 'update-manager requires a full 40-character lowercase commit id.\n' >&2; exit 2; }
+          elif [[ -n "$commit" ]]; then
+            printf 'The commit input is accepted only by update-manager.\n' >&2
+            exit 2
+          fi
           printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Verify update-manager target is on main with a successful CI run
+        if: steps.request.outputs.operation == 'update-manager'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.request.outputs.commit }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${TARGET_SHA}&branch=main&event=push&status=success&per_page=1" --jq '.total_count')
+          [[ "$runs" =~ ^[0-9]+$ && "$runs" -gt 0 ]] || { printf 'No successful RouteGate CI push run on main for %s.\n' "$TARGET_SHA" >&2; exit 1; }
+          printf 'target=%s successful_main_ci_runs=%s\n' "$TARGET_SHA" "$runs"
+
+      - name: Checkout pinned update-manager target
+        if: steps.request.outputs.operation == 'update-manager'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ steps.request.outputs.commit }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify pinned checkout is in main
+        if: steps.request.outputs.operation == 'update-manager'
+        shell: bash
+        env:
+          TARGET_SHA: ${{ steps.request.outputs.commit }}
+        run: |
+          set -euo pipefail
+          [[ "$(git -C target rev-parse HEAD)" == "$TARGET_SHA" ]]
+          git -C target merge-base --is-ancestor "$TARGET_SHA" refs/remotes/origin/main \
+            || { printf 'Commit %s is not contained in main.\n' "$TARGET_SHA" >&2; exit 1; }
+          printf 'target=%s contained-in=main\n' "$TARGET_SHA"
 
       - name: Setup Go for rollback-cycle validation
         if: steps.request.outputs.operation == 'validate-deploy-rollback-cycle'
@@ -133,6 +190,46 @@ jobs:
           printf 'bundle=%s\n' "$bundle" >> "$GITHUB_OUTPUT"
           printf 'bundle_sha=%s\n' "$bundle_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Go for the Manager update
+        if: steps.request.outputs.operation == 'update-manager'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: |
+            target/backend/go.sum
+            target/agent/go.sum
+
+      - name: Setup Node.js for the Manager update
+        if: steps.request.outputs.operation == 'update-manager'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: target/frontend/package-lock.json
+
+      - name: Build pinned Manager update bundle
+        if: steps.request.outputs.operation == 'update-manager'
+        id: manager_bundle
+        shell: bash
+        working-directory: target
+        env:
+          VERSION: production-like
+          COMMIT: ${{ steps.request.outputs.commit }}
+          AGENT_BUNDLE_BASE_URL: https://us.routegate.org/bootstrap/${{ steps.request.outputs.commit }}
+          ARCHITECTURES: amd64
+          OUTPUT_DIR: ${{ runner.temp }}/routegate-manager-update-dist
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$COMMIT" ]]
+          ./scripts/build-release-bundle.sh
+          bundle="${OUTPUT_DIR}/routegate-${VERSION}-linux-amd64.tar.gz"
+          test -s "$bundle"
+          tar -xzOf "$bundle" ./metadata/manifest.env | grep -Fxq "COMMIT=${COMMIT}"
+          bundle_sha=$(sha256sum "$bundle" | awk '{print $1}')
+          printf 'bundle=%s\n' "$bundle" >> "$GITHUB_OUTPUT"
+          printf 'bundle_sha=%s\n' "$bundle_sha" >> "$GITHUB_OUTPUT"
+          printf 'bundle commit=%s sha256=%s\n' "$COMMIT" "$bundle_sha"
+
       - name: Validate ops scripts locally
         shell: bash
         run: |
@@ -142,12 +239,16 @@ jobs:
           bash -n scripts/deploy-production-like-bundle.sh
           bash -n scripts/validate-production-like-deploy.sh
           bash -n scripts/production-like-preflight-applied-client-settings.sh
+          bash -n scripts/production-like-update-manager.sh
+          bash -n scripts/routegate-update-core.sh
+          bash -n scripts/routegate-update-role.sh
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck -x scripts/production-like-ops.sh
             shellcheck -x scripts/production-like-task-diagnostics.sh
             shellcheck -x scripts/deploy-production-like-bundle.sh
             shellcheck -x scripts/validate-production-like-deploy.sh
             shellcheck -x scripts/production-like-preflight-applied-client-settings.sh
+            shellcheck -x scripts/production-like-update-manager.sh
           fi
 
       - name: Configure SSH
@@ -173,6 +274,9 @@ jobs:
           TARGET_SHA: ${{ steps.rollback_bundle.outputs.target_sha }}
           BUNDLE_FILE: ${{ steps.rollback_bundle.outputs.bundle }}
           BUNDLE_SHA: ${{ steps.rollback_bundle.outputs.bundle_sha }}
+          MANAGER_COMMIT: ${{ steps.request.outputs.commit }}
+          MANAGER_BUNDLE: ${{ steps.manager_bundle.outputs.bundle }}
+          MANAGER_BUNDLE_SHA: ${{ steps.manager_bundle.outputs.bundle_sha }}
         run: |
           set -euo pipefail
           SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
@@ -290,6 +394,48 @@ jobs:
             fi
             set -e
             "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_runner' '$remote_sql'" || true
+          elif [[ "$OPERATION" == "update-manager" ]]; then
+            # The bundle is built from the pinned, verified commit; the update
+            # engine and the pinned SQL come from the trusted main checkout.
+            [[ "$MANAGER_COMMIT" =~ ^[0-9a-f]{40}$ && "$MANAGER_BUNDLE_SHA" =~ ^[0-9a-f]{64}$ ]]
+            test -s "$MANAGER_BUNDLE"
+            remote_prefix="/tmp/routegate-update-manager-${GITHUB_RUN_ID}"
+            remote_files=(
+              "${remote_prefix}-bundle.tar.gz"
+              "${remote_prefix}-runner.sh"
+              "${remote_prefix}-core.sh"
+              "${remote_prefix}-role.sh"
+              "${remote_prefix}-down-runner.sh"
+              "${remote_prefix}-preflight.sql"
+              "${remote_prefix}-postflight.sql"
+            )
+            local_files=(
+              "$MANAGER_BUNDLE"
+              scripts/production-like-update-manager.sh
+              scripts/routegate-update-core.sh
+              scripts/routegate-update-role.sh
+              scripts/deploy-production-like-bundle.sh
+              docs/operations/applied-client-settings/preflight-schema-155.sql
+              docs/operations/applied-client-settings/postflight-schema-158.sql
+            )
+            copied=1
+            for i in "${!local_files[@]}"; do
+              "${SCP[@]}" "${local_files[$i]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST:${remote_files[$i]}" || { copied=0; break; }
+            done
+            set +e
+            if ((copied == 1)); then
+              # Connection errors can name the host, port, user or database.
+              "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+                "sudo flock -w 600 /run/lock/routegate-production-like.lock bash '${remote_files[1]}' '$MANAGER_COMMIT' '${remote_files[0]}' '$MANAGER_BUNDLE_SHA' '${remote_files[2]}' '${remote_files[3]}' '${remote_files[4]}' '${remote_files[5]}' '${remote_files[6]}'" 2>&1 \
+                | sed -E -e 's#postgres(ql)?://[^[:space:]]*#<redacted-url>#g' \
+                  -e 's#(connection to server|could not connect|password authentication|no pg_hba|FATAL:).*#\1 <details redacted>#' >"$output_file"
+              rc=${PIPESTATUS[0]}
+            else
+              printf '[routegate-manager-update] ERROR: could not copy the update files to the host; nothing was changed\n' >"$output_file"
+              rc=2
+            fi
+            set -e
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f $(printf "'%s' " "${remote_files[@]}")" || true
           else
             remote_script="/tmp/routegate-ops-${GITHUB_RUN_ID}.sh"
             if [[ "$OPERATION" == "diagnose-agent-task" ]]; then
@@ -316,6 +462,9 @@ jobs:
             # The full P0-P7 result (node names, account ids) goes to the
             # artifact only; the log keeps the runner's status lines.
             grep -E '^\[routegate-preflight\]' "$output_file" || true
+          elif [[ "$OPERATION" == "update-manager" ]]; then
+            # Likewise the full preflight/postflight output of the update.
+            grep -E '^\[routegate-(manager-update|update)\]' "$output_file" || true
           else
             cat "$output_file"
           fi
@@ -330,6 +479,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Upload full Manager update result
+        if: always() && steps.request.outputs.operation == 'update-manager'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: routegate-update-manager-${{ github.run_id }}
+          path: ${{ runner.temp }}/routegate-ops-output.txt
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Publish sanitized audit result
         if: always() && steps.request.outcome == 'success'
         shell: bash
@@ -338,6 +496,7 @@ jobs:
           OPERATION: ${{ steps.request.outputs.operation }}
           REMOTE_RC: ${{ steps.remote.outputs.rc }}
           EVENT_NAME: ${{ github.event_name }}
+          MANAGER_COMMIT: ${{ steps.request.outputs.commit }}
         run: |
           set -euo pipefail
           rc=${REMOTE_RC:-1}
@@ -355,6 +514,13 @@ jobs:
               summary='Remote operation did not produce output.'
             fi
             summary="${summary}"$'\n\n'"Full P0-P7 result: artifact routegate-preflight-applied-client-settings-155-${GITHUB_RUN_ID} of the run below (kept 7 days). PASSED only means the read-only checks completed; blocking results in P1-P4 still stop the update."
+          elif [[ "$OPERATION" == "update-manager" ]]; then
+            if [[ -f "$output_file" ]]; then
+              summary=$(grep -E '^\[routegate-(manager-update|update)\]' "$output_file" | tail -n 80 || true)
+            else
+              summary='Remote operation did not produce output.'
+            fi
+            summary="target commit=${MANAGER_COMMIT}"$'\n'"${summary}"$'\n\n'"Full preflight P0-P7 and postflight Q0-Q6: artifact routegate-update-manager-${GITHUB_RUN_ID} of the run below (kept 7 days)."
           elif [[ -f "$output_file" ]]; then
             summary=$(tail -n 80 "$output_file")
           else
