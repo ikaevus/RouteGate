@@ -264,6 +264,30 @@ test_rollback_failure_is_reported_after_best_effort_restore() {
   RG_UPDATE_ROOT=""
 }
 
+test_management_apply_preserves_bootstrap() {
+  local root="$TMP_DIR/management-bootstrap"
+  local work="$TMP_DIR/management-bootstrap-work"
+
+  populate_management "$root"
+  mkdir -p "$root/var/www/routegate/bootstrap/oldcommit" "$root/var/www/routegate/assets"
+  printf 'installer\n' >"$root/var/www/routegate/bootstrap/oldcommit/install-agent.sh"
+  printf 'asset-old\n' >"$root/var/www/routegate/assets/old.js"
+  make_work_dir "$work"
+  RG_UPDATE_ROOT=$root
+
+  rg_update_apply_management_files "$work" >/dev/null
+  assert_file_content "$root/var/www/routegate/index.html" frontend-new
+  assert_file_content "$root/var/www/routegate/bootstrap/oldcommit/install-agent.sh" installer
+  [[ ! -e "$root/var/www/routegate/assets/old.js" ]] || fail "stale frontend asset survived the Management apply"
+
+  rm -rf "$root/var/www/routegate/bootstrap"
+  ln -s "$TMP_DIR" "$root/var/www/routegate/bootstrap"
+  if rg_update_apply_management_files "$work" >/dev/null 2>&1; then
+    fail "Management apply accepted a symlinked bootstrap directory"
+  fi
+  RG_UPDATE_ROOT=""
+}
+
 STUB_DIR="$TMP_DIR/stubs"
 install_stubs "$STUB_DIR"
 PATH="$STUB_DIR:$PATH"
@@ -272,6 +296,7 @@ test_role_inference
 test_marker_policy
 test_manager_env_is_data
 test_management_round_trip
+test_management_apply_preserves_bootstrap
 test_vpn_round_trip
 test_backup_failure_propagates
 test_rollback_failure_is_reported_after_best_effort_restore

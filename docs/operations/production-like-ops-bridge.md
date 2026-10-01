@@ -29,6 +29,7 @@ Supported requests:
 - `operation=restart-mtproto`
 - `operation=renew-certificate`
 - `operation=preflight-applied-client-settings-155`
+- `operation=update-manager commit=<40-character main commit>`
 
 `diagnose-sing-box` reports only safe runtime metadata: lifecycle state, process
 exit status, installed version, config validation result, and the systemd
@@ -36,7 +37,9 @@ ExecStart command. It never exposes the sing-box configuration or raw journal
 output.
 
 The issue body is never evaluated as shell code. It is mapped through a fixed
-`case` statement to one fixed operation name. The remote script independently
+`case` statement to one fixed operation name; the only parameter, the commit of
+`update-manager`, must match `^[0-9a-f]{40}$` exactly and is accepted by no
+other operation. The remote script independently
 checks the same allow-list before doing anything.
 
 After every issue-triggered run the workflow posts a sanitized result to #268
@@ -73,6 +76,30 @@ status lines and the artifact reference. `PASSED` means the checks completed;
 their results may still block the update. Runner exit codes: 2 usage or SQL
 checksum mismatch, 3 unexpected schema, 4 psql, environment or connection
 unavailable (never installed or granted automatically), 5 the checks failed.
+
+## Manager-only update
+
+`update-manager` updates only the Manager (binary, migrations, Web UI, unit) to
+one pinned commit, for the applied-client-settings rollout (schema `000155` to
+`000158`). The commit must be contained in `main` and have a successful
+`RouteGate CI` push run; the workflow builds the bundle from exactly that
+commit, while the runner `scripts/production-like-update-manager.sh`, the
+update libraries and the pinned preflight/postflight SQL come from the trusted
+`main` checkout. A `workflow_dispatch` from another ref is refused.
+
+On the host it gates on the read-only preflight, drains Agent jobs, stops the
+Manager, backs up Manager files and the database, installs the new Manager,
+gates on the read-only postflight and the public Web UI, and on any failure
+restores the previous Manager and schema (down migrations, then `pg_restore`).
+It never restarts or rewrites the Agent, VPN runtimes, nginx, observability,
+the maintenance dispatch or bootstrap artifacts, creates no apply job and
+contacts no other node; it verifies that their units and files are unchanged.
+The full output is the artifact `routegate-update-manager-<run id>` (7 days);
+the log and #268 get status lines only. Details, limits and the run sequence:
+`docs/operations/applied-client-settings/MANAGER-ONLY-UPDATE.md`.
+
+Production-like Deploy no longer starts after CI on `main`; a full platform
+deploy is a manual dispatch from `main`.
 
 ## Serialization
 

@@ -165,7 +165,7 @@ B1 models the production-like Hybrid-node platform layout. The B2 privileged pro
 
 The production-like deployment path now exercises the eventual host-update lifecycle through the shared update core:
 
-1. build an exact-commit release bundle after successful CI;
+1. build an exact-commit release bundle of `main` when an operator dispatches the deploy (it no longer runs automatically after CI);
 2. transfer the bundle and matching update core to the host;
 3. verify SHA-256, archive safety, and bundle metadata;
 4. check the RouteGate control-plane preflight;
@@ -176,6 +176,8 @@ The production-like deployment path now exercises the eventual host-update lifec
 9. start Agent;
 10. run production-like validation and final health checks;
 11. restore the database and platform files through the same common core if a mutating stage fails.
+
+A Manager-only variant (the Production-like Ops operation `update-manager`) applies steps 2–8 and 11 to the Management components alone, with read-only pre/postflight gates, and never starts, stops or replaces the Agent.
 
 VPN runtimes are deliberately outside the platform-update rollback transaction. Updating or rolling back Manager/Agent/UI must preserve an already-running VPN data plane whenever possible.
 
