@@ -150,6 +150,7 @@ function getCopy() {
       dismiss: 'Скрыть',
       readyServer: (servers: string[]) => (servers.length === 1 ? `Рабочий узел: ${servers[0]}` : `Рабочие узлы: ${servers.join(', ')}`),
       otherNodes: (servers: string[]) => `Пока без выданного доступа: ${servers.join(', ')}. Первоначальная настройка от этих узлов не зависит.`,
+      otherNodesUnchecked: (servers: string[]) => `Проверка доступа не завершена: ${servers.join(', ')}. RouteGate повторит её автоматически.`,
     } as const;
   }
 
@@ -242,6 +243,7 @@ function getCopy() {
     dismiss: 'Hide',
     readyServer: (servers: string[]) => (servers.length === 1 ? `Working node: ${servers[0]}` : `Working nodes: ${servers.join(', ')}`),
     otherNodes: (servers: string[]) => `No access issued yet: ${servers.join(', ')}. First-run setup does not depend on these nodes.`,
+    otherNodesUnchecked: (servers: string[]) => `Access check not finished: ${servers.join(', ')}. RouteGate will retry it automatically.`,
   } as const;
 }
 
@@ -552,6 +554,7 @@ export function GettingStartedWidget() {
 
   if (!loading && !failed && allReady && focus?.servedAccountId) {
     const others = selection.otherNodes.map((node) => node.name);
+    const unchecked = selection.undeterminedNodes.map((node) => node.name);
     return (
       <section className="dashboard-widget getting-started-widget getting-started-widget-complete" aria-labelledby="getting-started-complete-title">
         <div className="getting-started-complete-layout">
@@ -562,6 +565,7 @@ export function GettingStartedWidget() {
             <p>{copy.readyDescription}</p>
             <small>{copy.readyServer(selection.workingNodes.map((node) => node.name))}</small>
             {others.length > 0 && <small>{copy.otherNodes(others)}</small>}
+            {unchecked.length > 0 && <small>{copy.otherNodesUnchecked(unchecked)}</small>}
           </div>
           <div className="getting-started-complete-actions">
             <Link className="getting-started-action" to={`/vpn-accounts/${encodeURIComponent(focus.servedAccountId)}/access`}>

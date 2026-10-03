@@ -121,22 +121,22 @@ after(async () => {
   await vite?.close();
 });
 
-async function openDashboard(fixture) {
+async function openDashboard(fixture, locale = 'ru') {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   const requests = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.addInitScript(() => {
-    localStorage.setItem('routegate.locale', 'ru');
+  await page.addInitScript((value) => {
+    localStorage.setItem('routegate.locale', value);
     localStorage.setItem('routegate.auth.token', 'test-token');
-  });
+  }, locale);
   await mockApi(page, fixture, requests);
   await page.goto(`${origin}/`);
   const widget = page.locator('.getting-started-widget');
   await widget.waitFor();
   await page.waitForFunction(() => {
     const element = document.querySelector('.getting-started-widget');
-    return element && !element.textContent.includes('Проверяем состояние RouteGate');
+    return element && !element.textContent.includes('Проверяем состояние RouteGate') && !element.textContent.includes('Checking RouteGate setup state');
   });
   return { page, widget, errors, requests };
 }
@@ -262,4 +262,31 @@ test('access that could not be evaluated is not reported as a missing VPN', asyn
   assert.ok(await widget.locator('button', { hasText: 'Проверить снова' }).isVisible());
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+test('served US + unknown RU: ready, the unknown node is reported apart (RU and EN)', async () => {
+  const fixture = {
+    servers: [servers.ru, servers.fi, servers.us],
+    accounts: { [US]: [account('us-1', US, '2026-08-01T00:00:00Z')], [RU]: [account('ru-1', RU, '2026-09-02T00:00:00Z')] },
+    applied: { [US]: true, [RU]: true },
+    access: { 'us-1': 'ready' },
+    unknown: [RU],
+  };
+  for (const [locale, ready, working, others, unchecked] of [
+    ['ru', 'RouteGate готов', /Рабочий узел: us\.routegate\.org/, /Пока без выданного доступа: fi\.routegate\.org\./,
+      /Проверка доступа не завершена: ru\.routegate\.org\. RouteGate повторит её автоматически\./],
+    ['en', 'RouteGate is ready', /Working node: us\.routegate\.org/, /No access issued yet: fi\.routegate\.org\./,
+      /Access check not finished: ru\.routegate\.org\. RouteGate will retry it automatically\./],
+  ]) {
+    const { page, widget, errors } = await openDashboard(fixture, locale);
+    const text = await widget.innerText();
+    assert.match(text, new RegExp(ready));
+    assert.match(text, working);
+    assert.match(text, others);
+    assert.match(text, unchecked);
+    // The unchecked node is never listed among nodes without access.
+    assert.doesNotMatch(text, /(Пока без выданного доступа|No access issued yet):[^.]*ru\.routegate\.org/);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });

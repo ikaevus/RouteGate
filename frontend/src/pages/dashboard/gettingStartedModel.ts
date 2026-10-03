@@ -100,7 +100,10 @@ export interface GettingStartedSelection {
    * is no VPN node at all.
    */
   focus: NodeSetupFacts | null;
-  /** Other VPN nodes that do not serve any account yet (stable order). */
+  /**
+   * Other VPN nodes (stable order). When setup is complete: only nodes known
+   * not to serve any account yet; undetermined nodes are listed apart.
+   */
   otherNodes: NodeSetupFacts[];
   /**
    * Nodes whose access could not be evaluated. Without a working node they
@@ -122,7 +125,9 @@ export function selectGettingStartedNode(nodes: NodeSetupFacts[]): GettingStarte
       setupComplete: true,
       workingNodes,
       focus: workingNodes[0],
-      otherNodes: sorted.filter((node) => nodeSetupStage(node) !== 'ready'),
+      // Nodes whose access check did not finish are reported apart: they are
+      // not known to lack access.
+      otherNodes: sorted.filter((node) => nodeSetupStage(node) !== 'ready' && nodeSetupStage(node) !== 'unknown'),
       undeterminedNodes,
     };
   }

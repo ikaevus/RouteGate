@@ -3,10 +3,14 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/configs"
@@ -233,4 +237,126 @@ func assertNodeAccess(t *testing.T, summary map[string]vpnaccounts.NodeClientAcc
 	if !ok || got.State != state || got.ActiveAccounts != active {
 		t.Fatalf("node %s: got %+v (listed=%v), want state=%s activeAccounts=%d", serverID, got, ok, state, active)
 	}
+}
+
+// The whole summary request has a time budget: listing, waiting for a
+// connection and every evaluation. When it ends, or the caller goes away,
+// decided nodes keep their result, the rest are unknown, the transaction is
+// rolled back and its connection returned. Version numbers belong to the
+// isolated test database only.
+func TestClientAccessSummaryStopsWithinItsBudget(t *testing.T) {
+	ctx, pool, done := setupAppliedSettingsTest(t)
+	defer done()
+	accounts := vpnaccounts.NewRepository(pool)
+	render := configs.NewService(configs.NewRepository(pool))
+
+	// Nodes are evaluated in server id order.
+	nodeID := func(n int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) }
+	node := func(n int, name string) string {
+		id := createSummaryServer(t, ctx, pool, name)
+		if _, err := pool.Exec(ctx, `UPDATE servers SET id = $2::uuid WHERE id = $1::uuid`, id, nodeID(n)); err != nil {
+			t.Fatalf("fix server id: %v", err)
+		}
+		return nodeID(n)
+	}
+	served := node(1, "budget-served")
+	servedAccount := createSummaryAccount(t, ctx, pool, served, "2026-01-01")
+	readAccount(t, ctx, accounts, servedAccount)
+	finishApply(t, ctx, pool, served, renderVersion(t, ctx, render, served), "succeeded")
+
+	pending := node(2, "budget-pending")
+	pendingOld := createSummaryAccount(t, ctx, pool, pending, "2026-01-01")
+	readAccount(t, ctx, accounts, pendingOld)
+	finishApply(t, ctx, pool, pending, renderVersion(t, ctx, render, pending), "succeeded")
+	if _, err := pool.Exec(ctx, `UPDATE vpn_accounts SET status = 'suspended' WHERE id = $1::uuid`, pendingOld); err != nil {
+		t.Fatal(err)
+	}
+	pendingNew := createSummaryAccount(t, ctx, pool, pending, "2026-02-01") // after the apply
+
+	// Three delayed checks: each account's profile is locked by another
+	// connection, so each evaluation would wait for its 2s lock timeout.
+	var delayed, delayedAccounts []string
+	for n := 3; n <= 5; n++ {
+		id := node(n, fmt.Sprintf("budget-delayed-%d", n))
+		account := createSummaryAccount(t, ctx, pool, id, "2026-01-01")
+		readAccount(t, ctx, accounts, account)
+		finishApply(t, ctx, pool, id, renderVersion(t, ctx, render, id), "succeeded")
+		delayed, delayedAccounts = append(delayed, id), append(delayedAccounts, account)
+	}
+	locker, err := pgx.Connect(ctx, os.Getenv("ROUTEGATE_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("connect locker: %v", err)
+	}
+	defer locker.Close(ctx)
+	lock, err := locker.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Rollback(ctx) }()
+	if _, err := lock.Exec(ctx, `SELECT 1 FROM vpn_client_profiles WHERE vpn_account_id = ANY($1::uuid[]) FOR UPDATE`, delayedAccounts); err != nil {
+		t.Fatalf("lock profiles: %v", err)
+	}
+	lockerPID := locker.PgConn().PID()
+
+	assertStopped := func(label string, summary []vpnaccounts.NodeClientAccess, elapsed, limit time.Duration, wantPending bool) {
+		t.Helper()
+		if elapsed > limit {
+			t.Fatalf("%s: the summary took %s, more than %s", label, elapsed, limit)
+		}
+		byNode := map[string]vpnaccounts.NodeClientAccess{}
+		for _, item := range summary {
+			byNode[item.ServerID] = item
+		}
+		if got := byNode[served]; got.State != vpnaccounts.NodeClientAccessServed || got.ServedAccountID != servedAccount {
+			t.Fatalf("%s: the decided served node lost its result: %+v", label, got)
+		}
+		if wantPending {
+			if got := byNode[pending]; got.State != vpnaccounts.NodeClientAccessNotServed || got.PendingAccountID != pendingNew {
+				t.Fatalf("%s: the fully evaluated node lost its result: %+v", label, got)
+			}
+		}
+		for _, id := range delayed {
+			if got := byNode[id]; got.State != vpnaccounts.NodeClientAccessUnknown || got.ActiveAccounts != 1 {
+				t.Fatalf("%s: an unfinished node must be unknown: %+v", label, got)
+			}
+		}
+		// The connection is back in the pool and no transaction of the
+		// summary is left open or waiting.
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			var open int
+			if err := pool.QueryRow(ctx, `
+				SELECT count(*) FROM pg_stat_activity
+				WHERE datname = current_database() AND pid <> pg_backend_pid() AND pid <> $1
+					AND (state LIKE 'idle in transaction%' OR wait_event_type = 'Lock' OR state = 'active')
+			`, lockerPID).Scan(&open); err != nil {
+				t.Fatal(err)
+			}
+			if open == 0 && pool.Stat().AcquiredConns() == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: summary left %d open session(s), %d acquired connection(s)", label, open, pool.Stat().AcquiredConns())
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	// Without a budget the three checks would wait about 6s for their locks.
+	started := time.Now()
+	summary, err := accounts.ClientAccessSummaryWithin(ctx, time.Second)
+	if err != nil {
+		t.Fatalf("summary within budget: %v", err)
+	}
+	assertStopped("budget", summary, time.Since(started), 1800*time.Millisecond, true)
+
+	// The caller going away stops the run the same way.
+	callerCtx, cancel := context.WithTimeout(ctx, 600*time.Millisecond)
+	started = time.Now()
+	summary, err = accounts.ClientAccessSummaryWithin(callerCtx, time.Minute)
+	cancel()
+	if err != nil {
+		t.Fatalf("summary with a cancelled caller: %v", err)
+	}
+	assertStopped("cancelled caller", summary, time.Since(started), 1400*time.Millisecond, false)
 }

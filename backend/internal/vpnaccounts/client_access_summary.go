@@ -3,7 +3,9 @@ package vpnaccounts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -69,6 +71,15 @@ func clientConnectionStatus(err error) (status string, message string, ok bool) 
 	}
 }
 
+// clientAccessSummaryBudget bounds a whole summary request: listing the
+// accounts, waiting for a connection and every evaluation. Statement and lock
+// timeouts only bound single statements.
+const clientAccessSummaryBudget = 8 * time.Second
+
+// ErrClientAccessSummaryIncomplete is returned when the summary could not even
+// list the nodes to evaluate within its budget.
+var ErrClientAccessSummaryIncomplete = errors.New("client access summary did not finish within its time budget")
+
 // ClientAccessSummary evaluates, per node, whether at least one active account
 // gets client access, with exactly the evaluation that issues client links
 // (BuildClientConnection: applied configuration, protocol sets, MTProto proxy,
@@ -76,6 +87,18 @@ func clientConnectionStatus(err error) (status string, message string, ok bool) 
 // evaluation creates on first read are written inside a transaction that is
 // always rolled back, one savepoint per account.
 func (r *Repository) ClientAccessSummary(ctx context.Context) ([]NodeClientAccess, error) {
+	return r.ClientAccessSummaryWithin(ctx, clientAccessSummaryBudget)
+}
+
+// ClientAccessSummaryWithin is ClientAccessSummary with an explicit time
+// budget for the whole request. Nodes not fully evaluated when the budget or
+// the caller's context ends are reported as unknown; decided nodes keep their
+// result. The transaction is rolled back and its connection released even
+// after the context has ended.
+func (r *Repository) ClientAccessSummaryWithin(ctx context.Context, budget time.Duration) ([]NodeClientAccess, error) {
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+
 	type candidate struct{ serverID, accountID string }
 	// Accounts listed by the node's applied configuration first: only an
 	// evaluation order, never a substitute for the evaluation itself.
@@ -91,20 +114,20 @@ func (r *Repository) ClientAccessSummary(ctx context.Context) ([]NodeClientAcces
 			a.created_at, a.id
 	`)
 	if err != nil {
-		return nil, err
+		return nil, listingError(ctx, err)
 	}
 	var candidates []candidate
 	for rows.Next() {
 		var item candidate
 		if err := rows.Scan(&item.serverID, &item.accountID); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, listingError(ctx, err)
 		}
 		candidates = append(candidates, item)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, listingError(ctx, err)
 	}
 
 	summaries := []NodeClientAccess{}
@@ -122,24 +145,44 @@ func (r *Repository) ClientAccessSummary(ctx context.Context) ([]NodeClientAcces
 		return summaries, nil
 	}
 
+	// decided: the node's result is final (served, every account evaluated,
+	// or unknown). Every other node becomes unknown when the run stops early.
+	decided := map[string]bool{}
+	stopEarly := func() []NodeClientAccess {
+		for index := range summaries {
+			if !decided[summaries[index].ServerID] {
+				summaries[index].State = NodeClientAccessUnknown
+			}
+		}
+		return summaries
+	}
+
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return stopEarly(), nil
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	// Roll back with a context of its own: the request context may already
+	// have ended, and the connection must still be returned in a clean state.
+	defer func() {
+		rollbackCtx, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancelRollback()
+		_ = tx.Rollback(rollbackCtx)
+	}()
 	// Never wait long behind an administrator's profile change.
 	for _, setting := range []string{`SET LOCAL lock_timeout = '2s'`, `SET LOCAL statement_timeout = '10s'`} {
 		if _, err := tx.Exec(ctx, setting); err != nil {
-			return nil, err
+			return stopEarly(), nil
 		}
 	}
 
 	evaluated := map[string]int{}
-	decided := map[string]bool{}
 	for _, item := range candidates {
 		summary := &summaries[byServer[item.serverID]]
 		if decided[item.serverID] {
 			continue
+		}
+		if ctx.Err() != nil {
+			return stopEarly(), nil
 		}
 		if evaluated[item.serverID] >= clientAccessEvaluationsPerNode {
 			summary.State = NodeClientAccessUnknown
@@ -151,18 +194,16 @@ func (r *Repository) ClientAccessSummary(ctx context.Context) ([]NodeClientAcces
 		savepoint, err := tx.Begin(ctx)
 		if err != nil {
 			// The transaction cannot continue: nothing further is decided.
-			for index := range summaries {
-				if !decided[summaries[index].ServerID] {
-					summaries[index].State = NodeClientAccessUnknown
-				}
-			}
-			return summaries, nil
+			return stopEarly(), nil
 		}
 		_, evaluation := BuildClientConnection(ctx, &Repository{db: savepoint, pool: r.pool}, item.accountID)
 		rollbackErr := savepoint.Rollback(ctx)
 
 		status, message, known := clientConnectionStatus(evaluation)
 		switch {
+		case ctx.Err() != nil:
+			// Interrupted by the budget or the caller: not an access decision.
+			return stopEarly(), nil
 		case errors.Is(evaluation, pgx.ErrNoRows):
 			// Removed or reassigned meanwhile: not an access decision.
 		case !known || rollbackErr != nil:
@@ -182,16 +223,19 @@ func (r *Repository) ClientAccessSummary(ctx context.Context) ([]NodeClientAcces
 				decided[item.serverID] = true
 			}
 		}
-		if ctx.Err() != nil {
-			for index := range summaries {
-				if !decided[summaries[index].ServerID] {
-					summaries[index].State = NodeClientAccessUnknown
-				}
-			}
-			return summaries, nil
+		if !decided[item.serverID] && evaluated[item.serverID] == summary.ActiveAccounts {
+			// Every active account evaluated, none served: a final result.
+			decided[item.serverID] = true
 		}
 	}
 	return summaries, nil
+}
+
+func listingError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("%w: %w", ErrClientAccessSummaryIncomplete, err)
+	}
+	return err
 }
 
 // GetClientAccessSummary reports, per node, whether it issues client access to
@@ -204,6 +248,10 @@ func (h *Handler) GetClientAccessSummary(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	items, err := repository.ClientAccessSummary(r.Context())
+	if errors.Is(err, ErrClientAccessSummaryIncomplete) {
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.Error("client_access_summary_incomplete", "Client access could not be evaluated in time; retry."))
+		return
+	}
 	if err != nil {
 		h.databaseError(w, "summarize vpn client access", err)
 		return

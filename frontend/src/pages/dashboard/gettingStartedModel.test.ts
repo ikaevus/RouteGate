@@ -165,6 +165,17 @@ test('unknown access is never reported as "no working VPN"', () => {
   assert.equal(withWorking.focus?.id, 'w');
 });
 
+test('served + unknown: setup stays complete, the unknown node is not listed as lacking access', () => {
+  const unknown = node({ id: 'u', name: 'de.routegate.org', activeAccountCount: 2, access: 'unknown' });
+  for (const order of permutations([us, unknown, ru, fi])) {
+    const selection = selectGettingStartedNode(order);
+    assert.equal(selection.setupComplete, true);
+    assert.equal(selection.focus?.id, us.id);
+    assert.deepEqual(selection.otherNodes.map((item) => item.name), ['fi.routegate.org', 'ru.routegate.org']);
+    assert.deepEqual(selection.undeterminedNodes.map((item) => item.name), ['de.routegate.org']);
+  }
+});
+
 test('I: the focus node is reported with its identity, never as the whole installation', () => {
   const selection = selectGettingStartedNode([ru, fi]);
   assert.equal(selection.setupComplete, false);
