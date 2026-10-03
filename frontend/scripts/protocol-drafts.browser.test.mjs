@@ -40,7 +40,8 @@ async function open(width = 1440) {
     if (path === '/api/admin/me') return json({ user: { id: 'admin', roles: ['super_admin'] } });
     if (path === '/api/v1/servers') return json({ items: [node] });
     if (path === '/api/v1/vpn-accounts') return json({ items: accounts, total: 2, page: 1, pageSize: 50, totalPages: 1 });
-    if (path.endsWith('/traffic')) return json({ usage: { totalBytes: 0, txBytes: 0, rxBytes: 0 }, limit: null });
+    if (path.endsWith('/traffic')) return json({ period: { from: stamp, to: stamp },
+      usage: { totalBytes: 0, txBytes: 0, rxBytes: 0 }, limit: null });
     if (path === '/api/v1/servers/node/protocol-settings') return json({ serverId: 'node', protocol: 'vless',
       vless: { port: 8443 }, reality: { enabled: true }, shadowsocks: { ready: true },
       wireGuard: { ready: false }, hysteria2: { ready: false }, mtproto: { ready: false } });
@@ -65,7 +66,11 @@ async function open(width = 1440) {
   await page.goto(`${origin}/vpn-accounts/${accounts[0].id}/protocols`);
   const panel = page.locator('.vpn-account-protocol-workspace');
   const select = panel.locator('select');
-  await select.waitFor();
+  try { await select.waitFor({ timeout: 10000 }); }
+  catch (error) {
+    await page.close();
+    throw new Error(`Protocol panel did not open. Page errors: ${JSON.stringify(errors)}`, { cause: error });
+  }
   return { page, panel, select, errors, writes, profile,
     reject: value => { reject = value; }, finish: value => { finish = value; }, reads: () => profileReads };
 }
