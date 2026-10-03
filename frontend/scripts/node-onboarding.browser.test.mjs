@@ -73,7 +73,7 @@ async function open(path, fixture = {}, locale = 'en') {
     }
     if (path === `${base}/config/versions`) return json({ items: versions, currentConfigVersionId: current });
     if (path === `${base}/config/render`) {
-      if (fixture.renderError) return json({ error: { code: 'protocol_not_ready', message: 'Configure Reality before rendering.' } }, 409);
+      if (fixture.renderError) return json({ status: 'protocol_not_ready', message: 'Configure Reality before rendering.' }, 409);
       const item = version(2, 'validation_failed');
       versions = [item, ...versions];
       return json({ configVersion: item, validationResult: { valid: false, errors: ['Fixture: missing inbound account credentials'], warnings: null } }, 201);

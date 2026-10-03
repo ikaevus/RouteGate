@@ -197,9 +197,11 @@ no usable access link until a successful apply includes its credentials.
 Open **VPN Accounts → the account assigned to this node → Access**. Choose
 **+ Add device**, name the device and select the client (for example Hiddify or
 V2RayN) and platform. Create it, then use **Copy link** or its QR code to import
-the subscription into that device's VPN client. An existing device can show its
-link in its focused details. If you rotate a link, import the new one: the old
-link stops working. Treat links as credentials.
+the subscription into that device's VPN client. Copy it before leaving the
+section: a full device link is shown only when issued. If an existing device's
+link is hidden and you need a new copy, use **Rotate link** in its focused
+details and confirm replacement. Import the newly issued link: the old one
+stops working. Treat links as credentials.
 
 Verify that the client uses this node and the applied Reality settings, then
 connect and load a test page. If the node is connected but a link is withheld,
