@@ -195,7 +195,7 @@ jobs:
           bash scripts/test-update-role.sh
           bash scripts/test-update-toolchain.sh
           bash scripts/test-update-verified.sh
-          python3 -m unittest scripts/test_maintenance_dispatch.py scripts/test_publish_bootstrap.py
+          python3 -m unittest scripts/test_maintenance_dispatch.py scripts/test_publish_bootstrap.py scripts/test_remote_node_vpn_e2e.py
           bash scripts/routegate-update-transaction.sh --help >/dev/null
           bash scripts/routegate-update-verified.sh --help >/dev/null
 
@@ -253,10 +253,10 @@ jobs:
           retention-days: 7
 
   remote-node-bootstrap:
-    name: Manager command to Agent heartbeat
+    name: Manager command to Reality traffic
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
     services:
@@ -274,6 +274,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      ROUTEGATE_E2E_ISOLATED: '1'
       ROUTEGATE_E2E_DATABASE_URL: postgres://routegate:routegate_e2e_password@127.0.0.1:5432/routegate_remote_bootstrap_e2e?sslmode=disable
       ROUTEGATE_E2E_PUBLIC_URL: https://localhost:18443
       ROUTEGATE_E2E_MANAGER_ADDR: 127.0.0.1:18080
