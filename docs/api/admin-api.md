@@ -351,9 +351,13 @@ heartbeat freshness, Agent protocol compatibility, and reported capabilities:
 
 For a VPN or Hybrid Node, `POST
 /api/v1/servers/{server_id}/registration-token` returns the raw one-time token
-once and, when `ROUTEGATE_PUBLIC_URL` is a valid HTTPS origin, a complete
-`bootstrapCommand`. The command installs only RouteGate Agent on the remote
-node. Management Nodes receive `409 node_role_incompatible`.
+once and, when the build has complete trusted bootstrap metadata, a complete
+`bootstrapCommand`. This requires a valid public HTTPS origin, full Git commit,
+installer SHA-256, and a release tag or verified bundle source. An HTTPS origin
+alone is insufficient; if metadata is incomplete, the UI shows bootstrap
+unavailability instead of a copyable installer command. Explicit token rotation
+invalidates the previous unused registration token for this node. The command
+installs only RouteGate Agent on the remote node. Management Nodes receive `409 node_role_incompatible`.
 
 `GET /api/v1/system/version` returns Manager, Web UI, database schema, Agent protocol compatibility, and manual-update metadata. It does not perform update network calls.
 

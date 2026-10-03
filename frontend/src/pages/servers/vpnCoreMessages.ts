@@ -22,6 +22,7 @@ export interface VPNCoreMessages {
   unknownTitle: string;
   unknownDescription: string;
   installAction: string;
+  configureProtocol: string;
   startAction: string;
   stopAction: string;
   restartAction: string;
@@ -65,9 +66,9 @@ const messages: Record<Locale, VPNCoreMessages> = {
     notInstalledTitle: 'VPN Core is not installed',
     notInstalledDescription: 'Install sing-box to prepare this server for VPN configuration deployment.',
     installedTitle: 'VPN Core is installed',
-    installedDescription: 'sing-box is available, but RouteGate could not confirm that the service is running.',
+    installedDescription: 'sing-box is available. Configure the protocol and an active VPN account, then render, validate and apply a configuration. Agent starts the service during apply.',
     stoppedTitle: 'VPN service is stopped',
-    stoppedDescription: 'Start sing-box before deploying or serving VPN configurations.',
+    stoppedDescription: 'For a new node, configure the protocol and an active VPN account, then render, validate and apply a configuration. Agent starts sing-box during apply. If a configuration is already applied, you can start the service again.',
     runningTitle: 'VPN service is running',
     runningDescription: 'sing-box is available and the system service is active.',
     failedTitle: 'VPN service needs attention',
@@ -75,6 +76,7 @@ const messages: Record<Locale, VPNCoreMessages> = {
     unknownTitle: 'VPN service state is unknown',
     unknownDescription: 'RouteGate could not determine the current sing-box service state.',
     installAction: 'Install sing-box',
+    configureProtocol: 'Configure VPN protocol',
     startAction: 'Start service',
     stopAction: 'Stop service',
     restartAction: 'Restart service',
@@ -89,7 +91,7 @@ const messages: Record<Locale, VPNCoreMessages> = {
     installationPending: 'Installing sing-box...',
     installationQueued: 'Installation is queued and will start when RouteGate Agent claims the task.',
     installationAwaitingHeartbeat: 'Installation completed. Waiting for the next Agent heartbeat to confirm VPN Core state.',
-    installationFailed: 'sing-box installation failed safely. No VPN service was started.',
+    installationFailed: 'sing-box installation failed. Check the reported reason and node connectivity, then use Install sing-box to retry.',
     installationUnsupported: 'This Agent cannot install sing-box on the current platform.',
     unsupportedPlatform: 'Automatic installation supports Ubuntu LTS and Debian-compatible APT systems on amd64 or arm64.',
     repositoryConfigurationFailed: 'The supported sing-box repository could not be configured.',
@@ -116,9 +118,9 @@ const messages: Record<Locale, VPNCoreMessages> = {
     notInstalledTitle: 'VPN Core не установлен',
     notInstalledDescription: 'Установите sing-box, чтобы подготовить сервер к развёртыванию VPN-конфигураций.',
     installedTitle: 'VPN Core установлен',
-    installedDescription: 'sing-box доступен, но RouteGate не смог подтвердить, что служба запущена.',
+    installedDescription: 'sing-box доступен. Настройте протокол и активный VPN-аккаунт, затем выполните рендеринг, проверку и применение конфигурации. Agent запустит службу при применении.',
     stoppedTitle: 'VPN-служба остановлена',
-    stoppedDescription: 'Запустите sing-box перед развёртыванием и обслуживанием VPN-конфигураций.',
+    stoppedDescription: 'Для нового узла настройте протокол и активный VPN-аккаунт, затем выполните рендеринг, проверку и применение конфигурации. Agent запустит sing-box при применении. Если конфигурация уже применена, можно снова запустить службу.',
     runningTitle: 'VPN-служба работает',
     runningDescription: 'sing-box доступен, а системная служба активна.',
     failedTitle: 'VPN-служба требует внимания',
@@ -126,6 +128,7 @@ const messages: Record<Locale, VPNCoreMessages> = {
     unknownTitle: 'Состояние VPN-службы неизвестно',
     unknownDescription: 'RouteGate не смог определить текущее состояние службы sing-box.',
     installAction: 'Установить sing-box',
+    configureProtocol: 'Настроить VPN-протокол',
     startAction: 'Запустить службу',
     stopAction: 'Остановить службу',
     restartAction: 'Перезапустить службу',
@@ -140,7 +143,7 @@ const messages: Record<Locale, VPNCoreMessages> = {
     installationPending: 'Установка sing-box...',
     installationQueued: 'Установка поставлена в очередь и начнётся, когда RouteGate Agent получит задачу.',
     installationAwaitingHeartbeat: 'Установка завершена. Ожидаем следующий heartbeat Agent для подтверждения состояния VPN Core.',
-    installationFailed: 'Установка sing-box безопасно завершилась с ошибкой. VPN-служба не запускалась.',
+    installationFailed: 'Установка sing-box завершилась с ошибкой. Проверьте указанную причину и связь с узлом, затем повторите действие «Установить sing-box».',
     installationUnsupported: 'Этот Agent не может установить sing-box на текущей платформе.',
     unsupportedPlatform: 'Автоматическая установка поддерживает Ubuntu LTS и Debian-совместимые APT-системы на amd64 или arm64.',
     repositoryConfigurationFailed: 'Не удалось настроить поддерживаемый репозиторий sing-box.',

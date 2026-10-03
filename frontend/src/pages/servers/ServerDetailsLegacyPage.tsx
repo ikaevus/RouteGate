@@ -25,6 +25,7 @@ import {
   type ConfigApplyJob,
   type ConfigVersion,
   type RegistrationTokenResponse,
+  type ValidationResult,
 } from '../../entities/server/api/serverApi';
 import {
   clearCompletedConfigApplyJobs,
@@ -278,6 +279,8 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
   const [editDescription, setEditDescription] = useState('');
   const [applyHistoryPage, setApplyHistoryPage] = useState(0);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
+  const completedJobsSnapshot = useRef('');
 
   const serverQuery = useQuery({
     queryKey: ['server', serverId],
@@ -448,7 +451,21 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
       applyHistoryPage * APPLY_HISTORY_PAGE_SIZE,
     ),
     enabled: Boolean(serverId),
+    refetchInterval: (query) => activeSection === 'deployments' && applyHistoryPage === 0
+      && query.state.data?.items.some(job => job.status === 'pending' || job.status === 'in_progress')
+        ? 2000 : false,
   });
+
+  useEffect(() => {
+    const snapshot = `${serverId}:` + (applyJobsQuery.data?.items ?? [])
+      .filter(job => job.status === 'succeeded' || job.status === 'failed')
+      .map(job => `${job.id}:${job.status}:${job.updatedAt}`).join(',');
+    if (snapshot === completedJobsSnapshot.current) return;
+    completedJobsSnapshot.current = snapshot;
+    // A queued apply is asynchronous: fetch the authoritative current version
+    // again when Agent completes it, including a failed apply or rollback.
+    void queryClient.invalidateQueries({ queryKey: ['server-config-versions', serverId] });
+  }, [applyJobsQuery.data, serverId, queryClient]);
 
   useEffect(() => {
     setApplyHistoryPage(0);
@@ -495,14 +512,21 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
   const renderConfigMutation = useMutation({
     mutationFn: () => renderConfig(serverId ?? ''),
     onSuccess: async (response) => {
+      validateConfigMutation.reset();
+      applyConfigMutation.reset();
+      reapplyConfigMutation.reset();
       setSelectedVersionId(response.configVersion.id);
+      setValidationResults(current => ({ ...current, [response.configVersion.id]: response.validationResult }));
       await refreshConfigQueries();
     },
   });
 
   const validateConfigMutation = useMutation({
     mutationFn: (versionId: string) => validateConfigVersion(serverId ?? '', versionId),
-    onSuccess: refreshConfigQueries,
+    onSuccess: async response => {
+      setValidationResults(current => ({ ...current, [response.configVersion.id]: response.validationResult }));
+      await refreshConfigQueries();
+    },
   });
 
   const applyConfigMutation = useMutation({
@@ -665,9 +689,14 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
   const currentVersion = configVersions.find(version => version.id === currentConfigVersionId);
   const selectedVersion = configVersions.find(version => version.id === selectedVersionId)
     ?? currentVersion ?? configVersions[0];
+  const selectedJob = applyJobs.find(job => job.configVersionId === selectedVersion?.id);
+  const selectedValidation = selectedVersion ? validationResults[selectedVersion.id] : undefined;
+  const configError = renderConfigMutation.error ?? validateConfigMutation.error
+    ?? applyConfigMutation.error ?? reapplyConfigMutation.error;
   const configActionPending = validateConfigMutation.isPending || applyConfigMutation.isPending
     || reapplyConfigMutation.isPending || deleteConfigVersionMutation.isPending
-    || pinConfigVersionMutation.isPending || unpinConfigVersionMutation.isPending;
+    || pinConfigVersionMutation.isPending || unpinConfigVersionMutation.isPending
+    || applyJobs.some(job => job.status === 'pending' || job.status === 'in_progress');
   const managerBaseUrl = registrationToken?.managerUrl || getManagerBaseUrl();
   const configSnippet = registrationToken
     ? `manager_url: ${JSON.stringify(managerBaseUrl)}\nregistration_token: ${JSON.stringify(registrationToken.registrationToken)}\nheartbeat_interval_seconds: 30`
@@ -1022,6 +1051,10 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
           <p className="form-message" role="status">
             {t(!selectedVersion
               ? 'serverDetails.deploymentNextRender'
+              : selectedJob?.status === 'pending' || selectedJob?.status === 'in_progress'
+                ? 'serverDetails.deploymentQueued'
+              : selectedJob?.status === 'failed'
+                ? 'serverDetails.deploymentApplyFailed'
               : selectedVersion.status === 'validated' && !selectedVersion.appliedAt
                 ? 'serverDetails.deploymentNextApply'
                 : selectedVersion.appliedAt
@@ -1031,6 +1064,12 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                     : 'serverDetails.deploymentNextValidate')}
           </p>
         )}
+        <p className="muted-text">{t('serverDetails.deploymentAccessHint')}</p>
+        <div className="form-actions">
+          <Link className="text-link" to={`/protocol-settings/${encodeURIComponent(serverId)}`}>{t('navigation.protocolSettings')} →</Link>
+          <Link className="text-link" to={`/vpn-accounts?create=1&server=${encodeURIComponent(serverId)}`}>{t('vpnAccounts.createAction')} →</Link>
+          <Link className="text-link" to="/vpn-accounts">{t('navigation.vpnAccounts')} →</Link>
+        </div>
 
         <details className="server-deployment-help">
           <summary>{t('serverDetails.versionPolicy')}</summary>
@@ -1051,6 +1090,7 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
             {t('serverDetails.configActionError')}
           </div>
         )}
+        {configError instanceof ApiError && <div className="form-message form-message-error" role="alert">{configError.message}</div>}
 
         {configVersionsQuery.isLoading ? (
           <p className="empty-state">{t('serverDetails.loadingConfigVersions')}</p>
@@ -1107,6 +1147,11 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                     <div><dt>{t('serverDetails.created')}</dt><dd>{formatDate(version.createdAt)}</dd></div>
                     <div><dt>{t('serverDetails.applied')}</dt><dd>{formatDate(version.appliedAt)}</dd></div>
                   </dl>
+                  {selectedValidation && ((selectedValidation.errors?.length ?? 0) > 0 || (selectedValidation.warnings?.length ?? 0) > 0) && (
+                    <div className={`form-message${selectedValidation.valid ? '' : ' form-message-error'}`} role="status">
+                      <ul>{[...(selectedValidation.errors ?? []), ...(selectedValidation.warnings ?? [])].map((message, index) => <li key={index}>{message}</li>)}</ul>
+                    </div>
+                  )}
                   <div className="table-actions">
                     <button
                       className="small-button"
@@ -1247,6 +1292,13 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                       </span>
                     </summary>
                     <div className="server-deployment-job-detail">
+                      {job.status === 'failed' && (
+                        <div className="form-message form-message-error">
+                          <p>{t(job.resultPayload?.failedStage === 'validate' ? 'serverDetails.deploymentNodeValidationFailed' : 'serverDetails.deploymentApplyFailed')}</p>
+                          <Link className="text-link" to={`/protocol-settings/${encodeURIComponent(serverId)}`}>{t('navigation.protocolSettings')} →</Link>{' '}
+                          <Link className="text-link" to={sectionPath('connection')}>{t('serverWorkspace.connection')} →</Link>
+                        </div>
+                      )}
                       <DetailRow label={t('serverDetails.versionIdentifier')}>{job.configVersionId}</DetailRow>
                       <div>{t('serverDetails.stages')}</div>
                       <StageSummary resultPayload={job.resultPayload} />
@@ -1413,6 +1465,7 @@ export function ServerDetailsPage({ vpnPanel, connectionGuidance }: { vpnPanel?:
                     <button className="small-button" type="button" aria-label={t('serverDetails.checkAgentStatus')} disabled={serverQuery.isFetching} onClick={() => void checkAgentStatus()}>{serverQuery.isFetching ? t('serverDetails.checkingAgentStatus') : t('serverDetails.checkAgentStatus')}</button>
                   </div>}
                   {setupCommand && statusCheckError && <div className="form-message form-message-error" role="alert">{t('serverDetails.agentStatusCheckError')}</div>}
+                  {setupCommand && <p className="muted-text">{t('serverDetails.bootstrapRetryHint')}</p>}
 
                   <details className="server-deployment-help">
                     <summary>{t('serverDetails.manualRegistrationDetails')}</summary>

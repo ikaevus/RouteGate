@@ -22,6 +22,9 @@ when RouteGate needs the runtime for the protocol the administrator selects.
 Runtime installers leave a newly installed service unconfigured/inactive until
 the validated configuration apply owns activation.
 
+For the complete UI path, retry guidance and public-port check limitations,
+see [Add a remote VPN Node](../guides/add-vpn-node.md).
+
 ## Guided workflow
 
 1. In Manager, create a node with the `VPN Node` role.
@@ -31,17 +34,23 @@ the validated configuration apply owns activation.
 4. Run it on a clean Ubuntu 24.04 LTS amd64 or arm64 host with `sudo`.
 5. Keep the onboarding dialog open; Manager checks the connection every five
    seconds and shows the registered Agent after its first heartbeat.
-6. After the node is connected, choose/configure the VPN protocol. RouteGate
-   installs the required VPN runtime through Agent as the next managed action;
-   do not install protocol runtimes manually on the host.
+6. After the node is connected, open **Services** and choose **Install
+   sing-box** for VLESS / Reality. Wait for the Agent installation result and
+   heartbeat. A stopped, newly installed service is expected; configuration
+   apply owns its first start. Do not install protocol runtimes manually.
 7. For VLESS / Reality, explicitly choose an external TLS handshake hostname
    and check its DNS and TLS reachability from the VPN node. The node hostname
    is not an automatic Reality target. Agent repeats the DNS and TLS 1.3
    check from the node during apply and stops before replacing the running
-   config if it fails. Save settings, render and review a
+   config if it fails. Save settings and create/activate a VPN account assigned
+   to this node before rendering. Render and review a
    validated config version, apply it, and check the Agent result. Open the
    selected inbound VPN port in host and provider firewalls before testing a
    client; Agent's Manager connection itself needs outbound HTTPS only.
+8. After a successful Agent apply, verify the current version. Open the
+   assigned account → **Access**, create/select a device and copy its link
+   into the client. Test public TCP reachability from another network and
+   connect the actual client separately.
 
 The onboarding dialog is the only registration-token surface in the Admin UI.
 Its generated command already includes the displayed token; the raw value and
