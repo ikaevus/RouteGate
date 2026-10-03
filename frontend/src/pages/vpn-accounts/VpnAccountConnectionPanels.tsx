@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
-import { VpnAccountProtocolPreferencePanel } from './VpnAccountProtocolPreferencePanel';
+import { VpnAccountProtocolPreferencePanel, type ProtocolSelectionDraft } from './VpnAccountProtocolPreferencePanel';
 import { accountWorkspaceHref } from './accountWorkspace';
 
 function getCopy() {
@@ -27,8 +28,11 @@ function getCopy() {
   } as const;
 }
 
-export function VpnAccountConnectionPanels({ accountId }: { accountId: string }) {
+export function VpnAccountConnectionPanels({ accountId, active = true }: { accountId: string; active?: boolean }) {
   const copy = getCopy();
+  // Only the primary protocol and selected set survive domain navigation.
+  // Account identity is keyed by the enclosing workspace; nothing is persisted.
+  const [draft, setDraft] = useState<ProtocolSelectionDraft | null>(null);
   const [searchParams] = useSearchParams();
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
@@ -70,5 +74,5 @@ export function VpnAccountConnectionPanels({ accountId }: { accountId: string })
     );
   }
 
-  return <VpnAccountProtocolPreferencePanel accountId={accountId} />;
+  return <VpnAccountProtocolPreferencePanel accountId={accountId} active={active} draft={draft} onDraftChange={setDraft} />;
 }

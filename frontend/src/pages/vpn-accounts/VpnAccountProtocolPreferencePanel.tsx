@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getProtocolSettings, getServers } from '../../entities/server/api/serverApi';
 import type { ProtocolSettingsResponse } from '../../entities/server/api/serverApi';
@@ -28,7 +28,17 @@ import {
 } from './protocolPreferenceModel';
 import './multi-protocol-access.css';
 
-type Props = { accountId: string };
+export type ProtocolSelectionDraft = {
+  primary: ClientProtocolPreference;
+  enabledProtocols: ClientProtocol[];
+};
+
+type Props = {
+  accountId: string;
+  active: boolean;
+  draft: ProtocolSelectionDraft | null;
+  onDraftChange: (draft: ProtocolSelectionDraft | null) => void;
+};
 
 type MultiProtocolUpdate = UpdateVpnClientProfileRequest & {
   enabledProtocols: ClientProtocol[];
@@ -150,14 +160,14 @@ function mutationErrorDetail(error: unknown, copy: ReturnType<typeof getCopy>): 
   return detail;
 }
 
-export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
+export function VpnAccountProtocolPreferencePanel({ accountId, active, draft, onDraftChange }: Props) {
   const copy = getCopy();
   const queryClient = useQueryClient();
   // The profile state never carries client links, so it stays readable and
   // editable while client access is withheld until the node applies it.
   const queryKey = ['vpn-account-client-profile', accountId] as const;
-  const [primary, setPrimary] = useState<ClientProtocolPreference>('auto');
-  const [enabledProtocols, setEnabledProtocols] = useState<ClientProtocol[]>(['vless']);
+  const mutationKey = ['vpn-account-protocol-apply', accountId] as const;
+  const applying = useIsMutating({ mutationKey }) > 0;
   const [saved, setSaved] = useState(false);
   const [deploymentStage, setDeploymentStage] = useState<ProtocolDeploymentStage | null>(null);
   const [focusedProtocol, setFocusedProtocol] = useState<ClientProtocol>('vless');
@@ -165,6 +175,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const stateQuery = useQuery({
     queryKey,
     queryFn: () => getVpnAccountClientProfileState(accountId),
+    enabled: active,
   });
   const accountQuery = useQuery({ queryKey: ['vpn-account', accountId], queryFn: () => getVpnAccount(accountId) });
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
@@ -172,7 +183,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   const protocolSettingsQuery = useQuery({
     queryKey: ['server-protocol-settings', assignedServerId],
     queryFn: () => getProtocolSettings(assignedServerId),
-    enabled: Boolean(assignedServerId),
+    enabled: active && Boolean(assignedServerId),
   });
 
   const assignedServer = (serversQuery.data?.items ?? []).find((server) => server.id === assignedServerId);
@@ -180,16 +191,9 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
 
   const view = stateQuery.data ? protocolPreferenceView(stateQuery.data) : null;
 
-  useEffect(() => {
-    if (!stateQuery.data) return;
-    setPrimary(stateQuery.data.profile.protocol ?? 'auto');
-    setEnabledProtocols(protocolPreferenceView(stateQuery.data).desired);
-  }, [stateQuery.data]);
-
-  useEffect(() => {
-    setSaved(false);
-    setDeploymentStage(null);
-  }, [accountId]);
+  // Server refreshes update the saved/active summary, never an explicit draft.
+  const primary = draft?.primary ?? stateQuery.data?.profile.protocol ?? 'auto';
+  const enabledProtocols = draft?.enabledProtocols ?? view?.desired ?? ['vless'];
 
   const profile = stateQuery.data?.profile;
   const activeProtocols = view?.active ?? [];
@@ -214,7 +218,9 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
               : '';
 
   const saveMutation = useMutation({
+    mutationKey,
     mutationFn: async () => {
+      if (!active || stateQuery.isError || accountQuery.isError) throw new Error(copy.loadError);
       if (!profile) throw new Error(copy.loadError);
       if (!assignedServer) throw new Error(copy.noServer);
       if (validationMessage) throw new Error(validationMessage);
@@ -257,6 +263,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
     },
     onSuccess: async (state) => {
       queryClient.setQueryData(queryKey, state);
+      onDraftChange(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
         queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
@@ -266,11 +273,8 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
         queryClient.invalidateQueries({ queryKey: ['server-config-versions', assignedServerId] }),
         queryClient.invalidateQueries({ queryKey: ['server-config-apply-jobs', assignedServerId] }),
       ]);
-      setPrimary(state.profile.protocol ?? 'auto');
-      setEnabledProtocols(protocolPreferenceView(state).desired);
       setDeploymentStage('completed');
       setSaved(true);
-      window.setTimeout(() => setSaved(false), 2600);
     },
     onError: async () => {
       await Promise.all([
@@ -281,18 +285,18 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
   });
 
   const toggleProtocol = (protocol: ClientProtocol) => {
+    if (applying) return;
     saveMutation.reset();
     setSaved(false);
     setDeploymentStage(null);
-    setEnabledProtocols((current) => {
-      const next = current.includes(protocol)
-        ? current.filter((candidate) => candidate !== protocol)
-        : [...current, protocol];
-      const normalized = ordered(next);
-      if (primary !== 'auto' && primary === protocol && !normalized.includes(protocol) && normalized.length > 0) {
-        setPrimary(normalized[0]);
-      }
-      return normalized;
+    const next = enabledProtocols.includes(protocol)
+      ? enabledProtocols.filter((candidate) => candidate !== protocol)
+      : [...enabledProtocols, protocol];
+    const normalized = ordered(next);
+    onDraftChange({
+      primary: primary !== 'auto' && primary === protocol && !normalized.includes(protocol) && normalized.length > 0
+        ? normalized[0] : primary,
+      enabledProtocols: normalized,
     });
   };
 
@@ -326,7 +330,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
                 const ready = protocolSettingsQuery.data
                   ? protocolIsReady(protocol, protocolSettingsQuery.data)
                   : true;
-                const disabled = saveMutation.isPending || (!selected && !ready);
+                const disabled = applying || stateQuery.isError || accountQuery.isError || (!selected && !ready);
                 return (
                   <div
                     className={`vpn-protocol-row${focusedProtocol === protocol ? ' is-focused' : ''}`}
@@ -384,9 +388,9 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
                 <span>{copy.primary}</span>
                 <select
                   value={primary}
-                  disabled={saveMutation.isPending}
+                  disabled={applying || stateQuery.isError || accountQuery.isError}
                   onChange={(event) => {
-                    setPrimary(event.target.value as ClientProtocolPreference);
+                    onDraftChange({ primary: event.target.value as ClientProtocolPreference, enabledProtocols: ordered(enabledProtocols) });
                     saveMutation.reset();
                     setSaved(false);
                     setDeploymentStage(null);
@@ -453,8 +457,8 @@ export function VpnAccountProtocolPreferencePanel({ accountId }: Props) {
               <button
                 className="primary-button"
                 type="button"
-                disabled={!view || !canApplyProtocolSet(view, changed) || saveMutation.isPending || Boolean(validationMessage) || !assignedServer}
-                onClick={() => saveMutation.mutate()}
+                disabled={!active || !view || !canApplyProtocolSet(view, changed) || applying || stateQuery.isError || accountQuery.isError || Boolean(validationMessage) || !assignedServer}
+                onClick={() => { if (!applying && active) saveMutation.mutate(); }}
               >
                 {saveMutation.isPending ? stageText ?? copy.saving : canRetry ? copy.retry : copy.save}
               </button>
