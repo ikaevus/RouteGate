@@ -3,14 +3,12 @@ package wireguard
 import (
 	"context"
 	"strings"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // EnsureAccountPeerCredentials prepares missing WireGuard material for one
 // account before its client protocol preference is persisted. Locking the
 // server serializes address allocation with the normal full-server allocator.
-func EnsureAccountPeerCredentials(ctx context.Context, pool *pgxpool.Pool, serverID string, accountID string) error {
+func EnsureAccountPeerCredentials(ctx context.Context, pool TxBeginner, serverID string, accountID string) error {
 	serverID = strings.TrimSpace(serverID)
 	accountID = strings.TrimSpace(accountID)
 	if serverID == "" || accountID == "" {

@@ -162,7 +162,7 @@ func scanDevice(row scanner) (Device, error) {
 }
 
 func (r *Repository) ListDevices(ctx context.Context, vpnAccountID string) ([]Device, error) {
-	rows, err := r.pool.Query(ctx, deviceSelect+`
+	rows, err := r.db.Query(ctx, deviceSelect+`
 		WHERE vpn_account_id = $1::uuid
 		ORDER BY created_at ASC, id ASC
 	`, vpnAccountID)
@@ -183,19 +183,19 @@ func (r *Repository) ListDevices(ctx context.Context, vpnAccountID string) ([]De
 }
 
 func (r *Repository) GetDevice(ctx context.Context, vpnAccountID, deviceID string) (Device, error) {
-	return scanDevice(r.pool.QueryRow(ctx, deviceSelect+`
+	return scanDevice(r.db.QueryRow(ctx, deviceSelect+`
 		WHERE vpn_account_id = $1::uuid AND id = $2::uuid
 	`, vpnAccountID, deviceID))
 }
 
 func (r *Repository) GetDeviceByID(ctx context.Context, deviceID string) (Device, error) {
-	return scanDevice(r.pool.QueryRow(ctx, deviceSelect+`
+	return scanDevice(r.db.QueryRow(ctx, deviceSelect+`
 		WHERE id = $1::uuid
 	`, deviceID))
 }
 
 func (r *Repository) CreateDevice(ctx context.Context, input CreateDeviceInput) (Device, error) {
-	return scanDevice(r.pool.QueryRow(ctx, `
+	return scanDevice(r.db.QueryRow(ctx, `
 		INSERT INTO vpn_account_devices (vpn_account_id, name, client_type, device_type)
 		SELECT a.id, $2, $3, $4
 		FROM vpn_accounts a
@@ -207,7 +207,7 @@ func (r *Repository) CreateDevice(ctx context.Context, input CreateDeviceInput) 
 }
 
 func (r *Repository) UpdateDevice(ctx context.Context, vpnAccountID, deviceID string, input UpdateDeviceInput) (Device, error) {
-	return scanDevice(r.pool.QueryRow(ctx, `
+	return scanDevice(r.db.QueryRow(ctx, `
 		UPDATE vpn_account_devices
 		SET
 			name = CASE WHEN $3 THEN $4 ELSE name END,
@@ -227,7 +227,7 @@ func (r *Repository) UpdateDevice(ctx context.Context, vpnAccountID, deviceID st
 }
 
 func (r *Repository) RevokeDevice(ctx context.Context, vpnAccountID, deviceID string) (Device, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return Device{}, err
 	}
@@ -260,7 +260,7 @@ func (r *Repository) RevokeDevice(ctx context.Context, vpnAccountID, deviceID st
 }
 
 func (r *Repository) MarkDeviceUsed(ctx context.Context, deviceID string) error {
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.Exec(ctx, `
 		UPDATE vpn_account_devices SET last_used_at = now() WHERE id = $1::uuid
 	`, deviceID)
 	return err
@@ -271,7 +271,7 @@ func (r *Repository) MarkDeviceUsed(ctx context.Context, deviceID string) error 
 // A compromised device token can therefore be rotated/revoked without
 // affecting any other device on the same VPN account.
 func (r *Repository) CreateDeviceSubscriptionToken(ctx context.Context, deviceID, tokenHash string, expiresAt *time.Time) (SubscriptionToken, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return SubscriptionToken{}, err
 	}
@@ -309,7 +309,7 @@ func (r *Repository) CreateDeviceSubscriptionToken(ctx context.Context, deviceID
 }
 
 func (r *Repository) GetActiveDeviceSubscriptionToken(ctx context.Context, deviceID string) (SubscriptionToken, error) {
-	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
+	return scanSubscriptionToken(r.db.QueryRow(ctx, subscriptionTokenSelect+`
 		WHERE device_id = $1::uuid AND status = 'active' AND (expires_at IS NULL OR expires_at > now())
 	`, deviceID))
 }

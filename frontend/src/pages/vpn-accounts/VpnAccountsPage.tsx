@@ -35,13 +35,24 @@ export function VpnAccountsPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [telegramUsername, setTelegramUsername] = useState('');
-  const [serverId, setServerId] = useState('');
+  // A create link opened for a node (?create=1&server=<id>, e.g. from Getting
+  // Started) keeps that node selected; the list is filtered by the same node.
+  const [serverId, setServerId] = useState(() => (searchParams.get('create') === '1' ? searchParams.get('server') ?? '' : ''));
 
   useEffect(() => {
-    if (searchParams.get('create') === '1') setIsCreateOpen(true);
+    if (searchParams.get('create') !== '1') return;
+    setIsCreateOpen(true);
+    const requestedServer = searchParams.get('server');
+    if (requestedServer) setServerId((current) => current || requestedServer);
   }, [searchParams]);
 
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
+
+  useEffect(() => {
+    const servers = serversQuery.data?.items;
+    // Never submit a node that does not exist (a stale or hand-edited link).
+    if (servers && serverId && !servers.some((server) => server.id === serverId)) setServerId('');
+  }, [serversQuery.data, serverId]);
   const accountQuery = useQuery({
     queryKey: ['vpn-account', accountId],
     queryFn: () => getVpnAccount(accountId ?? ''),

@@ -1,24 +1,33 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getManagerHealth } from '../../entities/health/api/healthApi';
 import {
   applyConfigVersion,
   getConfigApplyJobs,
-  getConfigVersions,
   getProtocolSettings,
   getServers,
   renderConfig,
   validateConfigVersion,
-  type ProtocolSettingsResponse,
+  type Server,
 } from '../../entities/server/api/serverApi';
 import {
   createVPNCoreInstallation,
   getVPNCoreInstallation,
 } from '../../entities/server/api/vpnCoreApi';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
-import { getVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getVpnAccessSummary } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
+import {
+  nodeCompletedSteps,
+  nodeSetupStage,
+  protocolConfigured,
+  selectGettingStartedNode,
+  setupStepKeys,
+  type NodeSetupFacts,
+  type NodeSetupStage,
+  type SetupStepKey,
+} from './gettingStartedModel';
 import './getting-started.css';
 
 type SetupStepState = 'complete' | 'current' | 'pending';
@@ -29,45 +38,13 @@ type SetupStepText = {
 };
 
 type SetupStep = {
-  key: string;
+  key: SetupStepKey;
   complete: boolean;
   copy: Record<SetupStepState, SetupStepText>;
   to?: string | null;
 };
 
 const dismissedStorageKey = 'routegate.gettingStarted.dismissed';
-
-function textPresent(value?: string | null): boolean {
-  return typeof value === 'string' && value.trim() !== '';
-}
-
-function protocolConfigured(settings?: ProtocolSettingsResponse): boolean {
-  if (!settings) return false;
-  if (settings.protocol.trim().toLowerCase() === 'wireguard') {
-    return settings.wireGuard.ready
-      && settings.wireGuard.port >= 1
-      && settings.wireGuard.port <= 65535
-      && textPresent(settings.wireGuard.address)
-      && textPresent(settings.wireGuard.publicKey);
-  }
-  if (settings.protocol.trim().toLowerCase() === 'hysteria2') {
-    return settings.hysteria2.ready && settings.hysteria2.port >= 1 && settings.hysteria2.port <= 65535;
-  }
-  if (settings.protocol.trim().toLowerCase() === 'shadowsocks') {
-    return settings.shadowsocks.ready && settings.shadowsocks.port >= 1 && settings.shadowsocks.port <= 65535;
-  }
-  if (settings.protocol.trim().toLowerCase() === 'mtproto') {
-    return settings.mtproto.ready && settings.mtproto.port >= 1 && settings.mtproto.port <= 65535;
-  }
-
-  return settings.protocol.trim().toLowerCase() === 'vless'
-    && settings.vless.port >= 1
-    && settings.vless.port <= 65535
-    && settings.reality.enabled
-    && textPresent(settings.reality.publicKey)
-    && textPresent(settings.reality.shortId)
-    && textPresent(settings.reality.serverName);
-}
 
 function supportsInstallation(capabilities?: Record<string, unknown>): boolean {
   const value = capabilities?.vpnCoreInstallationOperations;
@@ -78,21 +55,28 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+function nodeLabel(node: { name?: string | null; id: string }): string {
+  return node.name?.trim() || node.id;
+}
+
 function getCopy() {
   if (getCurrentLocale() === 'ru') {
     return {
       eyebrow: 'Первоначальная настройка',
       title: 'Начало работы',
-      subtitle: 'RouteGate ведёт вас к первому рабочему VPN. Выполняйте шаги по порядку — следующий нужный переход всегда показан справа.',
+      subtitle: 'RouteGate ведёт вас к первому рабочему VPN на одном узле. Выполняйте шаги по порядку — следующий нужный переход всегда показан справа.',
+      nodeContext: 'Узел',
+      nodeContextHint: 'Шаги 2–5 относятся только к этому узлу.',
       checking: 'Проверяем состояние RouteGate…',
       checkFailed: 'Не удалось определить состояние первоначальной настройки.',
+      accessUnknown: (servers: string[]) => `Не удалось проверить, выдаёт ли доступ ${servers.length === 1 ? 'узел' : 'узлы'} ${servers.join(', ')}. Это не означает, что VPN не работает; повторите проверку.`,
       retry: 'Проверить снова',
       progress: (done: number, total: number) => `${done} из ${total}`,
       complete: 'Готово',
       pending: 'Ожидает',
       current: 'Сейчас',
       nextAction: 'Следующий шаг',
-      serverName: 'Сервер',
+      serverName: 'Узел',
       openStep: 'Открыть',
       installed: {
         complete: { label: 'RouteGate установлен', description: 'Manager и веб-интерфейс доступны.' },
@@ -100,77 +84,92 @@ function getCopy() {
         pending: { label: 'Проверить RouteGate', description: 'Сначала RouteGate должен подтвердить готовность Manager.' },
       },
       server: {
-        complete: { label: 'Сервер подключён', description: 'Локальный сервер и Agent находятся онлайн.' },
-        current: { label: 'Подключить сервер', description: 'Подключите локальный сервер и дождитесь, когда Agent станет онлайн.' },
-        pending: { label: 'Подключить сервер', description: 'Этот шаг станет доступен после проверки RouteGate.' },
+        complete: { label: 'Узел подключён', description: 'Agent этого узла онлайн.' },
+        current: { label: 'Подключить узел', description: 'Подключите узел и дождитесь, когда его Agent станет онлайн.' },
+        pending: { label: 'Подключить узел', description: 'Этот шаг станет доступен после проверки RouteGate.' },
       },
       core: {
-        complete: { label: 'VPN Core установлен', description: 'Выбранный VPN Core установлен и готов к конфигурации.' },
-        current: { label: 'Установить VPN Core', description: 'Подготовьте runtime для выбранного VPN-протокола.' },
-        pending: { label: 'Установить VPN Core', description: 'Этот шаг станет доступен после подключения сервера.' },
+        complete: { label: 'VPN Core установлен', description: 'VPN Core этого узла установлен и готов к конфигурации.' },
+        current: { label: 'Установить VPN Core', description: 'Подготовьте на этом узле runtime для выбранного VPN-протокола.' },
+        pending: { label: 'Установить VPN Core', description: 'Этот шаг станет доступен после подключения узла.' },
       },
       protocol: {
-        complete: { label: 'VPN-протокол настроен', description: 'Параметры и ключи выбранного протокола готовы.' },
-        current: { label: 'Настроить VPN-протокол', description: 'Выберите поддерживаемый VPN-протокол и примените рекомендуемые параметры.' },
+        complete: { label: 'VPN-протокол настроен', description: 'Параметры и ключи протокола этого узла сохранены.' },
+        current: { label: 'Настроить VPN-протокол', description: 'Выберите поддерживаемый VPN-протокол и сохраните рекомендуемые параметры для этого узла.' },
         pending: { label: 'Настроить VPN-протокол', description: 'Этот шаг станет доступен после установки VPN Core.' },
       },
       final: {
-        complete: { label: 'VPN готов', description: 'Аккаунт создан, конфигурация успешно применена и доступ готов к использованию.' },
-        current: { label: 'Создать VPN-аккаунт', description: 'Создайте первый активный аккаунт и привяжите его к этому серверу.' },
+        complete: { label: 'VPN-доступ выдаётся', description: 'Применённая конфигурация узла обслуживает активный аккаунт.' },
+        current: { label: 'Создать VPN-аккаунт', description: 'Создайте первый активный аккаунт и привяжите его к этому узлу.' },
         pending: { label: 'Создать VPN-аккаунт', description: 'Этот шаг станет доступен после настройки VPN-протокола.' },
       },
       deployCurrent: {
-        label: 'Развернуть VPN-конфигурацию',
-        description: 'RouteGate отрендерит, проверит и применит конфигурацию через Agent.',
+        label: 'Применить VPN-конфигурацию',
+        description: 'Аккаунт есть, но применённая конфигурация узла его ещё не обслуживает. RouteGate отрендерит, проверит и применит конфигурацию через Agent.',
+      },
+      accessCurrent: {
+        label: 'Проверить доступ аккаунта',
+        description: 'Конфигурация узла применена, но аккаунт пока не получает доступ. Откройте аккаунт, чтобы увидеть причину.',
       },
       systemActionTitle: 'Проверить RouteGate',
       systemActionDescription: 'Manager пока не подтвердил готовность. Повторим проверку состояния.',
-      addServerTitle: 'Подключить сервер',
-      addServerDescription: 'RouteGate не видит подключённый Agent. Откройте сервер и завершите подключение.',
-      addServerAction: 'Открыть серверы',
+      addServerTitle: 'Подключить узел',
+      addServerDescription: 'Agent этого узла не в сети. Откройте узел и завершите подключение.',
+      addFirstServerDescription: 'RouteGate не видит ни одного VPN-узла. Добавьте узел и подключите его Agent.',
+      addServerAction: 'Открыть узел',
+      addFirstServerAction: 'Открыть серверы',
       installCoreTitle: 'Установить VPN Core',
-      installCoreDescription: 'RouteGate установит sing-box через подключённый Agent и проверит результат.',
+      installCoreDescription: 'RouteGate установит sing-box на этот узел через его Agent и проверит результат.',
       installCoreAction: 'Установить',
       installCorePending: 'Устанавливаем…',
       installCoreQueued: 'Установка выполняется через RouteGate Agent. Этот шаг обновится автоматически.',
-      installCoreFailed: 'Не удалось установить VPN Core. Можно повторить попытку или открыть сервер для подробностей.',
+      installCoreFailed: 'Не удалось установить VPN Core. Можно повторить попытку или открыть узел для подробностей.',
       installCoreConfirm: (server: string) => `Установить VPN Core на ${server}?\n\nRouteGate установит sing-box. Сервис будет запущен позже, после создания и применения рабочего VPN-конфига.`,
       openCoreAction: 'Открыть VPN Core',
       protocolTitle: 'Настроить VPN-протокол',
-      protocolDescription: 'Выберите поддерживаемый VPN-протокол и настройте его для этого сервера.',
+      protocolDescription: 'Выберите поддерживаемый VPN-протокол и настройте его для этого узла.',
       protocolAction: 'Настроить протокол',
       accountTitle: 'Создать первый VPN-аккаунт',
-      accountDescription: 'Создайте активный аккаунт и привяжите его к этому серверу.',
+      accountDescription: 'Создайте активный аккаунт и привяжите его к этому узлу.',
       accountAction: 'Создать VPN-аккаунт',
-      deployTitle: 'Развернуть VPN-конфигурацию',
-      deployDescription: 'RouteGate автоматически отрендерит, проверит и применит конфигурацию. Agent выполнит необходимые перезапуски и healthcheck.',
-      deployAction: 'Развернуть VPN',
-      deployPending: 'Развёртываем…',
+      deployTitle: 'Применить VPN-конфигурацию',
+      deployDescription: 'Аккаунт этого узла ещё не входит в применённую конфигурацию. RouteGate отрендерит, проверит и применит её; Agent выполнит необходимые перезапуски и healthcheck.',
+      deployAction: 'Применить конфигурацию',
+      deployPending: 'Применяем…',
       deployQueued: 'Конфигурация применяется через RouteGate Agent. Состояние обновится автоматически.',
-      deployFailed: 'Не удалось развернуть VPN-конфигурацию. Можно повторить попытку или открыть сервер для подробностей.',
+      deployFailed: 'Не удалось применить VPN-конфигурацию. Можно повторить попытку или открыть узел для подробностей.',
+      deployLastFailed: (message: string) => `Последнее применение на этом узле завершилось ошибкой: ${message}`,
       deployValidationFailed: 'Сгенерированная VPN-конфигурация не прошла проверку.',
-      deployConfirm: (server: string) => `Развернуть VPN-конфигурацию на ${server}?\n\nRouteGate отрендерит, проверит и применит конфиг. После применения Agent выполнит необходимые перезапуски и healthcheck.`,
+      deployConfirm: (server: string) => `Применить VPN-конфигурацию на ${server}?\n\nRouteGate отрендерит, проверит и применит конфиг. После применения Agent выполнит необходимые перезапуски и healthcheck.`,
+      accessTitle: 'Проверить доступ аккаунта',
+      accessDescription: 'Конфигурация узла применена, но аккаунт пока не получает доступ.',
+      accessAction: 'Открыть аккаунт',
       readyTitle: 'RouteGate готов',
-      readyDescription: 'VPN-протокол настроен, конфигурация применена и первый VPN-аккаунт готов к подключению.',
+      readyDescription: 'Конфигурация узла применена через Agent, и активный аккаунт получает доступ по ней. Подключение клиента проверьте на устройстве.',
       readyAction: 'Открыть доступ устройства',
       dismiss: 'Скрыть',
-      readyServer: (server: string) => `Рабочий сервер: ${server}`,
+      readyServer: (servers: string[]) => (servers.length === 1 ? `Рабочий узел: ${servers[0]}` : `Рабочие узлы: ${servers.join(', ')}`),
+      otherNodes: (servers: string[]) => `Пока без выданного доступа: ${servers.join(', ')}. Первоначальная настройка от этих узлов не зависит.`,
+      otherNodesUnchecked: (servers: string[]) => `Проверка доступа не завершена: ${servers.join(', ')}. RouteGate повторит её автоматически.`,
     } as const;
   }
 
   return {
     eyebrow: 'First-run setup',
     title: 'Getting started',
-    subtitle: 'RouteGate guides you to your first working VPN. Complete the steps in order — the next required action is always shown on the right.',
+    subtitle: 'RouteGate guides you to your first working VPN on one node. Complete the steps in order — the next required action is always shown on the right.',
+    nodeContext: 'Node',
+    nodeContextHint: 'Steps 2–5 apply to this node only.',
     checking: 'Checking RouteGate setup state…',
     checkFailed: 'RouteGate could not determine the first-run setup state.',
+    accessUnknown: (servers: string[]) => `RouteGate could not check whether ${servers.length === 1 ? 'node' : 'nodes'} ${servers.join(', ')} ${servers.length === 1 ? 'issues' : 'issue'} access. This does not mean the VPN is down; check again.`,
     retry: 'Check again',
     progress: (done: number, total: number) => `${done} of ${total}`,
     complete: 'Complete',
     pending: 'Pending',
     current: 'Now',
     nextAction: 'Next action',
-    serverName: 'Server',
+    serverName: 'Node',
     openStep: 'Open',
     installed: {
       complete: { label: 'RouteGate installed', description: 'Manager and the web interface are available.' },
@@ -178,69 +177,81 @@ function getCopy() {
       pending: { label: 'Check RouteGate', description: 'RouteGate must confirm Manager readiness first.' },
     },
     server: {
-      complete: { label: 'Server connected', description: 'The local server and Agent are online.' },
-      current: { label: 'Connect the server', description: 'Connect the local server and wait for its Agent to come online.' },
-      pending: { label: 'Connect the server', description: 'This step becomes available after RouteGate is ready.' },
+      complete: { label: 'Node connected', description: 'This node\'s Agent is online.' },
+      current: { label: 'Connect the node', description: 'Connect the node and wait for its Agent to come online.' },
+      pending: { label: 'Connect the node', description: 'This step becomes available after RouteGate is ready.' },
     },
     core: {
-      complete: { label: 'VPN Core installed', description: 'The selected VPN Core is installed and ready for configuration.' },
-      current: { label: 'Install VPN Core', description: 'Prepare the runtime for the selected VPN protocol.' },
-      pending: { label: 'Install VPN Core', description: 'This step becomes available after the server is connected.' },
+      complete: { label: 'VPN Core installed', description: 'This node\'s VPN Core is installed and ready for configuration.' },
+      current: { label: 'Install VPN Core', description: 'Prepare the runtime for the selected VPN protocol on this node.' },
+      pending: { label: 'Install VPN Core', description: 'This step becomes available after the node is connected.' },
     },
     protocol: {
-      complete: { label: 'VPN protocol configured', description: 'The selected protocol settings and keys are ready.' },
-      current: { label: 'Configure VPN protocol', description: 'Choose a supported VPN protocol and apply the recommended settings.' },
+      complete: { label: 'VPN protocol configured', description: 'This node\'s protocol settings and keys are saved.' },
+      current: { label: 'Configure VPN protocol', description: 'Choose a supported VPN protocol and save the recommended settings for this node.' },
       pending: { label: 'Configure VPN protocol', description: 'This step becomes available after VPN Core is installed.' },
     },
     final: {
-      complete: { label: 'VPN ready', description: 'Account created, configuration successfully applied, and access is ready to use.' },
-      current: { label: 'Create VPN account', description: 'Create the first active account and assign it to this server.' },
+      complete: { label: 'VPN access issued', description: 'The node\'s applied configuration serves an active account.' },
+      current: { label: 'Create VPN account', description: 'Create the first active account and assign it to this node.' },
       pending: { label: 'Create VPN account', description: 'This step becomes available after the VPN protocol is configured.' },
     },
     deployCurrent: {
-      label: 'Deploy VPN configuration',
-      description: 'RouteGate will render, validate, and apply the configuration through Agent.',
+      label: 'Apply VPN configuration',
+      description: 'An account exists, but the node\'s applied configuration does not serve it yet. RouteGate will render, validate, and apply the configuration through Agent.',
+    },
+    accessCurrent: {
+      label: 'Check account access',
+      description: 'The node\'s configuration is applied, but the account does not get access yet. Open the account to see why.',
     },
     systemActionTitle: 'Check RouteGate',
     systemActionDescription: 'Manager has not confirmed readiness yet. Check the setup state again.',
-    addServerTitle: 'Connect the server',
-    addServerDescription: 'RouteGate does not see a connected Agent. Open Servers and finish the connection.',
-    addServerAction: 'Open Servers',
+    addServerTitle: 'Connect the node',
+    addServerDescription: 'This node\'s Agent is not online. Open the node and finish the connection.',
+    addFirstServerDescription: 'RouteGate does not see any VPN node. Add a node and connect its Agent.',
+    addServerAction: 'Open node',
+    addFirstServerAction: 'Open Servers',
     installCoreTitle: 'Install VPN Core',
-    installCoreDescription: 'RouteGate will install sing-box through the connected Agent and verify the result.',
+    installCoreDescription: 'RouteGate will install sing-box on this node through its Agent and verify the result.',
     installCoreAction: 'Install',
     installCorePending: 'Installing…',
     installCoreQueued: 'Installation is running through RouteGate Agent. This step will update automatically.',
-    installCoreFailed: 'VPN Core installation failed. You can retry or open the server for details.',
+    installCoreFailed: 'VPN Core installation failed. You can retry or open the node for details.',
     installCoreConfirm: (server: string) => `Install VPN Core on ${server}?\n\nRouteGate will install sing-box. The service will be started later, after a working VPN configuration is created and applied.`,
     openCoreAction: 'Open VPN Core',
     protocolTitle: 'Configure VPN protocol',
-    protocolDescription: 'Choose a supported VPN protocol and configure it for this server.',
+    protocolDescription: 'Choose a supported VPN protocol and configure it for this node.',
     protocolAction: 'Configure protocol',
     accountTitle: 'Create your first VPN account',
-    accountDescription: 'Create an active account and assign it to this server.',
+    accountDescription: 'Create an active account and assign it to this node.',
     accountAction: 'Create VPN account',
-    deployTitle: 'Deploy VPN configuration',
-    deployDescription: 'RouteGate will automatically render, validate, and apply the configuration. Agent will perform the required restarts and healthcheck.',
-    deployAction: 'Deploy VPN',
-    deployPending: 'Deploying…',
+    deployTitle: 'Apply VPN configuration',
+    deployDescription: 'This node\'s account is not in the applied configuration yet. RouteGate will render, validate, and apply it; Agent will perform the required restarts and healthcheck.',
+    deployAction: 'Apply configuration',
+    deployPending: 'Applying…',
     deployQueued: 'Configuration is being applied through RouteGate Agent. This state will update automatically.',
-    deployFailed: 'VPN configuration deployment failed. You can retry or open the server for details.',
+    deployFailed: 'Applying the VPN configuration failed. You can retry or open the node for details.',
+    deployLastFailed: (message: string) => `The last apply on this node failed: ${message}`,
     deployValidationFailed: 'The generated VPN configuration did not pass validation.',
-    deployConfirm: (server: string) => `Deploy VPN configuration to ${server}?\n\nRouteGate will render, validate, and apply the config. After applying it, Agent will perform the required restarts and healthcheck.`,
+    deployConfirm: (server: string) => `Apply the VPN configuration to ${server}?\n\nRouteGate will render, validate, and apply the config. After applying it, Agent will perform the required restarts and healthcheck.`,
+    accessTitle: 'Check account access',
+    accessDescription: 'The node\'s configuration is applied, but the account does not get access yet.',
+    accessAction: 'Open account',
     readyTitle: 'RouteGate is ready',
-    readyDescription: 'The VPN protocol is configured, the configuration is applied, and the first VPN account is ready to connect.',
+    readyDescription: 'The node\'s configuration is applied through Agent and an active account gets access from it. Check the client connection on the device.',
     readyAction: 'Open device access',
     dismiss: 'Hide',
-    readyServer: (server: string) => `Working server: ${server}`,
+    readyServer: (servers: string[]) => (servers.length === 1 ? `Working node: ${servers[0]}` : `Working nodes: ${servers.join(', ')}`),
+    otherNodes: (servers: string[]) => `No access issued yet: ${servers.join(', ')}. First-run setup does not depend on these nodes.`,
+    otherNodesUnchecked: (servers: string[]) => `Access check not finished: ${servers.join(', ')}. RouteGate will retry it automatically.`,
   } as const;
 }
 
 export function GettingStartedWidget() {
   const copy = getCopy();
-  const [installationJobId, setInstallationJobId] = useState<string | null>(null);
+  const [installation, setInstallation] = useState<{ serverId: string; jobId: string } | null>(null);
   const [installationFailure, setInstallationFailure] = useState<string | null>(null);
-  const [deployJobId, setDeployJobId] = useState<string | null>(null);
+  const [deployment, setDeployment] = useState<{ serverId: string; jobId: string } | null>(null);
   const [deployFailure, setDeployFailure] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(() => {
     try {
@@ -249,6 +260,7 @@ export function GettingStartedWidget() {
       return false;
     }
   });
+  const fastPolling = Boolean(installation || deployment);
 
   const managerHealthQuery = useQuery({
     queryKey: ['manager-health'],
@@ -259,63 +271,80 @@ export function GettingStartedWidget() {
   const serversQuery = useQuery({
     queryKey: ['servers'],
     queryFn: getServers,
-    refetchInterval: installationJobId || deployJobId ? 2_000 : 10_000,
+    refetchInterval: fastPolling ? 2_000 : 10_000,
   });
 
-  const accountsQuery = useQuery({
-    queryKey: ['vpn-accounts'],
-    queryFn: getVpnAccounts,
-    refetchInterval: 10_000,
+  // Per node: does it issue client access to at least one active account?
+  // Evaluated by the Manager with the rules that issue client links, over all
+  // active accounts, without writing anything.
+  const accessQuery = useQuery({
+    queryKey: ['vpn-access-summary'],
+    queryFn: getVpnAccessSummary,
+    refetchInterval: fastPolling ? 2_000 : 15_000,
   });
 
-  const servers = serversQuery.data?.items ?? [];
-  const primaryServer = servers.find((server) => server.agent?.status === 'online') ?? servers[0] ?? null;
-  const serverConnected = primaryServer?.agent?.status === 'online';
+  // Management-only nodes never serve VPN accounts; every other node is
+  // evaluated on its own.
+  const vpnNodes: Server[] = (serversQuery.data?.items ?? []).filter((server) => server.deploymentRole !== 'management');
+  const accessByNode = new Map((accessQuery.data?.items ?? []).map((item) => [item.serverId, item]));
+  const onlineNodes = vpnNodes.filter((server) => server.agent?.status === 'online');
+  const nodesWithAccounts = onlineNodes.filter((server) => (accessByNode.get(server.id)?.activeAccounts ?? 0) > 0);
 
-  const protocolQuery = useQuery({
-    queryKey: ['server-protocol-settings', primaryServer?.id],
-    queryFn: () => getProtocolSettings(primaryServer?.id ?? ''),
-    enabled: Boolean(primaryServer?.id && serverConnected),
-    retry: false,
-    refetchInterval: 10_000,
+  const protocolQueries = useQueries({
+    queries: onlineNodes.map((server) => ({
+      queryKey: ['server-protocol-settings', server.id],
+      queryFn: () => getProtocolSettings(server.id),
+      retry: false,
+      refetchInterval: 10_000,
+    })),
   });
-  const vpnCoreStatus = parseVPNCoreStatus(primaryServer?.agent?.capabilities, protocolQuery.data?.protocol);
-  const vpnCoreInstalled = Boolean(serverConnected && vpnCoreStatus?.installed);
-  const installationSupported = supportsInstallation(primaryServer?.agent?.capabilities);
+  const applyJobQueries = useQueries({
+    queries: nodesWithAccounts.map((server) => ({
+      queryKey: ['server-config-apply-jobs', server.id],
+      queryFn: () => getConfigApplyJobs(server.id),
+      refetchInterval: deployment?.serverId === server.id ? 2_000 : 10_000,
+    })),
+  });
 
+  const protocolByNode = new Map(onlineNodes.map((server, index) => [server.id, protocolQueries[index]]));
+  const applyJobsByNode = new Map(nodesWithAccounts.map((server, index) => [server.id, applyJobQueries[index]]));
+
+  const facts: NodeSetupFacts[] = vpnNodes.map((server) => {
+    const online = server.agent?.status === 'online';
+    const protocol = protocolByNode.get(server.id)?.data;
+    const access = accessByNode.get(server.id);
+    const latestJob = applyJobsByNode.get(server.id)?.data?.items?.[0];
+    return {
+      id: server.id,
+      name: nodeLabel(server),
+      agentOnline: online,
+      coreInstalled: online && Boolean(parseVPNCoreStatus(server.agent?.capabilities, protocol?.protocol)?.installed),
+      protocolConfigured: online && protocolConfigured(protocol),
+      activeAccountCount: access?.activeAccounts ?? 0,
+      access: access?.state ?? 'not_served',
+      servedAccountId: access?.servedAccountId ?? null,
+      pendingAccountId: access?.pendingAccountId ?? null,
+      pendingStatus: access?.pendingStatus ?? null,
+      pendingMessage: access?.pendingMessage ?? null,
+      latestApplyFailed: latestJob?.status === 'failed',
+      latestApplyError: latestJob?.errorMessage ?? null,
+    };
+  });
+
+  const selection = selectGettingStartedNode(facts);
+  const focus = selection.focus;
+  const focusServer = focus ? vpnNodes.find((server) => server.id === focus.id) ?? null : null;
+  const focusStage: NodeSetupStage | null = focus ? nodeSetupStage(focus) : null;
   const managerReady = managerHealthQuery.isSuccess;
-  const protocolReady = vpnCoreInstalled && protocolConfigured(protocolQuery.data);
-  const firstReadyAccount = accountsQuery.data?.items.find((account) =>
-    account.serverId === primaryServer?.id && account.status.trim().toLowerCase() === 'active',
-  ) ?? null;
-  const accountReady = protocolReady && firstReadyAccount !== null;
-
-  const configVersionsQuery = useQuery({
-    queryKey: ['server-config-versions', primaryServer?.id],
-    queryFn: () => getConfigVersions(primaryServer?.id ?? ''),
-    enabled: Boolean(primaryServer?.id && accountReady),
-    refetchInterval: deployJobId ? 2_000 : 10_000,
-  });
-
-  const applyJobsQuery = useQuery({
-    queryKey: ['server-config-apply-jobs', primaryServer?.id],
-    queryFn: () => getConfigApplyJobs(primaryServer?.id ?? ''),
-    enabled: Boolean(primaryServer?.id && accountReady),
-    refetchInterval: deployJobId ? 2_000 : 10_000,
-  });
-
-  const activeConfigVersionId = configVersionsQuery.data?.currentConfigVersionId?.trim() ?? '';
-  // Getting Started is a first-run workflow. The Manager's active config version
-  // is set only after an Agent-confirmed successful apply, so it is the durable
-  // completion signal. Source timestamps are intentionally not used here because
-  // safe protocol activation can update account metadata after that successful apply.
-  const onboardingReady = Boolean(accountReady && activeConfigVersionId);
+  const installationSupported = supportsInstallation(focusServer?.agent?.capabilities);
+  const focusProtocolQuery = focus ? protocolByNode.get(focus.id) : undefined;
+  const focusApplyJobsQuery = focus ? applyJobsByNode.get(focus.id) : undefined;
 
   const installationMutation = useMutation({
-    mutationFn: () => createVPNCoreInstallation(primaryServer?.id ?? ''),
-    onSuccess: ({ job }) => {
+    mutationFn: (serverId: string) => createVPNCoreInstallation(serverId),
+    onSuccess: ({ job }, serverId) => {
       setInstallationFailure(null);
-      setInstallationJobId(job.id);
+      setInstallation({ serverId, jobId: job.id });
       void serversQuery.refetch();
     },
     onError: (error) => {
@@ -324,9 +353,9 @@ export function GettingStartedWidget() {
   });
 
   const installationQuery = useQuery({
-    queryKey: ['vpn-core-installation', primaryServer?.id, installationJobId],
-    queryFn: () => getVPNCoreInstallation(primaryServer?.id ?? '', installationJobId ?? ''),
-    enabled: Boolean(primaryServer?.id && installationJobId),
+    queryKey: ['vpn-core-installation', installation?.serverId, installation?.jobId],
+    queryFn: () => getVPNCoreInstallation(installation?.serverId ?? '', installation?.jobId ?? ''),
+    enabled: Boolean(installation),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === 'failed' || status === 'succeeded' ? false : 2_000;
@@ -334,8 +363,7 @@ export function GettingStartedWidget() {
   });
 
   const deploymentMutation = useMutation({
-    mutationFn: async () => {
-      const serverId = primaryServer?.id ?? '';
+    mutationFn: async (serverId: string) => {
       const rendered = await renderConfig(serverId);
       if (!rendered.validationResult.valid) {
         throw new Error(copy.deployValidationFailed);
@@ -346,11 +374,11 @@ export function GettingStartedWidget() {
       }
       return applyConfigVersion(serverId, rendered.configVersion.id);
     },
-    onSuccess: ({ job }) => {
+    onSuccess: ({ job }, serverId) => {
       setDeployFailure(null);
-      setDeployJobId(job.id);
-      void configVersionsQuery.refetch();
-      void applyJobsQuery.refetch();
+      setDeployment({ serverId, jobId: job.id });
+      void accessQuery.refetch();
+      void focusApplyJobsQuery?.refetch();
       void serversQuery.refetch();
     },
     onError: (error) => {
@@ -358,9 +386,13 @@ export function GettingStartedWidget() {
     },
   });
 
+  const installedOnInstallationNode = installation
+    ? facts.find((node) => node.id === installation.serverId)?.coreInstalled ?? false
+    : false;
+
   useEffect(() => {
     const job = installationQuery.data;
-    if (!installationJobId || !job) return;
+    if (!installation || !job) return;
 
     if (job.status === 'failed') {
       setInstallationFailure(
@@ -368,124 +400,122 @@ export function GettingStartedWidget() {
           ? job.errorMessage.trim()
           : copy.installCoreFailed,
       );
-      setInstallationJobId(null);
+      setInstallation(null);
       return;
     }
 
     if (job.status === 'succeeded') {
       void serversQuery.refetch();
-      if (vpnCoreStatus?.installed) {
-        setInstallationJobId(null);
+      if (installedOnInstallationNode) {
+        setInstallation(null);
       }
     }
-  }, [installationJobId, installationQuery.data, vpnCoreStatus?.installed]);
+  }, [installation, installationQuery.data, installedOnInstallationNode]);
 
-  const activeDeployJob = deployJobId
-    ? applyJobsQuery.data?.items.find((job) => job.id === deployJobId) ?? null
+  const deploymentJobs = deployment ? applyJobsByNode.get(deployment.serverId)?.data?.items : undefined;
+  const activeDeployJob = deployment
+    ? deploymentJobs?.find((job) => job.id === deployment.jobId) ?? null
     : null;
 
   useEffect(() => {
-    if (!deployJobId || !activeDeployJob) return;
+    if (!deployment || !activeDeployJob) return;
 
     if (activeDeployJob.status === 'failed') {
       setDeployFailure(activeDeployJob.errorMessage?.trim() || copy.deployFailed);
-      setDeployJobId(null);
+      setDeployment(null);
       return;
     }
 
     if (activeDeployJob.status === 'succeeded') {
       // A terminal Agent result must always release the action immediately.
-      // Subsequent refetches determine whether the onboarding step is complete;
-      // they must not keep the UI stuck in a synthetic "Deploying" state.
-      setDeployJobId(null);
-      void configVersionsQuery.refetch();
-      void applyJobsQuery.refetch();
+      // Subsequent refetches determine whether the step is complete; they must
+      // not keep the UI stuck in a synthetic "Applying" state.
+      setDeployment(null);
+      void applyJobsByNode.get(deployment.serverId)?.refetch();
+      void accessQuery.refetch();
       void serversQuery.refetch();
     }
-  }, [activeDeployJob, deployJobId]);
+  }, [activeDeployJob, deployment]);
 
-  const installationBusy = installationMutation.isPending || installationJobId !== null;
-  const deploymentBusy = deploymentMutation.isPending || deployJobId !== null;
-  const inlineInstallAvailable = Boolean(
-    managerReady
-      && serverConnected
-      && primaryServer
-      && !vpnCoreInstalled
-      && installationSupported,
-  );
+  const installationBusy = installationMutation.isPending || installation !== null;
+  const deploymentBusy = deploymentMutation.isPending || deployment !== null;
+  const inlineInstallAvailable = Boolean(managerReady && focus && focusStage === 'core' && installationSupported);
+  const deployAvailable = Boolean(managerReady && focus && focusStage === 'apply');
 
   const runInstallation = () => {
-    if (!primaryServer || installationBusy || !inlineInstallAvailable) return;
-    const serverName = primaryServer.name || primaryServer.id;
-    if (!window.confirm(copy.installCoreConfirm(serverName))) return;
+    if (!focus || installationBusy || !inlineInstallAvailable) return;
+    if (!window.confirm(copy.installCoreConfirm(focus.name))) return;
 
     installationMutation.reset();
     setInstallationFailure(null);
-    installationMutation.mutate();
+    installationMutation.mutate(focus.id);
   };
 
   const runDeployment = () => {
-    if (!primaryServer || !accountReady || deploymentBusy) return;
-    const serverName = primaryServer.name || primaryServer.id;
-    if (!window.confirm(copy.deployConfirm(serverName))) return;
+    if (!focus || !deployAvailable || deploymentBusy) return;
+    if (!window.confirm(copy.deployConfirm(focus.name))) return;
 
     deploymentMutation.reset();
     setDeployFailure(null);
-    deploymentMutation.mutate();
+    deploymentMutation.mutate(focus.id);
   };
 
-  const finalCopy = accountReady && !onboardingReady
+  const completedCount = !managerReady ? 0 : focus ? nodeCompletedSteps(focus) : 1;
+  const finalCopy = focusStage === 'apply'
     ? { ...copy.final, current: copy.deployCurrent }
-    : copy.final;
+    : focusStage === 'access'
+      ? { ...copy.final, current: copy.accessCurrent }
+      : copy.final;
+  const nodePath = focus ? `/servers/${encodeURIComponent(focus.id)}` : '/servers';
+  const finalTo = focusStage === 'ready' && focus?.servedAccountId
+    ? `/vpn-accounts/${encodeURIComponent(focus.servedAccountId)}/access`
+    : focusStage === 'access' && focus?.pendingAccountId
+      ? `/vpn-accounts/${encodeURIComponent(focus.pendingAccountId)}/access`
+      : focusStage === 'apply'
+        ? nodePath
+        : focus
+          ? `/vpn-accounts?create=1&server=${encodeURIComponent(focus.id)}`
+          : '/vpn-accounts?create=1';
 
-  const steps: SetupStep[] = [
-    { key: 'installed', copy: copy.installed, complete: managerReady },
-    {
-      key: 'server',
-      copy: copy.server,
-      complete: managerReady && serverConnected,
-      to: primaryServer ? `/servers/${primaryServer.id}` : '/servers',
-    },
-    {
-      key: 'core',
-      copy: copy.core,
-      complete: managerReady && serverConnected && vpnCoreInstalled,
-      to: primaryServer ? `/servers/${primaryServer.id}` : null,
-    },
-    {
-      key: 'protocol',
-      copy: copy.protocol,
-      complete: managerReady && serverConnected && vpnCoreInstalled && protocolReady,
-      to: primaryServer ? `/protocol-settings/${primaryServer.id}` : null,
-    },
-    {
-      key: 'final',
-      copy: finalCopy,
-      complete: managerReady && serverConnected && vpnCoreInstalled && protocolReady && onboardingReady,
-      to: onboardingReady && firstReadyAccount
-        ? `/vpn-accounts/${encodeURIComponent(firstReadyAccount.id)}/access`
-        : accountReady && primaryServer
-          ? `/servers/${primaryServer.id}`
-          : '/vpn-accounts?create=1',
-    },
-  ];
+  const stepTargets: Record<SetupStepKey, string | null> = {
+    installed: null,
+    server: nodePath,
+    core: focus ? nodePath : null,
+    protocol: focus ? `/protocol-settings/${encodeURIComponent(focus.id)}` : null,
+    final: finalTo,
+  };
+  const stepCopy: Record<SetupStepKey, Record<SetupStepState, SetupStepText>> = {
+    installed: copy.installed,
+    server: copy.server,
+    core: copy.core,
+    protocol: copy.protocol,
+    final: finalCopy,
+  };
+  const steps: SetupStep[] = setupStepKeys.map((key, index) => ({
+    key,
+    copy: stepCopy[key],
+    complete: index < completedCount,
+    to: stepTargets[key],
+  }));
 
-  const completedCount = steps.filter((step) => step.complete).length;
   const currentStepIndex = steps.findIndex((step) => !step.complete);
-  const allReady = currentStepIndex === -1;
-  const protocolLoading = Boolean(primaryServer?.id && vpnCoreInstalled) && protocolQuery.isPending;
-  const configLoading = Boolean(primaryServer?.id && accountReady)
-    && (configVersionsQuery.isPending || applyJobsQuery.isPending);
+  const allReady = managerReady && selection.setupComplete;
+  const pendingQuery = (query?: { isPending: boolean }) => Boolean(query?.isPending);
   const loading = managerHealthQuery.isPending
     || serversQuery.isPending
-    || accountsQuery.isPending
-    || protocolLoading
-    || configLoading;
+    || accessQuery.isPending
+    || protocolQueries.some(pendingQuery)
+    || applyJobQueries.some(pendingQuery);
+  const failedQuery = (query?: { isError: boolean }) => Boolean(query?.isError);
+  // A failed load, or a node whose access could not be evaluated while no node
+  // is known to work, leaves the state undetermined: never "no working VPN".
+  const undetermined = !selection.setupComplete && selection.undeterminedNodes.length > 0;
   const failed = managerHealthQuery.isError
     || serversQuery.isError
-    || accountsQuery.isError
-    || (Boolean(primaryServer?.id && vpnCoreInstalled) && protocolQuery.isError)
-    || (Boolean(primaryServer?.id && accountReady) && (configVersionsQuery.isError || applyJobsQuery.isError));
+    || accessQuery.isError
+    || protocolQueries.some(failedQuery)
+    || applyJobQueries.some(failedQuery)
+    || undetermined;
 
   useEffect(() => {
     if (!loading && !failed && !allReady && dismissed) {
@@ -511,21 +541,20 @@ export function GettingStartedWidget() {
   const retry = () => {
     void managerHealthQuery.refetch();
     void serversQuery.refetch();
-    void accountsQuery.refetch();
-    if (primaryServer?.id && vpnCoreInstalled) {
-      void protocolQuery.refetch();
-    }
-    if (primaryServer?.id && accountReady) {
-      void configVersionsQuery.refetch();
-      void applyJobsQuery.refetch();
+    void accessQuery.refetch();
+    for (const query of [...protocolQueries, ...applyJobQueries]) {
+      void query.refetch();
     }
   };
 
-  if (allReady && dismissed) {
+  // A hidden guide stays hidden while access is merely undetermined.
+  if (!loading && dismissed && ((!failed && allReady) || undetermined)) {
     return null;
   }
 
-  if (allReady && firstReadyAccount) {
+  if (!loading && !failed && allReady && focus?.servedAccountId) {
+    const others = selection.otherNodes.map((node) => node.name);
+    const unchecked = selection.undeterminedNodes.map((node) => node.name);
     return (
       <section className="dashboard-widget getting-started-widget getting-started-widget-complete" aria-labelledby="getting-started-complete-title">
         <div className="getting-started-complete-layout">
@@ -534,10 +563,12 @@ export function GettingStartedWidget() {
             <span className="getting-started-eyebrow">{copy.eyebrow}</span>
             <h2 id="getting-started-complete-title">{copy.readyTitle}</h2>
             <p>{copy.readyDescription}</p>
-            {primaryServer && <small>{copy.readyServer(primaryServer.name || primaryServer.id)}</small>}
+            <small>{copy.readyServer(selection.workingNodes.map((node) => node.name))}</small>
+            {others.length > 0 && <small>{copy.otherNodes(others)}</small>}
+            {unchecked.length > 0 && <small>{copy.otherNodesUnchecked(unchecked)}</small>}
           </div>
           <div className="getting-started-complete-actions">
-            <Link className="getting-started-action" to={`/vpn-accounts/${encodeURIComponent(firstReadyAccount.id)}/access`}>
+            <Link className="getting-started-action" to={`/vpn-accounts/${encodeURIComponent(focus.servedAccountId)}/access`}>
               {copy.readyAction} →
             </Link>
             <button className="getting-started-dismiss" type="button" onClick={dismiss}>
@@ -555,37 +586,62 @@ export function GettingStartedWidget() {
   let actionTo: string | null = null;
   let actionInstall = false;
   let actionDeploy = false;
+  let actionNote: string | null = null;
 
-  if (managerReady && !serverConnected) {
+  if (managerReady && !focus) {
     actionTitle = copy.addServerTitle;
-    actionDescription = copy.addServerDescription;
-    actionLabel = copy.addServerAction;
+    actionDescription = copy.addFirstServerDescription;
+    actionLabel = copy.addFirstServerAction;
     actionTo = '/servers';
-  } else if (managerReady && serverConnected && !vpnCoreInstalled && primaryServer) {
-    actionTitle = copy.installCoreTitle;
-    actionDescription = copy.installCoreDescription;
-    if (installationSupported) {
-      actionLabel = installationBusy ? copy.installCorePending : copy.installCoreAction;
-      actionInstall = true;
-    } else {
-      actionLabel = copy.openCoreAction;
-      actionTo = `/servers/${primaryServer.id}`;
+  } else if (managerReady && focus) {
+    switch (focusStage) {
+      case 'connect':
+        actionTitle = copy.addServerTitle;
+        actionDescription = copy.addServerDescription;
+        actionLabel = copy.addServerAction;
+        actionTo = nodePath;
+        break;
+      case 'core':
+        actionTitle = copy.installCoreTitle;
+        actionDescription = copy.installCoreDescription;
+        if (installationSupported) {
+          actionLabel = installationBusy ? copy.installCorePending : copy.installCoreAction;
+          actionInstall = true;
+        } else {
+          actionLabel = copy.openCoreAction;
+          actionTo = nodePath;
+        }
+        break;
+      case 'protocol':
+        actionTitle = copy.protocolTitle;
+        actionDescription = copy.protocolDescription;
+        actionLabel = copy.protocolAction;
+        actionTo = `/protocol-settings/${encodeURIComponent(focus.id)}`;
+        break;
+      case 'account':
+        actionTitle = copy.accountTitle;
+        actionDescription = copy.accountDescription;
+        actionLabel = copy.accountAction;
+        actionTo = finalTo;
+        break;
+      case 'apply':
+        actionTitle = copy.deployTitle;
+        actionDescription = copy.deployDescription;
+        actionLabel = deploymentBusy ? copy.deployPending : copy.deployAction;
+        actionDeploy = true;
+        if (focus.latestApplyFailed && !deployFailure) {
+          actionNote = copy.deployLastFailed(focus.latestApplyError?.trim() || copy.deployFailed);
+        }
+        break;
+      case 'access':
+        actionTitle = copy.accessTitle;
+        actionDescription = focus.pendingMessage?.trim() || copy.accessDescription;
+        actionLabel = copy.accessAction;
+        actionTo = finalTo;
+        break;
+      default:
+        break;
     }
-  } else if (managerReady && serverConnected && vpnCoreInstalled && !protocolReady && primaryServer) {
-    actionTitle = copy.protocolTitle;
-    actionDescription = copy.protocolDescription;
-    actionLabel = copy.protocolAction;
-    actionTo = `/protocol-settings/${primaryServer.id}`;
-  } else if (managerReady && serverConnected && vpnCoreInstalled && protocolReady && !accountReady) {
-    actionTitle = copy.accountTitle;
-    actionDescription = copy.accountDescription;
-    actionLabel = copy.accountAction;
-    actionTo = '/vpn-accounts?create=1';
-  } else if (accountReady && !onboardingReady && primaryServer) {
-    actionTitle = copy.deployTitle;
-    actionDescription = copy.deployDescription;
-    actionLabel = deploymentBusy ? copy.deployPending : copy.deployAction;
-    actionDeploy = true;
   }
 
   return (
@@ -595,22 +651,32 @@ export function GettingStartedWidget() {
           <span className="getting-started-eyebrow">{copy.eyebrow}</span>
           <h2 id="getting-started-title">{copy.title}</h2>
           <p>{copy.subtitle}</p>
+          {focus && !loading && !failed && (
+            <p className="getting-started-node" data-node-id={focus.id}>
+              <span>{copy.nodeContext}:</span> <Link to={nodePath}>{focus.name}</Link>
+              <small>{copy.nodeContextHint}</small>
+            </p>
+          )}
         </div>
-        <div className="getting-started-progress-summary">
-          <strong>{copy.progress(completedCount, steps.length)}</strong>
-          <span>{copy.current}</span>
-        </div>
+        {!failed && (
+          <div className="getting-started-progress-summary">
+            <strong>{copy.progress(completedCount, steps.length)}</strong>
+            <span>{copy.current}</span>
+          </div>
+        )}
       </div>
 
-      <div className="getting-started-progress" aria-hidden="true">
-        <span style={{ width: `${(completedCount / steps.length) * 100}%` }} />
-      </div>
+      {!failed && (
+        <div className="getting-started-progress" aria-hidden="true">
+          <span style={{ width: `${(completedCount / steps.length) * 100}%` }} />
+        </div>
+      )}
 
       {loading ? (
         <div className="getting-started-status">{copy.checking}</div>
       ) : failed ? (
         <div className="getting-started-status getting-started-status-error">
-          <span>{copy.checkFailed}</span>
+          <span>{undetermined && !loading ? copy.accessUnknown(selection.undeterminedNodes.map((node) => node.name)) : copy.checkFailed}</span>
           <button className="secondary-button" type="button" onClick={retry}>{copy.retry}</button>
         </div>
       ) : (
@@ -622,7 +688,7 @@ export function GettingStartedWidget() {
               const stateLabel = step.complete ? copy.complete : isCurrent ? copy.current : copy.pending;
               const stepText = step.copy[state];
               const showInlineInstall = step.key === 'core' && isCurrent && inlineInstallAvailable;
-              const showInlineDeploy = step.key === 'final' && isCurrent && accountReady;
+              const showInlineDeploy = step.key === 'final' && isCurrent && deployAvailable;
               const stepTo = state === 'pending' || showInlineInstall || showInlineDeploy ? null : step.to ?? null;
               const interactive = Boolean(stepTo || showInlineInstall || showInlineDeploy);
 
@@ -673,7 +739,10 @@ export function GettingStartedWidget() {
             <span>{copy.nextAction}</span>
             <h3>{actionTitle}</h3>
             <p>{actionDescription}</p>
-            {primaryServer && <small>{copy.serverName}: <strong>{primaryServer.name || primaryServer.id}</strong></small>}
+            {focus && <small>{copy.serverName}: <strong>{focus.name}</strong></small>}
+            {actionNote && !deploymentBusy && (
+              <small className="getting-started-action-status getting-started-action-status-error">{actionNote}</small>
+            )}
             {actionInstall && installationBusy && <small className="getting-started-action-status">{copy.installCoreQueued}</small>}
             {actionInstall && installationFailure && !installationBusy && (
               <small className="getting-started-action-status getting-started-action-status-error">{installationFailure}</small>

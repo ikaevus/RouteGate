@@ -156,6 +156,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("POST /api/v1/vpn-accounts", authn(auth.RequirePermission("vpn_users:create")(stdhttp.HandlerFunc(vpnAccountsHandler.Create))))
 	mux.Handle("POST /api/v1/vpn-accounts/bulk-update", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.BulkUpdate))))
 	mux.Handle("POST /api/v1/vpn-accounts/bulk-disable", authn(auth.RequirePermission("vpn_users:disable")(stdhttp.HandlerFunc(vpnAccountsHandler.BulkDisable))))
+	mux.Handle("GET /api/v1/vpn-accounts/access-summary", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientAccessSummary))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.Get))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/notes", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountNotesHandler.Get))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/notes", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountNotesHandler.Update))))

@@ -11,7 +11,7 @@ type activeClientProtocolSource interface {
 
 func (r *Repository) GetActiveClientProtocol(ctx context.Context, accountID string) (string, error) {
 	var protocol string
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT COALESCE(
 			cp.active_protocol,
 			NULLIF(acv.client_settings->>'vpnProtocol', ''),

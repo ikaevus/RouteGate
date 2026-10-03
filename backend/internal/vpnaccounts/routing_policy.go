@@ -69,7 +69,7 @@ type routingPolicyRepository interface {
 func (r *Repository) GetRoutingPolicy(ctx context.Context, accountID string) (VPNAccountRoutingPolicy, error) {
 	var accountProfileID, serverProfileID, defaultProfileID sql.NullString
 	var protocol string
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT
 			arp.routing_profile_id::text,
 			srp.routing_profile_id::text,
@@ -142,7 +142,7 @@ func (r *Repository) GetRoutingPolicy(ctx context.Context, accountID string) (VP
 }
 
 func (r *Repository) AssignRoutingProfile(ctx context.Context, accountID, profileID string) (VPNAccountRoutingPolicy, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
@@ -173,17 +173,17 @@ func (r *Repository) AssignRoutingProfile(ctx context.Context, accountID, profil
 }
 
 func (r *Repository) DeleteRoutingProfileAssignment(ctx context.Context, accountID string) (VPNAccountRoutingPolicy, error) {
-	if _, err := r.pool.Exec(ctx, `DELETE FROM vpn_account_routing_profiles WHERE vpn_account_id = $1::uuid`, accountID); err != nil {
+	if _, err := r.db.Exec(ctx, `DELETE FROM vpn_account_routing_profiles WHERE vpn_account_id = $1::uuid`, accountID); err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
-	if _, err := r.pool.Exec(ctx, `UPDATE vpn_accounts SET config_updated_at = now(), updated_at = now() WHERE id = $1::uuid`, accountID); err != nil {
+	if _, err := r.db.Exec(ctx, `UPDATE vpn_accounts SET config_updated_at = now(), updated_at = now() WHERE id = $1::uuid`, accountID); err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
 	return r.GetRoutingPolicy(ctx, accountID)
 }
 
 func (r *Repository) AssignNodeGroup(ctx context.Context, accountID, groupID string) (VPNAccountRoutingPolicy, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
@@ -239,7 +239,7 @@ func (r *Repository) AssignNodeGroup(ctx context.Context, accountID, groupID str
 }
 
 func (r *Repository) DeleteNodeGroupAssignment(ctx context.Context, accountID string) (VPNAccountRoutingPolicy, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
@@ -265,7 +265,7 @@ func (r *Repository) DeleteNodeGroupAssignment(ctx context.Context, accountID st
 
 func (r *Repository) routingProfilePolicySummary(ctx context.Context, profileID string) (RoutingProfilePolicySummary, error) {
 	var profile RoutingProfilePolicySummary
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT id::text, name, COALESCE(description, ''), is_default
 		FROM routing_profiles
 		WHERE id = $1::uuid
@@ -276,7 +276,7 @@ func (r *Repository) routingProfilePolicySummary(ctx context.Context, profileID 
 func (r *Repository) nodeGroupPolicySummary(ctx context.Context, accountID string) (NodeGroupPolicySummary, bool, error) {
 	var group NodeGroupPolicySummary
 	var currentServerInGroup bool
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT
 			g.id::text,
 			g.name,

@@ -65,7 +65,7 @@ func containsClientProtocol(protocols []string, protocol string) bool {
 // such a choice the desired set is the account's primary protocol, the node
 // default for "auto", exactly as the next render deploys it.
 func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string) ([]string, []string, error) {
-	if _, err := r.pool.Exec(ctx, `
+	if _, err := r.db.Exec(ctx, `
 		INSERT INTO vpn_account_protocols (
 			vpn_account_id, protocol, desired_enabled, active_enabled, updated_at, activated_at
 		)
@@ -91,7 +91,7 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 	}
 
 	var primary string
-	if err := r.pool.QueryRow(ctx, `
+	if err := r.db.QueryRow(ctx, `
 		SELECT `+desiredPrimaryProtocolSQL+`
 		FROM vpn_accounts a
 		LEFT JOIN servers s ON s.id = a.server_id
@@ -101,7 +101,7 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 		return nil, nil, err
 	}
 
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT protocol, desired_enabled AND desired_explicit, active_enabled
 		FROM vpn_account_protocols
 		WHERE vpn_account_id = $1::uuid
@@ -147,7 +147,7 @@ func (r *Repository) GetClientProtocolSets(ctx context.Context, accountID string
 // the complete desired protocol set atomically. active_enabled is intentionally
 // untouched here; only a successful config apply promotes desired state.
 func (r *Repository) UpdateClientProfileWithProtocols(ctx context.Context, accountID string, request UpdateClientProfileRequest, enabledProtocols []string) (ClientProfile, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return ClientProfile{}, err
 	}

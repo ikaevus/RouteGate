@@ -393,22 +393,25 @@ export function buildVlessRealityShareLink(
   return `vless://${encodeURIComponent(uuid)}@${formatVlessHost(server)}:${serverPort}?${parameters.toString()}#${encodeURIComponent(label)}`;
 }
 
-export async function getVpnAccounts(): Promise<ListVpnAccountsResponse> {
-  const servers = await apiGet<{ items: Array<{ id: string }> }>('/api/v1/servers');
-  if (servers.items.length === 0) return { items: [] };
+export type NodeClientAccessState = 'served' | 'not_served' | 'unknown';
 
-  const results = await Promise.all(servers.items.map((server) => apiGet<{ items: VpnAccount[] }>(
-    `/api/v1/vpn-accounts?status=active&serverId=${encodeURIComponent(server.id)}&page=1&pageSize=1`,
-  )));
+/**
+ * Whether a node issues client access to at least one active account, from
+ * the Manager's own client-link evaluation. Carries account ids only.
+ * 'unknown' means the evaluation could not finish, not that access is missing.
+ */
+export interface NodeClientAccess {
+  serverId: string;
+  activeAccounts: number;
+  state: NodeClientAccessState;
+  servedAccountId?: string;
+  pendingAccountId?: string;
+  pendingStatus?: VpnClientConnectionStatus;
+  pendingMessage?: string;
+}
 
-  return {
-    items: results.flatMap((result) => result.items).map((account) => ({
-      ...account,
-      // Getting Started historically reads updatedAt for config freshness.
-      // Preserve that contract while separating generic metadata edits in the API.
-      updatedAt: account.configUpdatedAt ?? account.updatedAt,
-    })),
-  };
+export function getVpnAccessSummary(): Promise<{ items: NodeClientAccess[] }> {
+  return apiGet<{ items: NodeClientAccess[] }>('/api/v1/vpn-accounts/access-summary');
 }
 
 export async function createVpnAccount(request: CreateVpnAccountRequest): Promise<VpnAccount> {

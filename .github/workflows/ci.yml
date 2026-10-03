@@ -345,6 +345,15 @@ jobs:
       - name: Test shared UI semantics
         run: npm run test:ui
 
+      - name: Test Getting Started node state model
+        run: npm run test:getting-started
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Test Getting Started in the browser
+        run: npm run test:getting-started-browser
+
       - name: Build frontend
         run: npm run build
 
