@@ -1,0 +1,247 @@
+"""Real data-plane continuation of bootstrap E2E, ONLY on a disposable runner.
+
+Do not print API responses, links, keys, configs, or subprocess diagnostics:
+they contain test credentials. The runner destroys private logs afterwards.
+"""
+import argparse
+from contextlib import ExitStack
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import threading
+import time
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlsplit
+from urllib.request import ProxyHandler, Request, build_opener
+
+TARGET = "reality-target.routegate.test"
+BAD_TARGET = "nx.routegate.invalid"
+MARKER = b"routegate-real-reality-data-plane\n"
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def isolated(manager):
+    require(os.environ.get("GITHUB_ACTIONS") == "true"
+            and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+            and os.environ.get("ROUTEGATE_E2E_ISOLATED") == "1",
+            "This test requires an explicitly isolated GitHub-hosted runner")
+    address = urlsplit(manager)
+    require(address.scheme == "http" and address.hostname == "127.0.0.1"
+            and address.port and not address.username and not address.password
+            and not address.query and not address.fragment and not address.path,
+            "Manager must be the runner-local HTTP service")
+
+
+def client_config(link):
+    """Use the actual served link, without overriding its endpoint or keys."""
+    uri = urlsplit(link)
+    query = parse_qs(uri.query)
+    require(uri.scheme == "vless" and uri.hostname == "127.0.0.1"
+            and uri.port and uri.username, "Expected a runner-local VLESS link")
+    def field(name):
+        value = query.get(name, [])
+        require(len(value) == 1 and value[0], "Missing or ambiguous client parameter")
+        return value[0]
+    require(field("type") == "tcp" and field("security") == "reality",
+            "Expected TCP Reality client material")
+    return {
+        "log": {"level": "error"},
+        "inbounds": [{"type": "socks", "listen": "127.0.0.1", "listen_port": 10808}],
+        "outbounds": [{"type": "vless", "tag": "vpn", "server": uri.hostname,
+                       "server_port": uri.port, "uuid": uri.username,
+                       "flow": field("flow"),
+                       "tls": {"enabled": True, "server_name": field("sni"),
+                               "utls": {"enabled": True, "fingerprint": field("fp")},
+                               "reality": {"enabled": True, "public_key": field("pbk"),
+                                           "short_id": field("sid")}}}],
+        "route": {"final": "vpn"},
+    }
+
+
+class API:
+    def __init__(self, manager, token):
+        self.manager, self.token = manager, token
+        self.opener = build_opener(ProxyHandler({}))
+
+    def call(self, method, path, body=None, expected=200):
+        request = Request(self.manager + path,
+                          data=None if body is None else json.dumps(body).encode(),
+                          method=method, headers={"Authorization": "Bearer " + self.token,
+                                                  "Content-Type": "application/json"})
+        try:
+            with self.opener.open(request, timeout=15) as response:
+                status, raw = response.status, response.read()
+        except HTTPError as error:
+            status, raw = error.code, error.read()
+        except (URLError, TimeoutError):
+            raise RuntimeError("Runner-local Manager request failed") from None
+        require(status == expected, f"API {method} returned HTTP {status}; expected {expected}")
+        return json.loads(raw) if raw else {}
+
+    def wait_job(self, path, expected="succeeded", timeout=240):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            job = self.call("GET", path)
+            if job["status"] in ("succeeded", "failed"):
+                require(job["status"] == expected, f"Job ended {job['status']}; expected {expected}")
+                return job
+            time.sleep(1)
+        raise RuntimeError("Agent job exceeded its time budget")
+
+
+def run(*args):
+    result = subprocess.run(args, capture_output=True, timeout=30, check=False)
+    require(result.returncode == 0, "Local command failed (private diagnostics suppressed)")
+    return result.stdout
+
+
+def stop(process):
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def wait_listener(port, process):
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        require(process.poll() is None, "Local test process exited before becoming ready")
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                return
+        except OSError:
+            time.sleep(0.2)
+    raise RuntimeError("Local test listener did not become ready")
+
+
+def service_state():
+    return run("systemctl", "show", "sing-box.service", "--property=MainPID",
+               "--property=ActiveEnterTimestampMonotonic", "--property=NRestarts")
+
+
+def active_hash():
+    return hashlib.sha256(Path("/etc/sing-box/config.json").read_bytes()).digest()
+
+
+class Origin(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(MARKER)))
+        self.end_headers()
+        self.wfile.write(MARKER)
+
+    def log_message(self, *_args):
+        pass
+
+
+def traffic(port):
+    body = run("curl", "--fail", "--silent", "--show-error", "--max-time", "15",
+               "--noproxy", "", "--socks5-hostname", "127.0.0.1:10808",
+               f"http://127.0.0.1:{port}/through-reality")
+    require(body == MARKER, "VPN traffic did not reach the isolated origin")
+
+
+def exercise(work, manager):
+    isolated(manager)
+    require(os.geteuid() == 0, "The isolated continuation requires root")
+    os.umask(0o077)
+    api = API(manager, (work / "admin.token").read_text().strip())
+    server = (work / "server.id").read_text().strip()
+    base = "/api/v1/servers/" + server
+    with ExitStack() as stack:
+        # Hosts entry exists only on the disposable runner, never on a node.
+        with open("/etc/hosts", "a", encoding="utf-8") as hosts:
+            hosts.write(f"\n127.0.0.1 {TARGET}\n")
+        run("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+            "-subj", f"/CN={TARGET}", "-addext", f"subjectAltName=DNS:{TARGET}",
+            "-keyout", str(work / "reality.key"), "-out", str(work / "reality.crt"))
+        tls_log = stack.enter_context(open(work / "reality-target.log", "wb"))
+        tls = subprocess.Popen(["openssl", "s_server", "-accept", "127.0.0.1:443",
+                                "-cert", str(work / "reality.crt"),
+                                "-key", str(work / "reality.key"), "-tls1_3", "-www"],
+                               stdout=tls_log, stderr=tls_log)
+        stack.callback(stop, tls)
+        wait_listener(443, tls)
+        origin = ThreadingHTTPServer(("127.0.0.1", 0), Origin)
+        stack.callback(origin.server_close)
+        thread = threading.Thread(target=origin.serve_forever, daemon=True)
+        thread.start()
+        stack.callback(origin.shutdown)
+
+        print("[remote-vpn-e2e] Installing sing-box through the registered Agent.", flush=True)
+        install = api.call("POST", base + "/vpn-core/installations",
+                           {"operation": "install_sing_box"}, expected=202)
+        api.wait_job(base + "/vpn-core/installations/" + install["job"]["id"], timeout=660)
+        api.call("POST", base + "/protocol-settings/recommended", {"serverName": TARGET})
+        account = api.call("POST", "/api/v1/vpn-accounts",
+                           {"displayName": "Reality E2E", "serverId": server}, expected=201)
+        account_base = "/api/v1/vpn-accounts/" + account["id"]
+        api.call("POST", account_base + "/activate", {})
+        api.call("GET", account_base + "/client-connection", expected=409)
+
+        def render_apply(expected):
+            rendered = api.call("POST", base + "/config/render", {}, expected=201)
+            version = rendered["configVersion"]["id"]
+            checked = api.call("POST", base + "/config/versions/" + version + "/validate", {})
+            require(checked["validationResult"]["valid"], "Manager validation rejected test config")
+            submitted = api.call("POST", base + "/config/versions/" + version + "/apply", {}, expected=202)
+            job = api.wait_job(base + "/config/apply-jobs/" + submitted["job"]["id"], expected)
+            return job
+
+        render_apply("succeeded")
+        link = api.call("GET", account_base + "/client-connection")["vlessLink"]
+        config = client_config(link)
+        require(config["outbounds"][0]["tls"]["server_name"] == TARGET,
+                "Served Reality name differs from the applied fixture")
+        client_path = work / "vpn-client.json"
+        client_path.write_text(json.dumps(config))
+        run("sing-box", "check", "-c", str(client_path))
+        client_log = stack.enter_context(open(work / "vpn-client.log", "wb"))
+        client = subprocess.Popen(["sing-box", "run", "-c", str(client_path)],
+                                  stdout=client_log, stderr=client_log)
+        stack.callback(stop, client)
+        wait_listener(10808, client)
+        traffic(origin.server_port)
+        before_hash, before_state = active_hash(), service_state()
+        print("[remote-vpn-e2e] Real SOCKS -> VLESS/Reality -> origin traffic passed.", flush=True)
+
+        api.call("PATCH", base + "/protocol-settings", {"realityServerName": BAD_TARGET})
+        require(api.call("GET", account_base + "/client-connection")["vlessLink"] == link,
+                "Saving unapplied settings changed client material")
+        failure = render_apply("failed")
+        require(failure["resultPayload"].get("failedStage") == "validate",
+                "Bad Reality target did not fail before config replacement")
+        require("DNS" in failure.get("errorMessage", "") or "no such host" in failure.get("errorMessage", ""),
+                "Bad Reality target did not report DNS failure")
+        require(active_hash() == before_hash and service_state() == before_state,
+                "Rejected config changed the active config or restarted sing-box")
+        require(api.call("GET", account_base + "/client-connection")["vlessLink"] == link,
+                "Failed apply changed the served client material")
+        traffic(origin.server_port)
+        api.call("PATCH", base + "/protocol-settings", {"realityServerName": TARGET})
+        print("[remote-vpn-e2e] NXDOMAIN rejected at validate; config, process, client link and traffic preserved.", flush=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--work-dir", type=Path, required=True)
+    parser.add_argument("--manager", required=True)
+    args = parser.parse_args()
+    try:
+        exercise(args.work_dir, args.manager)
+    except Exception as error:
+        # Never interpolate arbitrary API/subprocess errors that may hold keys.
+        print("[remote-vpn-e2e] FAILED: " + (str(error) if isinstance(error, RuntimeError)
+                                             else type(error).__name__), flush=True)
+        raise SystemExit(1)

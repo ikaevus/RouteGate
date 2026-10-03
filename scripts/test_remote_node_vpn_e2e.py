@@ -1,0 +1,82 @@
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import unittest
+from unittest.mock import patch
+
+REPO = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location("vpn_e2e", REPO / "scripts/remote-node-vpn-e2e.py")
+e2e = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(e2e)
+LINK = ("vless://12345678-1234-1234-1234-123456789abc@127.0.0.1:8443"
+        "?security=reality&type=tcp&flow=xtls-rprx-vision&sni=reality-target.routegate.test"
+        "&fp=chrome&pbk=test-public-key&sid=aabbccdd#test")
+ENV = {"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted",
+       "ROUTEGATE_E2E_ISOLATED": "1"}
+
+
+class VPNContinuationTests(unittest.TestCase):
+    def test_served_link_is_used_without_overrides(self):
+        outbound = e2e.client_config(LINK)["outbounds"][0]
+        self.assertEqual((outbound["server"], outbound["server_port"]), ("127.0.0.1", 8443))
+        self.assertEqual(outbound["tls"]["server_name"], e2e.TARGET)
+        self.assertEqual(outbound["tls"]["reality"]["public_key"], "test-public-key")
+        self.assertEqual(outbound["tls"]["reality"]["short_id"], "aabbccdd")
+        self.assertNotIn("insecure", outbound["tls"])
+
+    def test_external_endpoint_and_invalid_client_material_are_rejected(self):
+        for link in (LINK.replace("127.0.0.1", "77.91.93.150"),
+                     LINK.replace("type=tcp", "type=ws"),
+                     LINK.replace("security=reality", "security=none"),
+                     LINK.replace("&pbk=test-public-key", ""), LINK.replace("#test", "&sid=duplicate#test")):
+            with self.subTest(link=link), self.assertRaises(RuntimeError):
+                e2e.client_config(link)
+
+    def test_isolation_requires_all_three_markers(self):
+        with patch.dict(os.environ, ENV, clear=True):
+            e2e.isolated("http://127.0.0.1:18080")
+        for key in ENV:
+            with self.subTest(key=key), patch.dict(os.environ, {**ENV, key: ""}, clear=True):
+                with self.assertRaises(RuntimeError):
+                    e2e.isolated("http://127.0.0.1:18080")
+
+    def test_external_or_ambiguous_manager_is_rejected(self):
+        with patch.dict(os.environ, ENV, clear=True):
+            for url in ("https://routegate.org", "http://192.0.2.1:18080",
+                        "http://secret@127.0.0.1:18080", "http://127.0.0.1:18080/path",
+                        "http://127.0.0.1:18080?destination=live"):
+                with self.subTest(url=url), self.assertRaises(RuntimeError):
+                    e2e.isolated(url)
+
+    def test_shell_refuses_local_execution_before_cleanup_or_changes(self):
+        result = subprocess.run(["bash", str(REPO / "scripts/remote-node-bootstrap-e2e.sh")],
+                                env={**os.environ, "GITHUB_ACTIONS": "false"},
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("explicitly isolated GitHub-hosted runner", result.stderr)
+        self.assertNotIn("sudo", result.stderr)
+
+    def test_job_failure_is_bounded_and_does_not_print_payload(self):
+        api = e2e.API("http://127.0.0.1:18080", "private-token")
+        with patch.object(api, "call", return_value={"status": "failed", "secret": "private-key"}):
+            with self.assertRaisesRegex(RuntimeError, "Job ended failed") as caught:
+                api.wait_job("/test")
+        self.assertNotIn("private", str(caught.exception))
+        with patch.object(api, "call", return_value={"status": "failed"}):
+            self.assertEqual(api.wait_job("/test", expected="failed")["status"], "failed")
+
+    def test_traffic_cannot_bypass_the_socks_proxy(self):
+        with patch.object(e2e, "run", return_value=e2e.MARKER) as command:
+            e2e.traffic(12345)
+        args = command.call_args.args
+        self.assertEqual(args[args.index("--socks5-hostname") + 1], "127.0.0.1:10808")
+        self.assertEqual(args[args.index("--noproxy") + 1], "")
+        self.assertEqual(args[-1], "http://127.0.0.1:12345/through-reality")
+        with patch.object(e2e, "run", return_value=b"wrong origin"):
+            with self.assertRaises(RuntimeError):
+                e2e.traffic(12345)
+
+
+if __name__ == "__main__":
+    unittest.main()

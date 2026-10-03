@@ -13,7 +13,7 @@ MANAGER_ADDR="${ROUTEGATE_E2E_MANAGER_ADDR:-127.0.0.1:18080}"
 BOOTSTRAP_EMAIL="remote-bootstrap-e2e@example.invalid"
 BOOTSTRAP_PASSWORD="RouteGate-Remote-Bootstrap-E2E-2026!"
 SERVER_NAME="remote-bootstrap-e2e"
-SERVER_IP="192.0.2.44"
+SERVER_IP="127.0.0.1"
 
 MANAGER_PID=""
 PROXY_PID=""
@@ -37,7 +37,6 @@ cleanup() {
   fi
   sudo systemctl stop routegate-agent.service >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 is required"
@@ -323,16 +322,43 @@ verify_manager_observed_agent() {
 }
 
 main() {
+  # This script replaces APT sources and installs system services. Never run it
+  # on a workstation, self-hosted runner, or any real RouteGate node.
+  [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted && "${ROUTEGATE_E2E_ISOLATED:-}" == 1 ]] \
+    || fail "Only an explicitly isolated GitHub-hosted runner is supported"
+  [[ -n "${RUNNER_TEMP:-}" && "$RUNNER_TEMP" != / && "$WORK_DIR" == "$RUNNER_TEMP/routegate-remote-bootstrap-e2e" ]] \
+    || fail "Work directory must be the dedicated runner temporary directory"
   [[ -n "$DATABASE_URL" ]] || fail "ROUTEGATE_E2E_DATABASE_URL is required"
   [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || fail "ROUTEGATE_E2E_COMMIT must be a full Git SHA"
   [[ "$PUBLIC_URL" =~ ^https://localhost:[0-9]+$ ]] || fail "ROUTEGATE_E2E_PUBLIC_URL must use https://localhost:<port>"
+  [[ "$MANAGER_ADDR" =~ ^127\.0\.0\.1:[0-9]+$ ]] || fail "Manager must be local to the isolated runner"
 
-  for command_name in curl git go jq npm openssl python3 sha256sum sudo tar; do
+  for command_name in curl git go jq npm openssl psql python3 sha256sum sudo tar; do
     require_command "$command_name"
   done
+  # Check both the destination and the actual database before changing the host.
+  python3 - "$DATABASE_URL" <<'PY_DATABASE'
+import sys
+from urllib.parse import urlsplit
+try:
+    url = urlsplit(sys.argv[1])
+    safe = (url.scheme in ('postgres', 'postgresql') and url.hostname == '127.0.0.1'
+            and url.path == '/routegate_remote_bootstrap_e2e'
+            and url.query == 'sslmode=disable' and not url.fragment)
+except ValueError:
+    safe = False
+if not safe:
+    sys.exit('Only the dedicated loopback E2E database is supported')
+PY_DATABASE
+  local actual_database
+  actual_database=$(PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000' \
+    psql "$DATABASE_URL" -XAt -v ON_ERROR_STOP=1 -c 'SELECT current_database()' 2>/dev/null) \
+    || fail "Cannot verify isolated database"
+  [[ "$actual_database" == routegate_remote_bootstrap_e2e ]] || fail "Actual database is not the isolated E2E database"
 
-  rm -rf "$WORK_DIR"
+  [[ ! -e "$WORK_DIR" ]] || fail "Dedicated work directory must not already exist"
   mkdir -p "$WORK_DIR"
+  trap cleanup EXIT
 
   build_production_like_bundle
   verify_pinned_installer_is_public
@@ -344,6 +370,9 @@ main() {
   verify_retry_before_registration
   run_generated_bootstrap
   verify_manager_observed_agent
+  sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,ROUTEGATE_E2E_ISOLATED \
+    python3 "$ROOT_DIR/scripts/remote-node-vpn-e2e.py" \
+    --work-dir "$WORK_DIR" --manager "http://$MANAGER_ADDR"
 
   log "Remote VPN Node bootstrap E2E passed."
 }
