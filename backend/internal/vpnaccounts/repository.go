@@ -9,18 +9,31 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/platform"
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
+// repositoryDB is the subset of a connection pool the repository uses. A
+// pgx.Tx satisfies it too (Begin opens a savepoint), which lets a read-only
+// evaluation run the same code inside a transaction that is rolled back.
+type repositoryDB interface {
+	Begin(context.Context) (pgx.Tx, error)
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
 type Repository struct {
+	db repositoryDB
+	// pool is the shared pool for collaborators outside this package.
 	pool *pgxpool.Pool
 }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool}
+	return &Repository{db: pool, pool: pool}
 }
 
 func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput) (Account, error) {
@@ -29,7 +42,7 @@ func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput
 		status = StatusCreated
 	}
 
-	return scanAccount(r.pool.QueryRow(ctx, `
+	return scanAccount(r.db.QueryRow(ctx, `
 		INSERT INTO vpn_accounts (
 			username, protocol, display_name, email, phone, telegram_username, status, expires_at, max_devices, server_id
 		)
@@ -55,7 +68,7 @@ func (r *Repository) CreateAccount(ctx context.Context, input CreateAccountInput
 }
 
 func (r *Repository) ListAccounts(ctx context.Context, filter AccountFilter) ([]Account, error) {
-	rows, err := r.pool.Query(ctx, accountSelect+accountFilterSQL+`
+	rows, err := r.db.Query(ctx, accountSelect+accountFilterSQL+`
 		ORDER BY created_at DESC, id DESC
 		LIMIT CASE WHEN $5 > 0 THEN $5 ELSE 50 END
 		OFFSET CASE WHEN $6 > 0 THEN $6 ELSE 0 END
@@ -78,7 +91,7 @@ func (r *Repository) ListAccounts(ctx context.Context, filter AccountFilter) ([]
 
 func (r *Repository) CountAccounts(ctx context.Context, filter AccountFilter) (int, error) {
 	var total int
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT COUNT(*)
 		FROM vpn_accounts
 	`+accountFilterSQL, filter.Status, filter.ServerID, filter.Search, filter.SearchUUID).Scan(&total)
@@ -86,11 +99,11 @@ func (r *Repository) CountAccounts(ctx context.Context, filter AccountFilter) (i
 }
 
 func (r *Repository) GetAccountByID(ctx context.Context, id string) (Account, error) {
-	return scanAccount(r.pool.QueryRow(ctx, accountSelect+` WHERE id = $1::uuid`, id))
+	return scanAccount(r.db.QueryRow(ctx, accountSelect+` WHERE id = $1::uuid`, id))
 }
 
 func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateAccountInput) (Account, error) {
-	return scanAccount(r.pool.QueryRow(ctx, `
+	return scanAccount(r.db.QueryRow(ctx, `
 		UPDATE vpn_accounts
 		SET
 			username = CASE WHEN $2 THEN $3 ELSE username END,
@@ -147,7 +160,7 @@ func (r *Repository) UpdateAccount(ctx context.Context, id string, input UpdateA
 }
 
 func (r *Repository) SetAccountStatus(ctx context.Context, id string, status string) (Account, error) {
-	return scanAccount(r.pool.QueryRow(ctx, `
+	return scanAccount(r.db.QueryRow(ctx, `
 		UPDATE vpn_accounts
 		SET status = $2, updated_at = now(), config_updated_at = now()
 		WHERE id = $1::uuid
@@ -170,7 +183,7 @@ func (r *Repository) SetAccountStatus(ctx context.Context, id string, status str
 }
 
 func (r *Repository) DeleteAccount(ctx context.Context, id string) error {
-	result, err := r.pool.Exec(ctx, `DELETE FROM vpn_accounts WHERE id = $1::uuid`, id)
+	result, err := r.db.Exec(ctx, `DELETE FROM vpn_accounts WHERE id = $1::uuid`, id)
 	if err != nil {
 		return err
 	}
@@ -186,7 +199,7 @@ func (r *Repository) DeleteAccount(ctx context.Context, id string) error {
 // Device tokens are issued/rotated exclusively through
 // CreateDeviceSubscriptionToken (device.go), which is scoped by device_id.
 func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSubscriptionTokenInput) (SubscriptionToken, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return SubscriptionToken{}, err
 	}
@@ -228,7 +241,7 @@ func (r *Repository) CreateSubscriptionToken(ctx context.Context, input CreateSu
 // (device_id IS NULL) token. It must never revoke a device's own RG-116
 // token; use device.go's RevokeDevice for that.
 func (r *Repository) RevokeActiveSubscriptionTokens(ctx context.Context, vpnAccountID string) error {
-	result, err := r.pool.Exec(ctx, `
+	result, err := r.db.Exec(ctx, `
 		UPDATE vpn_subscription_tokens
 		SET status = 'revoked', revoked_at = now(), updated_at = now()
 		WHERE vpn_account_id = $1::uuid AND status = 'active' AND device_id IS NULL
@@ -246,7 +259,7 @@ func (r *Repository) RevokeActiveSubscriptionTokens(ctx context.Context, vpnAcco
 // (device_id IS NULL) token by hash. Restricting to device_id IS NULL keeps
 // this legacy lookup from ever matching a device's own token.
 func (r *Repository) GetActiveSubscriptionTokenByHash(ctx context.Context, vpnAccountID string, tokenHash string) (SubscriptionToken, error) {
-	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
+	return scanSubscriptionToken(r.db.QueryRow(ctx, subscriptionTokenSelect+`
 		WHERE vpn_account_id = $1::uuid
 		  AND token_hash = $2
 		  AND status = 'active'
@@ -264,13 +277,13 @@ func (r *Repository) GetActiveSubscriptionTokenByHash(ctx context.Context, vpnAc
 // persist it insecurely; callers should rely on SubscriptionToken.TokenHash
 // staying JSON-excluded (see model.go).
 func (r *Repository) GetActiveLegacySubscriptionToken(ctx context.Context, vpnAccountID string) (SubscriptionToken, error) {
-	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
+	return scanSubscriptionToken(r.db.QueryRow(ctx, subscriptionTokenSelect+`
 		WHERE vpn_account_id = $1::uuid AND status = 'active' AND device_id IS NULL AND (expires_at IS NULL OR expires_at > now())
 	`, vpnAccountID))
 }
 
 func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, tokenHash string) (SubscriptionToken, error) {
-	return scanSubscriptionToken(r.pool.QueryRow(ctx, subscriptionTokenSelect+`
+	return scanSubscriptionToken(r.db.QueryRow(ctx, subscriptionTokenSelect+`
 		WHERE token_hash = $1
 		  AND status = 'active'
 		  AND (expires_at IS NULL OR expires_at > now())
@@ -279,7 +292,7 @@ func (r *Repository) FindActiveSubscriptionTokenByHash(ctx context.Context, toke
 
 func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id string) (SubscriptionProfile, error) {
 	var serverID, effectiveProtocol string
-	if err := r.pool.QueryRow(ctx, `
+	if err := r.db.QueryRow(ctx, `
 		SELECT
 			COALESCE(a.server_id::text, ''),
 			COALESCE(NULLIF(cp.protocol, 'auto'), s.vpn_protocol, 'vless')
@@ -291,11 +304,11 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 		return SubscriptionProfile{}, err
 	}
 	if serverID != "" && effectiveProtocol == ClientProtocolWireGuard {
-		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.pool, serverID); err != nil {
+		if err := wgcredentials.EnsureServerPeerCredentials(ctx, r.db, serverID); err != nil {
 			return SubscriptionProfile{}, err
 		}
 	}
-	profile, err := scanSubscriptionProfile(r.pool.QueryRow(ctx, `
+	profile, err := scanSubscriptionProfile(r.db.QueryRow(ctx, `
 		SELECT
 			a.id::text,
 			a.display_name,
@@ -366,7 +379,7 @@ func (r *Repository) GetSubscriptionProfileByAccountID(ctx context.Context, id s
 }
 
 func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) error {
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.db.Exec(ctx, `
 		UPDATE vpn_subscription_tokens
 		SET last_used_at = now(), updated_at = now()
 		WHERE id = $1::uuid
@@ -375,7 +388,7 @@ func (r *Repository) MarkSubscriptionTokenUsed(ctx context.Context, id string) e
 }
 
 func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, accountID, serverID string) (RoutingProfile, error) {
-	profile, err := scanRoutingProfile(r.pool.QueryRow(ctx, `
+	profile, err := scanRoutingProfile(r.db.QueryRow(ctx, `
 		SELECT
 			p.id::text,
 			p.name,
@@ -416,7 +429,7 @@ func (r *Repository) getSubscriptionRoutingProfile(ctx context.Context, accountI
 }
 
 func (r *Repository) listRoutingProfileRules(ctx context.Context, profileID string) ([]RoutingProfileRule, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT
 			id::text,
 			name,

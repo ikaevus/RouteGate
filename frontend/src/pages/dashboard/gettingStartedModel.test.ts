@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ProtocolSettingsResponse } from '../../entities/server/api/serverApi.ts';
 import {
-  activeAccountsOfNode,
   nodeCompletedSteps,
   nodeSetupStage,
   protocolConfigured,
@@ -15,12 +14,12 @@ function node(overrides: Partial<NodeSetupFacts> & Pick<NodeSetupFacts, 'id' | '
     agentOnline: true,
     coreInstalled: true,
     protocolConfigured: true,
-    appliedVersion: false,
     activeAccountCount: 0,
-    readyAccountId: null,
-    accountStatus: null,
-    accountMessage: null,
-    checkedAccountId: null,
+    access: 'not_served',
+    servedAccountId: null,
+    pendingAccountId: null,
+    pendingStatus: null,
+    pendingMessage: null,
     latestApplyFailed: false,
     latestApplyError: null,
     ...overrides,
@@ -32,9 +31,9 @@ function node(overrides: Partial<NodeSetupFacts> & Pick<NodeSetupFacts, 'id' | '
 // registered node without a connected Agent.
 const us = node({
   id: '11111111-1111-4111-8111-111111111111', name: 'us.routegate.org',
-  appliedVersion: true, activeAccountCount: 3, readyAccountId: 'acc-us-1', accountStatus: 'ready', checkedAccountId: 'acc-us-1',
+  activeAccountCount: 3, access: 'served', servedAccountId: 'acc-us-1',
 });
-const ru = node({ id: '22222222-2222-4222-8222-222222222222', name: 'ru.routegate.org', appliedVersion: true });
+const ru = node({ id: '22222222-2222-4222-8222-222222222222', name: 'ru.routegate.org' });
 const fi = node({
   id: '33333333-3333-4333-8333-333333333333', name: 'fi.routegate.org',
   agentOnline: false, coreInstalled: false, protocolConfigured: false,
@@ -51,7 +50,7 @@ test('A: a new node without runtime or applied configuration is guided step by s
   assert.equal(nodeSetupStage(node({ id: 'n', name: 'n', coreInstalled: false, protocolConfigured: false })), 'core');
   assert.equal(nodeSetupStage(node({ id: 'n', name: 'n', protocolConfigured: false })), 'protocol');
   assert.equal(nodeSetupStage(node({ id: 'n', name: 'n' })), 'account');
-  assert.equal(nodeSetupStage(node({ id: 'n', name: 'n', activeAccountCount: 1 })), 'apply');
+  assert.equal(nodeSetupStage(node({ id: 'n', name: 'n', activeAccountCount: 1, pendingAccountId: 'a', pendingStatus: 'awaiting_first_apply' })), 'apply');
   const selection = selectGettingStartedNode([node({ id: 'n', name: 'n', coreInstalled: false, protocolConfigured: false })]);
   assert.equal(selection.setupComplete, false);
   assert.equal(selection.focus?.id, 'n');
@@ -91,17 +90,30 @@ test('C: without a working node the furthest node is chosen independently of the
 
 test('D: an account created after the last apply is not counted as deployed', () => {
   const pending = node({
-    id: 'n', name: 'n', appliedVersion: true, activeAccountCount: 1,
-    accountStatus: 'awaiting_apply', checkedAccountId: 'acc-new',
+    id: 'n', name: 'n', activeAccountCount: 1, access: 'not_served',
+    pendingAccountId: 'acc-new', pendingStatus: 'awaiting_apply',
   });
   assert.equal(nodeSetupStage(pending), 'apply');
   assert.equal(selectGettingStartedNode([pending]).setupComplete, false);
-  const firstApplyPending = node({ id: 'n', name: 'n', activeAccountCount: 1, accountStatus: 'awaiting_first_apply' });
-  assert.equal(nodeSetupStage(firstApplyPending), 'apply');
+});
+
+test('D: an old served account behind three newer pending accounts keeps the node ready', () => {
+  // The Manager evaluates every active account; the summary reports the old
+  // served one although the three newest await the next apply.
+  const mixed = node({
+    id: 'n', name: 'us.routegate.org', activeAccountCount: 4, access: 'served', servedAccountId: 'acc-old',
+  });
+  assert.equal(nodeSetupStage(mixed), 'ready');
+  const selection = selectGettingStartedNode([mixed, ru]);
+  assert.equal(selection.setupComplete, true);
+  assert.equal(selection.focus?.servedAccountId, 'acc-old');
 });
 
 test('E: saved settings with a failed apply are not treated as applied, and a working node stays working', () => {
-  const neverApplied = node({ id: 'n', name: 'n', activeAccountCount: 1, latestApplyFailed: true, latestApplyError: 'healthcheck failed' });
+  const neverApplied = node({
+    id: 'n', name: 'n', activeAccountCount: 1, pendingAccountId: 'a', pendingStatus: 'awaiting_first_apply',
+    latestApplyFailed: true, latestApplyError: 'healthcheck failed',
+  });
   assert.equal(nodeSetupStage(neverApplied), 'apply');
   assert.equal(selectGettingStartedNode([neverApplied]).setupComplete, false);
   // A failed re-apply after changed settings keeps the previously applied,
@@ -112,20 +124,18 @@ test('E: saved settings with a failed apply are not treated as applied, and a wo
 });
 
 test('F: stages reached on different nodes are never combined into a working VPN', () => {
-  const agentAndAccountsButNoApply = node({ id: 'a', name: 'a', activeAccountCount: 2, accountStatus: 'awaiting_first_apply' });
-  const appliedButNoAccounts = node({ id: 'b', name: 'b', appliedVersion: true });
-  const appliedAccountsButOffline = node({
-    id: 'c', name: 'c', agentOnline: false, appliedVersion: false, activeAccountCount: 1,
-  });
-  const selection = selectGettingStartedNode([agentAndAccountsButNoApply, appliedButNoAccounts, appliedAccountsButOffline]);
+  const accountsButNoApply = node({ id: 'a', name: 'a', activeAccountCount: 2, pendingAccountId: 'x', pendingStatus: 'awaiting_first_apply' });
+  const configuredButNoAccounts = node({ id: 'b', name: 'b' });
+  const servedButOffline = node({ id: 'c', name: 'c', agentOnline: false, activeAccountCount: 1, access: 'served', servedAccountId: 'y' });
+  const selection = selectGettingStartedNode([accountsButNoApply, configuredButNoAccounts, servedButOffline]);
   assert.equal(selection.setupComplete, false);
   assert.deepEqual(selection.workingNodes, []);
-  // An applied version alone, or an active account alone, is not access.
-  assert.notEqual(nodeSetupStage(appliedButNoAccounts), 'ready');
-  assert.notEqual(nodeSetupStage(node({ id: 'd', name: 'd', appliedVersion: true, activeAccountCount: 1, accountStatus: 'unavailable' })), 'ready');
+  // Only a served account is access; an unavailable one is not.
+  assert.equal(nodeSetupStage(node({ id: 'd', name: 'd', activeAccountCount: 1, pendingAccountId: 'z', pendingStatus: 'unavailable' })), 'access');
+  assert.notEqual(nodeSetupStage(node({ id: 'e', name: 'e', activeAccountCount: 1, access: 'served', servedAccountId: null })), 'ready');
 });
 
-test('G: an MTProto-only node is ready when the Manager reports the account as served', () => {
+test('G: an MTProto-only node is ready when the Manager reports an account as served', () => {
   const settings = {
     serverId: 'm', protocol: 'mtproto',
     vless: { port: 0 }, reality: { enabled: false },
@@ -138,20 +148,21 @@ test('G: an MTProto-only node is ready when the Manager reports the account as s
   assert.equal(protocolConfigured(settings), true);
   const mtproto = node({
     id: 'm', name: 'mtproto', protocolConfigured: protocolConfigured(settings),
-    appliedVersion: true, activeAccountCount: 1, readyAccountId: 'acc-m', accountStatus: 'ready', checkedAccountId: 'acc-m',
+    activeAccountCount: 1, access: 'served', servedAccountId: 'acc-m',
   });
   assert.equal(nodeSetupStage(mtproto), 'ready');
 });
 
-test('H: accounts are checked oldest first, only active ones of the node', () => {
-  const accounts = [
-    { id: 'b', serverId: 'n', status: 'active', createdAt: '2026-09-02T00:00:00Z' },
-    { id: 'x', serverId: 'other', status: 'active', createdAt: '2026-08-01T00:00:00Z' },
-    { id: 'a', serverId: 'n', status: 'Active', createdAt: '2026-09-01T00:00:00Z' },
-    { id: 's', serverId: 'n', status: 'suspended', createdAt: '2026-07-01T00:00:00Z' },
-  ];
-  assert.deepEqual(activeAccountsOfNode(accounts, 'n').map((account) => account.id), ['a', 'b']);
-  assert.deepEqual(activeAccountsOfNode([...accounts].reverse(), 'n').map((account) => account.id), ['a', 'b']);
+test('unknown access is never reported as "no working VPN"', () => {
+  const unknown = node({ id: 'u', name: 'us.routegate.org', activeAccountCount: 3, access: 'unknown' });
+  assert.equal(nodeSetupStage(unknown), 'unknown');
+  const alone = selectGettingStartedNode([unknown, ru]);
+  assert.equal(alone.setupComplete, false);
+  assert.deepEqual(alone.undeterminedNodes.map((item) => item.id), ['u']);
+  // A working node still completes setup while another node is undetermined.
+  const withWorking = selectGettingStartedNode([unknown, { ...us, id: 'w', name: 'de.routegate.org' }]);
+  assert.equal(withWorking.setupComplete, true);
+  assert.equal(withWorking.focus?.id, 'w');
 });
 
 test('I: the focus node is reported with its identity, never as the whole installation', () => {
@@ -159,5 +170,5 @@ test('I: the focus node is reported with its identity, never as the whole instal
   assert.equal(selection.setupComplete, false);
   assert.equal(selection.focus?.name, 'ru.routegate.org');
   assert.deepEqual(selection.otherNodes.map((item) => item.name), ['fi.routegate.org']);
-  assert.deepEqual(selectGettingStartedNode([]), { setupComplete: false, workingNodes: [], focus: null, otherNodes: [] });
+  assert.deepEqual(selectGettingStartedNode([]), { setupComplete: false, workingNodes: [], focus: null, otherNodes: [], undeterminedNodes: [] });
 });

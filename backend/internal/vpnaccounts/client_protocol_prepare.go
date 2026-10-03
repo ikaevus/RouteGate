@@ -18,7 +18,7 @@ func (r *Repository) PrepareClientProtocol(ctx context.Context, accountID string
 	if err := r.ensureWireGuardServerKeypair(ctx, serverID); err != nil {
 		return err
 	}
-	return wgcredentials.EnsureAccountPeerCredentials(ctx, r.pool, serverID, accountID)
+	return wgcredentials.EnsureAccountPeerCredentials(ctx, r.db, serverID, accountID)
 }
 
 // ensureWireGuardServerKeypair makes an account-level WireGuard selection safe
@@ -32,7 +32,7 @@ func (r *Repository) ensureWireGuardServerKeypair(ctx context.Context, serverID 
 		return nil
 	}
 
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}

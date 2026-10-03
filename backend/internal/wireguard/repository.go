@@ -4,14 +4,20 @@ import (
 	"context"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
+
+// TxBeginner starts a transaction: a *pgxpool.Pool, or a pgx.Tx (a savepoint),
+// so credential preparation joins a caller's transaction when given one.
+type TxBeginner interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
 
 // EnsureServerPeerCredentials fills only missing WireGuard account material.
 // The server row lock serializes address allocation for a peer pool. Accounts
 // explicitly selecting WireGuard are included even when WireGuard is not the
 // node's default protocol.
-func EnsureServerPeerCredentials(ctx context.Context, pool *pgxpool.Pool, serverID string) error {
+func EnsureServerPeerCredentials(ctx context.Context, pool TxBeginner, serverID string) error {
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return nil

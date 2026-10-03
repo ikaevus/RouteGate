@@ -4,21 +4,27 @@ import type { VpnClientConnectionStatus } from '../../entities/vpnAccount/api/vp
 /**
  * Getting Started state, evaluated per node.
  *
- * Every fact of a node's setup (Agent, runtime, protocol settings, applied
- * configuration, account access) belongs to that node only: readiness of
- * different nodes is never combined. A node provides VPN access when its Agent
- * is online, it has an Agent-confirmed applied configuration and at least one
- * of its active accounts is served by that configuration, as reported by the
- * Manager's client-profile state (the same evaluation that issues client links,
- * including the node-wide MTProto proxy). Saved settings or an active account
- * alone never count as a working VPN.
+ * Every fact of a node's setup (Agent, runtime, protocol settings, account
+ * access) belongs to that node only: readiness of different nodes is never
+ * combined. A node provides VPN access when its Agent is online and the
+ * Manager's access summary reports that at least one of its active accounts,
+ * of any age, gets client access: the evaluation that issues client links
+ * from the applied configuration (protocol sets, node-wide MTProto proxy).
+ * Saved settings, an applied version or an active account alone never count
+ * as a working VPN.
  *
  * The first-run setup of the installation is complete as soon as one node
  * provides access; an extra empty node does not reopen it.
  */
 
-/** Stage of one node; 'ready' means the node serves at least one active account. */
-export type NodeSetupStage = 'connect' | 'core' | 'protocol' | 'account' | 'apply' | 'access' | 'ready';
+/**
+ * Stage of one node; 'ready' means the node serves at least one active
+ * account, 'unknown' that the Manager could not finish evaluating it.
+ */
+export type NodeSetupStage = 'connect' | 'core' | 'protocol' | 'account' | 'apply' | 'access' | 'unknown' | 'ready';
+
+/** Client access of a node as the Manager's access summary reports it. */
+export type NodeAccessState = 'served' | 'not_served' | 'unknown';
 
 export interface NodeSetupFacts {
   id: string;
@@ -27,17 +33,16 @@ export interface NodeSetupFacts {
   coreInstalled: boolean;
   /** Saved protocol settings are complete (not proof that they are applied). */
   protocolConfigured: boolean;
-  /** The Manager has an Agent-confirmed applied configuration for the node. */
-  appliedVersion: boolean;
   /** Active accounts assigned to the node. */
   activeAccountCount: number;
-  /** First active account (oldest first) the applied configuration serves. */
-  readyAccountId: string | null;
-  /** Access state of the oldest checked account when none is ready. */
-  accountStatus: VpnClientConnectionStatus | null;
-  accountMessage?: string | null;
-  /** The account whose state is reported (the oldest checked account). */
-  checkedAccountId: string | null;
+  /** Whether the node issues client access to at least one active account. */
+  access: NodeAccessState;
+  /** An active account the node serves (any age), when access is 'served'. */
+  servedAccountId: string | null;
+  /** First evaluated account without access, with its connection status. */
+  pendingAccountId: string | null;
+  pendingStatus: VpnClientConnectionStatus | null;
+  pendingMessage?: string | null;
   /** The most recent apply job of the node failed. */
   latestApplyFailed: boolean;
   latestApplyError?: string | null;
@@ -54,19 +59,22 @@ const stageCompletedSteps: Record<NodeSetupStage, number> = {
   account: 4,
   apply: 4,
   access: 4,
+  unknown: 4,
   ready: 5,
 };
 
 export function nodeSetupStage(node: NodeSetupFacts): NodeSetupStage {
   if (!node.agentOnline) return 'connect';
-  // The applied configuration is the durable proof of a working node: it stays
-  // valid when settings were changed or saved again after the last apply.
-  if (node.appliedVersion && node.readyAccountId) return 'ready';
+  // Access issued from the applied configuration is the durable proof of a
+  // working node: it stays valid when settings were saved again after the
+  // last apply or a later apply failed.
+  if (node.access === 'served' && node.servedAccountId) return 'ready';
+  // An unfinished evaluation is not evidence that the node serves nobody.
+  if (node.access === 'unknown' && node.activeAccountCount > 0) return 'unknown';
   if (!node.coreInstalled) return 'core';
   if (!node.protocolConfigured) return 'protocol';
   if (node.activeAccountCount === 0) return 'account';
-  if (!node.appliedVersion) return 'apply';
-  if (node.accountStatus === 'awaiting_apply' || node.accountStatus === 'awaiting_first_apply') return 'apply';
+  if (node.pendingStatus === 'awaiting_apply' || node.pendingStatus === 'awaiting_first_apply') return 'apply';
   return 'access';
 }
 
@@ -94,6 +102,11 @@ export interface GettingStartedSelection {
   focus: NodeSetupFacts | null;
   /** Other VPN nodes that do not serve any account yet (stable order). */
   otherNodes: NodeSetupFacts[];
+  /**
+   * Nodes whose access could not be evaluated. Without a working node they
+   * leave the setup state undetermined: never reported as "no working VPN".
+   */
+  undeterminedNodes: NodeSetupFacts[];
 }
 
 /**
@@ -103,12 +116,14 @@ export interface GettingStartedSelection {
 export function selectGettingStartedNode(nodes: NodeSetupFacts[]): GettingStartedSelection {
   const sorted = [...nodes].sort(compareNodes);
   const workingNodes = sorted.filter((node) => nodeSetupStage(node) === 'ready');
+  const undeterminedNodes = sorted.filter((node) => nodeSetupStage(node) === 'unknown');
   if (workingNodes.length > 0) {
     return {
       setupComplete: true,
       workingNodes,
       focus: workingNodes[0],
       otherNodes: sorted.filter((node) => nodeSetupStage(node) !== 'ready'),
+      undeterminedNodes,
     };
   }
   let focus: NodeSetupFacts | null = null;
@@ -120,6 +135,7 @@ export function selectGettingStartedNode(nodes: NodeSetupFacts[]): GettingStarte
     workingNodes: [],
     focus,
     otherNodes: sorted.filter((node) => node !== focus),
+    undeterminedNodes,
   };
 }
 
@@ -150,21 +166,4 @@ export function protocolConfigured(settings?: ProtocolSettingsResponse): boolean
     && textPresent(settings.reality.publicKey)
     && textPresent(settings.reality.shortId)
     && textPresent(settings.reality.serverName);
-}
-
-/** Accounts whose access is checked per node: oldest first, at most this many. */
-export const accountsCheckedPerNode = 3;
-
-export interface AccountForSetup {
-  id: string;
-  serverId?: string | null;
-  status: string;
-  createdAt: string;
-}
-
-/** Active accounts of a node, oldest first (then by id), for a stable check order. */
-export function activeAccountsOfNode(accounts: AccountForSetup[], nodeId: string): AccountForSetup[] {
-  return accounts
-    .filter((account) => account.serverId === nodeId && account.status.trim().toLowerCase() === 'active')
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
 }

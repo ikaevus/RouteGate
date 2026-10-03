@@ -54,16 +54,34 @@ const vlessSettings = (serverId) => ({
 
 /**
  * fixture: { servers: [...in API order], accounts: { [serverId]: [...newest first] },
- *   applied: { [serverId]: bool }, access: { [accountId]: status }, applyJobs: { [serverId]: [...] } }
+ *   applied: { [serverId]: bool }, access: { [accountId]: status }, applyJobs: { [serverId]: [...] },
+ *   unknown: [serverId...] }
+ * The access summary is what the Manager reports after evaluating every
+ * active account of a node; per-account endpoints stay mocked so that a
+ * widget sampling accounts would see the same states and fail.
  */
-async function mockApi(page, fixture) {
+function accessSummary(fixture) {
+  return Object.entries(fixture.accounts).filter(([, items]) => items.length > 0).map(([serverId, items]) => {
+    const summary = { serverId, activeAccounts: items.length, state: 'not_served' };
+    if (fixture.unknown?.includes(serverId)) return { ...summary, state: 'unknown' };
+    const oldestFirst = [...items].reverse();
+    const served = oldestFirst.find((item) => fixture.applied[serverId] && fixture.access[item.id] === 'ready');
+    if (served) return { ...summary, state: 'served', servedAccountId: served.id };
+    const first = oldestFirst[0];
+    return { ...summary, pendingAccountId: first.id, pendingStatus: fixture.applied[serverId] ? (fixture.access[first.id] ?? 'awaiting_apply') : 'awaiting_first_apply' };
+  });
+}
+
+async function mockApi(page, fixture, requests = []) {
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+    requests.push(path);
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/admin/health') return json({ status: 'ok', service: 'routegate-manager', timestamp: new Date().toISOString() });
     if (path === '/api/admin/me') return json({ user: { id: 'admin', email: 'admin@example.invalid', displayName: 'Admin', roles: ['super_admin'] } });
     if (path === '/api/v1/servers') return json({ items: fixture.servers });
+    if (path === '/api/v1/vpn-accounts/access-summary') return json({ items: accessSummary(fixture) });
     if (path === '/api/v1/vpn-accounts' && url.searchParams.get('status') === 'active') {
       const items = fixture.accounts[url.searchParams.get('serverId')] ?? [];
       const pageSize = Number(url.searchParams.get('pageSize') ?? 50);
@@ -106,12 +124,13 @@ after(async () => {
 async function openDashboard(fixture) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
+  const requests = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => {
     localStorage.setItem('routegate.locale', 'ru');
     localStorage.setItem('routegate.auth.token', 'test-token');
   });
-  await mockApi(page, fixture);
+  await mockApi(page, fixture, requests);
   await page.goto(`${origin}/`);
   const widget = page.locator('.getting-started-widget');
   await widget.waitFor();
@@ -119,7 +138,7 @@ async function openDashboard(fixture) {
     const element = document.querySelector('.getting-started-widget');
     return element && !element.textContent.includes('Проверяем состояние RouteGate');
   });
-  return { page, widget, errors };
+  return { page, widget, errors, requests };
 }
 
 const production = {
@@ -200,6 +219,47 @@ test('failed apply of saved settings is not shown as applied', async () => {
   assert.match(text, /4 из 5/);
   assert.match(text, /Последнее применение на этом узле завершилось ошибкой: healthcheck failed/);
   assert.equal(await page.locator('#getting-started-complete-title').count(), 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('old served account behind three newer accounts awaiting apply: the node stays ready', async () => {
+  const { page, widget, errors, requests } = await openDashboard({
+    servers: [servers.ru, servers.fi, servers.us],
+    accounts: {
+      [US]: [
+        account('us-new-3', US, '2026-09-30T00:00:00Z'),
+        account('us-new-2', US, '2026-09-29T00:00:00Z'),
+        account('us-new-1', US, '2026-09-28T00:00:00Z'),
+        account('us-old', US, '2026-06-01T00:00:00Z'),
+      ],
+    },
+    applied: { [US]: true, [RU]: true },
+    access: { 'us-new-3': 'awaiting_apply', 'us-new-2': 'awaiting_apply', 'us-new-1': 'awaiting_apply', 'us-old': 'ready' },
+  });
+  const text = await widget.innerText();
+  assert.ok(await page.locator('#getting-started-complete-title').isVisible(), 'RouteGate ready');
+  assert.match(text, /Рабочий узел: us\.routegate\.org/);
+  assert.doesNotMatch(text, /4 из 5|Применить конфигурацию/);
+  assert.equal(await widget.locator('a.getting-started-action').getAttribute('href'), '/vpn-accounts/us-old/access');
+  // Readiness comes from the Manager's summary, not from polling accounts.
+  assert.equal(requests.filter((path) => path.endsWith('/client-profile')).length, 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('access that could not be evaluated is not reported as a missing VPN', async () => {
+  const { page, widget, errors } = await openDashboard({
+    servers: [servers.ru, servers.us],
+    accounts: { [US]: [account('us-1', US, '2026-08-01T00:00:00Z')] },
+    applied: { [US]: true, [RU]: true },
+    access: { 'us-1': 'ready' },
+    unknown: [US],
+  });
+  const text = await widget.innerText();
+  assert.match(text, /Не удалось проверить, выдаёт ли доступ узел us\.routegate\.org\. Это не означает, что VPN не работает/);
+  assert.doesNotMatch(text, /Создать первый VPN-аккаунт|Создать VPN-аккаунт|RouteGate готов|из 5/);
+  assert.ok(await widget.locator('button', { hasText: 'Проверить снова' }).isVisible());
   assert.deepEqual(errors, []);
   await page.close();
 });

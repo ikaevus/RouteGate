@@ -95,7 +95,7 @@ func (r *Repository) getAutomaticSelectionPolicy(ctx context.Context, accountID 
 	var policy AutomaticSelectionPolicy
 	var lastSelectedAt sql.NullTime
 	var lastSelectedServerID sql.NullString
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT
 			COALESCE(p.enabled, FALSE),
 			COALESCE(p.allow_degraded, FALSE),
@@ -126,7 +126,7 @@ func (r *Repository) UpdateAutomaticSelectionPolicy(ctx context.Context, account
 	if input.CooldownSeconds < 60 || input.CooldownSeconds > 86400 {
 		return VPNAccountRoutingPolicy{}, ErrAutomaticSelectionCooldown
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return VPNAccountRoutingPolicy{}, err
 	}
@@ -223,7 +223,7 @@ func lockedAutomaticSelectionContext(ctx context.Context, tx pgx.Tx, accountID s
 func (r *Repository) automaticSelectionContext(ctx context.Context, accountID string) (automaticSelectionContext, error) {
 	var value automaticSelectionContext
 	var nodeGroupID sql.NullString
-	err := r.pool.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT
 			a.id::text,
 			a.status,
@@ -335,12 +335,12 @@ func evaluateAutomaticSelectionAt(ctx context.Context, selectionContext automati
 
 func (r *Repository) ApplyAutomaticSelection(ctx context.Context, accountID string) (AutomaticSelectionApplyResponse, error) {
 	var expectedCurrentServerID string
-	if err := r.pool.QueryRow(ctx, `
+	if err := r.db.QueryRow(ctx, `
 		SELECT COALESCE(server_id::text, '') FROM vpn_accounts WHERE id = $1::uuid
 	`, accountID).Scan(&expectedCurrentServerID); err != nil {
 		return AutomaticSelectionApplyResponse{}, err
 	}
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return AutomaticSelectionApplyResponse{}, err
 	}

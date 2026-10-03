@@ -41,7 +41,7 @@ func validateClientProtocolTopologyForSource(
 
 func (r *Repository) ValidateClientProtocolTopology(ctx context.Context, serverID, protocol string) error {
 	var deploymentRole string
-	if err := r.pool.QueryRow(ctx, `
+	if err := r.db.QueryRow(ctx, `
 		SELECT deployment_role
 		FROM servers
 		WHERE id = $1::uuid

@@ -5,7 +5,6 @@ import { getManagerHealth } from '../../entities/health/api/healthApi';
 import {
   applyConfigVersion,
   getConfigApplyJobs,
-  getConfigVersions,
   getProtocolSettings,
   getServers,
   renderConfig,
@@ -17,11 +16,9 @@ import {
   getVPNCoreInstallation,
 } from '../../entities/server/api/vpnCoreApi';
 import { parseVPNCoreStatus } from '../../entities/server/model/vpnCoreStatus';
-import { getVpnAccountClientProfileState, getVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getVpnAccessSummary } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 import {
-  accountsCheckedPerNode,
-  activeAccountsOfNode,
   nodeCompletedSteps,
   nodeSetupStage,
   protocolConfigured,
@@ -72,6 +69,7 @@ function getCopy() {
       nodeContextHint: 'Шаги 2–5 относятся только к этому узлу.',
       checking: 'Проверяем состояние RouteGate…',
       checkFailed: 'Не удалось определить состояние первоначальной настройки.',
+      accessUnknown: (servers: string[]) => `Не удалось проверить, выдаёт ли доступ ${servers.length === 1 ? 'узел' : 'узлы'} ${servers.join(', ')}. Это не означает, что VPN не работает; повторите проверку.`,
       retry: 'Проверить снова',
       progress: (done: number, total: number) => `${done} из ${total}`,
       complete: 'Готово',
@@ -163,6 +161,7 @@ function getCopy() {
     nodeContextHint: 'Steps 2–5 apply to this node only.',
     checking: 'Checking RouteGate setup state…',
     checkFailed: 'RouteGate could not determine the first-run setup state.',
+    accessUnknown: (servers: string[]) => `RouteGate could not check whether ${servers.length === 1 ? 'node' : 'nodes'} ${servers.join(', ')} ${servers.length === 1 ? 'issues' : 'issue'} access. This does not mean the VPN is down; check again.`,
     retry: 'Check again',
     progress: (done: number, total: number) => `${done} of ${total}`,
     complete: 'Complete',
@@ -273,19 +272,21 @@ export function GettingStartedWidget() {
     refetchInterval: fastPolling ? 2_000 : 10_000,
   });
 
-  const accountsQuery = useQuery({
-    queryKey: ['vpn-accounts', 'getting-started', accountsCheckedPerNode],
-    queryFn: () => getVpnAccounts(accountsCheckedPerNode),
-    refetchInterval: 10_000,
+  // Per node: does it issue client access to at least one active account?
+  // Evaluated by the Manager with the rules that issue client links, over all
+  // active accounts, without writing anything.
+  const accessQuery = useQuery({
+    queryKey: ['vpn-access-summary'],
+    queryFn: getVpnAccessSummary,
+    refetchInterval: fastPolling ? 2_000 : 15_000,
   });
 
   // Management-only nodes never serve VPN accounts; every other node is
   // evaluated on its own.
   const vpnNodes: Server[] = (serversQuery.data?.items ?? []).filter((server) => server.deploymentRole !== 'management');
-  const accounts = accountsQuery.data?.items ?? [];
+  const accessByNode = new Map((accessQuery.data?.items ?? []).map((item) => [item.serverId, item]));
   const onlineNodes = vpnNodes.filter((server) => server.agent?.status === 'online');
-  const nodeAccounts = new Map(vpnNodes.map((server) => [server.id, activeAccountsOfNode(accounts, server.id)]));
-  const nodesWithAccounts = onlineNodes.filter((server) => (nodeAccounts.get(server.id)?.length ?? 0) > 0);
+  const nodesWithAccounts = onlineNodes.filter((server) => (accessByNode.get(server.id)?.activeAccounts ?? 0) > 0);
 
   const protocolQueries = useQueries({
     queries: onlineNodes.map((server) => ({
@@ -293,13 +294,6 @@ export function GettingStartedWidget() {
       queryFn: () => getProtocolSettings(server.id),
       retry: false,
       refetchInterval: 10_000,
-    })),
-  });
-  const configVersionQueries = useQueries({
-    queries: nodesWithAccounts.map((server) => ({
-      queryKey: ['server-config-versions', server.id],
-      queryFn: () => getConfigVersions(server.id),
-      refetchInterval: deployment?.serverId === server.id ? 2_000 : 10_000,
     })),
   });
   const applyJobQueries = useQueries({
@@ -311,31 +305,12 @@ export function GettingStartedWidget() {
   });
 
   const protocolByNode = new Map(onlineNodes.map((server, index) => [server.id, protocolQueries[index]]));
-  const versionsByNode = new Map(nodesWithAccounts.map((server, index) => [server.id, configVersionQueries[index]]));
   const applyJobsByNode = new Map(nodesWithAccounts.map((server, index) => [server.id, applyJobQueries[index]]));
-  const appliedNode = (serverId: string) => Boolean(versionsByNode.get(serverId)?.data?.currentConfigVersionId?.trim());
-
-  // Access is read from the Manager's client-profile state, which evaluates
-  // exactly what client links are issued from (the applied configuration).
-  const probedAccounts = nodesWithAccounts
-    .filter((server) => appliedNode(server.id))
-    .flatMap((server) => (nodeAccounts.get(server.id) ?? []).slice(0, accountsCheckedPerNode).map((account) => ({ serverId: server.id, accountId: account.id })));
-  const profileQueries = useQueries({
-    queries: probedAccounts.map(({ accountId }) => ({
-      queryKey: ['vpn-account-client-profile', accountId],
-      queryFn: () => getVpnAccountClientProfileState(accountId),
-      refetchInterval: 30_000,
-    })),
-  });
-  const profileByAccount = new Map(probedAccounts.map(({ accountId }, index) => [accountId, profileQueries[index]]));
 
   const facts: NodeSetupFacts[] = vpnNodes.map((server) => {
     const online = server.agent?.status === 'online';
     const protocol = protocolByNode.get(server.id)?.data;
-    const nodeAccountList = nodeAccounts.get(server.id) ?? [];
-    const checked = nodeAccountList.slice(0, accountsCheckedPerNode).map((account) => ({ account, state: profileByAccount.get(account.id)?.data }));
-    const ready = checked.find(({ state }) => state?.connectionStatus === 'ready');
-    const first = checked[0];
+    const access = accessByNode.get(server.id);
     const latestJob = applyJobsByNode.get(server.id)?.data?.items?.[0];
     return {
       id: server.id,
@@ -343,12 +318,12 @@ export function GettingStartedWidget() {
       agentOnline: online,
       coreInstalled: online && Boolean(parseVPNCoreStatus(server.agent?.capabilities, protocol?.protocol)?.installed),
       protocolConfigured: online && protocolConfigured(protocol),
-      appliedVersion: online && appliedNode(server.id),
-      activeAccountCount: Math.max(accountsQuery.data?.activeTotals[server.id] ?? 0, nodeAccountList.length),
-      readyAccountId: ready?.account.id ?? null,
-      accountStatus: first?.state?.connectionStatus ?? null,
-      accountMessage: first?.state?.connectionMessage ?? null,
-      checkedAccountId: first?.account.id ?? null,
+      activeAccountCount: access?.activeAccounts ?? 0,
+      access: access?.state ?? 'not_served',
+      servedAccountId: access?.servedAccountId ?? null,
+      pendingAccountId: access?.pendingAccountId ?? null,
+      pendingStatus: access?.pendingStatus ?? null,
+      pendingMessage: access?.pendingMessage ?? null,
       latestApplyFailed: latestJob?.status === 'failed',
       latestApplyError: latestJob?.errorMessage ?? null,
     };
@@ -361,7 +336,6 @@ export function GettingStartedWidget() {
   const managerReady = managerHealthQuery.isSuccess;
   const installationSupported = supportsInstallation(focusServer?.agent?.capabilities);
   const focusProtocolQuery = focus ? protocolByNode.get(focus.id) : undefined;
-  const focusVersionsQuery = focus ? versionsByNode.get(focus.id) : undefined;
   const focusApplyJobsQuery = focus ? applyJobsByNode.get(focus.id) : undefined;
 
   const installationMutation = useMutation({
@@ -401,7 +375,7 @@ export function GettingStartedWidget() {
     onSuccess: ({ job }, serverId) => {
       setDeployFailure(null);
       setDeployment({ serverId, jobId: job.id });
-      void focusVersionsQuery?.refetch();
+      void accessQuery.refetch();
       void focusApplyJobsQuery?.refetch();
       void serversQuery.refetch();
     },
@@ -455,11 +429,8 @@ export function GettingStartedWidget() {
       // Subsequent refetches determine whether the step is complete; they must
       // not keep the UI stuck in a synthetic "Applying" state.
       setDeployment(null);
-      void versionsByNode.get(deployment.serverId)?.refetch();
       void applyJobsByNode.get(deployment.serverId)?.refetch();
-      for (const account of (nodeAccounts.get(deployment.serverId) ?? []).slice(0, accountsCheckedPerNode)) {
-        void profileByAccount.get(account.id)?.refetch();
-      }
+      void accessQuery.refetch();
       void serversQuery.refetch();
     }
   }, [activeDeployJob, deployment]);
@@ -494,10 +465,10 @@ export function GettingStartedWidget() {
       ? { ...copy.final, current: copy.accessCurrent }
       : copy.final;
   const nodePath = focus ? `/servers/${encodeURIComponent(focus.id)}` : '/servers';
-  const finalTo = focusStage === 'ready' && focus?.readyAccountId
-    ? `/vpn-accounts/${encodeURIComponent(focus.readyAccountId)}/access`
-    : focusStage === 'access' && focus?.checkedAccountId
-      ? `/vpn-accounts/${encodeURIComponent(focus.checkedAccountId)}/access`
+  const finalTo = focusStage === 'ready' && focus?.servedAccountId
+    ? `/vpn-accounts/${encodeURIComponent(focus.servedAccountId)}/access`
+    : focusStage === 'access' && focus?.pendingAccountId
+      ? `/vpn-accounts/${encodeURIComponent(focus.pendingAccountId)}/access`
       : focusStage === 'apply'
         ? nodePath
         : focus
@@ -530,19 +501,19 @@ export function GettingStartedWidget() {
   const pendingQuery = (query?: { isPending: boolean }) => Boolean(query?.isPending);
   const loading = managerHealthQuery.isPending
     || serversQuery.isPending
-    || accountsQuery.isPending
+    || accessQuery.isPending
     || protocolQueries.some(pendingQuery)
-    || configVersionQueries.some(pendingQuery)
-    || applyJobQueries.some(pendingQuery)
-    || profileQueries.some(pendingQuery);
+    || applyJobQueries.some(pendingQuery);
   const failedQuery = (query?: { isError: boolean }) => Boolean(query?.isError);
+  // A failed load, or a node whose access could not be evaluated while no node
+  // is known to work, leaves the state undetermined: never "no working VPN".
+  const undetermined = !selection.setupComplete && selection.undeterminedNodes.length > 0;
   const failed = managerHealthQuery.isError
     || serversQuery.isError
-    || accountsQuery.isError
+    || accessQuery.isError
     || protocolQueries.some(failedQuery)
-    || configVersionQueries.some(failedQuery)
     || applyJobQueries.some(failedQuery)
-    || profileQueries.some(failedQuery);
+    || undetermined;
 
   useEffect(() => {
     if (!loading && !failed && !allReady && dismissed) {
@@ -568,17 +539,18 @@ export function GettingStartedWidget() {
   const retry = () => {
     void managerHealthQuery.refetch();
     void serversQuery.refetch();
-    void accountsQuery.refetch();
-    for (const query of [...protocolQueries, ...configVersionQueries, ...applyJobQueries, ...profileQueries]) {
+    void accessQuery.refetch();
+    for (const query of [...protocolQueries, ...applyJobQueries]) {
       void query.refetch();
     }
   };
 
-  if (!loading && !failed && allReady && dismissed) {
+  // A hidden guide stays hidden while access is merely undetermined.
+  if (!loading && dismissed && ((!failed && allReady) || undetermined)) {
     return null;
   }
 
-  if (!loading && !failed && allReady && focus?.readyAccountId) {
+  if (!loading && !failed && allReady && focus?.servedAccountId) {
     const others = selection.otherNodes.map((node) => node.name);
     return (
       <section className="dashboard-widget getting-started-widget getting-started-widget-complete" aria-labelledby="getting-started-complete-title">
@@ -592,7 +564,7 @@ export function GettingStartedWidget() {
             {others.length > 0 && <small>{copy.otherNodes(others)}</small>}
           </div>
           <div className="getting-started-complete-actions">
-            <Link className="getting-started-action" to={`/vpn-accounts/${encodeURIComponent(focus.readyAccountId)}/access`}>
+            <Link className="getting-started-action" to={`/vpn-accounts/${encodeURIComponent(focus.servedAccountId)}/access`}>
               {copy.readyAction} →
             </Link>
             <button className="getting-started-dismiss" type="button" onClick={dismiss}>
@@ -659,7 +631,7 @@ export function GettingStartedWidget() {
         break;
       case 'access':
         actionTitle = copy.accessTitle;
-        actionDescription = focus.accountMessage?.trim() || copy.accessDescription;
+        actionDescription = focus.pendingMessage?.trim() || copy.accessDescription;
         actionLabel = copy.accessAction;
         actionTo = finalTo;
         break;
@@ -682,21 +654,25 @@ export function GettingStartedWidget() {
             </p>
           )}
         </div>
-        <div className="getting-started-progress-summary">
-          <strong>{copy.progress(completedCount, steps.length)}</strong>
-          <span>{copy.current}</span>
-        </div>
+        {!failed && (
+          <div className="getting-started-progress-summary">
+            <strong>{copy.progress(completedCount, steps.length)}</strong>
+            <span>{copy.current}</span>
+          </div>
+        )}
       </div>
 
-      <div className="getting-started-progress" aria-hidden="true">
-        <span style={{ width: `${(completedCount / steps.length) * 100}%` }} />
-      </div>
+      {!failed && (
+        <div className="getting-started-progress" aria-hidden="true">
+          <span style={{ width: `${(completedCount / steps.length) * 100}%` }} />
+        </div>
+      )}
 
       {loading ? (
         <div className="getting-started-status">{copy.checking}</div>
       ) : failed ? (
         <div className="getting-started-status getting-started-status-error">
-          <span>{copy.checkFailed}</span>
+          <span>{undetermined && !loading ? copy.accessUnknown(selection.undeterminedNodes.map((node) => node.name)) : copy.checkFailed}</span>
           <button className="secondary-button" type="button" onClick={retry}>{copy.retry}</button>
         </div>
       ) : (

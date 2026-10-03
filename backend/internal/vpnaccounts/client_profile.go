@@ -103,7 +103,7 @@ type clientProfileRepository interface {
 }
 
 func (r *Repository) GetOrCreateClientProfile(ctx context.Context, vpnAccountID string) (ClientProfile, error) {
-	return scanClientProfile(r.pool.QueryRow(ctx, `
+	return scanClientProfile(r.db.QueryRow(ctx, `
 		INSERT INTO vpn_client_profiles (vpn_account_id, active_protocol)
 		SELECT a.id, `+appliedPrimaryProtocolSQL+`
 		FROM vpn_accounts a`+appliedAccountProtocolsSQL+`
@@ -131,7 +131,7 @@ func (r *Repository) UpdateClientProfile(ctx context.Context, vpnAccountID strin
 	if _, err := r.GetOrCreateClientProfile(ctx, vpnAccountID); err != nil {
 		return ClientProfile{}, err
 	}
-	return scanClientProfile(r.pool.QueryRow(ctx, `
+	return scanClientProfile(r.db.QueryRow(ctx, `
 		UPDATE vpn_client_profiles
 		SET
 			name = $2,

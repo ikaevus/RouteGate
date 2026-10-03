@@ -75,28 +75,17 @@ func (h *Handler) GetClientProfile(w http.ResponseWriter, r *http.Request) {
 	// Evaluate exactly the connection GET /client-connection serves, so both
 	// endpoints agree; the rendered links are discarded.
 	connection, err := h.clientConnection(r.Context(), accountID)
-	switch {
-	case err == nil:
-		response.ConnectionStatus = ClientConnectionStatusReady
-	case errors.Is(err, pgx.ErrNoRows):
+	if errors.Is(err, pgx.ErrNoRows) {
 		writeAccountNotFound(w)
 		return
-	case errors.Is(err, ErrVPNAccountUnassigned):
-		response.ConnectionStatus = ClientConnectionStatusUnassigned
-		response.ConnectionMessage = "Assign a VPN node before creating a client connection."
-	case errors.Is(err, ErrNodeConfigNotApplied):
-		response.ConnectionStatus = ClientConnectionStatusAwaitingFirstApply
-		response.ConnectionMessage = clientConnectionUnavailableMessage(err)
-	case errors.Is(err, ErrAccountProtocolNotDeployed):
-		response.ConnectionStatus = ClientConnectionStatusAwaitingApply
-		response.ConnectionMessage = clientConnectionUnavailableMessage(err)
-	case errors.Is(err, ErrClientConnectionUnavailable):
-		response.ConnectionStatus = ClientConnectionStatusUnavailable
-		response.ConnectionMessage = clientConnectionUnavailableMessage(err)
-	default:
+	}
+	status, message, known := clientConnectionStatus(err)
+	if !known {
 		h.databaseError(w, "evaluate vpn client connection state", err)
 		return
 	}
+	response.ConnectionStatus = status
+	response.ConnectionMessage = message
 	// Report as active exactly what the connection serves: nothing while it
 	// is withheld, otherwise every protocol it carries. This includes MTProto
 	// served through the applied node-wide proxy without an active_enabled row.

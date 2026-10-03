@@ -36,7 +36,7 @@ type BulkAccountActionResult struct {
 }
 
 func (r *Repository) BulkAction(ctx context.Context, input BulkAccountActionInput) (BulkAccountActionResult, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return BulkAccountActionResult{}, err
 	}
