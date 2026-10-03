@@ -81,6 +81,15 @@ if [[ -n "$file" ]]; then
   fi
   exit 0
 fi
+if [[ "$sql" == 'WITH withheld AS ('* ]]; then
+  phase=before
+  [[ "$(cat "$RG_UPDATE_ROOT/usr/local/bin/routegate-manager")" != manager-new ]] || phase=after
+  check=P3
+  [[ "$sql" != *'not_deployed_by_active_version'* ]] || check=Q5
+  awk -F'|' 'FILENAME == ARGV[1] { if (NF > 1) withheld[$2] = 1; next } !($2 in withheld)' \
+    <(cat "$S/answer.$check" 2>/dev/null || true) "$S/served.$phase"
+  exit 0
+fi
 for id in P2 P3 Q0 Q3 Q4 Q5; do
   if [[ "$sql" == "$(cat "$STUB_BLOCKS/$id.sql")" ]]; then
     if [[ -f "$S/answer.$id" ]]; then cat "$S/answer.$id"; fi
@@ -209,6 +218,8 @@ setup_host() { # schema-history...
   for f in "${vpn_files[@]}"; do mkdir -p "$(dirname "$root/$f")"; printf 'original %s\n' "$f" >"$root/$f"; done
   printf '%s\n' "$@" >"$S/history"
   printf 'ru-node|1\nus-node|3\n' >"$S/baseline"
+  printf 'ru-id|ru-account\nus-id|us-account-1\nus-id|us-account-2\nus-id|us-account-3\n' >"$S/served.before"
+  cp "$S/served.before" "$S/served.after"
   printf 'ru-node|ready|1\nus-node|ready|3\n' >"$S/answer.Q4"
   printf 'ru-node|served|1\nus-node|served|3\n' >"$S/answer.P2"
   : >"$S/systemctl.log"; : >"$S/down.log"; : >"$S/restore.log"; : >"$S/psql.log"
@@ -266,6 +277,43 @@ setup_host "${H158[@]}"
 run_update "$work/bundle.tar.gz"
 check "runner: 158 redeploy succeeds without the 155 preflight" bash -c '[[ $1 -eq 0 ]] && ! grep -q "^== P0\." <<<"$2"' _ "$rc" "$out"
 
+setup_host "${H158[@]}"
+printf 'us-node|new-account|vless|{vless}|awaiting_apply|{vless}\n' >"$S/answer.Q5"
+printf 'us-node|awaiting_apply|1\n' >>"$S/answer.Q4"
+printf 'us-id|new-account\n' >>"$S/served.before"
+printf 'us-id|new-account\n' >>"$S/served.after"
+run_update "$work/bundle.tar.gz"
+check "runner: already pending new account does not block same-schema update" test "$rc" -eq 0
+check "runner: pending account update leaves VPN untouched" vpn_unchanged
+
+setup_host "${H158[@]}"
+: >"$S/served.before"; : >"$S/served.after"
+printf 'us-node|awaiting_first_apply|1\n' >"$S/answer.Q4"
+printf 'us-node|new-account|vless|{vless}|awaiting_first_apply|{vless}\n' >"$S/answer.Q5"
+run_update "$work/bundle.tar.gz"
+check "runner: no previously served accounts allows a first-apply-pending node" test "$rc" -eq 0
+
+setup_host "${H158[@]}"
+sed -i '/us-account-3/d' "$S/served.after"
+run_update "$work/bundle.tar.gz"
+check "runner: actual same-schema access loss triggers rollback" bash -c '[[ $1 -eq 1 ]] && grep -q "ROLLBACK COMPLETE" <<<"$2"' _ "$rc" "$out"
+
+setup_host "${H158[@]}"
+printf 'us-id|newly-served-account\n' >>"$S/served.after"
+run_update "$work/bundle.tar.gz"
+check "runner: gaining served access does not falsely fail preservation" test "$rc" -eq 0
+
+setup_host "${H158[@]}"
+sed -i 's/us-account-3/replacement-account/' "$S/served.after"
+run_update "$work/bundle.tar.gz"
+check "runner: equal counts with a different served identity roll back" bash -c '[[ $1 -eq 1 ]] && grep -q "ROLLBACK COMPLETE" <<<"$2" && grep -q "previously served account identities lost access" <<<"$2"' _ "$rc" "$out"
+check "runner: same-schema rollback restores Manager without down migrations" bash -c '[[ $(cat "$1/usr/local/bin/routegate-manager") == manager-old && ! -s "$2/down.log" && -s "$2/restore.log" ]]' _ "$root" "$S"
+
+setup_host "${H158[@]}"
+printf 'us-node|v7|applied|t\n' >"$S/answer.Q3"
+run_update "$work/bundle.tar.gz"
+check "runner: missing active snapshot refuses an untrustworthy baseline before changes" bash -c '[[ $1 -eq 3 ]] && ! grep -q "^stop" "$2/systemctl.log"' _ "$rc" "$S"
+
 # --- runner: failures roll back ------------------------------------------
 rolled_back() { # expected down migrations
   [[ $rc -eq 1 ]] && grep -q "ROLLBACK COMPLETE" <<<"$out" && grep -q "RESULT=failed" <<<"$out" \
@@ -282,7 +330,7 @@ STUB_MIGRATE_FAIL=1 run_update "$work/bundle.tar.gz"
 check "runner: Manager start/migration failure rolls back 156 and restores 155" rolled_back "000156_config_version_client_settings "
 
 setup_host "${H155[@]}"
-printf 'us-node|aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee|vless|{vless}|awaiting_apply|{vless}\n' >"$S/answer.Q5"
+printf 'us-node|us-account-3|vless|{vless}|awaiting_apply|{vless}\n' >"$S/answer.Q5"
 run_update "$work/bundle.tar.gz"
 check "runner: postflight account refusal rolls back 158..156" rolled_back "000158_explicit_account_protocol_preferences 000157_applied_version_account_protocols 000156_config_version_client_settings "
 
@@ -298,6 +346,7 @@ check "runner: pending inactive version without snapshot does not block" test "$
 
 setup_host "${H155[@]}"
 printf 'ru-node|ready|1\nus-node|ready|2\n' >"$S/answer.Q4"
+sed -i '/us-account-3/d' "$S/served.after"
 run_update "$work/bundle.tar.gz"
 check "runner: fewer served accounts than before rolls back" rolled_back "000158_explicit_account_protocol_preferences 000157_applied_version_account_protocols 000156_config_version_client_settings "
 

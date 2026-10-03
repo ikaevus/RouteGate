@@ -84,10 +84,19 @@ run_check_file() { # label file
   log "---- $1 full output ends ----"
 }
 
-active_account_counts() {
-  ro_psql -At -F '|' -c "
-    SELECT s.name, count(*) FROM vpn_accounts a JOIN servers s ON s.id = a.server_id
-    WHERE a.status = 'active' GROUP BY s.name ORDER BY s.name"
+served_account_sql() { # pinned check file, withheld check id
+  local withheld_sql
+  withheld_sql=$(check_block "$1" "$2")
+  [[ -n "$withheld_sql" ]] || return 1
+  # One read-only statement/snapshot. Reuse the pinned deployment model rather
+  # than treating every active account (including new drafts) as already served.
+  printf 'WITH withheld AS (%s)\nSELECT a.server_id::text, a.id::text\nFROM vpn_accounts a JOIN servers s ON s.id = a.server_id\nWHERE a.status = '\''active'\'' AND NOT EXISTS (SELECT 1 FROM withheld w WHERE w.account_id = a.id)\nORDER BY a.server_id::text, a.id::text;\n' "${withheld_sql%;}"
+}
+
+served_account_ids() {
+  local sql
+  sql=$(served_account_sql "$1" "$2")
+  ro_psql -At -F '|' -c "$sql"
 }
 
 # Unit state and file checksums of everything this update must not touch.
@@ -243,8 +252,15 @@ if ((UPGRADE == 1)); then
   log "preflight gate withheld_accounts=${withheld} nodes_with_unexpected_state=${unexpected}"
   ((withheld == 0 && unexpected == 0)) || refuse "the preflight predicts accounts losing access or unchecked nodes; nothing was changed"
 fi
-BASELINE=$(active_account_counts)
-log "baseline active accounts per node: $(tr '\n' ' ' <<<"$BASELINE")"
+if ((UPGRADE == 1)); then
+  BASELINE=$(served_account_ids "$PREFLIGHT_SQL" P3)
+else
+  # Unknown active snapshots cannot provide a trustworthy access baseline.
+  active_without_snapshot=$(query_check "$POSTFLIGHT_SQL" Q3 | awk -F'|' '$4 == "t"' | wc -l)
+  ((active_without_snapshot == 0)) || refuse "an active version has no snapshot; cannot establish served-account baseline"
+  BASELINE=$(served_account_ids "$POSTFLIGHT_SQL" Q5)
+fi
+log "baseline served account identities captured: $(awk 'NF' <<<"$BASELINE" | wc -l)"
 fingerprint >"$WORK_DIR/fingerprint.before"
 if [[ ! -d "$(rg_update_path "/var/www/routegate/bootstrap/${EXPECTED_COMMIT}")" ]]; then
   log "WARNING: Agent bootstrap artifacts for this commit are not published; new-node connect commands of this Manager will not work until publish-bootstrap publishes them"
@@ -294,12 +310,15 @@ inactive_without_snapshot=$(query_check "$POSTFLIGHT_SQL" Q3 | awk -F'|' 'NF && 
 withheld=$(query_check "$POSTFLIGHT_SQL" Q5 | awk 'NF' | wc -l)
 states=$(query_check "$POSTFLIGHT_SQL" Q4)
 not_ready=$(awk -F'|' 'NF && $2 != "ready"' <<<"$states" | wc -l)
-served=$(awk -F'|' 'NF && $2 == "ready" {print $1 "|" $3}' <<<"$states" | LC_ALL=C sort)
+served=$(served_account_ids "$POSTFLIGHT_SQL" Q5)
+lost=$(comm -23 <(awk 'NF' <<<"$BASELINE" | LC_ALL=C sort) <(awk 'NF' <<<"$served" | LC_ALL=C sort))
 log "postflight gate active_versions_without_snapshot=${active_without_snapshot} inactive_versions_without_snapshot=${inactive_without_snapshot} withheld_accounts=${withheld} node_states_not_ready=${not_ready}"
-log "served active accounts per node: $(tr '\n' ' ' <<<"$served")"
+log "served account identities after update: $(awk 'NF' <<<"$served" | wc -l); lost previously served identities: $(awk 'NF' <<<"$lost" | wc -l)"
 ((active_without_snapshot == 0)) || { rg_update_die "postflight: an active version has no snapshot"; false; }
-((withheld == 0 && not_ready == 0)) || { rg_update_die "postflight: accounts lost access after the update"; false; }
-[[ "$served" == "$(LC_ALL=C sort <<<"$BASELINE")" ]] || { rg_update_die "postflight: served accounts per node differ from the baseline before the update"; false; }
+if ((UPGRADE == 1)); then
+  ((withheld == 0 && not_ready == 0)) || { rg_update_die "postflight: upgrade left accounts without deployed access"; false; }
+fi
+[[ -z "$lost" ]] || { rg_update_die "postflight: previously served account identities lost access after the update"; false; }
 
 STAGE=public_health
 public_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$PUBLIC_URL/" || true)
