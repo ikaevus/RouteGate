@@ -61,9 +61,15 @@ unavailable. Established VPN connections are not affected.
   `000158`, the pinned `postflight-schema-158.sql` runs read-only (full Q0–Q6
   output is kept). Gate: Q0 is `000158` with all three new migrations; Q3 has
   no *active* version without a snapshot (inactive ones, such as a pending
-  version, do not block); Q5 is empty; every Q4 state is `ready`; and the
-  served active accounts per node equal the active accounts per node counted
-  before the update in the same run. Then the public Web UI must answer 200.
+  version, do not block). An
+  upgrade (`000155` to `000158`) still requires Q5 empty and every Q4 state
+  `ready`. A same-schema redeploy may retain already pending/first-apply
+  accounts: these are not lost access. The baseline uses the pinned P3/Q5
+  deployment model to capture served `(server id, account id)` pairs before
+  changes, in one read-only statement; every pair must still be served after
+  the update. Equal counts with different identities fail. Newly served
+  identities do not fail. Missing active snapshots refuse a same-schema update
+  before changes. Then the public Web UI must answer 200.
 - **Rollback.** Any failure after the first file change: stop the Manager;
   undo `000158`…`000156` with their atomic down files (the
   `deploy-production-like-bundle.sh --run-down-migration` runner) and
@@ -92,13 +98,14 @@ any change; 6 updated but Agent/VPN state changed.
 
 ## Limits of the automatic evaluation
 
-- Gated automatically: Q0, Q3 (active versions), Q4, Q5 and served accounts per
-  node versus the count at the start of the run. Q1 (explicit preference rows,
+- Gated automatically: Q0, Q3 (active versions), preservation of the served
+  account identities from the start of the run, and Q4/Q5 readiness on upgrades.
+  Pending accounts may remain pending on same-schema redeploys. Q1 (explicit preference rows,
   compare with P6), Q2 (snapshot mode per node) and Q6 (MTProto) are kept in
   the artifact for review and do not fail the run.
-- The baseline is taken by the run itself, not from an earlier preflight run.
-  Compare the artifact with the earlier live preflight (US 3 and RU 1 active
-  accounts, all served) when reviewing.
+- The access baseline is taken by the run itself, not from an earlier preflight
+  run, and does not require clients to be online. This preserves deployed
+  access, not an active connection/session count.
 - The invariance check compares unit state and file checksums; it does not
   measure traffic.
 - Agent bootstrap artifacts of the new commit are not published (use the separate
