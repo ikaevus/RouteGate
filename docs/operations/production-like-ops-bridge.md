@@ -150,3 +150,9 @@ Operations that require an arbitrary VPN backup UUID or genuinely open-ended
 host investigation remain break-glass procedures. They should use the local
 `routegate-recovery` tool or direct administrative access rather than widening
 the GitHub bridge into a general root shell.
+
+## Publish bootstrap without deployment
+
+`operation=publish-bootstrap commit=<40 lowercase hex>` publishes the pinned
+Manager commit's packages for fresh nodes without updating existing services.
+See [publication instructions](publish-node-bootstrap.md).
