@@ -153,7 +153,8 @@ function getCopy() {
       vlessDescription: 'Укажите внешний HTTPS-сайт для Reality. RouteGate создаст ключи и Short ID; доступность сайта с VPN-узла нужно проверить отдельно.',
       handshakeLabel: 'Имя внешнего TLS-сайта для Reality',
       handshakeHint: 'Например, www.microsoft.com. Сайт должен разрешаться в DNS и отвечать на TLS с этого VPN-узла. Не указывайте hostname самого узла.',
-      firewallHint: 'Откройте входящий TCP-порт VLESS на VPS и в панели провайдера, если там есть отдельный firewall. Agent подключается к Manager исходящим HTTPS.',
+      firewallHint: 'Откройте выбранный ниже входящий TCP-порт VLESS на VPS и в панели провайдера, если там есть отдельный firewall. Agent не открывает firewall; для связи с Manager ему нужен исходящий HTTPS. После применения проверьте VPN-порт снаружи VPS.',
+      appliedHint: 'Здесь показаны сохранённые настройки. Рабочая конфигурация и клиентские ссылки обновятся только после успешного применения через Agent. Перед рендерингом назначьте узлу активный VPN-аккаунт.',
       deployHint: 'Настройки сохранены, но конфигурация узла ещё не обновлена. Откройте «Развёртывания»: рендеринг → просмотр результата проверки → применение → проверка результата Agent.',
       vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
       vlessReason: 'HTTPS RouteGate остаётся на 443, поэтому для VPN рекомендуется отдельный порт 8443 без конфликта с nginx.',
@@ -209,7 +210,8 @@ function getCopy() {
     vlessDescription: 'Choose an external HTTPS site for Reality. RouteGate generates keys and a Short ID; verify that the site is reachable from this VPN node.',
     handshakeLabel: 'External TLS site for Reality',
     handshakeHint: 'For example, www.microsoft.com. The site must resolve in DNS and answer TLS from this VPN node. Do not use the node hostname.',
-    firewallHint: 'Open the inbound VLESS TCP port on the VPS and in the provider firewall if it has one. Agent connects to Manager with outbound HTTPS.',
+    firewallHint: 'Open the inbound VLESS TCP port selected below on the VPS and in the provider firewall if it has one. Agent does not open firewall rules; it needs outbound HTTPS to Manager. After applying, test the VPN port from outside the VPS.',
+    appliedHint: 'This page shows saved settings. The running configuration and client links update only after a successful Agent apply. Assign an active VPN account to the node before rendering.',
     deployHint: 'Settings are saved, but the node configuration is not yet updated. Open Deployments: render → review validation → apply → check the Agent result.',
     vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
     vlessReason: 'RouteGate HTTPS stays on 443, so VPN uses a separate 8443 port without conflicting with nginx.',
@@ -499,9 +501,11 @@ export function ServerProtocolSettingsPanel({
           {recommendedSettingsMutation.isSuccess && <div className="form-message">{copy.deployHint}</div>}
           {wireGuardSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
           {wireGuardSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
-          {(recommendedSettingsMutation.isSuccess || updateSettingsMutation.isSuccess) && (
+          <p className="protocol-settings-hint">{copy.appliedHint}</p>
+          <div className="form-actions">
+            <Link className="text-link" to={`/vpn-accounts?create=1&server=${encodeURIComponent(serverId)}`}>{t('vpnAccounts.createAction')} →</Link>
             <Link className="text-link" to={`/servers/${encodeURIComponent(serverId)}/deployments`}>{t('serverWorkspace.deployments')} →</Link>
-          )}
+          </div>
 
         {updateSettingsMutation.isError && (
           <div className="form-message form-message-error protocol-settings-feedback">

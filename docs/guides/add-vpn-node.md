@@ -96,57 +96,189 @@ Keep the onboarding dialog open. RouteGate checks for the new Agent automaticall
 
 At this point server onboarding is complete.
 
-## 6. Configure the VPN protocol
+## 6. Install the VPN runtime
 
-Choose the protocol you want to use on this server.
+In the node workspace open **Services** and choose **Install sing-box** for
+VLESS / Reality. Confirm the installation and wait for the Agent job and next
+heartbeat to report sing-box installed. An installed but stopped service is
+normal on a new node: configuration apply starts it later. Do not start an
+unconfigured service or install runtimes manually.
 
-RouteGate installs the required runtime through Agent as the next managed action, then continues through configuration render, validation, apply, and health checking.
+If installation fails, review the reported reason and the node's outbound
+connectivity. Correct the problem and use **Install sing-box** again. This is a
+runtime retry, not an Agent registration retry.
 
-For VLESS / Reality, enter an external HTTPS hostname that resolves and accepts a TLS handshake **from this VPN node**. The node's own hostname or IP is not a suitable automatic Reality handshake target. RouteGate checks the name's syntax when you save it; it cannot infer reachability from the Manager. When the configuration is applied, Agent resolves the name and performs a TLS 1.3 handshake from the VPN node before replacing the running configuration. If that check fails (for example, the name does not exist in DNS), the deployment fails at the validation stage with the reason, and the running VPN service is left unchanged. For example, on the VPN node test a candidate with `getent ahostsv4 www.microsoft.com` and `timeout 10 openssl s_client -connect www.microsoft.com:443 -servername www.microsoft.com -brief </dev/null`. Choose a site that works from this node and network.
+## 7. Configure Reality and prepare the account
 
-After saving protocol settings, open the server's **Deployments** workspace. Render a new version, review the validation result (rendering can already mark it validated), apply the validated version, and check the Agent deployment result. Saving settings alone does not change the running VPN service, and client subscriptions keep the previously applied parameters until the new version is applied successfully. Client links for a new node become available after its first successful apply. For VLESS on TCP 8443, allow inbound TCP 8443 in the VPS host firewall and any separate provider firewall; keep SSH access intact. If UFW is active, `sudo ufw allow 8443/tcp` opens that host port; verify the firewall's actual state first. The remote Agent needs outbound HTTPS to Manager, not an inbound management port. Check the selected port from outside the VPS after applying. Other protocols use the port and transport shown in their settings.
+From **Services**, follow **Configure VPN protocol** / **Protocol Settings**
+for this node. Select **VLESS / Reality**. In the recommended setup, enter the
+external TLS hostname and choose **Configure and make default**. RouteGate
+creates the keypair and Short ID and saves the recommended TCP 8443 settings.
+For an already configured node, edit the applicable fields and choose **Save
+settings**; do not regenerate keys just to change the hostname.
 
-This separation is intentional:
+The Reality target is an external site that resolves in DNS and accepts TLS
+1.3 **from this VPN node**. It is not the public endpoint clients connect to;
+clients connect to the VPN node's public IP and selected VLESS port. Do not use
+the node's own hostname, an IP address, or a nonexistent name as the target.
+`www.microsoft.com` is an example, not a guaranteed working default.
 
-```text
-Connect server
-→ server connected
-→ install required VPN runtime
-→ deploy protocol configuration
+On the VPN node, test your chosen hostname (replace the example in both places):
+
+```bash
+getent ahosts www.microsoft.com
+timeout 10 openssl s_client -connect www.microsoft.com:443 -servername www.microsoft.com -tls1_3 -brief </dev/null
 ```
 
-A temporary upstream problem downloading Hysteria, mtg, sing-box, or WireGuard packages should therefore fail the runtime step without making Agent onboarding look broken.
+Manager checks hostname syntax when saving. Agent repeats DNS and TLS 1.3
+checks from the node during apply, before replacing the running configuration.
+Manager static validation alone does not prove the target is reachable.
 
-## Retry and diagnostics
+Follow **Create VPN account** or open **VPN Accounts** and use **Create VPN
+account**. Assign it to this new node. Open the account's **Settings** and
+choose **Activate**; verify its status is **Active**. Its **Protocols** workspace
+must include the intended VLESS protocol. Create/activate the account **before
+rendering**, so its credentials are included in the config snapshot.
 
-If bootstrap fails, do not guess which parts were installed.
+## 8. Allow the selected VPN port
 
-The remote installer records:
+Review the actual VLESS port in **Protocol Settings**. For the recommended
+configuration it is **TCP 8443**, not TCP 443 or UDP 8443.
 
-```text
-State: /var/lib/routegate-agent-installer/state.env
-Log:   /var/log/routegate-agent-installer.log
+Agent does not change host or provider firewall rules. Check both layers and
+keep SSH access intact. For example, if UFW is already active:
+
+```bash
+sudo ufw status verbose
+sudo ufw allow 8443/tcp
 ```
 
-Use the failed stage shown by the installer.
+Run the allow command only after checking that this is your selected port and
+UFW is the firewall you use. Do not enable UFW blindly: an incomplete ruleset
+can cut off SSH. If your provider has a separate firewall, allow the same
+inbound TCP port there as well. Agent itself needs outbound HTTPS to Manager,
+not an inbound management port.
 
-The supported retry path is:
+## 9. Render, validate, apply
 
-1. Return to **Connect server**.
-2. Choose **Generate new token** if RouteGate asks for a new onboarding command.
-3. Copy the newly generated command.
-4. Run the new command on the same VPS.
+Open this node's **Deployments** workspace:
 
-If Agent already registered successfully, its persistent identity for the same Manager is preserved.
+1. Choose **Render config** to snapshot the saved settings and active accounts.
+2. Review the selected version and validation errors/warnings. Rendering can
+   already mark it **Validated**; otherwise choose **Validate**.
+3. Choose **Apply** for the validated version. A queued task is not success.
+4. Wait for the Agent task in **Deployment history** to become **Succeeded**.
+   The page refreshes while the task on the first history page is active.
+5. Verify that **Current** points to the version just applied.
 
-## Important security notes
+Saving settings, rendering and Manager validation do not change the running
+VPN or issued client parameters. Only a successful Agent apply updates them.
+If you change settings or activate an account after rendering, render another
+version before applying: old versions are immutable snapshots.
 
-- Registration tokens are short-lived and single-use.
-- Do not post a full generated command publicly; it contains the registration token.
-- Do not share `/etc/routegate/agent.yaml`; after registration it contains the persistent Agent credential.
-- Agent initiates HTTPS connections to Manager. It does not expose a general remote-shell management port.
-- RouteGate Agent only accepts the product's allow-listed management operations.
+For validation failure, read the reported reason, correct saved settings and
+render a new version. For an Agent failure, expand the deployment history row
+and review its stages and reason:
 
-## Removing or rebuilding a node
+- At **validate**, a Reality DNS/TLS error means this attempt was rejected
+  before replacing the working config. Test the target from the VPN node,
+  correct it and render/validate/apply a new version.
+- For connectivity errors, restore the Agent connection and review whether the
+  job completed before retrying.
+- For apply/restart/healthcheck failures, inspect the reported rollback outcome
+  and **Current** version before retrying; do not assume the service is healthy.
 
-Do not reuse an old bootstrap command when rebuilding a VPS or moving a node to another host. Generate a fresh onboarding command from RouteGate so build identity, bundle source, and registration token are current.
+Do not repeat an old snapshot to apply corrected settings. Existing client
+links keep the last successfully applied parameters. A new node/account has
+no usable access link until a successful apply includes its credentials.
+
+## 10. Get the link and test the client
+
+Open **VPN Accounts → the account assigned to this node → Access**. Choose
+**+ Add device**, name the device and select the client (for example Hiddify or
+V2RayN) and platform. Create it, then use **Copy link** or its QR code to import
+the subscription into that device's VPN client. An existing device can show its
+link in its focused details. If you rotate a link, import the new one: the old
+link stops working. Treat links as credentials.
+
+Verify that the client uses this node and the applied Reality settings, then
+connect and load a test page. If the node is connected but a link is withheld,
+check account activation/assignment and whether the **Current** config was
+rendered after that account became active. Render and apply a fresh version if
+it was not included.
+
+### External port check and its limits
+
+There is currently no automatic public-port check in RouteGate. From a
+**different computer/network**, after successful apply, test the actual public
+IP and selected TCP port. Examples using documentation-only IP `203.0.113.10`:
+
+```bash
+nc -vz -w 5 203.0.113.10 8443
+```
+
+Windows PowerShell:
+
+```powershell
+Test-NetConnection -ComputerName 203.0.113.10 -Port 8443
+```
+
+Replace the IP and port with this node's values. A check from the node itself
+or a loopback CI fixture does not test the public firewall. A TCP success only
+shows that something accepts connections from that source network; it does not
+prove Reality authentication, account credentials, Hiddify/iPhone compatibility,
+UDP reachability, or regional access to YouTube/Instagram. A timeout can result
+from the host/provider firewall, a wrong IP/port, no listener, or the network
+path; it does not identify which one. Client testing remains a separate step.
+
+A possible future UI action is an explicit, bounded TCP probe from Manager to
+the node's saved public IP and applied port. It would need to reject private,
+loopback and special destinations, limit rate/time/concurrency, and report its
+source and timestamp. Its result would describe **Manager → node** only; it
+could not guarantee **client → node** reachability or diagnose UDP with a TCP
+probe. This is a proposal, not an implemented API or firewall action.
+
+## Bootstrap retry and diagnostics
+
+If the generated command fails, wait for it to exit and use its reported stage.
+For installer-stage failures, inspect the root-owned diagnostics locally:
+
+```bash
+sudo cat /var/lib/routegate-agent-installer/state.env
+sudo less /var/log/routegate-agent-installer.log
+```
+
+These files are created after the installer starts. A failure downloading or
+verifying the installer itself can occur before they exist; use the command's
+terminal message in that case.
+
+Before registration succeeds:
+
+1. Return to **Connection → Connect server**.
+2. Choose **Generate new token**, which invalidates the previous unused token.
+3. Copy and run the new generated command on the **same target VPS**.
+
+Never run two bootstrap commands concurrently. The command verifies the
+matching artifacts again. If registration already succeeded but a later
+installer stage failed, follow the terminal recovery instruction and use a
+fresh command; the installer preserves its persistent identity for the same
+Manager. If Agent is already online and installation completed, continue with
+**Services** instead of registering it again. Diagnose a stale heartbeat through
+**Connection** and the local Agent service/logs.
+
+## Security and rebuilding
+
+- Registration tokens are short-lived and single-use. The generated command
+  contains the token; do not publish it or the full terminal/session contents.
+- Do not share `/etc/routegate/agent.yaml`; it contains the persistent Agent
+  credential after registration. Device subscription links are credentials too.
+- Agent initiates HTTPS connections to Manager and executes only allow-listed
+  management operations; it exposes no general inbound remote-shell port.
+- When rebuilding or moving to another VPS, generate a fresh command. Do not
+  reuse old build metadata, artifact locations or a consumed token.
+
+The isolated CI workflow is documented in
+[remote-node-onboarding-e2e.md](../operations/remote-node-onboarding-e2e.md).
+It verifies bootstrap, runtime installation, real VLESS/Reality traffic and
+NXDOMAIN rejection. It does not replace the public-port and real-client checks
+above.

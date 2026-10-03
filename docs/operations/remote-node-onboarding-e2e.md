@@ -45,3 +45,18 @@ python3 -m unittest scripts/test_remote_node_vpn_e2e.py
 
 Only the real CI job establishes that traffic and config preservation work.
 The unit tests alone are not an end-to-end success result.
+
+## UI and manual acceptance
+
+The frontend browser regression test (`npm run test:node-onboarding-browser`)
+uses mocked Manager responses to check the real UI/router: installer retry
+guidance, a stopped runtime before first apply, displayed validation reasons,
+queued application polling, failure recovery and successful current-version
+refresh. It does not execute an installer or establish VPN traffic.
+
+Follow [Add a remote VPN Node](../guides/add-vpn-node.md) for public firewall
+and real-client acceptance. Run the manual check only on an explicitly
+authorized test node: check the selected public port from another network,
+import its device link into the actual client, connect, and record the result.
+Do not claim success for Hiddify/iPhone or regional service reachability from
+CI alone.

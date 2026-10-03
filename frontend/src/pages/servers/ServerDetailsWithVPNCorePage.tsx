@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
-import { getServer } from '../../entities/server/api/serverApi';
+import { Link, useParams } from 'react-router-dom';
+import { getConfigVersions, getServer } from '../../entities/server/api/serverApi';
 import {
   createVPNCoreInstallation,
   createVPNCoreOperation,
@@ -162,6 +162,11 @@ function ServerWorkspace() {
   const operations = useMemo(() => supportedOperations(agent?.capabilities), [agent?.capabilities]);
   const controlsSupported = operations.size > 0;
   const installationSupported = supportsInstallation(agent?.capabilities);
+  const configQuery = useQuery({
+    queryKey: ['server-config-versions', serverId],
+    queryFn: () => getConfigVersions(serverId ?? ''),
+    enabled: Boolean(serverId && status?.installed),
+  });
 
   useEffect(() => {
     if (!activeOperation) return;
@@ -319,7 +324,7 @@ function ServerWorkspace() {
 
   const controls = !isDisconnected && status && status.installed && controlsSupported ? (
     <div className="form-actions">
-      {(status.state === 'stopped' || status.state === 'installed' || status.state === 'failed') && operations.has('start') && (
+      {configQuery.data?.currentConfigVersionId && (status.state === 'stopped' || status.state === 'installed' || status.state === 'failed') && operations.has('start') && (
         <button className="primary-button" type="button" disabled={busy} onClick={() => runOperation('start')}>
           {busy ? text.operationPending : text.startAction}
         </button>
@@ -375,6 +380,9 @@ function ServerWorkspace() {
             <span className="form-message form-message-error">{installationError}</span>
           )}
           {installationControl}
+          {!isDisconnected && status?.installed && (
+            <Link className="text-link" to={`/protocol-settings/${encodeURIComponent(serverId ?? '')}`}>{text.configureProtocol} →</Link>
+          )}
           {controls}
           {!isDisconnected && status?.state === 'not_installed' && !installationSupported && (
             <span className="muted-text">{text.installationUnsupported}</span>

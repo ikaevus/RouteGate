@@ -355,6 +355,9 @@ jobs:
       - name: Test Getting Started in the browser
         run: npm run test:getting-started-browser
 
+      - name: Test VPN node onboarding in the browser
+        run: npm run test:node-onboarding-browser
+
       - name: Build frontend
         run: npm run build
 
