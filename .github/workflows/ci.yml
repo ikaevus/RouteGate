@@ -358,6 +358,9 @@ jobs:
       - name: Test VPN node onboarding in the browser
         run: npm run test:node-onboarding-browser
 
+      - name: Test protocol selection drafts in the browser
+        run: npm run test:protocol-drafts-browser
+
       - name: Build frontend
         run: npm run build
 

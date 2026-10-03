@@ -209,7 +209,7 @@ for retry, and editing clears old success/error feedback.
 
 Integration covers all five other tabs, a changed remote limit followed by an
 overview-triggered refetch, pending controls, rejected save/retry, persistence,
-and account isolation. Protocol drafts and device/delivery forms still
+and account isolation. Device/delivery forms still
 need their own review. Credential-bearing domains continue to unmount when left;
 they are not retained as hidden panels by this change.
 
@@ -224,9 +224,28 @@ during any routing write. Changing account discards the local drafts.
 Automatic-selection preview is enabled only in the visible routing domain and
 still requires saved group/policy settings. Selecting tabs never applies a node
 decision. Policy refresh also invalidates the account so an applied placement is
-reflected in account context. Credential-bearing protocol/access domains remain
-unmounted on exit; preserving their non-secret drafts is a separate step.
+reflected in account context. Credential-bearing access domains remain
+unmounted on exit.
 
 Integration exercises all four routing forms, all five other tabs, changed remote
 profile/policy, rejected profile write/retry, pending controls, sibling-save
 isolation, persistence and switching accounts against disposable Manager data.
+
+## Protocol selection drafts
+
+The protocol panel stays mounted under the account-keyed workspace. Its owner
+retains only the primary protocol and selected protocol names, in memory. No
+client links, subscription tokens or credentials are added to browser storage.
+Leaving the account or reloading discards this draft; changing account remounts
+the owner. Profile/settings queries are enabled only in the protocol domain.
+
+Background profile refreshes update the saved/active summary without replacing
+an explicit selection. Failed save/deployment retains it for retry. Only
+confirmed activation clears it. A per-account mutation key locks selection and
+apply controls while deployment is running, including a temporary panel remount.
+The existing saved-desired versus applied-active workflow is unchanged.
+
+`npm run test:protocol-drafts-browser` exercises the real router at 390px and
+1440px with isolated API fixtures: navigation, newer remote preferences, account
+isolation, reload reset, rejected save, retry, pending controls and confirmed
+activation. These fixtures do not deploy runtimes or prove live node behavior.

@@ -10,6 +10,7 @@
     "test:getting-started": "node --test src/pages/dashboard/gettingStartedModel.test.ts",
     "test:getting-started-browser": "node --test scripts/getting-started.browser.test.mjs",
     "test:protocol-preference": "node --test src/pages/vpn-accounts/protocolPreferenceModel.test.ts",
+    "test:protocol-drafts-browser": "node --test scripts/protocol-drafts.browser.test.mjs",
     "test:rollout": "node --test src/pages/settings/platformUpdateRolloutModel.test.ts",
     "test:ui": "node --test scripts/shared-ui.test.mjs",
     "preview": "vite preview",
