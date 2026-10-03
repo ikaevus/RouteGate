@@ -25,8 +25,9 @@ on:
           - renew-certificate
           - preflight-applied-client-settings-155
           - update-manager
+          - publish-bootstrap
       commit:
-        description: update-manager only - full 40-character main commit with a successful RouteGate CI run
+        description: update-manager or publish-bootstrap - full 40-character main commit with a successful RouteGate CI run
         required: false
         type: string
         default: ''
@@ -72,11 +73,11 @@ jobs:
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             operation="$DISPATCH_OPERATION"
             commit="${DISPATCH_COMMIT:-}"
-          elif [[ "$REQUEST_BODY" =~ ^operation=update-manager\ commit=([0-9a-f]{40})$ ]]; then
-            # The only request with a parameter: a full lowercase commit id and
+          elif [[ "$REQUEST_BODY" =~ ^operation=(update-manager|publish-bootstrap)\ commit=([0-9a-f]{40})$ ]]; then
+            # Parameterized requests accept only: a full lowercase commit id and
             # nothing else (no trailing newline, spaces or other text).
-            operation=update-manager
-            commit="${BASH_REMATCH[1]}"
+            operation="${BASH_REMATCH[1]}"
+            commit="${BASH_REMATCH[2]}"
           else
             case "$REQUEST_BODY" in
               'operation=diagnose') operation=diagnose ;;
@@ -100,27 +101,27 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155|update-manager) ;;
+            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155|update-manager|publish-bootstrap) ;;
             *) exit 2 ;;
           esac
           # The database preflight and the Manager update run with
           # production-like secrets only from the trusted main workflow
           # definition, never a dispatch from another ref.
-          if [[ ( "$operation" == "preflight-applied-client-settings-155" || "$operation" == "update-manager" ) && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+          if [[ ( "$operation" == "preflight-applied-client-settings-155" || "$operation" == "update-manager" || "$operation" == "publish-bootstrap" ) && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
             printf 'The %s operation can only be dispatched from main.\n' "$operation" >&2
             exit 2
           fi
-          if [[ "$operation" == "update-manager" ]]; then
-            [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { printf 'update-manager requires a full 40-character lowercase commit id.\n' >&2; exit 2; }
+          if [[ "$operation" == "update-manager" || "$operation" == "publish-bootstrap" ]]; then
+            [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { printf 'Operation requires a full 40-character lowercase commit id.\n' >&2; exit 2; }
           elif [[ -n "$commit" ]]; then
-            printf 'The commit input is accepted only by update-manager.\n' >&2
+            printf 'The commit input is accepted only by update-manager and publish-bootstrap.\n' >&2
             exit 2
           fi
           printf 'operation=%s\n' "$operation" >> "$GITHUB_OUTPUT"
           printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
 
       - name: Verify update-manager target is on main with a successful CI run
-        if: steps.request.outputs.operation == 'update-manager'
+        if: steps.request.outputs.operation == 'update-manager' || steps.request.outputs.operation == 'publish-bootstrap'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -133,7 +134,7 @@ jobs:
           printf 'target=%s successful_main_ci_runs=%s\n' "$TARGET_SHA" "$runs"
 
       - name: Checkout pinned update-manager target
-        if: steps.request.outputs.operation == 'update-manager'
+        if: steps.request.outputs.operation == 'update-manager' || steps.request.outputs.operation == 'publish-bootstrap'
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: ${{ steps.request.outputs.commit }}
@@ -142,7 +143,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify pinned checkout is in main
-        if: steps.request.outputs.operation == 'update-manager'
+        if: steps.request.outputs.operation == 'update-manager' || steps.request.outputs.operation == 'publish-bootstrap'
         shell: bash
         env:
           TARGET_SHA: ${{ steps.request.outputs.commit }}
@@ -191,7 +192,7 @@ jobs:
           printf 'bundle_sha=%s\n' "$bundle_sha" >> "$GITHUB_OUTPUT"
 
       - name: Setup Go for the Manager update
-        if: steps.request.outputs.operation == 'update-manager'
+        if: steps.request.outputs.operation == 'update-manager' || steps.request.outputs.operation == 'publish-bootstrap'
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: '1.26.x'
@@ -200,7 +201,7 @@ jobs:
             target/agent/go.sum
 
       - name: Setup Node.js for the Manager update
-        if: steps.request.outputs.operation == 'update-manager'
+        if: steps.request.outputs.operation == 'update-manager' || steps.request.outputs.operation == 'publish-bootstrap'
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '24'
@@ -208,7 +209,7 @@ jobs:
           cache-dependency-path: target/frontend/package-lock.json
 
       - name: Build pinned Manager update bundle
-        if: steps.request.outputs.operation == 'update-manager'
+        if: steps.request.outputs.operation == 'update-manager' || steps.request.outputs.operation == 'publish-bootstrap'
         id: manager_bundle
         shell: bash
         working-directory: target
@@ -216,7 +217,7 @@ jobs:
           VERSION: production-like
           COMMIT: ${{ steps.request.outputs.commit }}
           AGENT_BUNDLE_BASE_URL: https://us.routegate.org/bootstrap/${{ steps.request.outputs.commit }}
-          ARCHITECTURES: amd64
+          ARCHITECTURES: ${{ steps.request.outputs.operation == 'publish-bootstrap' && 'amd64 arm64' || 'amd64' }}
           OUTPUT_DIR: ${{ runner.temp }}/routegate-manager-update-dist
         run: |
           set -euo pipefail
@@ -228,6 +229,9 @@ jobs:
           bundle_sha=$(sha256sum "$bundle" | awk '{print $1}')
           printf 'bundle=%s\n' "$bundle" >> "$GITHUB_OUTPUT"
           printf 'bundle_sha=%s\n' "$bundle_sha" >> "$GITHUB_OUTPUT"
+          printf 'arm64=%s/routegate-production-like-linux-arm64.tar.gz\n' "$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          printf 'checksums=%s/SHA256SUMS\n' "$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          printf 'checksums_sha=%s\n' "$(sha256sum "$OUTPUT_DIR/SHA256SUMS" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           printf 'bundle commit=%s sha256=%s\n' "$COMMIT" "$bundle_sha"
 
       - name: Validate ops scripts locally
@@ -277,6 +281,9 @@ jobs:
           MANAGER_COMMIT: ${{ steps.request.outputs.commit }}
           MANAGER_BUNDLE: ${{ steps.manager_bundle.outputs.bundle }}
           MANAGER_BUNDLE_SHA: ${{ steps.manager_bundle.outputs.bundle_sha }}
+          BOOTSTRAP_ARM64: ${{ steps.manager_bundle.outputs.arm64 }}
+          BOOTSTRAP_CHECKSUMS: ${{ steps.manager_bundle.outputs.checksums }}
+          BOOTSTRAP_CHECKSUMS_SHA: ${{ steps.manager_bundle.outputs.checksums_sha }}
         run: |
           set -euo pipefail
           SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
@@ -394,6 +401,26 @@ jobs:
             fi
             set -e
             "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_runner' '$remote_sql'" || true
+          elif [[ "$OPERATION" == "publish-bootstrap" ]]; then
+            [[ "$MANAGER_COMMIT" =~ ^[0-9a-f]{40}$ && "$BOOTSTRAP_CHECKSUMS_SHA" =~ ^[0-9a-f]{64}$ ]]
+            remote_prefix="/tmp/routegate-publish-bootstrap-${GITHUB_RUN_ID}"
+            local_files=(scripts/production-like-publish-bootstrap.py "$MANAGER_BUNDLE" "$BOOTSTRAP_ARM64" "$BOOTSTRAP_CHECKSUMS")
+            remote_files=("${remote_prefix}.py" "${remote_prefix}-amd64.tar.gz" "${remote_prefix}-arm64.tar.gz" "${remote_prefix}-SHA256SUMS")
+            copied=1
+            for i in "${!local_files[@]}"; do
+              "${SCP[@]}" "${local_files[$i]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST:${remote_files[$i]}" || { copied=0; break; }
+            done
+            set +e
+            if ((copied == 1)); then
+              "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+                "sudo flock -w 600 /run/lock/routegate-production-like.lock python3 '${remote_files[0]}' '$MANAGER_COMMIT' '${remote_files[1]}' '${remote_files[2]}' '${remote_files[3]}' '$BOOTSTRAP_CHECKSUMS_SHA'" >"$output_file" 2>&1
+              rc=$?
+            else
+              printf '[routegate-bootstrap] ERROR: could not copy publication files; nothing was changed\n' >"$output_file"
+              rc=2
+            fi
+            set -e
+            "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f $(printf "'%s' " "${remote_files[@]}")" || true
           elif [[ "$OPERATION" == "update-manager" ]]; then
             # The bundle is built from the pinned, verified commit; the update
             # engine and the pinned SQL come from the trusted main checkout.

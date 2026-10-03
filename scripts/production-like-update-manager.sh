@@ -247,7 +247,7 @@ BASELINE=$(active_account_counts)
 log "baseline active accounts per node: $(tr '\n' ' ' <<<"$BASELINE")"
 fingerprint >"$WORK_DIR/fingerprint.before"
 if [[ ! -d "$(rg_update_path "/var/www/routegate/bootstrap/${EXPECTED_COMMIT}")" ]]; then
-  log "WARNING: Agent bootstrap artifacts for this commit are not published; new-node connect commands of this Manager will not work until a full deploy publishes them"
+  log "WARNING: Agent bootstrap artifacts for this commit are not published; new-node connect commands of this Manager will not work until publish-bootstrap publishes them"
 fi
 
 STAGE=drain_agent_jobs

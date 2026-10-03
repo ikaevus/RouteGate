@@ -195,7 +195,7 @@ jobs:
           bash scripts/test-update-role.sh
           bash scripts/test-update-toolchain.sh
           bash scripts/test-update-verified.sh
-          python3 -m unittest scripts/test_maintenance_dispatch.py
+          python3 -m unittest scripts/test_maintenance_dispatch.py scripts/test_publish_bootstrap.py
           bash scripts/routegate-update-transaction.sh --help >/dev/null
           bash scripts/routegate-update-verified.sh --help >/dev/null
 
