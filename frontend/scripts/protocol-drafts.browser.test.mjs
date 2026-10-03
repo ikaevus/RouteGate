@@ -27,7 +27,7 @@ async function open(width = 1440) {
   const profile = { id: 'profile', vpnAccountId: accounts[0].id, name: '', clientType: 'generic', deviceType: 'other',
     fingerprintMode: 'auto', fingerprint: '', resolvedFingerprint: 'chrome', spiderX: '/',
     protocol: 'auto', enabledProtocols: ['vless'], activeProtocols: ['vless'], createdAt: stamp, updatedAt: stamp };
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => errors.push(error.stack ?? error.message));
   await page.addInitScript(() => {
     localStorage.setItem('routegate.locale', 'en');
     localStorage.setItem('routegate.auth.token', 'fixture');
@@ -42,6 +42,12 @@ async function open(width = 1440) {
     if (path === '/api/v1/vpn-accounts') return json({ items: accounts, total: 2, page: 1, pageSize: 50, totalPages: 1 });
     if (path.endsWith('/traffic')) return json({ period: { from: stamp, to: stamp },
       usage: { totalBytes: 0, txBytes: 0, rxBytes: 0 }, limit: null });
+    if (path.endsWith('/routing-policy')) return json({ routingProfileSource: 'none', currentServerInGroup: false,
+      automaticSelection: false, automaticSelectionPolicy: { enabled: false, allowDegraded: false, cooldownSeconds: 300 },
+      clientRoutingSupported: true });
+    if (path === '/api/v1/routing-profiles' || path === '/api/v1/node-groups' || path.endsWith('/devices')) return json({ items: [] });
+    if (path.endsWith('/notes')) return json({ notes: '', updatedAt: stamp });
+    if (path.endsWith('/subscription-token')) return json({ hasActiveToken: false });
     if (path === '/api/v1/servers/node/protocol-settings') return json({ serverId: 'node', protocol: 'vless',
       vless: { port: 8443 }, reality: { enabled: true }, shadowsocks: { ready: true },
       wireGuard: { ready: false }, hysteria2: { ready: false }, mtproto: { ready: false } });
@@ -60,8 +66,7 @@ async function open(width = 1440) {
     }
     const account = accounts.find(account => path === `/api/v1/vpn-accounts/${account.id}`);
     if (account) return json(account);
-    // Inactive non-secret workspace panels may request their own read models.
-    return json({ items: [], total: 0, notes: '', usedBytes: 0 });
+    return json({ message: `Unmocked endpoint: ${method} ${path}` }, 404);
   });
   await page.goto(`${origin}/vpn-accounts/${accounts[0].id}/protocols`);
   const panel = page.locator('.vpn-account-protocol-workspace');
