@@ -102,6 +102,32 @@ func TestCreateServerMapsAdminRequest(t *testing.T) {
 	}
 }
 
+func TestCreateServerRejectsAdditionalManagementPlane(t *testing.T) {
+	for _, role := range []string{"management", "hybrid"} {
+		t.Run(role, func(t *testing.T) {
+			repository := &fakeServerRepository{}
+			handler := testHandler(repository, &fakeRegistrationTokenRepository{})
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/servers",
+				strings.NewReader(`{"name":"second-manager","deploymentRole":"`+role+`","publicIp":"203.0.113.11"}`))
+			response := httptest.NewRecorder()
+			handler.Create(response, request)
+			if response.Code != http.StatusConflict {
+				t.Fatalf("status = %d, want 409; body=%s", response.Code, response.Body.String())
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["status"] != "management_plane_already_exists" {
+				t.Fatalf("unexpected rejection: %v", payload)
+			}
+			if repository.createInput.Name != "" {
+				t.Fatalf("unsupported management role reached repository: %+v", repository.createInput)
+			}
+		})
+	}
+}
+
 func TestCreateServerDefaultsToVPNNode(t *testing.T) {
 	repository := &fakeServerRepository{created: Server{ID: "server-id", Name: "fi-01", DeploymentRole: "vpn", Status: StatusPending}}
 	handler := testHandler(repository, &fakeRegistrationTokenRepository{})
