@@ -63,6 +63,8 @@ function getCopy() {
       nodeSaved: 'Узел обновлён.',
       nodeSaveError: 'Не удалось назначить узел.',
       configNotice: 'Изменение затронуло конфигурацию VPN-сервера и требует нового развёртывания.',
+      nodeSwitchWarning: 'Внимание: сейчас перенос не бесшовный. После назначения другого узла обновление подписки может быть недоступно до успешного применения конфигурации на новом узле. Ссылка останется прежней, но клиент должен обновить подписку. После проверки нового узла отдельно очистите старый. Для рабочих пользователей предварительно запланируйте окно обслуживания.',
+      nodeSwitchConfirm: 'Продолжить перенос с возможным временным перерывом в обновлении подписки? Ссылку перевыпускать не нужно.',
       openDeploy: 'Открыть развёртывание конфигов →',
     } as const;
   }
@@ -78,6 +80,8 @@ function getCopy() {
     nodeSaved: 'Node updated.',
     nodeSaveError: 'Failed to assign the node.',
     configNotice: 'The change affected a VPN server configuration and requires a new deployment.',
+    nodeSwitchWarning: 'Warning: node reassignment is not yet seamless. Subscription refresh may be unavailable between changing placement and successfully deploying the target node. The URL stays the same, but the client must refresh it. Verify the target before removing the account from the old node. Plan a maintenance window for live users.',
+    nodeSwitchConfirm: 'Continue with a possible temporary subscription refresh interruption? A new link is NOT needed.',
     openDeploy: 'Open Config Deploy →',
   } as const;
 }
@@ -200,7 +204,8 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
 
   function saveNode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (editingDisabled) return;
+    if (editingDisabled || serverId === (accountQuery.data?.serverId ?? '')) return;
+    if (!window.confirm(copy.nodeSwitchConfirm)) return;
     nodeMutation.mutate();
   }
 
@@ -266,6 +271,9 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
               ))}
             </select>
           </label>
+          {serverId !== (accountQuery.data?.serverId ?? '') && (
+            <div className="form-message form-message-warning" role="alert">{copy.nodeSwitchWarning}</div>
+          )}
           <div className="form-actions">
             <button className="small-button" type="submit" disabled={editingDisabled || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
           </div>
@@ -403,7 +411,10 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
                   className="small-button"
                   type="button"
                   disabled={editingDisabled || automaticSelectionDirty || !selectionPreviewQuery.data?.canApply}
-                  onClick={() => { if (!editingDisabled && !automaticSelectionDirty && selectionPreviewQuery.data?.canApply) selectionApplyMutation.mutate(); }}
+                  onClick={() => {
+                    if (!editingDisabled && !automaticSelectionDirty && selectionPreviewQuery.data?.canApply &&
+                      window.confirm(copy.nodeSwitchConfirm)) selectionApplyMutation.mutate();
+                  }}
                 >
                   {t('automaticSelection.apply')}
                 </button>
