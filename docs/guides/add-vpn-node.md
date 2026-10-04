@@ -14,6 +14,8 @@ Prepare:
 - the VPS public IP address;
 - an open SSH session to the new VPS.
 
+For a reproducible OS/network/SSH/firewall/updates baseline and the post-reboot acceptance checklist, see [VPS baseline and recovery checklist](../operations/vps-baseline.md).
+
 You do not need to manually install RouteGate Agent, WireGuard, Hysteria, sing-box, or mtg.
 
 ## 1. Create the server in RouteGate
