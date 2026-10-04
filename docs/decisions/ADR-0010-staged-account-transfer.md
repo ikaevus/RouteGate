@@ -19,6 +19,34 @@ The goal is **one initial import, a preserved bearer URL, and a
 controlled/observable transfer**, not automatic link-token rotation or an
 unverifiable zero-downtime promise.
 
+## Direction-independent migration contract
+
+**Both US → FI and FI → US are the *same operation*.** There is no privileged
+source, destination, or geographical direction. The engine accepts an arbitrary
+pair of distinct, compatible node IDs and obtains each node's current role,
+protocol capabilities, applied version, configured listener and observed health.
+It must never contain hard-coded US/FI IDs, hostnames, ports, protocol keys,
+location ordering or initial version counters. In particular:
+
+- A **Hybrid Node** runs VPN alongside Manager/HTTPS and may need VLESS/Reality
+  on **8443/TCP** because Manager HTTPS owns 443/TCP. A standalone **VPN Node**
+  can independently use **443/TCP** if free. Neither direction assumes a
+  matching port, Reality public key/short ID/SNI, external IP or transport.
+- Hybrid ↔ VPN Node and VPN Node ↔ VPN Node are eligible when each side's
+  protocol/role/health prerequisites pass; a Management-only node is **not**
+  an eligible VPN destination. A VPN node's protocol capabilities must be
+  checked, not inferred only from its role or an active Agent heartbeat.
+- Versions such as US **v48** and FI **v2** are local counters, **not** a
+  meaningful relative ordering between nodes. Pin and compare each node's
+  exact config-version ID, rendered hash and successful apply proof.
+- Preserve account identity and device subscription tokens in both directions.
+  Different source and destination Reality keys must be delivered exclusively
+  according to the successfully applied **destination** snapshot after cutover.
+  Live Manager/Agent services and other account configurations remain untouched.
+- The reverse move is not automatically a rollback. It is a new transfer
+  operation with its own readiness check; a rollback of an active transfer
+  uses a separately verified last-known-good source configuration.
+
 ## Proposed durable state machine
 
 ```text
@@ -98,7 +126,7 @@ stages and **exactly one safe next action** at a time.
 
 ## Tests and rollout gates
 
-- DB integration: source US→FI→US, concurrent requests and locks, staged
+- DB integration (table-driven): Hybrid→VPN Node→Hybrid and VPN Node→Hybrid→VPN Node, with unequal Reality keys, 8443/TCP vs 443/TCP, arbitrary node IDs, concurrent requests and locks, staged
   target render/apply, failed target apply, successful target cutover, token
   identity, no early client material, delayed/failed source cleanup, restart.
 - External tests: VLESS Reality on actual US/FI with `fi-test` only; preserve
