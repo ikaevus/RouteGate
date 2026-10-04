@@ -11,8 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
+	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/httpx"
 	"github.com/ikaevus/routegate/backend/internal/nodegroups"
+	"github.com/ikaevus/routegate/backend/internal/transfers"
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
@@ -60,20 +62,21 @@ type AutomaticSelectionCandidate struct {
 }
 
 type AutomaticSelectionDecision struct {
-	VPNAccountID       string                        `json:"vpnAccountId"`
-	NodeGroupID        string                        `json:"nodeGroupId,omitempty"`
-	SelectionStrategy  string                        `json:"selectionStrategy,omitempty"`
-	Status             string                        `json:"status"`
-	CurrentServerID    string                        `json:"currentServerId,omitempty"`
+	VPNAccountID       string                       `json:"vpnAccountId"`
+	NodeGroupID        string                       `json:"nodeGroupId,omitempty"`
+	SelectionStrategy  string                       `json:"selectionStrategy,omitempty"`
+	Status             string                       `json:"status"`
+	CurrentServerID    string                       `json:"currentServerId,omitempty"`
 	SelectedCandidate  *AutomaticSelectionCandidate `json:"selectedCandidate,omitempty"`
-	Reasons            []string                      `json:"reasons"`
-	EligibleCandidates int                           `json:"eligibleCandidates"`
-	EvaluatedAt        time.Time                     `json:"evaluatedAt"`
-	BlockedUntil       *time.Time                    `json:"blockedUntil,omitempty"`
-	CanApply           bool                          `json:"canApply"`
+	Reasons            []string                     `json:"reasons"`
+	EligibleCandidates int                          `json:"eligibleCandidates"`
+	EvaluatedAt        time.Time                    `json:"evaluatedAt"`
+	BlockedUntil       *time.Time                   `json:"blockedUntil,omitempty"`
+	CanApply           bool                         `json:"canApply"`
 }
 
 type AutomaticSelectionApplyResponse struct {
+	Transfer                 *transfers.Transfer        `json:"transfer,omitempty"`
 	Decision                 AutomaticSelectionDecision `json:"decision"`
 	PreviousServerID         string                     `json:"previousServerId,omitempty"`
 	SelectedServerID         string                     `json:"selectedServerId"`
@@ -379,6 +382,31 @@ func (r *Repository) ApplyAutomaticSelection(ctx context.Context, accountID stri
 		response.AffectedServerIDs = []string{decision.SelectedCandidate.ServerID}
 		return response, nil
 	}
+	var deployed bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM servers s JOIN config_versions cv ON cv.id=s.active_config_version_id WHERE s.id=NULLIF($1,'')::uuid AND cv.client_settings->'accounts' ? $2)`, selectionContext.CurrentServerID, accountID).Scan(&deployed); err != nil {
+		return response, err
+	}
+	if deployed {
+		actor := "automatic-selection"
+		if user, ok := auth.UserFromContext(ctx); ok {
+			actor = user.ID
+		}
+		transfer, err := transfers.NewService(r.pool).StartInTransaction(ctx, tx, accountID, decision.SelectedCandidate.ServerID, actor)
+		if err != nil {
+			return response, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE vpn_account_automatic_selection_policies SET last_selected_at=now(),last_selected_server_id=$2::uuid,updated_at=now() WHERE vpn_account_id=$1::uuid`, accountID, decision.SelectedCandidate.ServerID); err != nil {
+			return response, err
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return response, err
+		}
+		response.Transfer = &transfer
+		response.Changed = false
+		response.ConfigDeploymentRequired = false
+		response.AffectedServerIDs = orderedUniqueServerIDs(decision.SelectedCandidate.ServerID, selectionContext.CurrentServerID)
+		return response, nil
+	}
 	selectedWireGuardAddress := ""
 	if decision.SelectedCandidate.Protocol == "wireguard" {
 		selectedWireGuardAddress, err = allocateAutomaticSelectionWireGuardAddress(ctx, tx, decision.SelectedCandidate.ServerID)
@@ -524,6 +552,8 @@ func (h *Handler) ApplyAutomaticSelection(w http.ResponseWriter, r *http.Request
 	response, err := repository.ApplyAutomaticSelection(r.Context(), r.PathValue("id"))
 	if err != nil {
 		switch {
+		case errors.Is(err, transfers.ErrGuard):
+			httpx.WriteJSON(w, http.StatusConflict, httpx.Error("transfer_blocked", err.Error()))
 		case errors.Is(err, pgx.ErrNoRows):
 			writeAccountNotFound(w)
 		case errors.Is(err, ErrAutomaticSelectionDisabled):

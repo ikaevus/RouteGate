@@ -15,7 +15,8 @@
     "test:ui": "node --test scripts/shared-ui.test.mjs",
     "preview": "vite preview",
     "test:workspace-integration": "node scripts/workspace-integration.mjs",
-    "test:node-onboarding-browser": "node --test scripts/node-onboarding.browser.test.mjs"
+    "test:node-onboarding-browser": "node --test scripts/node-onboarding.browser.test.mjs",
+    "test:account-transfer-browser": "node --test scripts/account-transfer.browser.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "latest",

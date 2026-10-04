@@ -49,6 +49,31 @@ func NewService(repository configRepository) *Service {
 }
 
 func (s *Service) Render(ctx context.Context, serverID string) (RenderConfigResponse, error) {
+	return s.render(ctx, serverID, false)
+}
+
+type transferCleanupAuthorizer interface {
+	TransferCleanupAuthorized(context.Context, string, string) (bool, error)
+}
+
+// RenderTransferCleanup permits an empty VLESS authenticator only for the
+// reserved cleanup side of an existing transfer. Ordinary renders stay guarded.
+func (s *Service) RenderTransferCleanup(ctx context.Context, serverID, transferID string) (RenderConfigResponse, error) {
+	repository, ok := s.repository.(transferCleanupAuthorizer)
+	if !ok {
+		return RenderConfigResponse{}, ErrConfigApplyUnsafe
+	}
+	allowed, err := repository.TransferCleanupAuthorized(ctx, serverID, transferID)
+	if err != nil {
+		return RenderConfigResponse{}, err
+	}
+	if !allowed {
+		return RenderConfigResponse{}, ErrConfigApplyUnsafe
+	}
+	return s.render(ctx, serverID, true)
+}
+
+func (s *Service) render(ctx context.Context, serverID string, cleanup bool) (RenderConfigResponse, error) {
 	resolvedProtocols, err := resolveServerAccountProtocols(ctx, s.repository, serverID)
 	if err != nil {
 		return RenderConfigResponse{}, err
@@ -63,6 +88,16 @@ func (s *Service) Render(ctx context.Context, serverID string) (RenderConfigResp
 	}
 
 	rendered := buildRenderedConfig(info, s.now().UTC())
+	if cleanup && len(rendered.VPNAccounts) == 0 && normalizeAccountProtocol(info.VPNProtocol) == platform.VPNProtocolVLESS && findVLESSInbound(rendered) == nil {
+		// A listener with zero allowed UUIDs denies every previously provisioned
+		// credential. It keeps the same runtime checks without stopping other services.
+		inbound := map[string]any{"type": "vless", "tag": singBoxVLESSInboundTag, "listen": "::", "listen_port": serverVLESSPort(info), "users": []map[string]any{}}
+		if rendered.Metadata.RealityEnabled {
+			inbound["tls"] = buildRealityTLS(info)
+		}
+		rendered.SingBox.Inbounds = append(rendered.SingBox.Inbounds, inbound)
+		rendered.Metadata.TransferEmptyUsers = true
+	}
 	validation := ValidateRenderedConfig(rendered)
 	status := StatusRendered
 	if validation.Valid {

@@ -361,6 +361,9 @@ jobs:
       - name: Test protocol selection drafts in the browser
         run: npm run test:protocol-drafts-browser
 
+      - name: Test guided account transfer in the browser
+        run: npm run test:account-transfer-browser
+
       - name: Build frontend
         run: npm run build
 

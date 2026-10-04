@@ -7,14 +7,33 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	wgcredentials "github.com/ikaevus/routegate/backend/internal/wireguard"
 )
 
-type Repository struct {
-	pool *pgxpool.Pool
+// Membership is additive until the explicitly acknowledged cleanup side is
+// rendered. The canonical account assignment remains the subscription source.
+const accountPlacementSQL = `(a.server_id = $1::uuid OR EXISTS (
+ SELECT 1 FROM vpn_account_transfers tr
+ WHERE tr.vpn_account_id = a.id AND tr.completed_at IS NULL
+ AND (($1::uuid = tr.target_server_id AND tr.state IN ('preparing','target_applying','target_ready','client_refresh_pending','source_cleaning'))
+ OR ($1::uuid = tr.source_server_id AND tr.state IN ('preparing','target_applying','target_ready','client_refresh_pending','target_cleaning')))
+ ))`
+
+type repositoryDB interface {
+	Begin(context.Context) (pgx.Tx, error)
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
 }
+
+type Repository struct{ pool repositoryDB }
+
+// NewTransactionRepository keeps rendering and job creation inside the transfer
+// transaction. Nested Begin calls are savepoints, not independently committed work.
+func NewTransactionRepository(tx pgx.Tx) *Repository { return &Repository{pool: tx} }
 
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
@@ -107,9 +126,9 @@ func (r *Repository) listServerVPNAccounts(ctx context.Context, serverID string)
 			a.shadowsocks_user_key,
 			COALESCE(tl.enforcement_status, 'not_enforced')
 		FROM vpn_accounts a
-		LEFT JOIN servers s ON s.id = a.server_id
+		LEFT JOIN servers s ON s.id = $1::uuid
 		LEFT JOIN traffic_limits tl ON tl.vpn_account_id = a.id
-		WHERE a.server_id = $1::uuid
+		WHERE `+accountPlacementSQL+`
 		ORDER BY a.created_at ASC
 	`, serverID)
 	if err != nil {
@@ -250,7 +269,7 @@ func (r *Repository) CreateConfigVersion(ctx context.Context, input CreateConfig
 				SELECT EXISTS (
 					SELECT 1 FROM vpn_accounts a
 					LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
-					WHERE a.server_id = $1::uuid
+					WHERE `+accountPlacementSQL+`
 					  AND (cp.updated_at > $2 OR EXISTS (
 						SELECT 1 FROM vpn_account_protocols pap
 						WHERE pap.vpn_account_id = a.id AND pap.updated_at > $2
@@ -771,4 +790,13 @@ func (r *Repository) BackfillClientSettings(ctx context.Context) (int, []ClientS
 		filled += int(tag.RowsAffected())
 	}
 	return filled, failures, nil
+}
+
+func (r *Repository) TransferCleanupAuthorized(ctx context.Context, node, id string) (bool, error) {
+	var allowed bool
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vpn_account_transfers t JOIN vpn_account_transfer_nodes n ON n.transfer_id=t.id
+ WHERE t.id=$1::uuid AND n.server_id=$2::uuid AND t.completed_at IS NULL
+ AND current_setting('routegate.transfer_id',true)=t.id::text
+ AND ((t.state='source_cleaning' AND t.source_server_id=n.server_id) OR (t.state='target_cleaning' AND t.target_server_id=n.server_id)))`, id, node).Scan(&allowed)
+	return allowed, err
 }

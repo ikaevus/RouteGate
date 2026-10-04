@@ -137,3 +137,15 @@ RG-115 does not attempt to:
 - replace protocol-native credentials with security through obscurity;
 - remove raw configuration access;
 - create a mandatory RouteGate-specific VPN client.
+
+
+### RG-140 staged placement continuity
+
+Routine account movement uses [the durable transfer operation](../guides/safe-account-transfer.md).
+Staged target membership does not change canonical subscription resolution.
+Only verified target apply permits cutover; device bearers and account identity
+remain unchanged. Source credentials are removed by a separately acknowledged,
+verified cleanup. Subscription retrieval is not a client VPN acknowledgment.
+Manager migration additionally preserves PublicURL and all identity/state in a
+consistent database restore. Link-token replacement remains a separate immediate
+revocation and secure re-import operation.

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
@@ -285,6 +286,11 @@ func (h *Handler) recordAudit(r *http.Request, input audit.EventInput) {
 }
 
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
+	var p *pgconn.PgError
+	if errors.As(err, &p) && p.Code == "P0140" {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("transfer_in_progress", "This node or deployment proof belongs to an active account transfer. Continue that operation first."))
+		return
+	}
 	h.logger.Error(operation+" failed", "error", err)
 	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Database operation failed."))
 }

@@ -1,6 +1,6 @@
 # ADR-0010: Staged account transfer without subscription rotation
 
-- **Status:** Proposed — RG-140, not implemented
+- **Status:** Implemented first VLESS/Reality slice in draft PR #511; live acceptance pending
 - **Date:** 2026-10-05
 - **Related:** [RG-140](https://github.com/ikaevus/RouteGate/issues/509), [RG-139](https://github.com/ikaevus/RouteGate/issues/510), ADR-0009
 
@@ -47,7 +47,7 @@ location ordering or initial version counters. In particular:
   operation with its own readiness check; a rollback of an active transfer
   uses a separately verified last-known-good source configuration.
 
-## Proposed durable state machine
+## Durable operation and intended lifecycle
 
 ```text
 READY_ON_SOURCE
@@ -146,6 +146,12 @@ stages and **exactly one safe next action** at a time.
 - Automatic unattended failover while client refresh and cleanup semantics
   remain unverified.
 
-**Implementation is pending.** Current manual `server_id` reassignment
-continues to have a subscription refresh interruption window and must remain
-a guarded/manual operation until this design is implemented and tested.
+**First slice implemented:** durable transfer records and node reservations,
+explicit prepare/verify/cutover/client-check/cleanup steps, verified-source
+rollback, transactional cancellation/retry, renderer membership overlays and
+manual/bulk/Automatic Selection guards. Supported VLESS/Reality only; no live
+US/FI movement or client acceptance is claimed by the integration tests.
+
+See [operator runbook](../guides/safe-account-transfer.md) for exact supported
+states, conservative shared-routing/update locks, scoped empty-node cleanup,
+Manager/PublicURL continuity and remaining canary gates.

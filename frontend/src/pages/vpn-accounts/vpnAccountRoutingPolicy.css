@@ -53,6 +53,16 @@
   accent-color: var(--rg-primary);
 }
 
+.vpn-account-routing-form .account-transfer-confirmation {
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.account-transfer-confirmation span {
+  min-width: 0;
+}
+
 .automatic-selection-decision {
   display: grid;
   gap: 5px;

@@ -19,6 +19,9 @@ import { getVpnAccount, updateVpnAccount } from '../../entities/vpnAccount/api/v
 import { getCurrentLocale, t } from '../../shared/i18n/i18n';
 import { Section } from '../../shared/ui/Section';
 import './vpnAccountRoutingPolicy.css';
+import { getAccountTransfer, startAccountTransfer } from '../../entities/vpnAccount/api/vpnAccountTransferApi';
+import { AccountTransferPanel } from './AccountTransferPanel';
+import { accountTransferError } from './accountTransferMessages';
 
 function selectionStatusLabel(status: 'selected' | 'current' | 'no_eligible_candidates' | 'node_group_required' | 'cooldown'): string {
   switch (status) {
@@ -60,11 +63,12 @@ function getCopy() {
       placementSubtitle: 'На каком узле обслуживается этот аккаунт.',
       currentNode: 'Текущий узел',
       saveNode: 'Назначить узел',
+      prepareTransfer: 'Подготовить перенос',
       nodeSaved: 'Узел обновлён.',
       nodeSaveError: 'Не удалось назначить узел.',
       configNotice: 'Изменение затронуло конфигурацию VPN-сервера и требует нового развёртывания.',
-      nodeSwitchWarning: 'Внимание: сейчас перенос не бесшовный. После назначения другого узла обновление подписки может быть недоступно до успешного применения конфигурации на новом узле. Ссылка останется прежней, но клиент должен обновить подписку. После проверки нового узла отдельно очистите старый. Для рабочих пользователей предварительно запланируйте окно обслуживания.',
-      nodeSwitchConfirm: 'Продолжить перенос с возможным временным перерывом в обновлении подписки? Ссылку перевыпускать не нужно.',
+      nodeSwitchWarning: 'Для активного аккаунта начнётся управляемый перенос VLESS/Reality. Новый узел будет подготовлен до переключения подписки. Ссылка сохранится. После переключения проверьте обновление подписок и подключения пользователей, затем подтвердите очистку старого узла.',
+      nodeSwitchConfirm: 'Подготовить новый узел для переноса? Текущая подписка продолжит работать до отдельного переключения.',
       openDeploy: 'Открыть развёртывание конфигов →',
     } as const;
   }
@@ -77,11 +81,12 @@ function getCopy() {
     placementSubtitle: 'Which node currently serves this account.',
     currentNode: 'Current node',
     saveNode: 'Assign node',
+    prepareTransfer: 'Prepare transfer',
     nodeSaved: 'Node updated.',
     nodeSaveError: 'Failed to assign the node.',
     configNotice: 'The change affected a VPN server configuration and requires a new deployment.',
-    nodeSwitchWarning: 'Warning: node reassignment is not yet seamless. Subscription refresh may be unavailable between changing placement and successfully deploying the target node. The URL stays the same, but the client must refresh it. Verify the target before removing the account from the old node. Plan a maintenance window for live users.',
-    nodeSwitchConfirm: 'Continue with a possible temporary subscription refresh interruption? A new link is NOT needed.',
+    nodeSwitchWarning: 'An active account starts a managed VLESS/Reality transfer. The target is prepared before subscription cutover. The link stays unchanged. Verify client refresh and connections before acknowledging source cleanup.',
+    nodeSwitchConfirm: 'Prepare the target for transfer? The current subscription remains active until a separate cutover.',
     openDeploy: 'Open Config Deploy →',
   } as const;
 }
@@ -108,6 +113,9 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
     queryKey: ['vpn-account', accountId],
     queryFn: () => getVpnAccount(accountId),
   });
+  const transferQuery = useQuery({ queryKey: ['vpn-account-transfer', accountId], queryFn: () => getAccountTransfer(accountId), enabled: active, refetchInterval: active ? 5000 : false });
+  const transfer = transferQuery.data?.transfer;
+  const transferActive = Boolean(transfer && !transfer.completedAt);
   const profilesQuery = useQuery({ queryKey: ['routing-profiles'], queryFn: getRoutingProfiles });
   const groupsQuery = useQuery({ queryKey: ['node-groups'], queryFn: getNodeGroups });
   const serversQuery = useQuery({ queryKey: ['servers'], queryFn: getServers });
@@ -153,6 +161,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
   async function refreshPolicy() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['vpn-account-routing-policy', accountId] }),
+      queryClient.invalidateQueries({ queryKey: ['vpn-account-transfer', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account-client-connection', accountId] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
       queryClient.invalidateQueries({ queryKey: ['vpn-account', accountId] }),
@@ -185,27 +194,33 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
     onSuccess: refreshPolicy,
   });
   const nodeMutation = useMutation({
-    mutationFn: () => updateVpnAccount(accountId, { serverId }),
+    mutationFn: async () => {
+      if (transferQuery.data?.requiresTransfer && accountQuery.data?.serverId) {
+        await startAccountTransfer(accountId, serverId);
+        return { staged: true, serverId: accountQuery.data.serverId };
+      }
+      return { ...(await updateVpnAccount(accountId, { serverId })), staged: false };
+    },
     onSuccess: async (updated) => {
-      setNodeMessage(copy.nodeSaved);
+      setNodeMessage(updated.staged ? (getCurrentLocale() === 'ru' ? 'Подготовка началась. Следующий шаг — проверка нового узла.' : 'Preparation started. Next, verify the target.') : copy.nodeSaved);
       setNodeError('');
-      setNodeConfigChanged(true);
+      setNodeConfigChanged(!updated.staged);
       setServerId(updated.serverId ?? '');
       await refreshPolicy();
       if (queryClient.getQueryState(['vpn-account', accountId])?.status === 'success') {
         setEdited(current => ({ ...current, node: false }));
       }
     },
-    onError: () => {
+    onError: (error) => {
       setNodeMessage('');
-      setNodeError(copy.nodeSaveError);
+      setNodeError(accountTransferError(error));
     },
   });
 
   function saveNode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (editingDisabled || serverId === (accountQuery.data?.serverId ?? '')) return;
-    if (!window.confirm(copy.nodeSwitchConfirm)) return;
+    if (transferQuery.data?.requiresTransfer && !window.confirm(copy.nodeSwitchConfirm)) return;
     nodeMutation.mutate();
   }
 
@@ -228,11 +243,11 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
   }
 
   const policy = policyQuery.data;
-  const hasError = policyQuery.isError || profilesQuery.isError || groupsQuery.isError
+  const hasError = transferQuery.isError || policyQuery.isError || profilesQuery.isError || groupsQuery.isError
     || accountQuery.isError || serversQuery.isError;
-  const isLoading = policyQuery.isLoading || profilesQuery.isLoading || groupsQuery.isLoading
+  const isLoading = (active && transferQuery.isLoading) || policyQuery.isLoading || profilesQuery.isLoading || groupsQuery.isLoading
     || accountQuery.isLoading || serversQuery.isLoading;
-  const editingDisabled = isLoading || hasError || nodeMutation.isPending || profileMutation.isPending
+  const editingDisabled = transferActive || isLoading || hasError || nodeMutation.isPending || profileMutation.isPending
     || groupMutation.isPending || selectionPolicyMutation.isPending || selectionApplyMutation.isPending;
   const currentServerName = serversQuery.data?.items.find((server) => server.id === accountQuery.data?.serverId)?.name
     ?? accountQuery.data?.serverId
@@ -253,6 +268,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
       {(profileMutation.isError || groupMutation.isError || selectionPolicyMutation.isError || selectionApplyMutation.isError) && <div className="form-message form-message-error">{t('routingPolicy.saveError')}</div>}
 
       <Section title={copy.placementTitle} description={copy.placementSubtitle}>
+        {transfer && <AccountTransferPanel key={transfer.id} accountId={accountId} transfer={transfer} serverNames={Object.fromEntries((serversQuery.data?.items ?? []).map(s => [s.id, s.name || s.id]))} />}
         <form className="vpn-account-routing-form" onSubmit={saveNode} onChange={() => {
           setEdited(current => ({ ...current, node: true }));
           setNodeMessage('');
@@ -275,7 +291,7 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
             <div className="form-message form-message-warning" role="alert">{copy.nodeSwitchWarning}</div>
           )}
           <div className="form-actions">
-            <button className="small-button" type="submit" disabled={editingDisabled || serverId === (accountQuery.data?.serverId ?? '')}>{copy.saveNode}</button>
+            <button className="small-button" type="submit" disabled={editingDisabled || serverId === (accountQuery.data?.serverId ?? '')}>{transferQuery.data?.requiresTransfer ? copy.prepareTransfer : copy.saveNode}</button>
           </div>
           {nodeMessage && <div className="form-message form-message-success">{nodeMessage}</div>}
           {nodeError && <div className="form-message form-message-error">{nodeError}</div>}

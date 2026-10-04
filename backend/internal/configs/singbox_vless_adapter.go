@@ -106,7 +106,7 @@ func (singBoxVLESSAdapter) Ready(config RenderedConfig) bool {
 	if port := intValue(inbound["listen_port"]); port < 1 || port > 65535 {
 		return false
 	}
-	if sliceLength(inbound["users"]) == 0 {
+	if sliceLength(inbound["users"]) == 0 && !(config.Metadata.TransferEmptyUsers && len(config.VPNAccounts) == 0) {
 		return false
 	}
 	return !config.Metadata.RealityEnabled || len(validateRealityInbound(inbound)) == 0

@@ -65,7 +65,7 @@ func (r *Repository) ResolveServerAccountProtocols(ctx context.Context, serverID
 			COALESCE(NULLIF(cp.protocol, 'auto'), NULLIF(s.vpn_protocol, 'auto'), 'vless') AS primary_protocol,
 			COALESCE(pap.protocol, '') AS enabled_protocol
 		FROM vpn_accounts a
-		JOIN servers s ON s.id = a.server_id
+		JOIN servers s ON s.id = $1::uuid
 		LEFT JOIN vpn_client_profiles cp ON cp.vpn_account_id = a.id
 		-- Only administrator choices decide what is deployed; seeded rows
 		-- (desired_explicit FALSE) must not keep a previous node protocol,
@@ -75,7 +75,7 @@ func (r *Repository) ResolveServerAccountProtocols(ctx context.Context, serverID
 			ON pap.vpn_account_id = a.id
 			AND pap.desired_enabled = TRUE
 			AND pap.desired_explicit = TRUE
-		WHERE a.server_id = $1::uuid
+		WHERE `+accountPlacementSQL+`
 		ORDER BY a.created_at ASC, a.id ASC, pap.protocol ASC
 	`, serverID)
 	if err != nil {
