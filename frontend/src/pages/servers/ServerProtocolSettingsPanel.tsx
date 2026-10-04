@@ -502,9 +502,9 @@ export function ServerProtocolSettingsPanel({
           )}
 
           {recommendedSettingsMutation.isError && <div className="form-message form-message-error">{mutationErrorMessage(recommendedSettingsMutation.error, copy.error)}</div>}
-          {recommendedSettingsMutation.isSuccess && <div className="form-message">{copy.deployHint}</div>}
+          {recommendedSettingsMutation.isSuccess && !updateSettingsMutation.isSuccess && <div className="form-message">{copy.deployHint}</div>}
           {wireGuardSettingsMutation.isError && <div className="form-message form-message-error">{t('protocolSettings.protocolSaveError')}</div>}
-          {wireGuardSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
+          {wireGuardSettingsMutation.isSuccess && !updateSettingsMutation.isSuccess && <div className="form-message">{t('protocolSettings.saved')}</div>}
           <p className="protocol-settings-hint">{copy.appliedHint}</p>
           <div className="form-actions">
             <Link className="text-link" to={`/vpn-accounts?create=1&server=${encodeURIComponent(serverId)}`}>{t('vpnAccounts.createAction')} →</Link>
