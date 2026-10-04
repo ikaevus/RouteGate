@@ -36,6 +36,15 @@ Existing pre-RG-114 server records are migrated to `hybrid`, matching the only
 supported historical installer topology. New API-created server records default
 to `vpn`. The Clean VPS All-in-One installer explicitly creates `hybrid`.
 
+A running Manager is already the deployment's control plane. The authenticated
+`POST /api/v1/servers` endpoint only admits additional `vpn` nodes, and
+rejects attempts to create `management` or `hybrid` nodes with HTTP 409.
+The node creation UI only offers VPN Nodes. This restriction does not rewrite
+existing inventory entries or modify installed node roles; reconciliation of
+historical records remains a separate safe operational concern. RouteGate does
+not currently support multiple active Managers, automatic Manager failover or
+joining another management plane through node registration.
+
 ### Capabilities are reported separately
 
 Deployment role expresses intent. Agent capabilities express what the current
