@@ -157,7 +157,8 @@ function getCopy() {
       appliedHint: 'Здесь показаны сохранённые настройки. Рабочая конфигурация и клиентские ссылки обновятся только после успешного применения через Agent. Перед рендерингом назначьте узлу активный VPN-аккаунт.',
       deployHint: 'Настройки сохранены, но конфигурация узла ещё не обновлена. Откройте «Развёртывания»: рендеринг → просмотр результата проверки → применение → проверка результата Agent.',
       vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
-      vlessReason: 'HTTPS RouteGate остаётся на 443, поэтому для VPN рекомендуется отдельный порт 8443 без конфликта с nginx.',
+      vlessReason: 'На гибридном узле HTTPS-панель RouteGate использует TCP 443, поэтому VLESS рекомендуется разместить на 8443.',
+      vlessNodeReason: 'На отдельном VPN-узле панели HTTPS RouteGate нет. Автонастройка предлагает TCP 8443, но можно использовать TCP 443, если он свободен и открыт в firewall.',
       vlessAction: 'Настроить и сделать основным',
       wireGuardTitle: 'Настроить WireGuard автоматически',
       wireGuardDescription: 'RouteGate создаст серверную пару ключей WireGuard и применит безопасные значения интерфейса по умолчанию.',
@@ -195,7 +196,7 @@ function getCopy() {
       advanced: 'Параметры протокола',
       advancedDescription: 'Здесь отображаются только параметры, применимые к выбранному протоколу.',
       hysteriaHybridNotice: 'Для Hysteria2 на гибридном узле нужен отдельный домен с прямой DNS-записью на этот узел. TCP 443 остаётся у RouteGate, а UDP 443 используется Hysteria2.',
-      port443Warning: 'На All-in-One сервере порт 443 уже занят HTTPS-панелью RouteGate. Для VLESS рекомендуется 8443.',
+      port443Warning: 'На гибридном узле TCP 443 занят HTTPS-панелью RouteGate. Для VLESS рекомендуется 8443/TCP.',
       incompleteReality: 'Для Reality заполните весь набор: публичный ключ, Short ID и имя сервера — либо очистите все три поля.',
     } as const;
   }
@@ -214,7 +215,8 @@ function getCopy() {
     appliedHint: 'This page shows saved settings. The running configuration and client links update only after a successful Agent apply. Assign an active VPN account to the node before rendering.',
     deployHint: 'Settings are saved, but the node configuration is not yet updated. Open Deployments: render → review validation → apply → check the Agent result.',
     vlessValues: 'VLESS 8443 · TCP · XTLS Vision · Reality',
-    vlessReason: 'RouteGate HTTPS stays on 443, so VPN uses a separate 8443 port without conflicting with nginx.',
+    vlessReason: 'On a Hybrid Node, RouteGate HTTPS uses TCP 443, so VLESS should use a separate port such as 8443.',
+    vlessNodeReason: 'A standalone VPN Node does not host RouteGate HTTPS. Automatic setup proposes TCP 8443, but TCP 443 is also available if the port is free and allowed by the firewall.',
     vlessAction: 'Configure and make default',
     wireGuardTitle: 'Configure WireGuard automatically',
     wireGuardDescription: 'RouteGate will create the WireGuard server keypair and apply safe interface defaults.',
@@ -252,7 +254,7 @@ function getCopy() {
     advanced: 'Protocol parameters',
     advancedDescription: 'Only controls applicable to the selected protocol are shown here.',
     hysteriaHybridNotice: 'Hysteria2 on a Hybrid Node requires a dedicated hostname with a direct DNS record to this node. TCP 443 remains assigned to RouteGate, while Hysteria2 uses UDP 443.',
-    port443Warning: 'On an All-in-One server, port 443 is already used by RouteGate HTTPS. Port 8443 is recommended for VLESS.',
+    port443Warning: 'On a Hybrid Node, TCP 443 is reserved for RouteGate HTTPS. Port 8443/TCP is recommended for VLESS.',
     incompleteReality: 'Reality requires the complete set: public key, Short ID, and server name — or all three fields must be empty.',
   } as const;
 }
@@ -419,7 +421,9 @@ export function ServerProtocolSettingsPanel({
   const recommendedTitle = isVless ? copy.vlessTitle : isWireGuard ? copy.wireGuardTitle : selectedProtocolLabel;
   const recommendedDescription = isVless ? copy.vlessDescription : isWireGuard ? copy.wireGuardDescription : copy.manualDescription;
   const recommendedValues = isVless ? copy.vlessValues : isWireGuard ? copy.wireGuardValues : null;
-  const recommendedReason = isVless ? copy.vlessReason : isWireGuard ? copy.wireGuardReason : null;
+  const recommendedReason = isVless
+    ? (deploymentRole === 'hybrid' ? copy.vlessReason : copy.vlessNodeReason)
+    : isWireGuard ? copy.wireGuardReason : null;
 
   return (
     <form className="panel protocol-settings-panel" onSubmit={handleSubmit}>
@@ -518,7 +522,7 @@ export function ServerProtocolSettingsPanel({
 
         {settingsQuery.data && (
           <>
-            {isVless && portNumber === 443 && <div className="protocol-port-warning">{copy.port443Warning}</div>}
+            {isVless && deploymentRole === 'hybrid' && portNumber === 443 && <div className="protocol-port-warning">{copy.port443Warning}</div>}
             {isVless && <p className="protocol-settings-hint">{copy.firewallHint}</p>}
             {isVless && realityTouched && !realityComplete && <div className="form-message form-message-error">{copy.incompleteReality}</div>}
             {editingProtocol === 'hysteria2' && deploymentRole === 'hybrid' && (
