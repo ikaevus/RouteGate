@@ -363,11 +363,11 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
               <button className="small-button" type="button" disabled={deviceBusy} onClick={() => setQrDeviceId(device.id)}>{t('accessDevices.showQr')}</button>
               <button className="small-button" type="button" disabled={deviceBusy} aria-expanded={isSending} onClick={() => toggleSend(device.id)}>{t('accessDevices.send')}</button>
             </>
-          ) : (
+          ) : !access.hasActiveToken ? (
             <button className="primary-button" type="button" disabled={deviceBusy} onClick={() => handleRotate(access)}>
-              {t(isRotatingThis ? (access.hasActiveToken ? 'accessDevices.rotating' : 'accessDevices.creatingLink') : (access.hasActiveToken ? 'accessDevices.rotate' : 'accessDevices.createLink'))}
+              {t(isRotatingThis ? 'accessDevices.creatingLink' : 'accessDevices.createLink')}
             </button>
-          )}
+          ) : null}
         </div>
         {copyErrorId === device.id && <div className="form-message form-message-error" role="alert">{t('accessDevices.copyError')}</div>}
 
@@ -389,11 +389,14 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
 
           </details>
         )}
+        {access.hasActiveToken && (
+          <p className="vpn-access-device-note">{t('accessDevices.subscriptionContinuityHint')}</p>
+        )}
         <details className="vpn-access-device-management">
           <summary>{t('accessDevices.manageDevice')}</summary>
           <p className="vpn-access-device-note">{t('accessDevices.manageHint', { name: deviceNameLabel(device.name) })}</p>
           <div className="form-actions">
-            {access.hasActiveToken && reveal && (
+            {access.hasActiveToken && (
               <button className="small-button" type="button" disabled={deviceBusy} onClick={() => handleRotate(access)}>
                 {isRotatingThis ? t('accessDevices.rotating') : t('accessDevices.rotate')}
               </button>
