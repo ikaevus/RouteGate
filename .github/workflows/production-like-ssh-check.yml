@@ -1,10 +1,16 @@
 name: Production-like SSH Check
 
-# RG-112 Phase 6 revalidates the canonical production-like SSH boundary alongside delivery E2E.
-# This job holds production-like SSH credentials, so it is intentionally manual
-# and never runs in pull-request context.
+# Fixed read-only diagnostics. Credentials are never available to PR runs.
+# Diagnostics require an explicit manual dispatch; no deployment runs here.
 on:
   workflow_dispatch:
+    inputs:
+      node:
+        description: Node to check
+        type: choice
+        required: true
+        default: us
+        options: [us, fi]
 
 permissions:
   contents: read
@@ -12,27 +18,34 @@ permissions:
 jobs:
   ssh-check:
     runs-on: ubuntu-latest
-    environment: production-like
+    environment: ${{ (inputs.node == 'fi') && 'production-like-fi' || 'production-like' }}
     timeout-minutes: 5
+    env:
+      ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+      ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
     steps:
       - name: Configure SSH
         shell: bash
         env:
           ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
-          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
+          for name in ROUTEGATE_HOST ROUTEGATE_USER ROUTEGATE_SSH_KEY ROUTEGATE_KNOWN_HOSTS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is missing in the selected environment."
+              exit 1
+            fi
+          done
           install -d -m 700 ~/.ssh
           printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
           chmod 600 ~/.ssh/routegate_ci
           printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/routegate_ci > /dev/null
 
-      - name: Verify production-like SSH access
+      - name: Verify SSH identity
         shell: bash
-        env:
-          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
-          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
         run: |
           set -euo pipefail
           ssh \
@@ -42,4 +55,109 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=10 \
             "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            'set -e; echo "user=$(whoami)"; echo "host=$(hostname)"; echo "sudo_user=$(sudo whoami)"; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
+            'set -e; echo "user=$(id -un)"; echo "host=$(hostname)"'
+
+      - name: Verify non-interactive sudo and service health
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'set -e; echo "sudo_user=$(sudo -n id -un)"; sudo -n true; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo -n systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
+
+      - name: Remove runner credentials
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
+
+  us-readiness:
+    if: github.event_name == 'workflow_dispatch' && inputs.node == 'us'
+    runs-on: ubuntu-latest
+    environment: production-like
+    timeout-minutes: 5
+    env:
+      ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+      ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in ROUTEGATE_HOST ROUTEGATE_USER ROUTEGATE_SSH_KEY ROUTEGATE_KNOWN_HOSTS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is missing in the selected environment."
+              exit 1
+            fi
+          done
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          chmod 600 ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/routegate_ci > /dev/null
+
+      - name: Read US Manager and test account readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 "$ROUTEGATE_USER@$ROUTEGATE_HOST" 'sudo -n bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "user=$(id -un)"
+          for svc in routegate-manager routegate-agent sing-box; do
+            state=$(systemctl is-active "$svc" 2>/dev/null || true)
+            echo "$svc=${state:-unknown}"
+          done
+          if [[ -f /usr/local/bin/routegate-manager ]]; then sha256sum /usr/local/bin/routegate-manager; fi
+          [[ -r /etc/routegate/manager.env ]] || { echo 'manager_env=unavailable'; exit 1; }
+          database_url=$(set +x; set -a; source /etc/routegate/manager.env >/dev/null 2>&1; printf '%s' "${ROUTEGATE_DATABASE_URL:-}")
+          [[ -n "$database_url" ]] || { echo 'database_url=unavailable'; exit 1; }
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=30s -c lock_timeout=3s -c application_name=routegate-rg140-readiness'
+          export PGCONNECT_TIMEOUT=10
+          if ! psql "$database_url" -X -q -v ON_ERROR_STOP=1 -P pager=off 2>/dev/null <<'SQL'
+          BEGIN READ ONLY;
+          SELECT 'schema' AS section, version FROM schema_migrations ORDER BY version DESC LIMIT 3;
+          SELECT 'nodes' AS section, s.id, s.name, j->>'deployment_role' AS role,
+           j->>'vpn_protocol' AS protocol, j->>'vless_port' AS port,
+           j->>'active_config_version_id' AS active_config_version_id,
+           (SELECT count(*) FROM vpn_accounts a WHERE a.server_id=s.id) AS account_count
+          FROM servers s CROSS JOIN LATERAL (SELECT to_jsonb(s) j) x ORDER BY s.name;
+          SELECT 'agents' AS section, a.server_id, a.status,
+           to_jsonb(a)->>'last_seen_at' AS last_seen_at,
+           to_jsonb(a)->>'last_authenticated_heartbeat_at' AS last_authenticated_heartbeat_at
+          FROM agents a ORDER BY a.server_id;
+          SELECT 'test_account' AS section, a.id, a.display_name, a.server_id, a.status,
+           to_jsonb(a)->>'expires_at' AS expires_at,
+           to_jsonb(a)->>'config_updated_at' AS config_updated_at,
+           COALESCE(to_jsonb(a)->>'vless_uuid','')<>'' AS has_vless_credentials
+          FROM vpn_accounts a WHERE lower(a.display_name)='fi-test';
+          SELECT 'test_protocols' AS section, p.protocol,p.desired_enabled,p.active_enabled
+          FROM vpn_account_protocols p JOIN vpn_accounts a ON a.id=p.vpn_account_id WHERE lower(a.display_name)='fi-test';
+          SELECT 'test_devices' AS section,d.status,count(*) FROM vpn_account_devices d
+          JOIN vpn_accounts a ON a.id=d.vpn_account_id WHERE lower(a.display_name)='fi-test' GROUP BY d.status;
+          SELECT 'apply_jobs' AS section,server_id,status,count(*) FROM config_apply_jobs
+          GROUP BY server_id,status;
+          SELECT 'active_versions' AS section,c.id,c.server_id,c.version,c.status,
+           to_jsonb(c)->>'applied_at' AS applied_at,
+           c.client_settings->>'vlessPort' AS applied_vless_port,
+           COALESCE(c.client_settings->>'realityPublicKey','')<>'' AS has_reality_public_key,
+           c.client_settings->'accounts' ? a.id::text AS contains_test_account
+          FROM config_versions c JOIN servers s ON to_jsonb(s)->>'active_config_version_id'=c.id::text
+          LEFT JOIN vpn_accounts a ON lower(a.display_name)='fi-test' ORDER BY c.server_id;
+          ROLLBACK;
+          SQL
+          then echo 'readiness_database_check=failed (details suppressed to protect credentials)'; exit 1; fi
+          unset database_url
+          REMOTE
+      - name: Remove runner credentials
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
+
