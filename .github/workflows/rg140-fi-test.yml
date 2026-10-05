@@ -1,9 +1,6 @@
 name: RG140 approved fi-test first leg
 on:
   workflow_dispatch:
-  push:
-    branches: [ops/rg140-canary]
-    paths: [docs/operations/rg140-canary/control-request.json]
 permissions:
   contents: read
   actions: read
