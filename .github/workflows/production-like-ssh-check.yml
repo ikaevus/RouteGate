@@ -1,7 +1,7 @@
 name: Production-like SSH Check
 
 # Fixed read-only diagnostics. Credentials are never available to PR runs.
-# The dedicated ops branch enables the initial FI check without deploying a PR.
+# Diagnostics require an explicit manual dispatch; no deployment runs here.
 on:
   workflow_dispatch:
     inputs:
@@ -11,9 +11,6 @@ on:
         required: true
         default: us
         options: [us, fi]
-  push:
-    branches: [ops/fi-ssh-access]
-    paths: [.github/workflows/production-like-ssh-check.yml]
 
 permissions:
   contents: read
@@ -21,7 +18,7 @@ permissions:
 jobs:
   ssh-check:
     runs-on: ubuntu-latest
-    environment: ${{ (github.event_name == 'push' || inputs.node == 'fi') && 'production-like-fi' || 'production-like' }}
+    environment: ${{ (inputs.node == 'fi') && 'production-like-fi' || 'production-like' }}
     timeout-minutes: 5
     env:
       ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
@@ -79,7 +76,7 @@ jobs:
         run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
 
   us-readiness:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.node == 'us'
     runs-on: ubuntu-latest
     environment: production-like
     timeout-minutes: 5
