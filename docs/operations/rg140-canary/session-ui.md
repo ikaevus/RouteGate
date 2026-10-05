@@ -1,11 +1,12 @@
 # Manager session UI repair on US
 
-The session fix is tested on candidate `ebd94d874c3d25f49a6e2e9a7d06fd35e6f5b481`
-in PR #511. Both exact candidate CI runs are pinned in the manual workflow.
-The installed Manager canary already has schema159; the old schema158-to159
-deployment helper must not be reused for this repair.
+The original session repair was published from `ebd94d87` in run 37324231784.
+The Manager binary was subsequently published from merged main `c4137cc4` in
+run 37339500807. The current manual UI workflow is pinned to `6db6e4bcf9f5c547a440d1ea2586a2ebae3665ea` for the transfer-notice and subscription-copy follow-up in PR #525; its two exact CI runs must pass before publication.
+The host already has schema159; the old schema158-to159 deployment helper
+must not be reused.
 
-Run **RG140 Manager session UI update** from `main`. It builds only the pinned
+Run **RG140 Manager UI update** from `main`. It builds only the pinned
 frontend, validates its digest and archive layout, and publishes new assets
 before atomically replacing `/var/www/routegate/index.html`. Existing assets
 are retained for open tabs; same-name collisions with different content are
@@ -25,5 +26,4 @@ workspace, showing **Retry session check**. After connectivity returns, retry
 must recover without a password. A real HTTP 401 still clears invalid sign-in.
 
 The workflow is manual only; merging this helper performs no server update.
-Full feature merge/rollout approval and remaining client acceptance for RG-140
-are separate from this repair.
+RG-140 broader security/recovery UX acceptance remains separate from this scoped UI publication. All three VPS remain, and US stays Hybrid.
