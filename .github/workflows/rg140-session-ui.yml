@@ -1,0 +1,96 @@
+name: RG140 Manager session UI update
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: routegate-production-like-deploy
+  cancel-in-progress: false
+jobs:
+  session_ui:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 10
+    env:
+      CANDIDATE: ebd94d874c3d25f49a6e2e9a7d06fd35e6f5b481
+    steps:
+      - name: Checkout publication helper
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Verify exact candidate CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run in 37313402492 37313402373; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
+            [[ "$result" == "$CANDIDATE|completed|success" ]]
+          done
+      - name: Test scoped publication and rollback
+        run: python3 -m unittest scripts/test_rg140_session_ui.py
+      - name: Checkout fixed frontend
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ebd94d874c3d25f49a6e2e9a7d06fd35e6f5b481
+          path: candidate
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: candidate/frontend/package-lock.json
+      - name: Build exact UI
+        working-directory: candidate/frontend
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE" ]]
+          npm ci
+          npm run i18n:check
+          npm run build
+          python3 - <<'PY'
+          from pathlib import Path
+          import tarfile
+          root=Path('dist')
+          with tarfile.open('../../ui.tar.gz','w:gz') as archive:
+            for path in sorted(root.rglob('*')):
+              if path.is_file(): archive.add(path,arcname=str(path.relative_to(root)),recursive=False)
+          PY
+      - name: Configure SSH
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$ROUTEGATE_SSH_KEY"
+          test -n "$ROUTEGATE_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/routegate_ci ~/.ssh/known_hosts
+      - name: Publish UI only on US with recovery
+        env:
+          ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          script="/tmp/rg140-session-ui-${GITHUB_RUN_ID}.py"
+          bundle="/tmp/rg140-session-ui-${GITHUB_RUN_ID}.tar.gz"
+          cleanup() { "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$script' '$bundle'" || true; }
+          trap cleanup EXIT
+          digest=$(sha256sum ui.tar.gz | awk '{print $1}')
+          "${SCP[@]}" scripts/rg140-session-ui.py "$ROUTEGATE_USER@$ROUTEGATE_HOST:$script"
+          "${SCP[@]}" ui.tar.gz "$ROUTEGATE_USER@$ROUTEGATE_HOST:$bundle"
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo -n flock -w 60 /run/lock/routegate-production-like.lock bash -s -- '$script' '$bundle' '$digest' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -euo pipefail
+          set +x
+          set -a
+          source /etc/routegate/manager.env >/dev/null 2>&1
+          set +a
+          exec python3 "$1" "$2" "$3" "$4"
+          REMOTE
+      - name: Remove runner credentials
+        if: always()
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
