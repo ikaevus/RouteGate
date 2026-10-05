@@ -1,0 +1,83 @@
+name: RG140 approved US Agent repair
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: routegate-production-like-deploy
+  cancel-in-progress: false
+jobs:
+  repair:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 10
+    env:
+      AGENT_COMMIT: 1fd2792d203a315022240d4358638b95f661eeef
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Validate repair rollback checks
+        run: python3 -m unittest scripts/test_rg140_repair_us_agent.py
+      - name: Verify tested fixed Agent candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$AGENT_COMMIT" --jq '.workflow_runs' > /tmp/rg140-agent-ci.json
+          python3 - <<'PY'
+          import json,os
+          runs=json.load(open('/tmp/rg140-agent-ci.json'))
+          assert any(r['name']=='RouteGate CI' and r['head_sha']==os.environ['AGENT_COMMIT'] and r['status']=='completed' and r['conclusion']=='success' for r in runs)
+          PY
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: 1fd2792d203a315022240d4358638b95f661eeef
+          path: candidate
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26'
+          cache-dependency-path: candidate/agent/go.sum
+      - name: Build pinned Agent
+        run: |
+          set -euo pipefail
+          test "$(git -C candidate rev-parse HEAD)" = "$AGENT_COMMIT"
+          cd candidate/agent
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X github.com/ikaevus/routegate/agent/internal/buildinfo.Version=production-like -X github.com/ikaevus/routegate/agent/internal/buildinfo.GitCommit=$AGENT_COMMIT" -o "$RUNNER_TEMP/routegate-agent" ./cmd/routegate-agent
+          echo "AGENT_SHA256=$(sha256sum "$RUNNER_TEMP/routegate-agent" | cut -d ' ' -f1)" >> "$GITHUB_ENV"
+      - name: Configure SSH
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$ROUTEGATE_SSH_KEY"
+          test -n "$ROUTEGATE_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/routegate_ci ~/.ssh/known_hosts
+      - name: Replace US Agent only; keep stopped canary on FI
+        env:
+          ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          remote_prefix="/tmp/rg140-us-agent-${GITHUB_RUN_ID}"
+          cleanup() { "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_prefix' '$remote_prefix.py'" || true; }
+          trap cleanup EXIT
+          "${SCP[@]}" "$RUNNER_TEMP/routegate-agent" "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_prefix"
+          "${SCP[@]}" scripts/rg140-repair-us-agent.py "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_prefix.py"
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo -n flock -w 180 /run/lock/routegate-production-like.lock bash -s -- '$remote_prefix' '$AGENT_SHA256' '$AGENT_COMMIT'" <<'REMOTE'
+          set -euo pipefail
+          set +x
+          set -a
+          source /etc/routegate/manager.env >/dev/null 2>&1
+          set +a
+          exec python3 "$1.py" "$1" "$2" "$3"
+          REMOTE
+      - name: Remove runner credentials
+        if: always()
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
