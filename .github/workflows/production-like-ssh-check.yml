@@ -12,10 +12,6 @@ on:
         default: us
         options: [us, fi]
 
-  push:
-    branches: [ops/fi-ssh-access]
-    paths: [.github/workflows/production-like-ssh-check.yml]
-
 permissions:
   contents: read
 
@@ -80,7 +76,7 @@ jobs:
         run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
 
   us-readiness:
-    if: github.event_name == 'push' || inputs.node == 'us'
+    if: github.event_name == 'workflow_dispatch' && inputs.node == 'us'
     runs-on: ubuntu-latest
     environment: production-like
     timeout-minutes: 5
