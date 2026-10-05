@@ -17,7 +17,7 @@ const installCommand = [
   '  -o routegate-install.sh',
   'less routegate-install.sh',
   'sudo bash routegate-install.sh --version "${VERSION}"',
-].join('\\n')
+].join('\n')
 
 function readStoredLocale(): Locale | null {
   try {
@@ -30,7 +30,7 @@ function readStoredLocale(): Locale | null {
 
 function persistLocale(locale: Locale) {
   try {
-    persistLocale(locale)
+    window.localStorage.setItem('routegate-locale', locale)
   } catch {
     // Storage can be unavailable in restricted/private browsing contexts.
   }
