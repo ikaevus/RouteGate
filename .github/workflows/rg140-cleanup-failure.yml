@@ -1,0 +1,53 @@
+name: RG140 scoped cleanup failure test
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: routegate-production-like-deploy
+  cancel-in-progress: false
+jobs:
+  cleanup_failure:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Check exact-path fault and recovery
+        run: python3 -m unittest scripts/test_rg140_cleanup_failure.py
+      - name: Configure SSH
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$ROUTEGATE_SSH_KEY"
+          test -n "$ROUTEGATE_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/routegate_ci ~/.ssh/known_hosts
+      - name: Wait for fi-test rollback; reject one exact US staging file
+        env:
+          ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          remote_script="/tmp/rg140-cleanup-failure-${GITHUB_RUN_ID}.py"
+          cleanup() { "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f '$remote_script'" || true; }
+          trap cleanup EXIT
+          "${SCP[@]}" scripts/rg140-cleanup-failure.py "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote_script"
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo -n flock -w 30 /run/lock/routegate-production-like.lock bash -s -- '$remote_script'" <<'REMOTE'
+          set -euo pipefail
+          set +x
+          set -a
+          source /etc/routegate/manager.env >/dev/null 2>&1
+          set +a
+          exec python3 "$1"
+          REMOTE
+      - name: Remove runner credentials
+        if: always()
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
