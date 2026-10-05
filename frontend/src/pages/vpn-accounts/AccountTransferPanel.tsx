@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { accountTransferError } from './accountTransferMessages';
+import { accountTransferError, accountTransferErrorIdentity } from './accountTransferMessages';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { actAccountTransfer, type AccountTransfer, type TransferState } from '../../entities/vpnAccount/api/vpnAccountTransferApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
@@ -31,6 +31,8 @@ export function AccountTransferPanel({ accountId, transfer, serverNames }: { acc
     },
     onError: () => qc.invalidateQueries({ queryKey: ['vpn-account-transfer', accountId] }),
   });
+  const duplicateError = Boolean(transfer.lastError) && mutation.isError
+    && accountTransferErrorIdentity(transfer.lastError) === accountTransferErrorIdentity(mutation.error);
   const state = transfer.state;
   const terminal = Boolean(transfer.completedAt);
   const next = state === 'target_applying' ? 'verify' : state === 'target_ready' ? 'cutover'
@@ -52,7 +54,7 @@ export function AccountTransferPanel({ accountId, transfer, serverNames }: { acc
       <label className="checkbox-field account-transfer-confirmation"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /><span>{ru ? 'Я проверил устройства и принимаю последствия очистки или отката: клиентам со старой конфигурацией потребуется обновить подписку; после начала очистки исходного узла быстрый откат недоступен.' : 'I verified devices and accept cleanup or rollback consequences: clients with cached configuration must refresh; quick rollback is unavailable after source cleanup starts.'}</span></label>
     </>}
     {transfer.lastError && <div className="form-message form-message-warning">{accountTransferError(transfer.lastError)}</div>}
-    {mutation.isError && <div className="form-message form-message-error">{accountTransferError(mutation.error)}</div>}
+    {mutation.isError && !duplicateError && <div className="form-message form-message-error">{accountTransferError(mutation.error)}</div>}
     {!terminal && <div className="form-actions">
       {next && <button className="small-button" disabled={mutation.isPending || (next === 'cleanup' && !confirmed)} onClick={() => mutation.mutate(next)}>{actions[next]}</button>}
       {transfer.lastError && ['target_applying', 'source_cleaning', 'target_cleaning'].includes(state) && <button className="small-button secondary" disabled={mutation.isPending} onClick={() => mutation.mutate('retry')}>{actions.retry}</button>}

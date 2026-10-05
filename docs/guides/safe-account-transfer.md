@@ -1,12 +1,16 @@
 # Safe account transfer (RG-140)
 
-Status: implementation in draft PR #511. **Live FI → US → FI client checks and
-both cleanups, post-cutover rollback and failed-cleanup/retry passed on 2026-10-05.
-The user reported phone connectivity working after the final rollback; session-recovery
-CI and its frontend-only US deployment passed. Full feature merge/rollout approval
-remains pending.** Supported first slice: active, applied VLESS/Reality accounts on
+Status: PR #511 merged; Manager main commit `c4137cc4` published on US.
+**Live FI → US → FI client checks and both cleanups, post-cutover rollback and
+failed-cleanup/retry passed on 2026-10-05. Post-publication Manager sign-in and
+Hiddify iPhone connectivity on FI were reported working.**
+Supported first slice: active, applied VLESS/Reality accounts on
 any eligible Hybrid/VPN node pair. Other protocols fail preflight; no geography,
 fixed port, node ID or relative config counter is special.
+
+The Manager-only publication is recorded in [run 37339500807](https://github.com/ikaevus/RouteGate/actions/runs/37339500807): schema159, all six previously served accounts and subscription/device identities preserved. Both architecture bootstrap packages were published with public hash verification in [run 37342306383](https://github.com/ikaevus/RouteGate/actions/runs/37342306383). All three VPS remain; US stays Hybrid. Manager relocation is not planned.
+
+RG-140 remains open for broader protocol, security/recovery UX acceptance and the recurring workspace account-switch test instability.
 
 ## Use the managed operation
 

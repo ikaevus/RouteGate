@@ -347,11 +347,17 @@ try {
     monthlyLimitBytes: 77 * 1024 ** 3, speedLimitBps: null, resetDay: 2, hardLimitEnabled: false,
   } });
   await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${otherAccount.id}/"]`).click();
-  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  // Wait for the selected account's navigation instead of clicking the previous
+  // account's still-mounted tab while React is committing the route change.
+  await page.locator(`.workspace-nav-link[href^="/vpn-accounts/${otherAccount.id}/traffic"]`).click();
+  await page.waitForURL(`**/vpn-accounts/${otherAccount.id}/traffic*`);
   await page.waitForFunction(() => document.querySelector('.traffic-limit-form input')?.value === '77');
   await checkTrafficDraft('77', '', '2', false);
   await page.locator(`a.vpn-account-management-row-link[href*="/vpn-accounts/${account.id}/"]`).click();
-  await page.locator('.workspace-nav-link[href$="/traffic"]').click();
+  // Wait for the selected account's navigation instead of clicking the previous
+  // account's still-mounted tab while React is committing the route change.
+  await page.locator(`.workspace-nav-link[href^="/vpn-accounts/${account.id}/traffic"]`).click();
+  await page.waitForURL(`**/vpn-accounts/${account.id}/traffic*`);
   await page.waitForFunction(() => document.querySelector('.traffic-limit-form input')?.value === '125');
   await checkTrafficDraft();
 

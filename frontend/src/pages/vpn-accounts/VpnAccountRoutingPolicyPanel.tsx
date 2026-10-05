@@ -202,7 +202,8 @@ export function VpnAccountRoutingPolicyPanel({ accountId, active = true }: { acc
       return { ...(await updateVpnAccount(accountId, { serverId })), staged: false };
     },
     onSuccess: async (updated) => {
-      setNodeMessage(updated.staged ? (getCurrentLocale() === 'ru' ? 'Подготовка началась. Следующий шаг — проверка нового узла.' : 'Preparation started. Next, verify the target.') : copy.nodeSaved);
+      // The transfer panel owns staged progress; a static success message becomes stale.
+      setNodeMessage(updated.staged ? '' : copy.nodeSaved);
       setNodeError('');
       setNodeConfigChanged(!updated.staged);
       setServerId(updated.serverId ?? '');
