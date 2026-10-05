@@ -1,12 +1,9 @@
 name: RG140 approved Manager canary
 
 # One explicit canary approval, never a merge/CI/PR deployment trigger.
-# Main deployment policy stays unchanged. Remove commissioning push after execution.
+# Commissioning push has been removed; subsequent execution is manual only.
 on:
   workflow_dispatch:
-  push:
-    branches: [ops/rg140-canary]
-    paths: [docs/operations/rg140-canary/canary-request.json]
 permissions:
   contents: read
   actions: read
