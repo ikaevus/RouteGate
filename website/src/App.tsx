@@ -3,9 +3,55 @@ import { content, type Locale, type SiteContent } from './content'
 
 const githubUrl = 'https://github.com/ikaevus/RouteGate'
 const docsUrl = `${githubUrl}/tree/main/docs`
+const installGuideUrl = `${githubUrl}/blob/main/docs/guides/first-install.md`
 const releasesUrl = `${githubUrl}/releases`
+const securityUrl = `${githubUrl}/blob/main/SECURITY.md`
 const licenseUrl = `${githubUrl}/blob/main/LICENSE`
+const sourceCodeUrl = `${githubUrl}/blob/main/backend/internal/configs/lifecycle.go#L34-L67`
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
+
+const installCommand = [
+  'VERSION=v0.1.0',
+  'curl -fL --proto \'=https\' --tlsv1.2 \\',
+  '  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \\',
+  '  -o routegate-install.sh',
+  'less routegate-install.sh',
+  'sudo bash routegate-install.sh --version "${VERSION}"',
+].join('\n')
+
+function readStoredLocale(): Locale | null {
+  try {
+    const savedLocale = window.localStorage.getItem('routegate-locale')
+    return savedLocale === 'ru' || savedLocale === 'en' ? savedLocale : null
+  } catch {
+    return null
+  }
+}
+
+function persistLocale(locale: Locale) {
+  try {
+    window.localStorage.setItem('routegate-locale', locale)
+  } catch {
+    // Storage can be unavailable in restricted/private browsing contexts.
+  }
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  textarea.remove()
+}
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -39,7 +85,7 @@ function WorldMap({ t }: { t: SiteContent['dashboard'] }) {
   return (
     <div className="map-widget">
       <div className="widget-heading">
-        <div><strong>{t.map}</strong><span>156 / 189 online</span></div>
+        <div><strong>{t.map}</strong><span>{t.online}</span></div>
         <button type="button" tabIndex={-1} aria-hidden="true">•••</button>
       </div>
       <div className="world-map">
@@ -64,9 +110,9 @@ function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
     t.overview,
     t.servers,
     t.accounts,
-    isEnglish ? 'Configuration / Deploy' : 'Конфигурация / Deploy',
+    isEnglish ? 'Configuration / Apply' : 'Конфигурация и применение',
     isEnglish ? 'Routing profiles' : 'Маршрутные профили',
-    'User portal',
+    isEnglish ? 'User portal' : 'Портал пользователя',
   ]
 
   return (
@@ -91,8 +137,8 @@ function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
             </div>
             <div className="stats">
               {[
-                [isEnglish ? 'Active servers' : 'Активные серверы', '24 / 28', '86%'],
-                [isEnglish ? 'Online agents' : 'Агенты онлайн', '156 / 189', '83%'],
+                [isEnglish ? 'Active servers' : 'Активные серверы', '6 / 6', '100%'],
+                [isEnglish ? 'Online agents' : 'Агенты онлайн', '6 / 6', '100%'],
                 [isEnglish ? 'Active VPN users' : 'Активные VPN-пользователи', '842', '+5.2%'],
                 [isEnglish ? 'Monthly traffic' : 'Трафик за месяц', '12.4 TB', '30d'],
               ].map(([label, value, delta]) => (
@@ -103,8 +149,8 @@ function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
             <div className="dashboard-bottom">
               <div className="health-card">
                 <div className="widget-heading"><strong>{isEnglish ? 'Infrastructure health' : 'Состояние инфраструктуры'}</strong><button type="button" tabIndex={-1} aria-hidden="true">•••</button></div>
-                <div className="health-row"><span><i className="ok" />{isEnglish ? 'Healthy' : 'Работают'}</span><b>24</b></div>
-                <div className="health-row"><span><i className="warn" />{isEnglish ? 'Attention' : 'Требуют внимания'}</span><b>4</b></div>
+                <div className="health-row"><span><i className="ok" />{isEnglish ? 'Healthy' : 'Работают'}</span><b>6</b></div>
+                <div className="health-row"><span><i className="warn" />{isEnglish ? 'Attention' : 'Требуют внимания'}</span><b>0</b></div>
               </div>
               <div className="traffic-card">
                 <span>{t.traffic}</span><strong>12.4 <small>TB</small></strong>
@@ -122,38 +168,51 @@ function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
 function CodePreview({ t }: { t: SiteContent['source'] }) {
   return (
     <div className="code-window">
-      <div className="code-toolbar"><div><i /><i /><i /></div><span>{t.repository}</span><small>Go</small></div>
+      <div className="code-toolbar">
+        <div><i /><i /><i /></div>
+        <a className="code-path" href={sourceCodeUrl} target="_blank" rel="noreferrer">{t.repository}</a>
+        <small>Go</small>
+      </div>
       <pre aria-label="RouteGate source code preview"><code>
-        <span className="code-line"><em>type</em> ApplyRequest <em>struct</em> {'{'}</span>
-        <span className="code-line indent">ServerID <b>uuid.UUID</b></span>
-        <span className="code-line indent">Version  <b>int64</b></span>
-        <span className="code-line">{'}'}</span>
-        <span className="code-line empty"> </span>
-        <span className="code-line"><em>func</em> (s *Service) Apply(</span>
-        <span className="code-line indent">ctx <b>context.Context</b>,</span>
-        <span className="code-line indent">req <b>ApplyRequest</b>,</span>
+        <span className="code-line"><em>func</em> (s *Service) DeleteVersion(</span>
+        <span className="code-line indent">ctx <b>context.Context</b>, serverID, versionID <b>string</b>,</span>
         <span className="code-line">) <b>error</b> {'{'}</span>
-        <span className="code-line comment indent">// render → validate → stage</span>
-        <span className="code-line indent"><em>if</em> err := s.validate(req); err != nil {'{'}</span>
-        <span className="code-line indent2"><em>return</em> err</span>
-        <span className="code-line indent">{'}'}</span>
-        <span className="code-line indent"><em>return</em> s.agent.Apply(ctx, req)</span>
+        <span className="code-line indent">version, err := s.repository.GetConfigVersion(ctx, serverID, versionID)</span>
+        <span className="code-line indent"><em>if</em> err != nil {'{'} <em>return</em> err {'}'}</span>
+        <span className="code-line empty"> </span>
+        <span className="code-line indent"><em>if</em> currentID == version.ID {'{'} <em>return</em> ErrConfigVersionCurrent {'}'}</span>
+        <span className="code-line indent"><em>if</em> version.Pinned {'{'} <em>return</em> ErrConfigVersionPinned {'}'}</span>
+        <span className="code-line indent"><em>if</em> active {'{'} <em>return</em> ErrConfigVersionDeploymentActive {'}'}</span>
         <span className="code-line">{'}'}</span>
       </code></pre>
-      <div className="code-status"><span>main</span><span>open development</span><span>AGPLv3-or-later</span></div>
+      <div className="code-status"><span>main</span><span>{t.realCode}</span><span>AGPLv3-or-later</span></div>
     </div>
   )
 }
 
 function AppHeader({ locale, setLocale, t }: { locale: Locale; setLocale: (value: Locale) => void; t: SiteContent }) {
+  const navLinks = (
+    <>
+      <a href="#product">{t.nav.product}</a>
+      <a href="#open-source">{t.nav.openSource}</a>
+      <a href={docsUrl} target="_blank" rel="noreferrer">{t.nav.docs}</a>
+      <a href="#roadmap">{t.nav.roadmap}</a>
+      <a href={releasesUrl} target="_blank" rel="noreferrer">{t.nav.changelog}</a>
+    </>
+  )
+
   return (
     <header className="header">
       <div className="container header-inner">
         <a href="#top" aria-label="RouteGate home"><Brand /></a>
-        <nav aria-label="Main navigation">
-          <a href="#product">{t.nav.product}</a><a href="#open-source">{t.nav.openSource}</a>
-          <a href="#docs">{t.nav.docs}</a><a href="#roadmap">{t.nav.roadmap}</a><a href="#changelog">{t.nav.changelog}</a>
-        </nav>
+        <nav className="desktop-nav" aria-label="Main navigation">{navLinks}</nav>
+        <details className="mobile-nav">
+          <summary>{locale === 'ru' ? 'Меню' : 'Menu'}</summary>
+          <div className="mobile-nav-menu">
+            {navLinks}
+            <a href="#install">{t.action.start}</a>
+          </div>
+        </details>
         <div className="header-actions">
           <a className="github-link" href={githubUrl} target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
           <button className="locale" type="button" onClick={() => setLocale(locale === 'ru' ? 'en' : 'ru')} aria-label={locale === 'ru' ? 'Switch to English' : 'Переключить на русский'}>
@@ -161,7 +220,7 @@ function AppHeader({ locale, setLocale, t }: { locale: Locale; setLocale: (value
             <i>/</i>
             <span className={locale === 'en' ? 'is-active' : ''}>EN</span>
           </button>
-          <a className="button button--small button--primary" href="#start">{t.action.start}</a>
+          <a className="button button--small button--primary header-start" href="#install">{t.action.start}</a>
         </div>
       </div>
     </header>
@@ -170,12 +229,23 @@ function AppHeader({ locale, setLocale, t }: { locale: Locale; setLocale: (value
 
 export function App() {
   const initialLocale = useMemo<Locale>(() => {
-    const savedLocale = window.localStorage.getItem('routegate-locale')
-    if (savedLocale === 'ru' || savedLocale === 'en') return savedLocale
+    const savedLocale = readStoredLocale()
+    if (savedLocale) return savedLocale
     return navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en'
   }, [])
   const [locale, setLocale] = useState<Locale>(initialLocale)
+  const [installCopied, setInstallCopied] = useState(false)
   const t = content[locale]
+
+  const handleCopyInstall = async () => {
+    try {
+      await copyText(installCommand)
+      setInstallCopied(true)
+      window.setTimeout(() => setInstallCopied(false), 1800)
+    } catch {
+      setInstallCopied(false)
+    }
+  }
   const icons: Array<'server' | 'account' | 'route' | 'client'> = ['server', 'account', 'route', 'client']
 
   useEffect(() => {
@@ -203,12 +273,11 @@ export function App() {
           <div className="hero-grid container">
             <div className="hero-copy">
               <div className="eyebrow"><i />{t.hero.eyebrow}</div>
-              <h1>{t.hero.title}</h1>
-              <h2>{t.hero.subtitle}</h2>
+              <h1>{t.hero.subtitle}</h1>
               <p>{t.hero.description}</p>
               <p className="hero-note">{t.hero.note}</p>
               <div className="hero-actions">
-                <a className="button button--primary" href="#start">{t.action.start}<span>→</span></a>
+                <a className="button button--primary" href="#install">{t.action.start}<span>→</span></a>
                 <a className="button button--ghost" href={githubUrl} target="_blank" rel="noreferrer">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.15-1.11-1.46-1.11-1.46-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.56 9.56 0 0 1 12 6.84a9.5 9.5 0 0 1 2.5.34c1.91-1.3 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.86V21c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" /></svg>
                   {t.action.github}
@@ -258,17 +327,58 @@ export function App() {
           </div>
         </section>
 
-        <section className="section deployment-section container" id="roadmap">
+        <section className="section deployment-section container" id="install">
           <div className="section-heading"><div><span>{t.deployment.eyebrow}</span><h2>{t.deployment.title}</h2></div><p>{t.deployment.text}</p></div>
           <div className="deployment-grid">
             {t.deployment.cards.map(card => <article key={card.title}><h3>{card.title}</h3><p>{card.text}</p></article>)}
+          </div>
+          <div className="install-panel">
+            <div className="install-panel-heading">
+              <div><span>{t.deployment.commandLabel}</span><strong>{t.deployment.commandTitle}</strong></div>
+              <button type="button" onClick={handleCopyInstall}>{installCopied ? t.action.copied : t.action.copy}</button>
+            </div>
+            <pre><code>{installCommand}</code></pre>
+            <div className="install-panel-footer">
+              <span>{t.deployment.commandNote}</span>
+              <a href={installGuideUrl} target="_blank" rel="noreferrer">{t.action.installGuide}<span>↗</span></a>
+            </div>
+          </div>
+        </section>
+
+        <section className="section roadmap-section" id="roadmap">
+          <div className="container">
+            <div className="section-heading"><div><span>{t.roadmap.eyebrow}</span><h2>{t.roadmap.title}</h2></div><p>{t.roadmap.intro}</p></div>
+            <div className="roadmap-grid">
+              {t.roadmap.columns.map(column => (
+                <article key={column.title}>
+                  <h3>{column.title}</h3>
+                  <ul>{column.items.map(item => <li key={item}>{item}</li>)}</ul>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="section faq-section container" id="faq">
+          <div className="section-heading"><div><span>{t.faq.eyebrow}</span><h2>{t.faq.title}</h2></div><p>{t.faq.intro}</p></div>
+          <div className="faq-grid">
+            {t.faq.items.map(item => (
+              <details key={item.question}>
+                <summary>{item.question}</summary>
+                <p>{item.answer}</p>
+              </details>
+            ))}
+          </div>
+          <div className="security-note">
+            <div><strong>{t.faq.securityTitle}</strong><p>{t.faq.securityText}</p></div>
+            <a href={securityUrl} target="_blank" rel="noreferrer">{t.faq.securityLink}<span>↗</span></a>
           </div>
         </section>
 
         <section className="final-cta container" id="start">
           <div className="cta-mark"><img src={assetUrl('routegate-symbol.svg')} alt="" /></div>
           <div><h2>{t.cta.title}</h2><p>{t.cta.text}</p></div>
-          <div><a className="button button--light" href={docsUrl}>{t.action.start}<span>→</span></a><a className="button button--outline" href={githubUrl} target="_blank" rel="noreferrer">{t.action.github}</a></div>
+          <div><a className="button button--light" href={installGuideUrl} target="_blank" rel="noreferrer">{t.action.installGuide}<span>→</span></a><a className="button button--outline" href={githubUrl} target="_blank" rel="noreferrer">{t.action.github}</a></div>
         </section>
       </main>
 
@@ -276,8 +386,8 @@ export function App() {
         <div className="container footer-grid">
           <div><Brand /><p>{t.footer.description}</p><small>© 2026 RouteGate</small></div>
           <div><strong>{t.footer.project}</strong><a href="#product">{t.footer.items[0]}</a><a href="#roadmap">{t.footer.items[1]}</a></div>
-          <div><strong>{t.footer.resources}</strong><a id="docs" href={docsUrl}>{t.footer.items[2]}</a><a href={githubUrl} target="_blank" rel="noreferrer">{t.footer.items[3]}</a></div>
-          <div><strong>{t.footer.legal}</strong><a id="changelog" href={releasesUrl}>{t.footer.items[4]}</a><a href={licenseUrl}>{t.footer.items[5]}</a></div>
+          <div><strong>{t.footer.resources}</strong><a href={docsUrl} target="_blank" rel="noreferrer">{t.footer.items[2]}</a><a href={githubUrl} target="_blank" rel="noreferrer">{t.footer.items[3]}</a></div>
+          <div><strong>{t.footer.legal}</strong><a href={releasesUrl} target="_blank" rel="noreferrer">{t.footer.items[4]}</a><a href={securityUrl} target="_blank" rel="noreferrer">{t.footer.items[5]}</a><a href={licenseUrl} target="_blank" rel="noreferrer">{t.footer.items[6]}</a></div>
         </div>
       </footer>
     </div>
