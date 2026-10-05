@@ -66,6 +66,23 @@
   text-underline-offset: 3px;
 }
 
+.section-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 20px;
+  color: #7db3ff;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.section-more:hover {
+  color: #bfdbfe;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .install-panel {
   margin-top: 18px;
   overflow: hidden;

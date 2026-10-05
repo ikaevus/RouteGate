@@ -117,7 +117,7 @@ function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
 
   return (
     <div className="dashboard-wrap">
-      <div className="dashboard" role="img" aria-label="RouteGate Admin UI preview">
+      <div className="dashboard" role="img" aria-label={isEnglish ? 'RouteGate Admin UI preview' : 'Предпросмотр панели администратора RouteGate'}>
         <aside className="dashboard-nav">
           <Brand compact />
           <div className="dashboard-menu">
@@ -160,7 +160,7 @@ function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
           </div>
         </div>
       </div>
-      <span className="dashboard-caption">RouteGate Admin UI · Preview</span>
+      <span className="dashboard-caption">{isEnglish ? 'RouteGate Admin UI · Preview' : 'RouteGate · Панель администратора · Предпросмотр'}</span>
     </div>
   )
 }
@@ -299,7 +299,7 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
                   {t.action.github}
                 </a>
               </div>
-              <div className="hero-meta"><span>Linux</span><span>VLESS</span><span>Reality</span><span>Self-hosted</span></div>
+              <div className="hero-meta"><span>Linux</span><span>VLESS</span><span>Reality</span><span>{locale === 'ru' ? 'Самостоятельное развёртывание' : 'Self-hosted'}</span></div>
             </div>
             <DashboardPreview t={t.dashboard} />
           </div>
@@ -315,6 +315,9 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
               </article>
             ))}
           </div>
+          <a className="section-more" href={docsUrl} target="_blank" rel="noreferrer">
+            {locale === 'ru' ? 'Подробнее в документации' : 'Explore documentation'}<span>↗</span>
+          </a>
         </section>
 
         <section className="section workflow-section" id="workflow">
@@ -372,6 +375,9 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
                 </article>
               ))}
             </div>
+            <a className="section-more" href={docsUrl} target="_blank" rel="noreferrer">
+              {locale === 'ru' ? 'Подробнее в документации' : 'Explore documentation'}<span>↗</span>
+            </a>
           </div>
         </section>
 
