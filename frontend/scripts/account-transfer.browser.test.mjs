@@ -20,6 +20,7 @@ for (const width of [390, 1440]) test(`guided transfer retains source and gates 
   const account = { id: 'account', displayName: 'Canary', status: 'active', serverId: 'source', createdAt: stamp, updatedAt: stamp };
   const nodes = ['source', 'target'].map(id => ({ id, name: id === 'source' ? 'Source node' : 'Target node', deploymentRole: id === 'source' ? 'hybrid' : 'vpn', status: 'active' }));
   let transfer = null;
+  let failedCompletion = false;
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(() => { localStorage.setItem('routegate.locale', 'en'); localStorage.setItem('routegate.auth.token', 'fixture'); });
   page.on('dialog', dialog => dialog.accept());
@@ -49,6 +50,13 @@ for (const width of [390, 1440]) test(`guided transfer retains source and gates 
     }
     if (path.endsWith('/transfer/operation') && method === 'POST') {
       const body = route.request().postDataJSON();
+      if (body.action === 'finish' && !failedCompletion) {
+        failedCompletion = true;
+        transfer.lastError = 'apply_failed_or_version_changed';
+        return json({ message: 'transfer safety gate blocked the action: apply_failed_or_version_changed' }, 409);
+      }
+      if (body.action === 'retry') transfer.lastError = '';
+      if (body.action === 'finish') { transfer.state = 'complete'; transfer.completedAt = stamp; }
       if (body.action === 'verify') transfer.state = 'target_ready';
       if (body.action === 'cutover') { transfer.state = 'client_refresh_pending'; transfer.cutoverAt = stamp; account.serverId = 'target'; transfer.devices = [{ id: 'phone', name: 'iPhone', lastRequestedAt: null, requestedAfterCutover: false }]; }
       if (body.action === 'cleanup') { assert.equal(body.confirmed, true); transfer.state = 'source_cleaning'; }
@@ -63,6 +71,7 @@ for (const width of [390, 1440]) test(`guided transfer retains source and gates 
     await placement.getByRole('button', { name: 'Prepare transfer', exact: true }).click();
     await placement.getByRole('button', { name: 'Verify target', exact: true }).waitFor();
     assert.equal(account.serverId, 'source');
+    assert.equal(await placement.getByText('Preparation started. Next, verify the target.', { exact: true }).count(), 0);
     assert.ok(!writes.some(w => w.method === 'PATCH'));
     assert.equal(await placement.getByRole('combobox').isDisabled(), true);
     await placement.getByRole('button', { name: 'Verify target', exact: true }).click();
@@ -79,6 +88,17 @@ for (const width of [390, 1440]) test(`guided transfer retains source and gates 
     await cleanup.click();
     await placement.getByRole('button', { name: 'Verify completion', exact: true }).waitFor();
     assert.equal(transfer.state, 'source_cleaning');
+    await placement.getByRole('button', { name: 'Verify completion', exact: true }).click();
+    const panel = placement.locator('.account-transfer-panel');
+    await panel.getByRole('button', { name: 'Retry failed apply', exact: true }).waitFor();
+    const failureCopy = 'Check the apply result. A failed apply can be retried; a changed version requires restoring verified state.';
+    await page.waitForFunction(copy => [...document.querySelectorAll('.account-transfer-panel .form-message')].filter(n => n.textContent === copy).length === 1, failureCopy);
+    assert.equal(await panel.locator('.form-message-error').count(), 0);
+    if (process.env.ROUTEGATE_TRANSFER_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.ROUTEGATE_TRANSFER_SCREENSHOT_DIR}/transfer-retry-${width}.png`, fullPage: true });
+    await panel.getByRole('button', { name: 'Retry failed apply', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.account-transfer-panel .form-message'));
+    await panel.getByRole('button', { name: 'Verify completion', exact: true }).click();
+    await panel.getByText('Transfer complete', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2));
   } finally { await page.close(); }
