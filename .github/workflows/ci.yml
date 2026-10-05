@@ -202,6 +202,9 @@ jobs:
       - name: Run release manifest tests
         run: python3 -m unittest scripts/test_release_manifest.py
 
+      - name: Test UI publication recovery
+        run: python3 -m unittest scripts/test_rg140_session_ui.py
+
       - name: Build and verify amd64 release bundle
         env:
           VERSION: ci-test
