@@ -1,0 +1,113 @@
+name: RG140 approved Manager canary
+
+# One explicit canary approval, never a merge/CI/PR deployment trigger.
+# Main deployment policy stays unchanged. Remove commissioning push after execution.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ops/rg140-canary]
+    paths: [docs/operations/rg140-canary/canary-request.json]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: routegate-production-like-deploy
+  cancel-in-progress: false
+jobs:
+  canary:
+    if: github.ref == 'refs/heads/ops/rg140-canary'
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 20
+    env:
+      CANDIDATE: d2a0990e91703a4b6e8744cab172b0d092953110
+    steps:
+      - name: Checkout approved operations
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Verify approval and successful candidate checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APPROVAL'
+          import json
+          r=json.load(open('docs/operations/rg140-canary/canary-request.json'))
+          assert r == {'operation':'deploy-manager-only','candidate':'d2a0990e91703a4b6e8744cab172b0d092953110','approved':'2026-10-05'}
+          PY_APPROVAL
+          for run in 37243977508 37243977505; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
+            [[ "$result" == "$CANDIDATE|completed|success" ]]
+          done
+      - name: Test backup and recovery runner before SSH
+        run: sudo bash scripts/test-rg140-canary.sh
+      - name: Checkout exact candidate
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: d2a0990e91703a4b6e8744cab172b0d092953110
+          path: candidate
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: candidate/backend/go.sum
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: candidate/frontend/package-lock.json
+      - name: Build pinned candidate
+        working-directory: candidate
+        env:
+          VERSION: rg140-canary
+          COMMIT: d2a0990e91703a4b6e8744cab172b0d092953110
+          ARCHITECTURES: amd64
+          AGENT_BUNDLE_BASE_URL: https://us.routegate.org/bootstrap/d2a0990e91703a4b6e8744cab172b0d092953110
+          OUTPUT_DIR: ${{ runner.temp }}/canary-dist
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$COMMIT" ]]
+          scripts/build-release-bundle.sh
+          cd "$OUTPUT_DIR"
+          sha256sum -c SHA256SUMS
+      - name: Configure SSH
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$ROUTEGATE_SSH_KEY"
+          test -n "$ROUTEGATE_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/routegate_ci ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/routegate_ci > /dev/null
+      - name: Deploy approved Manager-only candidate
+        env:
+          ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$ROUTEGATE_HOST"
+          test -n "$ROUTEGATE_USER"
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          bundle="$RUNNER_TEMP/canary-dist/routegate-rg140-canary-linux-amd64.tar.gz"
+          digest=$(sha256sum "$bundle" | awk '{print $1}')
+          prefix="/tmp/routegate-rg140-${GITHUB_RUN_ID}"
+          local_files=("$bundle" scripts/production-like-rg140-canary.sh scripts/routegate-update-core.sh scripts/routegate-update-role.sh scripts/deploy-production-like-bundle.sh docs/operations/rg140-canary/preflight-schema-158.sql docs/operations/rg140-canary/postflight-schema-159.sql)
+          remote_files=("$prefix-bundle.tar.gz" "$prefix-runner.sh" "$prefix-core.sh" "$prefix-role.sh" "$prefix-down.sh" "$prefix-pre.sql" "$prefix-post.sql")
+          cleanup() { "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -f $(printf "'%s' " "${remote_files[@]}")" || true; }
+          trap cleanup EXIT
+          for i in "${!local_files[@]}"; do
+            "${SCP[@]}" "${local_files[$i]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST:${remote_files[$i]}"
+          done
+          set +e
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo -n flock -w 600 /run/lock/routegate-production-like.lock bash '${remote_files[1]}' '$CANDIDATE' '${remote_files[0]}' '$digest' '${remote_files[2]}' '${remote_files[3]}' '${remote_files[4]}' '${remote_files[5]}' '${remote_files[6]}'" 2>&1 | sed -E -e 's#postgres(ql)?://[^[:space:]]*#<redacted-url>#g' -e 's#(connection to server|could not connect|password authentication|no pg_hba|FATAL:).*#\1 <details redacted>#'
+          rc=${PIPESTATUS[0]}
+          set -e
+          exit "$rc"
+      - name: Remove runner credentials
+        if: always()
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
