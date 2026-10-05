@@ -5,8 +5,17 @@ import './styles.css'
 import './hero-modern.css'
 import './site-refresh.css'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root')!
+const initialLocale = window.location.pathname === '/ru/' || window.location.pathname.startsWith('/ru/')
+  ? 'ru'
+  : 'en'
+
+// The production build leaves crawlable locale-specific fallback content in
+// the HTML. React owns the interactive tree once JavaScript starts.
+root.replaceChildren()
+
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <App />
+    <App initialLocale={initialLocale} />
   </React.StrictMode>,
 )

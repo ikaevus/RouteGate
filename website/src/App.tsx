@@ -227,15 +227,24 @@ function AppHeader({ locale, setLocale, t }: { locale: Locale; setLocale: (value
   )
 }
 
-export function App() {
+export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale } = {}) {
   const initialLocale = useMemo<Locale>(() => {
+    if (requestedLocale) return requestedLocale
     const savedLocale = readStoredLocale()
     if (savedLocale) return savedLocale
     return navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en'
-  }, [])
+  }, [requestedLocale])
   const [locale, setLocale] = useState<Locale>(initialLocale)
   const [installCopied, setInstallCopied] = useState(false)
   const t = content[locale]
+
+  const handleLocaleChange = (nextLocale: Locale) => {
+    setLocale(nextLocale)
+    const nextPath = nextLocale === 'ru' ? '/ru/' : '/'
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState(null, '', nextPath)
+    }
+  }
 
   const handleCopyInstall = async () => {
     try {
@@ -250,23 +259,30 @@ export function App() {
 
   useEffect(() => {
     const descriptions: Record<Locale, string> = {
-      en: 'RouteGate is an open-source self-hosted platform for managing Linux VPN servers, accounts, routing profiles, and client access.',
-      ru: 'RouteGate — открытая self-hosted платформа управления Linux VPN-серверами, аккаунтами, маршрутными профилями и клиентским доступом.',
+      en: 'RouteGate is an open-source self-hosted platform for managed VPN nodes, accounts, devices, routing, and client access.',
+      ru: 'RouteGate — открытая платформа для самостоятельного управления Linux VPN-узлами, аккаунтами, устройствами, маршрутизацией и клиентским доступом.',
     }
     document.documentElement.lang = locale
     document.title = locale === 'ru'
       ? 'RouteGate — управление Linux VPN-инфраструктурой'
-      : 'RouteGate — Linux VPN Management Platform'
+      : 'RouteGate — Linux VPN infrastructure management'
     document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', descriptions[locale])
+    document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.setAttribute('content', document.title)
     document.querySelector<HTMLMetaElement>('meta[property="og:description"]')?.setAttribute('content', descriptions[locale])
     document.querySelector<HTMLMetaElement>('meta[property="og:locale"]')?.setAttribute('content', locale === 'ru' ? 'ru_RU' : 'en_US')
-    window.localStorage.setItem('routegate-locale', locale)
+    document.querySelector<HTMLMetaElement>('meta[property="og:locale:alternate"]')?.setAttribute('content', locale === 'ru' ? 'en_US' : 'ru_RU')
+    const canonicalUrl = locale === 'ru' ? 'https://routegate.org/ru/' : 'https://routegate.org/'
+    document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.setAttribute('content', canonicalUrl)
+    document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute('href', canonicalUrl)
+    document.querySelector<HTMLMetaElement>('meta[name="twitter:title"]')?.setAttribute('content', document.title)
+    document.querySelector<HTMLMetaElement>('meta[name="twitter:description"]')?.setAttribute('content', descriptions[locale])
+    persistLocale(locale)
   }, [locale])
 
   return (
     <div className="site" lang={locale}>
       <a className="skip-link" href="#main-content">{locale === 'ru' ? 'Перейти к содержимому' : 'Skip to content'}</a>
-      <AppHeader locale={locale} setLocale={setLocale} t={t} />
+      <AppHeader locale={locale} setLocale={handleLocaleChange} t={t} />
       <main id="main-content">
         <span id="top" className="anchor-target" aria-hidden="true" />
         <section className="hero">
