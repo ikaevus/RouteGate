@@ -41,7 +41,7 @@ export function AccountTransferPanel({ accountId, transfer, serverNames }: { acc
     verify: 'Verify target', cutover: 'Switch subscription', cleanup: 'Remove source access', finish: 'Verify completion', retry: 'Retry failed apply', rollback: 'Restore source and clean target',
   };
   const stalled = !terminal && Date.now() - Date.parse(transfer.updatedAt) > 24 * 3600 * 1000;
-  return <div className="vpn-account-routing-form" aria-live="polite">
+  return <div className="vpn-account-routing-form account-transfer-panel" aria-live="polite">
     <strong>{labels[state]}</strong>
     <p>{serverNames[transfer.sourceServerId] ?? transfer.sourceServerId} → {serverNames[transfer.targetServerId] ?? transfer.targetServerId}</p>
     <p>{ru ? 'Ссылка сохраняется. До переключения работает исходная подписка; после переключения старый узел сохраняет доступ до проверки клиентов.' : 'The link stays unchanged. The source subscription remains active until cutover; source access remains available until clients are verified.'}</p>

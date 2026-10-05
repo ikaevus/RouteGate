@@ -1,7 +1,8 @@
 # Safe account transfer (RG-140)
 
-Status: implementation in draft PR #511. **Live canary and rollout acceptance
-are pending.** Supported first slice: active, applied VLESS/Reality accounts on
+Status: implementation in draft PR #511. **Live FI → US → FI client checks and
+both cleanups passed on 2026-10-05; live rollback and failed-cleanup/retry checks
+and rollout approval remain pending.** Supported first slice: active, applied VLESS/Reality accounts on
 any eligible Hybrid/VPN node pair. Other protocols fail preflight; no geography,
 fixed port, node ID or relative config counter is special.
 
@@ -100,6 +101,27 @@ real users, for FI → US → FI and US → FI → US as applicable. Record for 
    accounts and Manager/HTTPS/Agent availability after every node deployment.
 
 Do not close RG-140 until this matrix is observed and the rollout is approved.
+
+### Observed canary results — 2026-10-05
+
+- FI → US: target verification, cutover and source cleanup completed through
+  the guided workflow. The user confirmed Hiddify iPhone, both Honor 8X client
+  entries and v2rayN Windows; the Windows exit IP was 139.60.162.138.
+- US → FI: the user performed the guided transfer and initiated source cleanup;
+  Manager verification confirmed completion. After refreshing the existing
+  subscriptions, the user confirmed the requested Windows/iPhone/Android checks.
+  fi-test is now on FI. The Windows device was first enrolled on US, so its
+  continuity check covers US → FI; the other installed subscriptions cover both legs.
+- Before the first cutover, an incorrect VLESS listener port in the old US
+  Agent report was safely rejected. The protocol-specific Agent fix (#520) was
+  deployed without changing Manager/VPN configuration or account/token/device
+  identities. Cancelling the old preparation and verifying target cleanup passed.
+- After the reverse cleanup, a stale US client temporarily lost connectivity.
+  Manager remained available; refreshing the existing subscription restored
+  client connectivity and Manager access. This reinforces the required client
+  verification **before** source cleanup.
+- Live post-cutover rollback and deliberately failed cleanup/retry have not yet
+  been exercised. Their controlled integration tests pass, but are not live evidence.
 
 ## Moving Manager while keeping subscription identity
 

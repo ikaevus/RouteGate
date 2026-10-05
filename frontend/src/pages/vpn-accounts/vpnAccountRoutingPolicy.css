@@ -25,6 +25,10 @@
   gap: 4px;
 }
 
+.account-transfer-panel {
+  margin-bottom: 20px;
+}
+
 .routing-policy-effective span,
 .routing-policy-effective small,
 .routing-policy-automation-note {
