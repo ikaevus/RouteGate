@@ -122,6 +122,31 @@ function render(page) {
   return html
 }
 
-await writeFile(join(dist, 'index.html'), render(pages.en))
+const englishHtml = render(pages.en)
+const russianHtml = render(pages.ru)
+
+function assertGenerated(label, html, expected) {
+  for (const value of expected) {
+    if (!html.includes(value)) {
+      throw new Error(label + ' prerender is missing: ' + value)
+    }
+  }
+}
+
+assertGenerated('English', englishHtml, [
+  'class="seo-prerender"',
+  '<html lang="en">',
+  '<link rel="canonical" href="https://routegate.org/">',
+  'Linux VPN infrastructure management',
+])
+
+assertGenerated('Russian', russianHtml, [
+  'class="seo-prerender"',
+  '<html lang="ru">',
+  '<link rel="canonical" href="https://routegate.org/ru/">',
+  'Управление Linux VPN-инфраструктурой',
+])
+
+await writeFile(join(dist, 'index.html'), englishHtml)
 await mkdir(join(dist, 'ru'), { recursive: true })
-await writeFile(join(dist, 'ru', 'index.html'), render(pages.ru))
+await writeFile(join(dist, 'ru', 'index.html'), russianHtml)
