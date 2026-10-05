@@ -12,6 +12,10 @@ on:
         default: us
         options: [us, fi]
 
+  push:
+    branches: [ops/fi-ssh-access]
+    paths: [.github/workflows/production-like-ssh-check.yml]
+
 permissions:
   contents: read
 
@@ -76,7 +80,7 @@ jobs:
         run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
 
   us-readiness:
-    if: github.event_name == 'workflow_dispatch' && inputs.node == 'us'
+    if: github.event_name == 'push' || inputs.node == 'us'
     runs-on: ubuntu-latest
     environment: production-like
     timeout-minutes: 5
@@ -143,7 +147,7 @@ jobs:
           SELECT 'test_devices' AS section,d.status,count(*) FROM vpn_account_devices d
           JOIN vpn_accounts a ON a.id=d.vpn_account_id WHERE lower(a.display_name)='fi-test' GROUP BY d.status;
           SELECT 'apply_jobs' AS section,server_id,status,count(*) FROM config_apply_jobs
-          WHERE status IN ('pending','running','dispatched') GROUP BY server_id,status;
+          GROUP BY server_id,status;
           SELECT 'active_versions' AS section,c.id,c.server_id,c.version,c.status,
            to_jsonb(c)->>'applied_at' AS applied_at,
            c.client_settings->>'vlessPort' AS applied_vless_port,
@@ -160,3 +164,4 @@ jobs:
         if: always()
         shell: bash
         run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
+
