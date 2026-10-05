@@ -4,7 +4,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   createServer,
   getServers,
-  type DeploymentRole,
   type Server,
 } from '../../entities/server/api/serverApi';
 import { ApiError } from '../../shared/api/client';
@@ -38,28 +37,10 @@ function deploymentRoleLabel(role: Server['deploymentRole']): string {
   }
 }
 
-function deploymentRoleHint(role: DeploymentRole): string {
-  const russian = getCurrentLocale() === 'ru';
-  switch (role) {
-    case 'management':
-      return russian
-        ? 'Только плоскость управления: Manager, PostgreSQL и Web UI. Agent и VPN Core для этой роли не требуются.'
-        : 'Control plane only: Manager, PostgreSQL, and Web UI. Agent and VPN Core are not required for this role.';
-    case 'hybrid':
-      return russian
-        ? 'Плоскость управления и VPN на одном хосте. Следующий шаг после создания — подключить Agent для VPN-части.'
-        : 'Control and VPN planes on one host. After creation, connect Agent for the VPN plane.';
-    default:
-      return russian
-        ? 'VPN-плоскость: Agent и VPN Core. Следующий шаг после создания — зарегистрировать Agent.'
-        : 'VPN plane: Agent and VPN Core. After creation, register Agent.';
-  }
-}
-
 function createNodeDescription(): string {
   return getCurrentLocale() === 'ru'
-    ? 'Выберите назначение узла. RouteGate покажет только те следующие действия, которые относятся к выбранной роли.'
-    : 'Choose the node purpose. RouteGate will expose only the next actions that apply to the selected role.';
+    ? 'К существующему Manager можно подключать только VPN-узлы. Второй управляющий или гибридный узел в одной установке не поддерживается.'
+    : 'An existing Manager can add VPN Nodes only. A second Management or Hybrid Node is not supported in the same deployment.';
 }
 
 function connectionStateLabel(state: Server['inventory']['connectionState']): string {
@@ -166,7 +147,6 @@ export function ServersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [name, setName] = useState('');
-  const [deploymentRole, setDeploymentRole] = useState<DeploymentRole>('vpn');
   const [provider, setProvider] = useState('');
   const [location, setLocation] = useState('');
   const [publicIp, setPublicIp] = useState('');
@@ -180,7 +160,7 @@ export function ServersPage() {
   const createServerMutation = useMutation({
     mutationFn: () => createServer({
       name: name.trim(),
-      deploymentRole,
+      deploymentRole: 'vpn',
       provider: provider.trim() || undefined,
       location: location.trim() || undefined,
       publicIp: publicIp.trim(),
@@ -207,7 +187,6 @@ export function ServersPage() {
     setIsCreateOpen(false);
     setHasSubmitted(false);
     setName('');
-    setDeploymentRole('vpn');
     setProvider('');
     setLocation('');
     setPublicIp('');
@@ -288,15 +267,9 @@ export function ServersPage() {
 
               <label className="field">
                 <span>{t('servers.deploymentRole')}</span>
-                <select
-                  value={deploymentRole}
-                  onChange={(event) => setDeploymentRole(event.target.value as DeploymentRole)}
-                >
-                  <option value="management">{t('servers.deploymentRole.management')}</option>
+                <select value="vpn" disabled>
                   <option value="vpn">{t('servers.deploymentRole.vpn')}</option>
-                  <option value="hybrid">{t('servers.deploymentRole.hybrid')}</option>
                 </select>
-                <small>{deploymentRoleHint(deploymentRole)}</small>
               </label>
 
               <label className="field">
