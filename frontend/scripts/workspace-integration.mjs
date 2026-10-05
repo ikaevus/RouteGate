@@ -421,6 +421,15 @@ try {
   async function saveRoutingForm(index, path, method = 'PUT') {
     const savedResponse = page.waitForResponse(response => response.request().method() === method
       && new URL(response.url()).pathname === path);
+    // RG-140: reassignment must warn before changing the active account node.
+    // Without an explicit acceptance, Playwright dismisses window.confirm()
+    // and the PATCH never happens.
+    if (index === 0) {
+      page.once('dialog', async dialog => {
+        assert.ok(dialog.message().includes('subscription'), 'the node transfer warning must explain subscription impact');
+        await dialog.accept();
+      });
+    }
     await routingForms.nth(index).locator('button[type="submit"]').click();
     assert.ok((await savedResponse).ok());
     await page.waitForFunction(() => !document.querySelector('.vpn-account-routing-form select')?.disabled);

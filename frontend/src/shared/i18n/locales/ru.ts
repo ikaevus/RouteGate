@@ -55,6 +55,8 @@ export const ru: Record<TranslationKey, string> = {
   'topbar.profileMenu': 'Меню пользователя',
 
   'auth.checkingSession': 'Проверка сессии...',
+  'auth.sessionCheckUnavailable': 'Не удалось проверить сессию. Вход сохранён. Проверьте соединение и повторите попытку.',
+  'auth.retrySessionCheck': 'Повторить проверку сессии',
   'auth.logout': 'Выйти',
   'auth.loggingOut': 'Выход...',
 

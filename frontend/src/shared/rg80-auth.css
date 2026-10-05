@@ -35,6 +35,15 @@
   width: 100%;
 }
 
+.auth-session-recovery {
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+  margin: 0 auto 20px;
+  max-width: 640px;
+  width: 100%;
+}
+
 .auth-hero-panel,
 .auth-login-card {
   border: 1px solid rgba(38, 52, 73, 0.96);

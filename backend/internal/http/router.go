@@ -23,6 +23,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/setup"
 	"github.com/ikaevus/routegate/backend/internal/system"
 	"github.com/ikaevus/routegate/backend/internal/traffic"
+	"github.com/ikaevus/routegate/backend/internal/transfers"
 	"github.com/ikaevus/routegate/backend/internal/users"
 	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 )
@@ -44,6 +45,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	maintenanceHandler := maintenance.NewHandler(logger, pool)
 	setupHandler := setup.NewHandler(logger, pool, cfg.AuthSessionTTL)
 	vpnAccountsHandler := vpnaccounts.NewHandler(logger, pool, cfg.PublicURL)
+	transfersHandler := transfers.NewHandler(logger, pool)
 	vpnAccountNotesHandler := vpnaccounts.NewNotesHandler(logger, pool)
 	trafficHandler := traffic.NewHandler(logger, pool)
 	connectionsHandler := connections.NewHandler(logger, pool)
@@ -164,6 +166,9 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-connection", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientConnection))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientProfile))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.UpdateClientProfile))))
+	mux.Handle("GET /api/v1/vpn-accounts/{id}/transfer", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(transfersHandler.Latest))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/transfer", authn(auth.RequirePermission("vpn_users:update")(auth.RequirePermission("configs:apply")(auth.RequirePermission("configs:render")(auth.RequirePermission("configs:validate")(stdhttp.HandlerFunc(transfersHandler.Start)))))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/transfer/{transferId}", authn(auth.RequirePermission("vpn_users:update")(auth.RequirePermission("configs:apply")(auth.RequirePermission("configs:render")(auth.RequirePermission("configs:validate")(stdhttp.HandlerFunc(transfersHandler.Act)))))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/routing-policy", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetRoutingPolicy))))
 	mux.Handle("PUT /api/v1/vpn-accounts/{id}/routing-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.AssignRoutingProfile))))
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/routing-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.DeleteRoutingProfileAssignment))))
@@ -171,7 +176,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("DELETE /api/v1/vpn-accounts/{id}/node-group", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.DeleteNodeGroupAssignment))))
 	mux.Handle("PUT /api/v1/vpn-accounts/{id}/automatic-selection", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.UpdateAutomaticSelectionPolicy))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/automatic-selection/preview", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.PreviewAutomaticSelection))))
-	mux.Handle("POST /api/v1/vpn-accounts/{id}/automatic-selection/apply", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.ApplyAutomaticSelection))))
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/automatic-selection/apply", authn(auth.RequirePermission("vpn_users:update")(auth.RequirePermission("configs:apply")(auth.RequirePermission("configs:render")(auth.RequirePermission("configs:validate")(stdhttp.HandlerFunc(vpnAccountsHandler.ApplyAutomaticSelection)))))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/traffic", authn(auth.RequirePermission("traffic:read")(stdhttp.HandlerFunc(trafficHandler.GetAccountUsage))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/traffic-limit", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(trafficHandler.UpdateAccountLimit))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.Update))))

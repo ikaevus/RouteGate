@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000158_explicit_account_protocol_preferences" {
-		t.Fatalf("applied schema version = %q, want 000158_explicit_account_protocol_preferences", version)
+	if version != "000159_staged_account_transfers" {
+		t.Fatalf("applied schema version = %q, want 000159_staged_account_transfers", version)
 	}
 	assertRawTrafficArchivalPreservesDailyRollup(t, ctx, pool)
 	assertAgentMaintenanceJobContract(t, ctx, pool)
@@ -530,8 +530,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000158_explicit_account_protocol_preferences" {
-		t.Fatalf("applied schema version = %q, want 000158_explicit_account_protocol_preferences", version)
+	if version != "000159_staged_account_transfers" {
+		t.Fatalf("applied schema version = %q, want 000159_staged_account_transfers", version)
 	}
 }
 

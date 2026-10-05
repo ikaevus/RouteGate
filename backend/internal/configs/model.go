@@ -219,11 +219,12 @@ type ConfigRoutingProfileRule struct {
 }
 
 type ConfigMetadata struct {
-	Source         string          `json:"source"`
-	RenderedAt     time.Time       `json:"renderedAt"`
-	RealityEnabled bool            `json:"realityEnabled"`
-	VPNCore        ConfigVPNCore   `json:"vpnCore"`
-	VPNCores       []ConfigVPNCore `json:"vpnCores,omitempty"`
+	TransferEmptyUsers bool            `json:"transferEmptyUsers,omitempty"`
+	Source             string          `json:"source"`
+	RenderedAt         time.Time       `json:"renderedAt"`
+	RealityEnabled     bool            `json:"realityEnabled"`
+	VPNCore            ConfigVPNCore   `json:"vpnCore"`
+	VPNCores           []ConfigVPNCore `json:"vpnCores,omitempty"`
 }
 
 type ConfigVPNCore struct {

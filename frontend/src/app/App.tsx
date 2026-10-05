@@ -16,7 +16,7 @@ import { SettingsPage } from '../pages/settings/SettingsPage';
 import { PortalPage } from '../pages/portal/PortalPage';
 import { getMe, logout, type AuthUser } from '../entities/auth/api/authApi';
 import { getManagerHealth } from '../entities/health/api/healthApi';
-import { clearAuthToken, getAuthToken } from '../shared/api/client';
+import { ApiError, clearAuthToken, getAuthToken } from '../shared/api/client';
 import { t } from '../shared/i18n/i18n';
 import { useLocale } from '../shared/i18n/useLocale';
 import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
@@ -208,6 +208,7 @@ interface AdminShellProps {
   isLoggingOut: boolean;
   onLogout: () => void;
   user?: AuthUser;
+  sessionNotice?: ReactNode;
 }
 
 function getUserDisplayName(user?: AuthUser): string {
@@ -312,7 +313,7 @@ function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
   );
 }
 
-function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
+function AdminShell({ isLoggingOut, onLogout, user, sessionNotice }: AdminShellProps) {
   const [theme, setTheme] = useState<AdminTheme>(readStoredTheme);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [clockTick, setClockTick] = useState(() => Date.now());
@@ -457,6 +458,7 @@ function AdminShell({ isLoggingOut, onLogout, user }: AdminShellProps) {
         </header>
 
         <main className="main admin-main">
+          {sessionNotice}
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
@@ -507,6 +509,8 @@ export function App() {
     enabled: Boolean(authToken) && !isPortalRoute && !isSetupRoute,
     retry: false,
   });
+  const sessionIsUnauthorized = sessionQuery.isError
+    && sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401;
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -520,7 +524,7 @@ export function App() {
   });
 
   useEffect(() => {
-    if (!sessionQuery.isError) {
+    if (!sessionIsUnauthorized) {
       return;
     }
 
@@ -528,11 +532,22 @@ export function App() {
     setAuthTokenState(null);
     queryClient.removeQueries({ queryKey: ['admin-session'] });
     queryClient.removeQueries({ queryKey: ['me'] });
-  }, [queryClient, sessionQuery.isError]);
+  }, [queryClient, sessionIsUnauthorized]);
 
   const handleLogin = () => {
     setAuthTokenState(getAuthToken());
   };
+  const sessionNotice = (
+    <section className="auth-session-recovery" aria-label={t('auth.retrySessionCheck')}>
+      <div role="alert" className="form-message auth-message auth-message-error">
+        {t('auth.sessionCheckUnavailable')}
+      </div>
+      <button className="primary-button" type="button" disabled={sessionQuery.isFetching}
+        onClick={() => { void sessionQuery.refetch(); }}>
+        {t(sessionQuery.isFetching ? 'auth.checkingSession' : 'auth.retrySessionCheck')}
+      </button>
+    </section>
+  );
 
   if (location.pathname.startsWith('/portal')) {
     return <PortalShell />;
@@ -542,6 +557,14 @@ export function App() {
     return (
       <AuthShell>
         <SetupPage onLogin={handleLogin} />
+      </AuthShell>
+    );
+  }
+
+  if (authToken && sessionQuery.isError && !sessionIsUnauthorized && (!sessionQuery.data || isLoginRoute)) {
+    return (
+      <AuthShell>
+        {sessionNotice}
       </AuthShell>
     );
   }
@@ -574,9 +597,10 @@ export function App() {
     );
   }
 
-  if (sessionQuery.isError) {
+  if (sessionIsUnauthorized) {
     return <Navigate to="/login" replace />;
   }
 
-  return <AdminShell isLoggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()} user={sessionQuery.data?.user} />;
+  return <AdminShell isLoggingOut={logoutMutation.isPending} onLogout={() => logoutMutation.mutate()}
+    user={sessionQuery.data?.user} sessionNotice={sessionQuery.isError ? sessionNotice : undefined} />;
 }

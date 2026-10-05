@@ -140,3 +140,45 @@ func normalizeRenderedConfigForVersioning(payload []byte) ([]byte, error) {
 	}
 	return json.Marshal(config)
 }
+
+// TransferBaselinesEquivalent compares deployed material while excluding the
+// current Agent inventory and render timestamp. It does not expose secrets.
+func TransferBaselinesEquivalent(left, right []byte) bool {
+	normalize := func(payload []byte) ([]byte, error) {
+		var envelope map[string]any
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			return nil, err
+		}
+		delete(envelope, "agent")
+		if metadata, ok := envelope["metadata"].(map[string]any); ok {
+			delete(metadata, "renderedAt")
+			if metadata["transferEmptyUsers"] == true {
+				// An empty, rejecting listener is equivalent to an ordinary zero-account
+				// baseline. The transfer-specific flag never grants a credential.
+				delete(metadata, "transferEmptyUsers")
+				if box, ok := envelope["singBox"].(map[string]any); ok {
+					if inbounds, ok := box["inbounds"].([]any); ok {
+						filtered := []any{}
+						for _, v := range inbounds {
+							in, ok := v.(map[string]any)
+							if ok && in["type"] == "vless" {
+								if u, ok := in["users"].([]any); ok && len(u) == 0 {
+									continue
+								}
+							}
+							filtered = append(filtered, v)
+						}
+						box["inbounds"] = filtered
+					}
+				}
+			}
+		}
+		return json.Marshal(envelope)
+	}
+	a, err := normalize(left)
+	if err != nil {
+		return false
+	}
+	b, err := normalize(right)
+	return err == nil && bytes.Equal(a, b)
+}

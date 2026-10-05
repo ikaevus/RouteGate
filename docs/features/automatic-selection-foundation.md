@@ -35,3 +35,13 @@ the Guided Workflow / Next Action First principle at the safety boundary.
 - `POST /api/v1/vpn-accounts/{id}/automatic-selection/apply`
 
 See [ADR-0009](../decisions/ADR-0009-explainable-automatic-selection.md).
+
+
+## RG-140: deployed account selection
+
+For an already deployed account, Apply now starts a persisted staged transfer
+and returns it as `transfer`; `changed` remains false until its separate cutover.
+It does not ask operators to change placement and then manually deploy two
+nodes. The same preflight, supported-protocol and reservation rules as manual
+Move apply. Undeployed assignments keep the previous behavior. See
+[Safe account transfer](../guides/safe-account-transfer.md).

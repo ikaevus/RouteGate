@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ikaevus/routegate/backend/internal/audit"
@@ -799,6 +800,11 @@ func writePublicSubscriptionNotFound(w http.ResponseWriter) {
 }
 
 func (h *Handler) databaseError(w http.ResponseWriter, operation string, err error) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "P0140" {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(pgErr.Message, "Use the account transfer workflow; this node is reserved or the account is already deployed."))
+		return
+	}
 	h.logger.Error(operation+" failed", "error", err)
 	httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Database operation failed."))
 }
