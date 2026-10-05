@@ -50,11 +50,17 @@ jobs:
           npm run build
           python3 - <<'PY'
           from pathlib import Path
-          import tarfile
+          import hashlib, importlib.util, tarfile
           root=Path('dist')
           with tarfile.open('../../ui.tar.gz','w:gz') as archive:
-            for path in sorted(root.rglob('*')):
+            # Unchanged connect.html/favicon and bootstrap are not part of this repair.
+            for path in [root/'index.html', *sorted((root/'assets').rglob('*'))]:
               if path.is_file(): archive.add(path,arcname=str(path.relative_to(root)),recursive=False)
+          spec=importlib.util.spec_from_file_location('publisher','../../scripts/rg140-session-ui.py')
+          publisher=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(publisher)
+          bundle=Path('../../ui.tar.gz')
+          publisher.payload(bundle,hashlib.sha256(bundle.read_bytes()).hexdigest())
           PY
       - name: Configure SSH
         env:
