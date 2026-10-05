@@ -1,10 +1,19 @@
 name: Production-like SSH Check
 
-# RG-112 Phase 6 revalidates the canonical production-like SSH boundary alongside delivery E2E.
-# This job holds production-like SSH credentials, so it is intentionally manual
-# and never runs in pull-request context.
+# Fixed read-only diagnostics. Credentials are never available to PR runs.
+# The dedicated ops branch enables the initial FI check without deploying a PR.
 on:
   workflow_dispatch:
+    inputs:
+      node:
+        description: Node to check
+        type: choice
+        required: true
+        default: us
+        options: [us, fi]
+  push:
+    branches: [ops/fi-ssh-access]
+    paths: [.github/workflows/production-like-ssh-check.yml]
 
 permissions:
   contents: read
@@ -12,27 +21,34 @@ permissions:
 jobs:
   ssh-check:
     runs-on: ubuntu-latest
-    environment: production-like
+    environment: ${{ (github.event_name == 'push' || inputs.node == 'fi') && 'production-like-fi' || 'production-like' }}
     timeout-minutes: 5
+    env:
+      ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+      ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
     steps:
       - name: Configure SSH
         shell: bash
         env:
           ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
-          ROUTEGATE_KNOWN_HOSTS: ${{ secrets.ROUTEGATE_KNOWN_HOSTS }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
+          for name in ROUTEGATE_HOST ROUTEGATE_USER ROUTEGATE_SSH_KEY ROUTEGATE_KNOWN_HOSTS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is missing in the selected environment."
+              exit 1
+            fi
+          done
           install -d -m 700 ~/.ssh
           printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
           chmod 600 ~/.ssh/routegate_ci
           printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/routegate_ci > /dev/null
 
-      - name: Verify production-like SSH access
+      - name: Verify SSH identity
         shell: bash
-        env:
-          ROUTEGATE_HOST: ${{ secrets.ROUTEGATE_HOST }}
-          ROUTEGATE_USER: ${{ secrets.ROUTEGATE_USER }}
         run: |
           set -euo pipefail
           ssh \
@@ -42,4 +58,22 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=10 \
             "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
-            'set -e; echo "user=$(whoami)"; echo "host=$(hostname)"; echo "sudo_user=$(sudo whoami)"; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
+            'set -e; echo "user=$(id -un)"; echo "host=$(hostname)"'
+
+      - name: Verify non-interactive sudo and service health
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/routegate_ci \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=10 \
+            "$ROUTEGATE_USER@$ROUTEGATE_HOST" \
+            'set -e; echo "sudo_user=$(sudo -n id -un)"; sudo -n true; for svc in routegate-manager routegate-agent sing-box; do state=$(sudo -n systemctl is-active "$svc" 2>/dev/null || true); echo "$svc=${state:-unknown}"; done'
+
+      - name: Remove runner credentials
+        if: always()
+        shell: bash
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
