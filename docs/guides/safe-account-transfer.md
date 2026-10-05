@@ -2,7 +2,9 @@
 
 Status: implementation in draft PR #511. **Live FI → US → FI client checks and
 both cleanups, post-cutover rollback and failed-cleanup/retry passed on 2026-10-05.
-Final client confirmation, session-recovery fix CI and rollout approval remain pending.** Supported first slice: active, applied VLESS/Reality accounts on
+The user reported phone connectivity working after the final rollback; session-recovery
+CI and its frontend-only US deployment passed. Full feature merge/rollout approval
+remains pending.** Supported first slice: active, applied VLESS/Reality accounts on
 any eligible Hybrid/VPN node pair. Other protocols fail preflight; no geography,
 fixed port, node ID or relative config counter is special.
 
@@ -128,13 +130,19 @@ Do not close RG-140 until this matrix is observed and the rollout is approved.
   fault. Manager refused completion of the failed job; the user retried normally
   and verified `Source restored`. No database state or Agent reports were fabricated.
 - The existing Windows subscription returned to 194.164.235.101:443; v2rayN
-  connectivity recovered after restarting the client. Final phone confirmation
-  after this failure/retry cycle remains pending.
+  connectivity recovered after restarting the client. After reloading the repaired
+  Manager UI, the user reported phone connectivity working on FI as well; no new
+  phone exit-IP screenshot was supplied for this final cycle.
 - A Manager session-handling defect was found during this cycle: any failure of
   `/api/admin/me` cleared the stored sign-in, including network/server failures.
   The branch now clears sign-in only on HTTP 401. Other failures show a retry;
   a background failure preserves the mounted workspace. This is a confirmed code
   defect, but the user's specific lost-login request was not captured.
+- Seven controlled session-recovery browser tests and both candidate CI runs
+  passed on `ebd94d87`. The [frontend-only US publication](https://github.com/ikaevus/RouteGate/actions/runs/37324231784)
+  verified the public index and unchanged protected files/service identities.
+  The user reloaded Manager to load the repair. The live Manager binary remains
+  `d2a0990e`; publishing this frontend did not upgrade the backend or schema.
 
 ## Moving Manager while keeping subscription identity
 
