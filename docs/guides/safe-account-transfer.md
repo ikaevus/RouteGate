@@ -1,8 +1,8 @@
 # Safe account transfer (RG-140)
 
 Status: implementation in draft PR #511. **Live FI → US → FI client checks and
-both cleanups passed on 2026-10-05; live rollback and failed-cleanup/retry checks
-and rollout approval remain pending.** Supported first slice: active, applied VLESS/Reality accounts on
+both cleanups, post-cutover rollback and failed-cleanup/retry passed on 2026-10-05.
+Final client confirmation, session-recovery fix CI and rollout approval remain pending.** Supported first slice: active, applied VLESS/Reality accounts on
 any eligible Hybrid/VPN node pair. Other protocols fail preflight; no geography,
 fixed port, node ID or relative config counter is special.
 
@@ -120,8 +120,21 @@ Do not close RG-140 until this matrix is observed and the rollout is approved.
   Manager remained available; refreshing the existing subscription restored
   client connectivity and Manager access. This reinforces the required client
   verification **before** source cleanup.
-- Live post-cutover rollback and deliberately failed cleanup/retry have not yet
-  been exercised. Their controlled integration tests pass, but are not live evidence.
+- Post-cutover FI → US rollback reached `Source restored`, with placement back
+  on FI and target cleanup verified.
+- [Scoped cleanup failure run](https://github.com/ikaevus/RouteGate/actions/runs/37274642964)
+  induced a real US Agent staging failure for fi-test rollback. Its live SSH step
+  verified unchanged running configs/services and removed the exact temporary
+  fault. Manager refused completion of the failed job; the user retried normally
+  and verified `Source restored`. No database state or Agent reports were fabricated.
+- The existing Windows subscription returned to 194.164.235.101:443; v2rayN
+  connectivity recovered after restarting the client. Final phone confirmation
+  after this failure/retry cycle remains pending.
+- A Manager session-handling defect was found during this cycle: any failure of
+  `/api/admin/me` cleared the stored sign-in, including network/server failures.
+  The branch now clears sign-in only on HTTP 401. Other failures show a retry;
+  a background failure preserves the mounted workspace. This is a confirmed code
+  defect, but the user's specific lost-login request was not captured.
 
 ## Moving Manager while keeping subscription identity
 

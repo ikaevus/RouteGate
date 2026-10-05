@@ -53,6 +53,8 @@ export const en = {
   'topbar.profileMenu': 'User menu',
 
   'auth.checkingSession': 'Checking session...',
+  'auth.sessionCheckUnavailable': 'Unable to verify your session. Your sign-in has been kept. Check the connection and try again.',
+  'auth.retrySessionCheck': 'Retry session check',
   'auth.logout': 'Logout',
   'auth.loggingOut': 'Logging out...',
 
