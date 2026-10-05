@@ -259,16 +259,18 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
 
   useEffect(() => {
     const descriptions: Record<Locale, string> = {
-      en: 'RouteGate is an open-source self-hosted platform for managing Linux VPN servers, accounts, routing profiles, and client access.',
+      en: 'RouteGate is an open-source self-hosted platform for managed VPN nodes, accounts, devices, routing, and client access.',
       ru: 'RouteGate — открытая платформа для самостоятельного управления Linux VPN-узлами, аккаунтами, устройствами, маршрутизацией и клиентским доступом.',
     }
     document.documentElement.lang = locale
     document.title = locale === 'ru'
       ? 'RouteGate — управление Linux VPN-инфраструктурой'
-      : 'RouteGate — Linux VPN Management Platform'
+      : 'RouteGate — Linux VPN infrastructure management'
     document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', descriptions[locale])
+    document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.setAttribute('content', document.title)
     document.querySelector<HTMLMetaElement>('meta[property="og:description"]')?.setAttribute('content', descriptions[locale])
     document.querySelector<HTMLMetaElement>('meta[property="og:locale"]')?.setAttribute('content', locale === 'ru' ? 'ru_RU' : 'en_US')
+    document.querySelector<HTMLMetaElement>('meta[property="og:locale:alternate"]')?.setAttribute('content', locale === 'ru' ? 'en_US' : 'ru_RU')
     const canonicalUrl = locale === 'ru' ? 'https://routegate.org/ru/' : 'https://routegate.org/'
     document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.setAttribute('content', canonicalUrl)
     document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute('href', canonicalUrl)
