@@ -101,7 +101,7 @@ function fallback(page) {
 }
 
 function replaceMeta(html, attribute, key, value) {
-  const pattern = new RegExp('<meta\\s+' + attribute + '=["\\' + "'" + ']' + key + '["\\' + "'" + '][^>]*>', 'i')
+  const pattern = new RegExp('<meta\\s+' + attribute + '="' + key + '"[^>]*>', 'i')
   return html.replace(pattern, '<meta ' + attribute + '="' + key + '" content="' + esc(value) + '">')
 }
 
@@ -117,8 +117,8 @@ function render(page) {
   html = replaceMeta(html, 'property', 'og:locale:alternate', page.alternateLocale)
   html = replaceMeta(html, 'name', 'twitter:title', page.title)
   html = replaceMeta(html, 'name', 'twitter:description', page.description)
-  html = html.replace(/<link\s+rel=["']canonical["'][^>]*>/i, '<link rel="canonical" href="' + page.url + '">')
-  html = html.replace(/<div\s+id=["']root["']><\/div>/i, '<div id="root">' + fallback(page) + '</div>')
+  html = html.replace(/<link\s+rel="canonical"[^>]*>/i, '<link rel="canonical" href="' + page.url + '">')
+  html = html.replace(/<div\s+id="root"><\/div>/i, '<div id="root">' + fallback(page) + '</div>')
   return html
 }
 
