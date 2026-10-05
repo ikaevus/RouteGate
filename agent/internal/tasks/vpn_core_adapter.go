@@ -179,5 +179,11 @@ func (a singBoxVLESSAdapter) ExecuteServiceTask(ctx context.Context, task Config
 }
 
 func (a singBoxVLESSAdapter) CheckHealth(ctx context.Context, configPath string) (ListenerHealthResult, error) {
-	return CheckSingBoxTCPListeners(ctx, configPath)
+	// Shared sing-box configs must pass every managed listener check. The
+	// evidence attached to this adapter must describe its own protocol,
+	// rather than the last inbound in the shared config.
+	if _, err := CheckSingBoxTCPListeners(ctx, configPath); err != nil {
+		return ListenerHealthResult{}, err
+	}
+	return CheckSingBoxTCPListener(ctx, configPath, a.inboundType)
 }
