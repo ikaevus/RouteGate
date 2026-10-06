@@ -38,22 +38,21 @@
 .hero-map-preview-wrap {
   width: min(880px, 100%);
   justify-self: end;
-  filter: drop-shadow(0 38px 82px rgba(0,0,0,.34));
+  filter: drop-shadow(0 34px 72px rgba(0,0,0,.22));
 }
 
 .hero-map-preview {
   position: relative;
   padding: 14px;
   overflow: hidden;
-  border: 1px solid rgba(96,165,250,.20);
+  border: 1px solid rgba(96,165,250,.09);
   border-radius: 22px;
   background:
-    linear-gradient(145deg, rgba(13,30,52,.96), rgba(6,16,29,.97)),
+    linear-gradient(145deg, rgba(12,28,48,.90), rgba(6,16,29,.93)),
     #07111f;
   box-shadow:
-    0 0 0 1px rgba(2,8,23,.72),
-    inset 0 1px rgba(255,255,255,.035),
-    0 30px 82px rgba(0,0,0,.28);
+    inset 0 1px rgba(255,255,255,.025),
+    0 24px 68px rgba(0,0,0,.20);
 }
 
 .hero-map-preview::before {
@@ -145,9 +144,9 @@
 .hero-map-preview__metrics article {
   min-width: 0;
   padding: 13px 14px 12px;
-  border: 1px solid rgba(148,163,184,.105);
+  border: 1px solid rgba(148,163,184,.055);
   border-radius: 10px;
-  background: rgba(10,24,43,.78);
+  background: rgba(10,24,43,.48);
 }
 
 .hero-map-preview__metrics article > span {
@@ -180,9 +179,9 @@
 .hero-map-preview__map-panel {
   margin-top: 10px;
   overflow: hidden;
-  border: 1px solid rgba(148,163,184,.11);
+  border: 1px solid rgba(148,163,184,.055);
   border-radius: 13px;
-  background: rgba(7,18,32,.88);
+  background: rgba(7,18,32,.62);
 }
 
 .hero-map-preview__map-heading {
@@ -192,7 +191,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid rgba(148,163,184,.09);
+  border-bottom: 1px solid rgba(148,163,184,.045);
 }
 
 .hero-map-preview__map-heading > div {
@@ -351,7 +350,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  border-top: 1px solid rgba(148,163,184,.08);
+  border-top: 1px solid rgba(148,163,184,.04);
   color: #637b96;
   font-size: 7px;
 }
@@ -393,9 +392,9 @@
   align-items: center;
   gap: 7px;
   color: #8498af;
-  border: 1px solid rgba(148,163,184,.085);
+  border: 1px solid rgba(148,163,184,.04);
   border-radius: 8px;
-  background: rgba(9,22,39,.56);
+  background: rgba(9,22,39,.34);
   font-size: 8px;
   white-space: nowrap;
 }
