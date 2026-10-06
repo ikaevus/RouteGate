@@ -38,21 +38,21 @@
 .hero-map-preview-wrap {
   width: min(880px, 100%);
   justify-self: end;
-  filter: drop-shadow(0 34px 72px rgba(0,0,0,.22));
+  filter: drop-shadow(0 28px 58px rgba(0,0,0,.14));
 }
 
 .hero-map-preview {
   position: relative;
   padding: 14px;
   overflow: hidden;
-  border: 1px solid rgba(96,165,250,.09);
+  border: 1px solid rgba(96,165,250,.035);
   border-radius: 22px;
   background:
-    linear-gradient(145deg, rgba(12,28,48,.90), rgba(6,16,29,.93)),
+    linear-gradient(145deg, rgba(11,26,45,.72), rgba(6,16,29,.78)),
     #07111f;
   box-shadow:
-    inset 0 1px rgba(255,255,255,.025),
-    0 24px 68px rgba(0,0,0,.20);
+    inset 0 1px rgba(255,255,255,.018),
+    0 20px 54px rgba(0,0,0,.14);
 }
 
 .hero-map-preview::before {
@@ -61,8 +61,8 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(135deg, rgba(255,255,255,.03), transparent 24%),
-    radial-gradient(circle at 72% 12%, rgba(37,99,235,.10), transparent 34%);
+    linear-gradient(135deg, rgba(255,255,255,.018), transparent 24%),
+    radial-gradient(circle at 72% 12%, rgba(37,99,235,.075), transparent 36%);
 }
 
 .hero-map-preview__chrome,
@@ -144,9 +144,9 @@
 .hero-map-preview__metrics article {
   min-width: 0;
   padding: 13px 14px 12px;
-  border: 1px solid rgba(148,163,184,.055);
+  border: 0;
   border-radius: 10px;
-  background: rgba(10,24,43,.48);
+  background: linear-gradient(180deg, rgba(15,31,52,.30), rgba(9,22,39,.18));
 }
 
 .hero-map-preview__metrics article > span {
@@ -179,9 +179,10 @@
 .hero-map-preview__map-panel {
   margin-top: 10px;
   overflow: hidden;
-  border: 1px solid rgba(148,163,184,.055);
+  border: 0;
   border-radius: 13px;
-  background: rgba(7,18,32,.62);
+  background: rgba(7,18,32,.34);
+  box-shadow: inset 0 1px rgba(255,255,255,.012);
 }
 
 .hero-map-preview__map-heading {
@@ -191,7 +192,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid rgba(148,163,184,.045);
+  border-bottom: 0;
 }
 
 .hero-map-preview__map-heading > div {
@@ -226,9 +227,10 @@
   position: relative;
   height: 350px;
   overflow: hidden;
+  margin-inline: -2px;
   background:
-    radial-gradient(circle at 56% 40%, rgba(37,99,235,.10), transparent 28%),
-    linear-gradient(180deg, rgba(6,17,31,.30), rgba(5,15,28,.64));
+    radial-gradient(circle at 56% 40%, rgba(37,99,235,.09), transparent 30%),
+    linear-gradient(180deg, rgba(6,17,31,.16), rgba(5,15,28,.42));
 }
 
 .hero-map-canvas::before {
@@ -350,7 +352,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  border-top: 1px solid rgba(148,163,184,.04);
+  border-top: 0;
   color: #637b96;
   font-size: 7px;
 }
@@ -392,9 +394,9 @@
   align-items: center;
   gap: 7px;
   color: #8498af;
-  border: 1px solid rgba(148,163,184,.04);
+  border: 0;
   border-radius: 8px;
-  background: rgba(9,22,39,.34);
+  background: rgba(9,22,39,.16);
   font-size: 8px;
   white-space: nowrap;
 }
