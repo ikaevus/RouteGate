@@ -193,7 +193,7 @@ function CodePreview({ t }: { t: SiteContent['source'] }) {
         <span className="code-line indent"><em>if</em> active {'{'} <em>return</em> ErrConfigVersionDeploymentActive {'}'}</span>
         <span className="code-line">{'}'}</span>
       </code></pre>
-      <div className="code-status"><span>main</span><span>{t.realCode}</span><span>AGPLv3-or-later</span></div>
+      <div className="code-status"><span>main</span><span>{t.repository}</span><span>AGPLv3-or-later</span></div>
     </div>
   )
 }
