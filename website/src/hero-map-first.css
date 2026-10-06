@@ -38,21 +38,17 @@
 .hero-map-preview-wrap {
   width: min(880px, 100%);
   justify-self: end;
-  filter: drop-shadow(0 28px 58px rgba(0,0,0,.14));
+  filter: none;
 }
 
 .hero-map-preview {
   position: relative;
-  padding: 14px;
-  overflow: hidden;
-  border: 1px solid rgba(96,165,250,.035);
-  border-radius: 22px;
-  background:
-    linear-gradient(145deg, rgba(11,26,45,.72), rgba(6,16,29,.78)),
-    #07111f;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.018),
-    0 20px 54px rgba(0,0,0,.14);
+  padding: 8px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .hero-map-preview::before {
@@ -61,8 +57,7 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(135deg, rgba(255,255,255,.018), transparent 24%),
-    radial-gradient(circle at 72% 12%, rgba(37,99,235,.075), transparent 36%);
+    radial-gradient(circle at 72% 18%, rgba(37,99,235,.07), transparent 38%);
 }
 
 .hero-map-preview__chrome,
@@ -74,8 +69,8 @@
 }
 
 .hero-map-preview__chrome {
-  min-height: 54px;
-  padding: 2px 6px 12px;
+  min-height: 48px;
+  padding: 0 2px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -138,15 +133,15 @@
 .hero-map-preview__metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0,1fr));
-  gap: 9px;
+  gap: 18px;
 }
 
 .hero-map-preview__metrics article {
   min-width: 0;
-  padding: 13px 14px 12px;
+  padding: 10px 8px 11px;
   border: 0;
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(15,31,52,.30), rgba(9,22,39,.18));
+  border-radius: 0;
+  background: transparent;
 }
 
 .hero-map-preview__metrics article > span {
@@ -177,12 +172,12 @@
 }
 
 .hero-map-preview__map-panel {
-  margin-top: 10px;
-  overflow: hidden;
+  margin-top: 6px;
+  overflow: visible;
   border: 0;
-  border-radius: 13px;
-  background: rgba(7,18,32,.34);
-  box-shadow: inset 0 1px rgba(255,255,255,.012);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .hero-map-preview__map-heading {
@@ -227,10 +222,10 @@
   position: relative;
   height: 350px;
   overflow: hidden;
-  margin-inline: -2px;
-  background:
-    radial-gradient(circle at 56% 40%, rgba(37,99,235,.09), transparent 30%),
-    linear-gradient(180deg, rgba(6,17,31,.16), rgba(5,15,28,.42));
+  margin-inline: -12px;
+  background: radial-gradient(circle at 56% 40%, rgba(37,99,235,.08), transparent 34%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 4%, #000 96%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 4%, #000 96%, transparent 100%);
 }
 
 .hero-map-canvas::before {
@@ -380,8 +375,8 @@
 
 .hero-map-preview__status {
   min-height: 42px;
-  margin-top: 10px;
-  padding: 0 4px;
+  margin-top: 6px;
+  padding: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
   gap: 8px;
@@ -389,14 +384,14 @@
 
 .hero-map-preview__status span {
   min-width: 0;
-  padding: 0 11px;
+  padding: 0 7px;
   display: flex;
   align-items: center;
   gap: 7px;
   color: #8498af;
   border: 0;
-  border-radius: 8px;
-  background: rgba(9,22,39,.16);
+  border-radius: 0;
+  background: transparent;
   font-size: 8px;
   white-space: nowrap;
 }
