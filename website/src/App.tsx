@@ -75,9 +75,9 @@ function Icon({ name }: { name: 'server' | 'account' | 'route' | 'client' }) {
 function HeroMapPreview({ locale }: { locale: Locale }) {
   const isEnglish = locale === 'en'
   const nodes = [
-    { name: 'New York', left: '29.1%', top: '41.4%' },
+    { name: 'New York', left: '29.1%', top: '41.4%', hub: true },
     { name: 'Frankfurt', left: '52.5%', top: '37.5%' },
-    { name: 'Helsinki', left: '56.5%', top: '31.6%', hub: true },
+    { name: 'Helsinki', left: '56.5%', top: '31.6%' },
     { name: 'Moscow', left: '61.3%', top: '34.5%' },
     { name: 'Singapore', left: '78.8%', top: '62.4%' },
     { name: 'Tokyo', left: '87.7%', top: '42.7%' },
@@ -137,10 +137,10 @@ function HeroMapPreview({ locale }: { locale: Locale }) {
           <div className="hero-map-canvas">
             <img src={assetUrl('world-map-natural-earth.svg')} alt="" />
             <svg className="hero-map-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <path d="M56.5 31.6 C47 25, 38 31, 29.1 41.4" />
-              <path d="M56.5 31.6 C55 34, 53.5 36, 52.5 37.5" />
-              <path d="M56.5 31.6 C58 31, 60 32, 61.3 34.5" />
-              <path d="M56.5 31.6 C65 37, 73 49, 78.8 62.4" />
+              <path d="M29.1 41.4 C37 31, 45 32, 52.5 37.5" />
+              <path d="M29.1 41.4 C39 25, 49 25, 56.5 31.6" />
+              <path d="M29.1 41.4 C42 28, 53 28, 61.3 34.5" />
+              <path d="M29.1 41.4 C47 34, 66 44, 78.8 62.4" />
               <path d="M78.8 62.4 C83 57, 86 50, 87.7 42.7" />
             </svg>
             {nodes.map(node => (
