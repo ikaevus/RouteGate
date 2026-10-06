@@ -15,7 +15,7 @@ export type SiteContent = {
   }
   product: { eyebrow: string; title: string; intro: string; cards: Card[] }
   workflow: { eyebrow: string; title: string; steps: Card[] }
-  source: { eyebrow: string; title: string; text: string; points: string[]; repository: string; realCode: string }
+  source: { eyebrow: string; title: string; text: string; points: string[]; repository: string }
   deployment: {
     eyebrow: string; title: string; text: string; cards: Card[]
     commandLabel: string; commandTitle: string; commandNote: string
@@ -69,11 +69,10 @@ export const content: Record<Locale, SiteContent> = {
     },
     source: {
       eyebrow: 'ОТКРЫТЫЙ КОД',
-      title: 'Код, который можно проверить',
-      text: 'Manager, Agent, панель администратора и Портал пользователя развиваются в открытом репозитории. На сайте показан настоящий фрагмент текущего серверного кода, а не декоративный пример.',
+      title: 'Разрабатывается открыто',
+      text: 'Manager, Agent, панель администратора и Портал пользователя развиваются в открытом репозитории. Исходный код RouteGate доступен на GitHub — его можно изучать, собирать самостоятельно и использовать для собственного развёртывания.',
       points: ['Исходники на GitHub', 'Самостоятельная сборка', 'Самостоятельное развёртывание', 'AGPLv3-or-later'],
       repository: 'backend/internal/configs/lifecycle.go',
-      realCode: 'реальный файл',
     },
     deployment: {
       eyebrow: 'УСТАНОВКА',
@@ -174,11 +173,10 @@ export const content: Record<Locale, SiteContent> = {
     },
     source: {
       eyebrow: 'OPEN SOURCE',
-      title: 'Code you can inspect',
-      text: 'Manager, Agent, Admin UI, and User Portal are developed in the public repository. The website now shows a real excerpt from the current backend instead of decorative sample code.',
+      title: 'Developed in the open',
+      text: 'Manager, Agent, Admin UI, and User Portal are developed in the public repository. RouteGate source code is available on GitHub to inspect, build, and deploy yourself.',
       points: ['Source on GitHub', 'Build from source', 'Self-hosted deployment', 'AGPLv3-or-later'],
       repository: 'backend/internal/configs/lifecycle.go',
-      realCode: 'real source file',
     },
     deployment: {
       eyebrow: 'INSTALLATION',
