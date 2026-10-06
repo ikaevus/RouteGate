@@ -279,50 +279,6 @@
   width: 18px;
 }
 
-:root[data-theme='light'] .dashboard-widget {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
-  border-color: rgba(203, 213, 225, 0.95);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
-}
-
-:root[data-theme='light'] .kpi-title,
-:root[data-theme='light'] .health-row span,
-:root[data-theme='light'] .dashboard-table-row {
-  color: #334155;
-}
-
-:root[data-theme='light'] .dashboard-table-head span {
-  color: #64748b;
-}
-
-:root[data-theme='light'] .node-distribution-map {
-  background-color: #eaf0f7;
-  background-image:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(148, 163, 184, 0.08)),
-    url('../../shared/assets/world-map.svg');
-  border-color: rgba(100, 116, 139, 0.18);
-  box-shadow: inset 0 0 24px rgba(148, 163, 184, 0.14);
-}
-
-:root[data-theme='light'] .node-country-marker {
-  background: rgba(255, 255, 255, 0.94);
-  border-color: rgba(100, 116, 139, 0.24);
-  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.14);
-}
-
-:root[data-theme='light'] .node-country-marker strong {
-  color: #0f172a;
-}
-
-:root[data-theme='light'] .traffic-empty-state {
-  background:
-    linear-gradient(rgba(100, 116, 139, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(100, 116, 139, 0.07) 1px, transparent 1px),
-    radial-gradient(circle at 50% 45%, rgba(37, 99, 235, 0.07), rgba(255, 255, 255, 0.2));
-  background-size: 44px 38px, 44px 38px, auto;
-  border-color: rgba(100, 116, 139, 0.16);
-}
-
 @media (max-width: 1380px) {
   .online-users-widget,
   .deployments-widget,

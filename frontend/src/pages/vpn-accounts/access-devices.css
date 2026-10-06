@@ -57,14 +57,6 @@
   .vpn-access-device-list { grid-template-columns: minmax(0, 1fr); max-height: 520px; }
 }
 
-:root[data-theme='light'] .vpn-access-device-compat-full,
-:root[data-theme='light'] .vpn-access-device-recommended { color: #166534; }
-:root[data-theme='light'] .vpn-access-device-compat-setup,
-:root[data-theme='light'] .vpn-access-device-note-warning,
-:root[data-theme='light'] .vpn-access-legacy-badge { color: #92400e; }
-:root[data-theme='light'] .vpn-access-device-compat-generic { color: #475569; }
-:root[data-theme='light'] .vpn-access-device-url { background: #eef2f7; }
-
 .vpn-access-device-actions {
   align-self: end;
   margin-top: auto;

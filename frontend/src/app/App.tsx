@@ -22,17 +22,7 @@ import { useLocale } from '../shared/i18n/useLocale';
 import { LocaleSwitcher } from '../shared/ui/LocaleSwitcher';
 
 const routeGateSymbolUrl = new URL('../shared/assets/routegate-symbol.svg', import.meta.url).href;
-const ADMIN_THEME_STORAGE_KEY = 'routegate.admin.theme';
 const ADMIN_SIDEBAR_STORAGE_KEY = 'routegate.admin.sidebarCollapsed';
-
-type AdminTheme = 'dark' | 'light';
-
-function readStoredTheme(): AdminTheme {
-  if (typeof window === 'undefined') {
-    return 'dark';
-  }
-  return window.localStorage.getItem(ADMIN_THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
-}
 
 function readStoredSidebarCollapsed(): boolean {
   if (typeof window === 'undefined') {
@@ -88,7 +78,6 @@ type IconName =
   | 'search'
   | 'settings'
   | 'menu'
-  | 'moon'
   | 'collapse';
 
 function Icon({ name }: { name: IconName }) {
@@ -107,7 +96,6 @@ function Icon({ name }: { name: IconName }) {
     search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></>,
     menu: <><path d="M5 7h14M5 12h14M5 17h14" /></>,
-    moon: <><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5 7.6 7.6 0 1 0 19 14.5Z" /></>,
     collapse: <><path d="M15 6 9 12l6 6" /><path d="M9 12h12" /></>,
   };
 
@@ -314,7 +302,6 @@ function ProfileMenu({ isLoggingOut, onLogout, user }: AdminShellProps) {
 }
 
 function AdminShell({ isLoggingOut, onLogout, user, sessionNotice }: AdminShellProps) {
-  const [theme, setTheme] = useState<AdminTheme>(readStoredTheme);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [clockTick, setClockTick] = useState(() => Date.now());
   const managerHealthQuery = useQuery({
@@ -322,11 +309,6 @@ function AdminShell({ isLoggingOut, onLogout, user, sessionNotice }: AdminShellP
     queryFn: getManagerHealth,
     refetchInterval: 10_000,
   });
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem(ADMIN_THEME_STORAGE_KEY, theme);
-  }, [theme]);
 
   useEffect(() => {
     window.localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, String(isSidebarCollapsed));
@@ -416,16 +398,6 @@ function AdminShell({ isLoggingOut, onLogout, user, sessionNotice }: AdminShellP
           <div className="license-progress-track"><span /></div>
         </div>
 
-        <button
-          aria-pressed={theme === 'dark'}
-          className="sidebar-control sidebar-theme-control"
-          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-          type="button"
-        >
-          <Icon name="moon" />
-          <span>{t('dashboard.darkTheme')}</span>
-          <i aria-hidden="true" />
-        </button>
         <button
           aria-expanded={!isSidebarCollapsed}
           className="sidebar-control sidebar-collapse-control"

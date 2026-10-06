@@ -51,17 +51,6 @@
   display: none;
 }
 
-:root[data-theme='light'] .analytics-map-inspector-latch {
-  background: rgba(248, 250, 252, 0.96);
-  border-color: rgba(37, 99, 235, 0.28);
-  color: #1e3a8a;
-}
-
-:root[data-theme='light'] .analytics-map-inspector-latch:hover {
-  background: rgba(37, 99, 235, 0.12);
-  border-color: rgba(37, 99, 235, 0.42);
-}
-
 @media (max-width: 980px) {
   .analytics-map-inspector-latch {
     display: none;

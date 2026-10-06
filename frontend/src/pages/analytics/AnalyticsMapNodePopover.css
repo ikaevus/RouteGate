@@ -136,19 +136,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-:root[data-theme='light'] .analytics-map-node-popover-card {
-  background: rgba(233, 242, 255, 0.98);
-  border-color: #557faf;
-  box-shadow: 0 16px 36px rgba(30, 64, 175, 0.18);
-}
-
-:root[data-theme='light'] .analytics-map-node-popover-location,
-:root[data-theme='light'] .analytics-map-node-popover-fact span {
-  color: #14365b;
-}
-
-:root[data-theme='light'] .analytics-map-node-popover-title strong,
-:root[data-theme='light'] .analytics-map-node-popover-fact strong {
-  color: #071b35;
-}

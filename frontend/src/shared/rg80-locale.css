@@ -43,28 +43,6 @@
   color: #dbeafe;
 }
 
-/* Light theme: neutral topbar surface with RouteGate blue selection. */
-:root[data-theme='light'] .rg-locale-switcher {
-  background: #ffffff;
-  border-color: #c5d0dc;
-  box-shadow: none;
-}
-
-:root[data-theme='light'] .rg-locale-option {
-  color: #64748b;
-}
-
-:root[data-theme='light'] .rg-locale-option:hover {
-  background: #eff6ff;
-  color: #0f172a;
-}
-
-:root[data-theme='light'] .rg-locale-option-active {
-  background: #eaf2ff;
-  border-color: #93c5fd;
-  color: #1d4ed8;
-}
-
 .portal-topbar-actions,
 .auth-topbar-actions {
   align-items: center;

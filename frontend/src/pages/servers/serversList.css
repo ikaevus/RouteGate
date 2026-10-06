@@ -30,4 +30,3 @@
 .servers-page .server-list-cell > span:not(.badge) { color: var(--rg-text-primary, #e2e8f0); margin-top: 0; }
 .servers-page .server-list-cell > .server-list-secondary,
 .servers-page .server-list-cell > .server-list-mobile-label { color: var(--rg-text-secondary, #94a3b8); opacity: 1; }
-:root[data-theme='light'] .servers-page .server-list-description { opacity: 1; }

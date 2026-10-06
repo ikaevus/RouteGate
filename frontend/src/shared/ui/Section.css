@@ -23,6 +23,3 @@
 }
 
 .vpn-accounts-page .workspace-section.workspace-section-danger { border-color: rgba(248, 113, 113, 0.38); }
-:root[data-theme='light'] .vpn-accounts-page .workspace-section.workspace-section-danger {
-  border-color: rgba(153, 27, 27, 0.35);
-}

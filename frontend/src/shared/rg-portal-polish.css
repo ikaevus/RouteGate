@@ -1,0 +1,15 @@
+/* User Portal polish rules that apply regardless of page theme. */
+
+/* Give portal table cells breathing room instead of pinning profile text to the
+ * selected-row boundary. Apply it to the header too for alignment. */
+.portal-profiles-table-row {
+  box-sizing: border-box;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* A link from /portal back to /portal is a dead action. Keep the portal nav
+ * focused on actual destinations (Admin UI / Login). */
+.portal-app-shell .portal-topnav a[href='/portal'] {
+  display: none;
+}

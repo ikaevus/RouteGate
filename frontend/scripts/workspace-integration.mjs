@@ -199,11 +199,8 @@ try {
   await page.waitForFunction(() => document.querySelector('.routing-workspace-header h2')?.textContent === 'Persisted routing profile');
   await page.reload();
   await page.getByRole('heading', { name: 'Persisted routing profile', exact: true }).waitFor();
-  for (const theme of ['dark', 'light']) {
-    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-    await page.setViewportSize({ width: 390, height: 844 });
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${theme} routing mobile overflow`);
-  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'routing mobile overflow');
   await page.setViewportSize({ width: 1440, height: 1000 });
   const workspace = `${origin}/vpn-accounts/${account.id}`;
   await page.goto(workspace);
@@ -533,35 +530,32 @@ try {
   }
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
-    for (const theme of ['dark', 'light']) {
-      for (const target of workspaces) {
-        await page.goto(`${origin}${target.path}/overview`);
-        await page.locator(target.header).getByText(target.name, { exact: true }).waitFor();
-        await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-        for (const section of target.sections) {
-          await page.locator(`.workspace-nav-link[href="${target.path}/${section}"]`).click();
-          await page.waitForURL(`${origin}${target.path}/${section}`);
-          await page.locator(`.workspace-nav-link[aria-current="page"][href="${target.path}/${section}"]`).waitFor();
-          assert.equal(await page.locator(target.header).innerText(), target.name);
-          await checkLayout(`${width}/${theme}${target.path}/${section}`);
-        }
-        if (target.path.startsWith('/routing-profiles/')) {
-          await page.locator('.workspace-nav-link[href$="/rules"]').click();
-          await page.locator('.routing-rules-panel').getByRole('button', { name: 'Add routing rule', exact: true }).click();
-          await page.locator('.routing-rule-form input').first().waitFor();
-          await checkLayout(`${width}/${theme}/routing-editor`);
-          await page.locator('.routing-rule-form summary').click();
-          await page.locator('.routing-rule-form textarea').last().waitFor();
-          await checkLayout(`${width}/${theme}/routing-editor-advanced`);
-          await page.locator('.routing-rule-form').getByRole('button', { name: 'Cancel', exact: true }).click();
-          await page.locator('.routing-rule-form').waitFor({ state: 'hidden' });
-        }
+    for (const target of workspaces) {
+      await page.goto(`${origin}${target.path}/overview`);
+      await page.locator(target.header).getByText(target.name, { exact: true }).waitFor();
+      for (const section of target.sections) {
+        await page.locator(`.workspace-nav-link[href="${target.path}/${section}"]`).click();
+        await page.waitForURL(`${origin}${target.path}/${section}`);
+        await page.locator(`.workspace-nav-link[aria-current="page"][href="${target.path}/${section}"]`).waitFor();
+        assert.equal(await page.locator(target.header).innerText(), target.name);
+        await checkLayout(`${width}${target.path}/${section}`);
+      }
+      if (target.path.startsWith('/routing-profiles/')) {
+        await page.locator('.workspace-nav-link[href$="/rules"]').click();
+        await page.locator('.routing-rules-panel').getByRole('button', { name: 'Add routing rule', exact: true }).click();
+        await page.locator('.routing-rule-form input').first().waitFor();
+        await checkLayout(`${width}/routing-editor`);
+        await page.locator('.routing-rule-form summary').click();
+        await page.locator('.routing-rule-form textarea').last().waitFor();
+        await checkLayout(`${width}/routing-editor-advanced`);
+        await page.locator('.routing-rule-form').getByRole('button', { name: 'Cancel', exact: true }).click();
+        await page.locator('.routing-rule-form').waitFor({ state: 'hidden' });
       }
     }
   }
-  assert.equal(layoutChecks, 68, '60 domain layouts plus 8 rule editor layouts');
+  assert.equal(layoutChecks, 34, '30 domain layouts plus 4 rule editor layouts');
   assert.deepEqual(errors, []);
-  console.log(`PASS: Manager CRUD, account/traffic draft isolation and retry, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
+  console.log(`PASS: Manager CRUD, account/traffic draft isolation and retry, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px)`);
 } finally {
   await browser?.close();
   await vite?.close();
