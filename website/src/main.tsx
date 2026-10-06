@@ -4,6 +4,7 @@ import { App } from './App'
 import './styles.css'
 import './hero-modern.css'
 import './site-refresh.css'
+import './hero-map-first.css'
 
 const root = document.getElementById('root')!
 const initialLocale = window.location.pathname === '/ru/' || window.location.pathname.startsWith('/ru/')
