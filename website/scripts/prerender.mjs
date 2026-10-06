@@ -16,7 +16,7 @@ const pages = {
     description: 'RouteGate is an open-source self-hosted platform for managed VPN nodes, accounts, devices, routing, and client access.',
     switchHref: '/ru/',
     switchLabel: 'Русский',
-    hero: 'Control your Linux VPN infrastructure',
+    hero: 'Your Linux VPN infrastructure. Under your control.',
     intro: 'Open-source self-hosted control plane for VPN nodes, accounts, devices, routing, user access, and operational lifecycle.',
     productTitle: 'From VPN nodes to user access',
     productItems: [
@@ -45,7 +45,7 @@ const pages = {
     description: 'RouteGate — открытая платформа для самостоятельного управления Linux VPN-узлами, аккаунтами, устройствами, маршрутизацией и клиентским доступом.',
     switchHref: '/',
     switchLabel: 'English',
-    hero: 'Управляйте Linux VPN-инфраструктурой из одной точки',
+    hero: 'Linux VPN-инфраструктура под вашим контролем',
     intro: 'Открытая платформа для самостоятельного управления VPN-узлами, аккаунтами, устройствами, маршрутизацией, пользовательским доступом и эксплуатационным жизненным циклом.',
     productTitle: 'От VPN-узла до пользовательского доступа',
     productItems: [
@@ -137,14 +137,14 @@ assertGenerated('English', englishHtml, [
   'class="seo-prerender"',
   '<html lang="en">',
   '<link rel="canonical" href="https://routegate.org/">',
-  'Control your Linux VPN infrastructure',
+  'Your Linux VPN infrastructure. Under your control.',
 ])
 
 assertGenerated('Russian', russianHtml, [
   'class="seo-prerender"',
   '<html lang="ru">',
   '<link rel="canonical" href="https://routegate.org/ru/">',
-  'Управляйте Linux VPN-инфраструктурой из одной точки',
+  'Linux VPN-инфраструктура под вашим контролем',
 ])
 
 await writeFile(join(dist, 'index.html'), englishHtml)
