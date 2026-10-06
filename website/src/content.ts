@@ -68,8 +68,8 @@ export const content: Record<Locale, SiteContent> = {
       ],
     },
     source: {
-      eyebrow: 'ОТКРЫТЫЙ КОД',
-      title: 'Разрабатывается открыто',
+      eyebrow: 'GITHUB · AGPLv3-OR-LATER',
+      title: 'Открытый исходный код',
       text: 'Manager, Agent, панель администратора и Портал пользователя развиваются в открытом репозитории. Исходный код RouteGate доступен на GitHub — его можно изучать, собирать самостоятельно и использовать для собственного развёртывания.',
       points: ['Исходники на GitHub', 'Самостоятельная сборка', 'Самостоятельное развёртывание', 'AGPLv3-or-later'],
       repository: 'backend/internal/configs/lifecycle.go',
@@ -172,8 +172,8 @@ export const content: Record<Locale, SiteContent> = {
       ],
     },
     source: {
-      eyebrow: 'OPEN SOURCE',
-      title: 'Developed in the open',
+      eyebrow: 'GITHUB · AGPLv3-OR-LATER',
+      title: 'Open source',
       text: 'Manager, Agent, Admin UI, and User Portal are developed in the public repository. RouteGate source code is available on GitHub to inspect, build, and deploy yourself.',
       points: ['Source on GitHub', 'Build from source', 'Self-hosted deployment', 'AGPLv3-or-later'],
       repository: 'backend/internal/configs/lifecycle.go',
