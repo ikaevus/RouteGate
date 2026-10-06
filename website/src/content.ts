@@ -36,7 +36,7 @@ export const content: Record<Locale, SiteContent> = {
     hero: {
       eyebrow: 'ОТКРЫТЫЙ КОД · AGPLv3-OR-LATER',
       title: 'RouteGate',
-      subtitle: 'Управляйте Linux VPN-инфраструктурой из одной точки',
+      subtitle: 'Linux VPN-инфраструктура под вашим контролем',
       description: 'Открытая платформа для самостоятельного управления VPN-узлами, аккаунтами, устройствами, маршрутизацией и пользовательским доступом.',
       note: 'Разворачивайте самостоятельно. Сохраняйте контроль над инфраструктурой и данными.',
     },
@@ -140,7 +140,7 @@ export const content: Record<Locale, SiteContent> = {
     hero: {
       eyebrow: 'OPEN SOURCE · AGPLv3-OR-LATER',
       title: 'RouteGate',
-      subtitle: 'Control your Linux VPN infrastructure',
+      subtitle: 'Your Linux VPN infrastructure. Under your control.',
       description: 'An open-source self-hosted control plane for VPN nodes, accounts, devices, routing, and user access.',
       note: 'Deploy it yourself. Keep control of your infrastructure and data.',
     },
