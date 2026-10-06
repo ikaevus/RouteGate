@@ -72,95 +72,103 @@ function Icon({ name }: { name: 'server' | 'account' | 'route' | 'client' }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
 
-function WorldMap({ t }: { t: SiteContent['dashboard'] }) {
-  const servers = [
+function HeroMapPreview({ locale }: { locale: Locale }) {
+  const isEnglish = locale === 'en'
+  const nodes = [
     { name: 'New York', left: '29.1%', top: '41.4%' },
-    { name: 'São Paulo', left: '34.5%', top: '69.7%' },
-    { name: 'Frankfurt', left: '52.5%', top: '35.1%' },
-    { name: 'Nuremberg', left: '53.2%', top: '36.3%' },
+    { name: 'Frankfurt', left: '52.5%', top: '37.5%' },
+    { name: 'Helsinki', left: '56.5%', top: '31.6%', hub: true },
+    { name: 'Moscow', left: '61.3%', top: '34.5%' },
     { name: 'Singapore', left: '78.8%', top: '62.4%' },
     { name: 'Tokyo', left: '87.7%', top: '42.7%' },
   ]
+  const metrics = isEnglish
+    ? [
+        ['Managed nodes', '6 / 6', 'online'],
+        ['Connected agents', '6 / 6', 'healthy'],
+        ['User access', 'Ready', 'delivery'],
+        ['Configuration', 'Applied', 'verified'],
+      ]
+    : [
+        ['Управляемые узлы', '6 / 6', 'онлайн'],
+        ['Подключённые агенты', '6 / 6', 'исправны'],
+        ['Доступ пользователей', 'Готов', 'выдача'],
+        ['Конфигурация', 'Применена', 'проверено'],
+      ]
+  const statuses = isEnglish
+    ? ['Manager healthy', 'Client delivery ready', 'No failed nodes']
+    : ['Manager исправен', 'Выдача клиентам готова', 'Нет проблемных узлов']
 
   return (
-    <div className="map-widget">
-      <div className="widget-heading">
-        <div><strong>{t.map}</strong><span>{t.online}</span></div>
-        <button type="button" tabIndex={-1} aria-hidden="true">•••</button>
-      </div>
-      <div className="world-map">
-        <img src={assetUrl('world-map-natural-earth.svg')} alt="" />
-        {servers.map(server => (
-          <span className="server-marker" style={{ left: server.left, top: server.top }} key={server.name}>
-            <i /><em>{server.name}</em>
-          </span>
-        ))}
-      </div>
-      <div className="map-status">
-        <span><i />{t.online}</span>
-        <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth · 1:110m</a>
-      </div>
-    </div>
-  )
-}
-
-function DashboardPreview({ t }: { t: SiteContent['dashboard'] }) {
-  const isEnglish = t.overview === 'Overview'
-  const nav = [
-    t.overview,
-    t.servers,
-    t.accounts,
-    isEnglish ? 'Configuration / Apply' : 'Конфигурация и применение',
-    isEnglish ? 'Routing profiles' : 'Маршрутные профили',
-    isEnglish ? 'User portal' : 'Портал пользователя',
-  ]
-
-  return (
-    <div className="dashboard-wrap">
-      <div className="dashboard" role="img" aria-label={isEnglish ? 'RouteGate Admin UI preview' : 'Предпросмотр панели администратора RouteGate'}>
-        <aside className="dashboard-nav">
-          <Brand compact />
-          <div className="dashboard-menu">
-            {nav.map((item, index) => <span className={index === 0 ? 'is-active' : ''} key={item}><i />{item}</span>)}
+    <div className="hero-map-preview-wrap">
+      <div
+        className="hero-map-preview"
+        role="img"
+        aria-label={isEnglish
+          ? 'Illustrative RouteGate product preview centered on a world map of managed VPN nodes'
+          : 'Иллюстративный предпросмотр RouteGate с картой управляемых VPN-узлов'}
+      >
+        <div className="hero-map-preview__chrome">
+          <div className="hero-map-preview__brand">
+            <img src={assetUrl('routegate-symbol.svg')} alt="" />
+            <div><strong>RouteGate</strong><span>{isEnglish ? 'Control plane' : 'Панель управления'}</span></div>
           </div>
-          <div className="dashboard-user"><span>IK</span><div><strong>Admin</strong><small>admin@routegate</small></div></div>
-        </aside>
-        <div className="dashboard-shell">
-          <div className="dashboard-toolbar">
-            <div className="dashboard-search">⌕ <span>{isEnglish ? 'Search' : 'Поиск'}</span><kbd>⌘ K</kbd></div>
-            <div className="dashboard-tools"><span>?</span><span>{isEnglish ? 'EN' : 'RU'}</span><span>IK</span></div>
+          <div className="hero-map-preview__health"><i />{isEnglish ? 'All nodes operational' : 'Все узлы работают'}</div>
+        </div>
+
+        <div className="hero-map-preview__metrics">
+          {metrics.map(([label, value, hint]) => (
+            <article key={label}>
+              <span>{label}</span>
+              <div><strong>{value}</strong><small>{hint}</small></div>
+            </article>
+          ))}
+        </div>
+
+        <div className="hero-map-preview__map-panel">
+          <div className="hero-map-preview__map-heading">
+            <div>
+              <strong>{isEnglish ? 'Global node topology' : 'Глобальная топология узлов'}</strong>
+              <span>{isEnglish ? 'Managed from one control plane' : 'Управление из единой панели'}</span>
+            </div>
+            <span className="hero-map-preview__online"><i />6 / 6</span>
           </div>
-          <div className="dashboard-main">
-            <div className="dashboard-top">
-              <div><span>{t.overview}</span><h3>{t.infrastructure}</h3></div>
-              <div className="health"><i />{t.healthy}</div>
-            </div>
-            <div className="stats">
-              {[
-                [isEnglish ? 'Active servers' : 'Активные серверы', '6 / 6', '100%'],
-                [isEnglish ? 'Online agents' : 'Агенты онлайн', '6 / 6', '100%'],
-                [isEnglish ? 'Active VPN users' : 'Активные VPN-пользователи', '842', '+5.2%'],
-                [isEnglish ? 'Monthly traffic' : 'Трафик за месяц', '12.4 TB', '30d'],
-              ].map(([label, value, delta]) => (
-                <article key={label}><span>{label}</span><div><strong>{value}</strong><small>{delta}</small></div></article>
-              ))}
-            </div>
-            <WorldMap t={t} />
-            <div className="dashboard-bottom">
-              <div className="health-card">
-                <div className="widget-heading"><strong>{isEnglish ? 'Infrastructure health' : 'Состояние инфраструктуры'}</strong><button type="button" tabIndex={-1} aria-hidden="true">•••</button></div>
-                <div className="health-row"><span><i className="ok" />{isEnglish ? 'Healthy' : 'Работают'}</span><b>6</b></div>
-                <div className="health-row"><span><i className="warn" />{isEnglish ? 'Attention' : 'Требуют внимания'}</span><b>0</b></div>
-              </div>
-              <div className="traffic-card">
-                <span>{t.traffic}</span><strong>12.4 <small>TB</small></strong>
-                <div className="bars">{[4, 6, 5, 9, 7, 12, 8, 11, 14, 12, 16, 13].map((height, index) => <i style={{ height: `${height * 2}px` }} key={index} />)}</div>
-              </div>
-            </div>
+
+          <div className="hero-map-canvas">
+            <img src={assetUrl('world-map-natural-earth.svg')} alt="" />
+            <svg className="hero-map-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M56.5 31.6 C47 25, 38 31, 29.1 41.4" />
+              <path d="M56.5 31.6 C55 34, 53.5 36, 52.5 37.5" />
+              <path d="M56.5 31.6 C58 31, 60 32, 61.3 34.5" />
+              <path d="M56.5 31.6 C65 37, 73 49, 78.8 62.4" />
+              <path d="M78.8 62.4 C83 57, 86 50, 87.7 42.7" />
+            </svg>
+            {nodes.map(node => (
+              <span
+                className={`hero-map-node${node.hub ? ' is-hub' : ''}`}
+                style={{ left: node.left, top: node.top }}
+                key={node.name}
+              >
+                <i />
+                <em>{node.name}</em>
+              </span>
+            ))}
+          </div>
+
+          <div className="hero-map-preview__map-footer">
+            <span><i />{isEnglish ? 'Managed node' : 'Управляемый узел'}</span>
+            <span><i className="hub" />{isEnglish ? 'Control hub' : 'Центральный узел'}</span>
+            <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth · 1:110m</a>
           </div>
         </div>
+
+        <div className="hero-map-preview__status">
+          {statuses.map(status => <span key={status}><i />{status}</span>)}
+        </div>
       </div>
-      <span className="dashboard-caption">{isEnglish ? 'RouteGate Admin UI · Preview' : 'RouteGate · Панель администратора · Предпросмотр'}</span>
+      <span className="hero-map-preview__caption">
+        {isEnglish ? 'Illustrative product preview · not live telemetry' : 'Иллюстративный предпросмотр · не реальные телеметрические данные'}
+      </span>
     </div>
   )
 }
@@ -299,9 +307,14 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
                   {t.action.github}
                 </a>
               </div>
-              <div className="hero-meta"><span>Linux</span><span>VLESS</span><span>Reality</span><span>{locale === 'ru' ? 'Самостоятельное развёртывание' : 'Self-hosted'}</span></div>
+              <div className="hero-meta">
+                <span>Linux</span>
+                <span>{locale === 'ru' ? 'Несколько протоколов' : 'Multi-protocol'}</span>
+                <span>{locale === 'ru' ? 'Самостоятельное развёртывание' : 'Self-hosted'}</span>
+                <span>{locale === 'ru' ? 'Открытый код' : 'Open source'}</span>
+              </div>
             </div>
-            <DashboardPreview t={t.dashboard} />
+            <HeroMapPreview locale={locale} />
           </div>
         </section>
 
