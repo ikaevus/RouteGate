@@ -72,16 +72,33 @@ function Icon({ name }: { name: 'server' | 'account' | 'route' | 'client' }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
 
+function projectMapPoint(longitude: number, latitude: number) {
+  return {
+    x: ((longitude + 180) / 360) * 100,
+    y: ((90 - latitude) / 180) * 100,
+  }
+}
+
+function routePath(from: { x: number; y: number }, to: { x: number; y: number }) {
+  const controlX = (from.x + to.x) / 2
+  const lift = Math.min(8, Math.max(2.5, Math.abs(to.x - from.x) * 0.08))
+  const controlY = ((from.y + to.y) / 2) - lift
+
+  return `M${from.x.toFixed(2)} ${from.y.toFixed(2)} Q${controlX.toFixed(2)} ${controlY.toFixed(2)} ${to.x.toFixed(2)} ${to.y.toFixed(2)}`
+}
+
 function HeroMapPreview({ locale }: { locale: Locale }) {
   const isEnglish = locale === 'en'
   const nodes = [
-    { name: 'New York', left: '29.1%', top: '41.4%', hub: true },
-    { name: 'Frankfurt', left: '52.5%', top: '37.5%' },
-    { name: 'Helsinki', left: '56.5%', top: '31.6%' },
-    { name: 'Moscow', left: '61.3%', top: '34.5%' },
-    { name: 'Singapore', left: '78.8%', top: '62.4%' },
-    { name: 'Tokyo', left: '87.7%', top: '42.7%' },
-  ]
+    { name: 'New York', longitude: -74.0060, latitude: 40.7128, hub: true },
+    { name: 'Frankfurt', longitude: 8.6821, latitude: 50.1109 },
+    { name: 'Helsinki', longitude: 24.9384, latitude: 60.1699 },
+    { name: 'Moscow', longitude: 37.6173, latitude: 55.7558 },
+    { name: 'Singapore', longitude: 103.8198, latitude: 1.3521 },
+    { name: 'Tokyo', longitude: 139.6503, latitude: 35.6762 },
+  ].map(node => ({ ...node, ...projectMapPoint(node.longitude, node.latitude) }))
+  const hub = nodes.find(node => node.hub) ?? nodes[0]
+  const routes = nodes.filter(node => !node.hub).map(node => routePath(hub, node))
   const metrics = isEnglish
     ? [
         ['Managed nodes', '6 / 6', 'online'],
@@ -137,16 +154,12 @@ function HeroMapPreview({ locale }: { locale: Locale }) {
           <div className="hero-map-canvas">
             <img src={assetUrl('world-map-natural-earth.svg')} alt="" />
             <svg className="hero-map-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <path d="M29.1 41.4 C37 31, 45 32, 52.5 37.5" />
-              <path d="M29.1 41.4 C39 25, 49 25, 56.5 31.6" />
-              <path d="M29.1 41.4 C42 28, 53 28, 61.3 34.5" />
-              <path d="M29.1 41.4 C47 34, 66 44, 78.8 62.4" />
-              <path d="M78.8 62.4 C83 57, 86 50, 87.7 42.7" />
+              {routes.map((path, index) => <path d={path} key={index} />)}
             </svg>
             {nodes.map(node => (
               <span
                 className={`hero-map-node${node.hub ? ' is-hub' : ''}`}
-                style={{ left: node.left, top: node.top }}
+                style={{ left: `${node.x}%`, top: `${node.y}%` }}
                 key={node.name}
               >
                 <i />
