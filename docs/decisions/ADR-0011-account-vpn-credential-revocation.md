@@ -203,3 +203,73 @@ The standalone sing-box test for this slice exercises cached UUIDs against
 locally prepared baseline/removal/zero-user JSON using only loopback services.
 It models a whole-process restart explicitly. It is not a Manager/Agent
 operation test and does not establish selective session termination.
+
+### Scoped Agent executor (second implementation slice)
+
+`CredentialRemovalExecutor` is an isolated, **unwired** execution primitive.
+The heartbeat dispatcher does not accept its task kind, no capability is
+advertised, and Manager has no endpoint/job producer for it. Do not wire it to
+ordinary `config_apply`: the reservations and recovery coordinator below are
+mandatory prerequisites. This slice cannot perform an administrator-triggered
+revocation and does not close #545.
+
+Its version-1 request binds operation/account/server/Agent/job/version IDs, the
+baseline and candidate runtime digests, a single UUID, and explicit acceptance
+of shared-process session interruption. The runtime digest is SHA-256 of the
+Agent's canonical JSON: recursively sorted object keys, preserved array order
+and number spelling, Go JSON string escaping. Duplicate keys, invalid UTF-8,
+trailing values and excessive size/depth fail closed. This digest is distinct
+from the Manager envelope hash, which remains only a correlation identifier.
+The Manager must generate these digests from the pinned baseline and candidate
+using this exact versioned contract before integration.
+
+The executor independently verifies that the on-disk JSON changes by removing
+exactly one stable account name/UUID from the managed Reality inbound. Other
+inbounds, users, credentials, routing and options remain identical. It uses
+only the locally selected VLESS adapter, validates before promotion, and
+requires service control and an enabled service. Last-user removal keeps an
+empty listener; ordinary apply authorization remains unchanged.
+
+Evidence includes the canonical active-file digest and a fresh systemd
+InvocationID, PID and monotonic start timestamp, with active/running state and
+`KillMode=control-group`. The observed process executable must be the same
+binary used for validation. `/proc/<pid>/cmdline` must select the expected
+absolute config file, directly or through a directory containing exactly one
+JSON config. Merged sources, symlinks, implicit/default config paths, stdin and
+unknown command options are unsupported and fail closed. Generation is checked
+again around process-source inspection and after listener verification.
+
+A private fsynced receipt and nonblocking filesystem lock serialize this
+executor. A durable inflight marker precedes atomic active-file replacement.
+Failures before mutation are `failed`; uncertain/post-mutation outcomes are
+`recovery_required` and retain the marker. There is **no automatic rollback**
+that could regrant the removed UUID. An identical successful redelivery only
+rechecks file, process generation, enabled state and listener; it does not
+restart. A changed request, evidence, unreadable receipt or unresolved marker
+cannot produce success. Receipts contain no credentials, paths or raw process
+output and live in a dedicated subdirectory outside ordinary artifact cleanup.
+The local `succeeded` outcome is evidence for a future Manager verifier, not an
+account-level `confirmed` state or a claim of sustained VPN connectivity.
+
+The lock currently covers this executor only. It does not fence legacy Agent
+apply, rollback, service tasks, updates or direct local administration. Before
+activation, Manager reservations must exclude every conflicting mutation, and
+Agent dispatch must share the fence with all runtime mutation paths, including
+restart/recovery after Agent process death. Arbitrary privileged out-of-band
+changes (including SIGHUP or manual restoration) cannot be prevented by these
+measurements; subsequent drift must invalidate previously confirmed evidence.
+
+The opt-in test uses a disposable systemd CI runner, a temporary service and
+loopback-only Reality clients/targets. It exercises the actual executor and
+adapter, rejects a cached removed UUID, preserves the other account's ability
+to reconnect, checks read-only lost-ack replay, and tests deny-all last-user
+removal. It also observes both already-open streams closing on the shared
+process restart. That interruption requires explicit operator acceptance;
+this is not selective session termination. Production services are never used.
+
+Next slice: durable Manager operation/reservation and audit tables; baseline
+preflight/proof retention; a read-only preview and explicit confirmation bound
+to that preview; capability negotiation; strict result verification; blocked
+subscription/reactivation semantics; reconciliation of pending/failed/recovery
+states without automatically restoring the credential. Test Manager/PostgreSQL
+concurrency and all Agent mutation fences before enabling dispatch or UI.
