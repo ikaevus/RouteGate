@@ -114,7 +114,12 @@ func (h *Handler) PreviewUnappliedVLESS(w http.ResponseWriter, r *http.Request) 
 	}
 
 	accountID := r.PathValue("id")
-	preview, err := BuildUnappliedVLESSPreview(r.Context(), h.accounts, accountID)
+	source, ok := h.accounts.(ClientConnectionSource)
+	if !ok {
+		httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("preimport_unavailable", "Client profile storage is unavailable."))
+		return
+	}
+	preview, err := BuildUnappliedVLESSPreview(r.Context(), source, accountID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeAccountNotFound(w)
 		return
