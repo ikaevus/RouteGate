@@ -172,8 +172,12 @@ test('pre-import is opt-in, never auto-fetches, and clears the credential on nav
     assert.equal(f.writes.filter(write => write.path.endsWith('/pre-import')).length, 1);
     assert.deepEqual(f.writes.find(write => write.path.endsWith('/pre-import')).body, { acknowledgeUnapplied: true });
     await section(f.page, 'settings');
+    await f.page.waitForURL(`${origin}/vpn-accounts/${accounts[0].id}/settings`);
     await section(f.page, 'protocols');
+    await f.page.waitForURL(`${origin}/vpn-accounts/${accounts[0].id}/protocols`);
     await f.panel.getByRole('group', { name: 'Preliminary VLESS import' }).waitFor();
+    await f.page.waitForFunction(() =>
+      !document.querySelector('textarea[aria-label="Preliminary VLESS link"]'));
     assert.equal(await f.panel.getByRole('textbox', { name: 'Preliminary VLESS link' }).count(), 0,
       'secret may not survive a tab switch');
     assert.equal(await f.panel.getByRole('button', { name: 'Show preliminary VLESS link' }).isDisabled(), true);
