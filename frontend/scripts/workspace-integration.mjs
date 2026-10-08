@@ -589,6 +589,9 @@ try {
   await page.goto(`${workspace}/settings`);
   const lifecycle = page.locator('.vpn-account-lifecycle-actions');
   await lifecycle.waitFor();
+  const suspendResponse = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/suspend`);
   await Promise.all([
     page.waitForEvent('dialog').then(async (dialog) => {
       assert.match(dialog.message(), /already-imported VPN credentials may keep working/);
@@ -596,10 +599,14 @@ try {
     }),
     lifecycle.getByRole('button', { name: 'Suspend', exact: true }).click(),
   ]);
+  assert.ok((await suspendResponse).ok());
   await page.getByText('Account status changed. Removal of working VPN access on the node is NOT confirmed.').waitFor();
   await page.getByText('Node-side VPN access removal is not verified.', { exact: false }).waitFor();
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'suspended');
 
+  const revokeResponse = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/revoke`);
   await Promise.all([
     page.waitForEvent('dialog').then(async (dialog) => {
       assert.match(dialog.message(), /NOT an immediate VPN disconnect/);
@@ -607,8 +614,12 @@ try {
     }),
     lifecycle.getByRole('button', { name: 'Revoke', exact: true }).click(),
   ]);
+  assert.ok((await revokeResponse).ok());
   await page.getByText('Node-side VPN access removal is not verified.', { exact: false }).waitFor();
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'revoked');
+  const activateResponse = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/activate`);
   await Promise.all([
     page.waitForEvent('dialog').then(async (dialog) => {
       assert.match(dialog.message(), /Previously issued still-active subscription links/);
@@ -616,6 +627,7 @@ try {
     }),
     lifecycle.getByRole('button', { name: 'Activate', exact: true }).click(),
   ]);
+  assert.ok((await activateResponse).ok());
   await page.getByText('Account activated. Verify node configuration apply', { exact: false }).waitFor();
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'active');
 
