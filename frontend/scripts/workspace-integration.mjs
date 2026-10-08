@@ -267,7 +267,13 @@ try {
   await page.locator('.workspace-nav-link[href$="/settings"]').click();
   await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form input')?.value === 'Workspace persisted name');
   await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form textarea')?.value === 'Unsaved notes retained across tabs');
-  await page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Activate', exact: true }).click();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /Previously issued still-active subscription links/);
+      await dialog.accept();
+    }),
+    page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Activate', exact: true }).click(),
+  ]);
   await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
 
   await page.goto(`${workspace}/access?addDevice=1`);
