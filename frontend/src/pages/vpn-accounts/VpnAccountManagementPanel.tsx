@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   activateVpnAccountManagement,
   deleteVpnAccount,
@@ -131,8 +131,8 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       if (nextStatus === 'suspended') return suspendVpnAccount(accountId);
       return revokeVpnAccount(accountId);
     },
-    onSuccess: async () => {
-      setMessage(copy.editSuccess);
+    onSuccess: async (_result, nextStatus) => {
+      setMessage(nextStatus === 'active' ? copy.statusRecordedActive : copy.statusRecordedPending);
       setErrorMessage('');
       await refreshAccountData();
     },
@@ -167,6 +167,16 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
   function handleRevoke() {
     const name = accountQuery.data?.displayName ?? accountId ?? '';
     if (window.confirm(copy.revokeConfirm(name))) statusMutation.mutate('revoked');
+  }
+
+  function handleSuspend() {
+    const name = accountQuery.data?.displayName ?? accountId ?? '';
+    if (window.confirm(copy.suspendConfirm(name))) statusMutation.mutate('suspended');
+  }
+
+  function handleActivate() {
+    const name = accountQuery.data?.displayName ?? accountId ?? '';
+    if (window.confirm(copy.activateConfirm(name))) statusMutation.mutate('active');
   }
 
   if (!accountId) {
@@ -254,9 +264,19 @@ export function VpnAccountManagementPanel({ accountId }: { accountId?: string })
       </Section>
 
       <Section title={copy.lifecycleTitle} description={copy.lifecycleSubtitle} aside={<StatusBadge status={account.status} />}>
+        {['suspended', 'revoked', 'expired'].includes(account.status) && (
+          <Notice tone="warning">
+            <p>{copy.runtimeNotConfirmed}</p>
+            {account.serverId && (
+              <Link to={`/vpn-accounts/${encodeURIComponent(account.id)}/protocols`}>
+                {copy.verifyNodeAccess}
+              </Link>
+            )}
+          </Notice>
+        )}
         <div className="vpn-account-lifecycle-actions">
-          <button className="small-button" type="button" disabled={actionPending || account.status === 'active'} onClick={() => statusMutation.mutate('active')}>{copy.activate}</button>
-          <button className="small-button" type="button" disabled={actionPending || account.status === 'suspended'} onClick={() => statusMutation.mutate('suspended')}>{copy.suspend}</button>
+          <button className="small-button" type="button" disabled={actionPending || account.status === 'active'} onClick={handleActivate}>{copy.activate}</button>
+          <button className="small-button" type="button" disabled={actionPending || account.status === 'suspended'} onClick={handleSuspend}>{copy.suspend}</button>
           <button className="small-button" type="button" disabled={actionPending || account.status === 'revoked'} onClick={handleRevoke}>{copy.revoke}</button>
         </div>
       </Section>

@@ -365,6 +365,9 @@ jobs:
       - name: Test device subscription request evidence
         run: node --test src/pages/vpn-accounts/subscriptionRequestEvidence.test.ts
 
+      - name: Test account revocation UX safety
+        run: node --test src/pages/vpn-accounts/accountRevocationSafety.test.ts
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 

@@ -233,7 +233,13 @@ try {
     body: { displayName: 'Remote account name' } });
   await api(`/api/v1/vpn-accounts/${account.id}/notes`, { method: 'PATCH', token,
     body: { notes: 'Remote notes' } });
-  await page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Suspend', exact: true }).click();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /already-imported VPN credentials may keep working/);
+      await dialog.accept();
+    }),
+    page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Suspend', exact: true }).click(),
+  ]);
   await page.waitForFunction(() => document.querySelector('#vpn-account-workspace-title')?.textContent === 'Remote account name');
   await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
   assert.equal(await name.inputValue(), 'Workspace persisted name', 'Refetch preserves identity draft');
@@ -261,7 +267,13 @@ try {
   await page.locator('.workspace-nav-link[href$="/settings"]').click();
   await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form input')?.value === 'Workspace persisted name');
   await page.waitForFunction(() => document.querySelector('.vpn-account-edit-form textarea')?.value === 'Unsaved notes retained across tabs');
-  await page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Activate', exact: true }).click();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /Previously issued still-active subscription links/);
+      await dialog.accept();
+    }),
+    page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Activate', exact: true }).click(),
+  ]);
   await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
 
   await page.goto(`${workspace}/access?addDevice=1`);
@@ -438,16 +450,21 @@ try {
     // RG-140: reassignment must warn before changing the active account node.
     // Without an explicit acceptance, Playwright dismisses window.confirm()
     // and the PATCH never happens.
-    if (index === 0) {
-      page.once('dialog', async dialog => {
-        assert.ok(dialog.message().includes('subscription'), 'the node transfer warning must explain subscription impact');
-        await dialog.accept();
-      });
+    const confirmTransfer = async (dialog) => {
+      assert.ok(dialog.message().includes('subscription'), 'the node transfer warning must explain subscription impact');
+      await dialog.accept();
+    };
+    // An already-safe reassignment path can write without a dialog. Do not
+    // leave a once-listener behind to hijack unrelated destructive dialogs.
+    if (index === 0) page.on('dialog', confirmTransfer);
+    try {
+      await routingForms.nth(index).locator('button[type="submit"]').click();
+      assert.ok((await savedResponse).ok());
+      await page.waitForFunction(() => !document.querySelector('.vpn-account-routing-form select')?.disabled);
+      await checkRoutingDraft();
+    } finally {
+      if (index === 0) page.off('dialog', confirmTransfer);
     }
-    await routingForms.nth(index).locator('button[type="submit"]').click();
-    assert.ok((await savedResponse).ok());
-    await page.waitForFunction(() => !document.querySelector('.vpn-account-routing-form select')?.disabled);
-    await checkRoutingDraft();
   }
   await saveRoutingForm(1, profilePath);
   await saveRoutingForm(2, groupPath);
@@ -568,6 +585,57 @@ try {
     }
   }
   assert.equal(layoutChecks, 68, '60 domain layouts plus 8 rule editor layouts');
+
+  // Isolated CI account only: changing DB status cannot be presented as
+  // a proven runtime credential removal. All dialogs describe the distinction.
+  // This fixture traverses status states earlier in the workspace test; reset
+  // to a known starting state explicitly before the revocation matrix.
+  await api(`/api/v1/vpn-accounts/${account.id}/activate`, { method: 'POST', token });
+  await page.goto(`${workspace}/settings`);
+  const lifecycle = page.locator('.vpn-account-lifecycle-actions');
+  await lifecycle.waitFor();
+  const suspendResponse = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/suspend`);
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /already-imported VPN credentials may keep working/);
+      await dialog.accept();
+    }),
+    lifecycle.getByRole('button', { name: 'Suspend', exact: true }).click(),
+  ]);
+  assert.ok((await suspendResponse).ok());
+  await page.getByText('Account status changed. Removal of working VPN access on the node is NOT confirmed.').waitFor();
+  await page.getByText('Node-side VPN access removal is not verified.', { exact: false }).waitFor();
+  assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'suspended');
+
+  const revokeResponse = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/revoke`);
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /NOT an immediate VPN disconnect/);
+      await dialog.accept();
+    }),
+    lifecycle.getByRole('button', { name: 'Revoke', exact: true }).click(),
+  ]);
+  assert.ok((await revokeResponse).ok());
+  await page.getByText('Node-side VPN access removal is not verified.', { exact: false }).waitFor();
+  assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'revoked');
+  const activateResponse = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/activate`);
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /Previously issued still-active subscription links/);
+      await dialog.accept();
+    }),
+    lifecycle.getByRole('button', { name: 'Activate', exact: true }).click(),
+  ]);
+  assert.ok((await activateResponse).ok());
+  await page.getByText('Account activated. Verify node configuration apply', { exact: false }).waitFor();
+  assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'active');
+
   assert.deepEqual(errors, []);
   console.log(`PASS: Manager CRUD, account/traffic draft isolation and retry, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
 } finally {
