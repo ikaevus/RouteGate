@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   createVpnAccountDevice,
   listVpnAccountDevices,
@@ -12,6 +12,7 @@ import {
   type VpnAccountDeviceAccess,
 } from '../../entities/vpnAccount/api/vpnAccountDeviceApi';
 import {
+  getVpnAccountClientProfileState,
   getVpnAccountLegacySubscriptionAccess,
   revokeVpnAccountSubscriptionToken,
   rotateVpnAccountSubscriptionToken,
@@ -21,6 +22,8 @@ import { clientCompatibilityGuidanceKey, clientCompatibilityLimitationKey } from
 import { Section } from '../../shared/ui/Section';
 import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { DeviceSendComposer } from './DeviceSendComposer';
+import { mayIssueFreshAccess, type AccountAccessReadiness } from './accountAccessReadiness';
+import { accountWorkspaceHref } from './accountWorkspace';
 import './access-devices.css';
 
 type RevealedAccess = {
@@ -129,6 +132,21 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
     queryKey: ['vpn-account-legacy-access', accountId],
     queryFn: () => getVpnAccountLegacySubscriptionAccess(accountId),
   });
+  const readinessQuery = useQuery({
+    queryKey: ['vpn-account-client-profile', accountId],
+    queryFn: () => getVpnAccountClientProfileState(accountId),
+  });
+  const readiness: AccountAccessReadiness = readinessQuery.isError
+    ? 'check_failed'
+    : readinessQuery.data?.connectionStatus ?? 'checking';
+  const canIssueAccess = mayIssueFreshAccess(readiness);
+  const readinessHint = readiness === 'awaiting_apply' ? t('accessDevices.awaitingApply')
+    : readiness === 'awaiting_first_apply' ? t('accessDevices.awaitingFirstApply')
+    : readiness === 'unassigned' ? t('accessDevices.unassigned')
+    : readiness === 'unavailable' ? t('accessDevices.unavailable')
+    : readiness === 'check_failed' ? t('accessDevices.checkFailed')
+    : t('accessDevices.checking');
+  const readinessHref = accountWorkspaceHref(accountId, readiness === 'unassigned' ? 'routing' : 'protocols', searchParams);
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ['vpn-account-devices', accountId] });
@@ -241,7 +259,7 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
 
   function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (deviceBusy || name.trim() === '') return;
+    if (deviceBusy || !canIssueAccess || name.trim() === '') return;
     createMutation.mutate();
   }
 
@@ -252,7 +270,7 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
   }
 
   function handleRotate(access: VpnAccountDeviceAccess) {
-    if (deviceBusy) return;
+    if (deviceBusy || (!access.hasActiveToken && !canIssueAccess)) return;
     if (!access.hasActiveToken || window.confirm(t('accessDevices.rotateConfirm', { name: deviceNameLabel(access.device.name) }))) {
       rotateMutation.mutate(access.device.id);
     }
@@ -364,7 +382,7 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
               <button className="small-button" type="button" disabled={deviceBusy} aria-expanded={isSending} onClick={() => toggleSend(device.id)}>{t('accessDevices.send')}</button>
             </>
           ) : !access.hasActiveToken ? (
-            <button className="primary-button" type="button" disabled={deviceBusy} onClick={() => handleRotate(access)}>
+            <button className="primary-button" type="button" disabled={deviceBusy || !canIssueAccess} onClick={() => handleRotate(access)}>
               {t(isRotatingThis ? 'accessDevices.creatingLink' : 'accessDevices.createLink')}
             </button>
           ) : null}
@@ -434,8 +452,24 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
       <Section
         title={t('accessDevices.title')}
         description={t('accessDevices.workspaceSubtitle')}
-        aside={<button className="primary-button" type="button" disabled={deviceBusy || isAddOpen} onClick={() => { createMutation.reset(); setIsAddOpen(true); setRenamingId(null); setSendDeviceId(null); }}>{t('accessDevices.addDevice')}</button>}
+        aside={<button className="primary-button" type="button" disabled={deviceBusy || isAddOpen || !canIssueAccess} onClick={() => { createMutation.reset(); setIsAddOpen(true); setRenamingId(null); setSendDeviceId(null); }}>{t('accessDevices.addDevice')}</button>}
       >
+        {!canIssueAccess && (
+          <div className="form-message form-message-warning" role="status">
+            <strong>{t('accessDevices.notReadyTitle')}</strong>
+            <p>{readinessHint}</p>
+            {readiness !== 'checking' && (
+              <Link className="small-button" to={readinessHref}>
+                {t(readiness === 'unassigned' ? 'accessDevices.assignNode' : 'accessDevices.openProtocols')}
+              </Link>
+            )}
+            {readiness === 'check_failed' && (
+              <button className="small-button" type="button" onClick={() => void readinessQuery.refetch()}>
+                {t('accessDevices.retryReadiness')}
+              </button>
+            )}
+          </div>
+        )}
         {devicesQuery.isLoading && <p className="empty-state">{t('accessDevices.loading')}</p>}
         {devicesQuery.isError && <div className="form-message form-message-error">{t('accessDevices.loadError')}</div>}
         {!devicesQuery.isLoading && !devicesQuery.isError && activeDevices.length === 0 && (
@@ -497,7 +531,7 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
                     <div className="form-message form-message-error">{getErrorMessage(createMutation.error, t('accessDevices.createError'))}</div>
                   )}
                   <div className="form-actions">
-                    <button className="primary-button" type="submit" disabled={createMutation.isPending || name.trim() === ''}>
+                    <button className="primary-button" type="submit" disabled={createMutation.isPending || !canIssueAccess || name.trim() === ''}>
                       {createMutation.isPending ? t('accessDevices.creating') : t('accessDevices.create')}
                     </button>
                     <button className="small-button" type="button" disabled={createMutation.isPending} onClick={() => { setIsAddOpen(false); clearAddDeviceParam(); }}>{t('common.cancel')}</button>
