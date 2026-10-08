@@ -362,6 +362,9 @@ jobs:
       - name: Test account subscription readiness model
         run: node --test src/pages/vpn-accounts/accountAccessReadiness.test.ts
 
+      - name: Test device subscription request evidence
+        run: node --test src/pages/vpn-accounts/subscriptionRequestEvidence.test.ts
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
