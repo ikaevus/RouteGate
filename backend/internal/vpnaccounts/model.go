@@ -57,7 +57,9 @@ type SubscriptionProfile struct {
 	Credentials    SubscriptionCredentials
 	RoutingProfile *RoutingProfile
 	// savedServer holds the node's saved (possibly unapplied) settings. It is
-	// used only to validate profile edits, never to serve client material.
+	// used to validate profile edits and, only by an explicit permission-gated
+	// preliminary-import request, to render clearly labelled unapplied VLESS
+	// client material. Normal subscriptions always use applied settings.
 	savedServer *SubscriptionServer
 }
 
