@@ -380,6 +380,9 @@ jobs:
       - name: Test guided account transfer in the browser
         run: npm run test:account-transfer-browser
 
+      - name: Test subscription request evidence in the browser
+        run: node --test scripts/subscription-request.browser.test.mjs
+
       - name: Test admin session recovery in the browser
         run: npm run test:admin-session-browser
 
