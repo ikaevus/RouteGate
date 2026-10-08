@@ -12,7 +12,12 @@ readonly RO_OPTIONS='-c default_transaction_read_only=on -c statement_timeout=12
 
 [[ $# -eq 8 ]] || { printf 'usage: %s <commit> <bundle> <bundle-sha256> <core> <role> <down-runner> <preflight-sql> <postflight-sql>\n' "$0" >&2; exit 2; }
 EXPECTED_COMMIT=$1 BUNDLE=$2 BUNDLE_SHA=$3 CORE=$4 ROLE_LIB=$5 DOWN_RUNNER=$6 PREFLIGHT_SQL=$7 POSTFLIGHT_SQL=$8
-[[ "$EXPECTED_COMMIT" == c4137cc43a2385ac38fe71e059f33405535b6618 ]] || { printf 'invalid commit\n' >&2; exit 2; }
+# Only these previously-reviewed, exact schema159 Manager-only release candidates
+# are accepted. No arbitrary branch/tag or operator-provided SHA is trusted.
+case "$EXPECTED_COMMIT" in
+  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a) ;;
+  *) printf 'invalid or unapproved Manager-only release commit\n' >&2; exit 2 ;;
+esac
 for file in "$BUNDLE" "$CORE" "$ROLE_LIB" "$DOWN_RUNNER" "$PREFLIGHT_SQL" "$POSTFLIGHT_SQL"; do
   [[ -f "$file" && ! -L "$file" && -r "$file" ]] || { printf 'missing or unsafe input file: %s\n' "$(basename "$file")" >&2; exit 2; }
 done

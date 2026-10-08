@@ -205,7 +205,12 @@ jobs:
       - name: Test UI publication recovery
         run: python3 -m unittest scripts/test_rg140_session_ui.py
       - name: Test schema159 Manager publication and recovery
-        run: sudo bash scripts/test-rg140-manager-main.sh
+        run: |
+          sudo bash scripts/test-rg140-manager-main.sh
+          sudo bash scripts/test-rg140-manager-main.sh 567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a
+
+      - name: Test pinned RG140 release workflow safety
+        run: bash scripts/test-rg140-preview-release-workflow.sh
 
       - name: Build and verify amd64 release bundle
         env:
