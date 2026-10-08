@@ -35,10 +35,13 @@ jobs:
             echo 'Explicit US Manager-only release acknowledgement missing' >&2
             exit 2
           }
-          for run in 37823646085 37823646080; do
-            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
-            [[ "$result" == "$CANDIDATE|completed|success" ]] || {
-              echo 'Pinned candidate is missing a successful CI result' >&2
+          for spec in '37823646085|RouteGate CI' '37823646080|Workspace integration'; do
+            run="${spec%%|*}"
+            expected_name="${spec#*|}"
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
+              --jq '[.head_sha,.status,.conclusion,.event,.head_branch,.name] | join("|")')
+            [[ "$result" == "$CANDIDATE|completed|success|push|main|$expected_name" ]] || {
+              echo 'Pinned candidate is missing the expected successful push check on main' >&2
               exit 2
             }
           done
