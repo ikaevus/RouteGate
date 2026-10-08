@@ -37,8 +37,8 @@ validates syntax only. The new keypair, Short ID, hostname and VLESS settings
 are saved in one atomic database update. Saving settings does not apply a
 runtime configuration.
 
-Client material (subscriptions and connection links) always describes the
-node's last Agent-confirmed apply. Each config version records the
+**Normal** client material (subscriptions and connection links) always
+describes the node's last Agent-confirmed apply. Each config version records the
 client-facing parameters it deploys, derived from its own rendered config:
 node protocol, ports, VLESS flow and transport, Reality public key (derived
 from the deployed private key), Short ID and server name, and the
@@ -91,6 +91,44 @@ include this account's access), `awaiting_first_apply` (the node has no
 successful apply), `unassigned` or `unavailable`. Clients keep using
 `GET …/client-connection`, which still answers `409
 client_connection_unavailable` while access is withheld.
+
+#### Explicit preliminary VLESS import (RG-140)
+
+`POST /api/v1/vpn-accounts/{id}/client-connection/pre-import` requires an
+authenticated operator with **both** `vpn_users:update` and `configs:read`,
+and a strict JSON acknowledgement:
+
+```json
+{"acknowledgeUnapplied":true}
+```
+
+For an active, unexpired, assigned account that desires VLESS but whose
+active node snapshot is known not to serve it (or has never successfully
+applied), returns a one-time visible **direct VLESS/Reality URI**:
+
+```json
+{
+  "status": "unapplied_preview",
+  "protocol": "vless",
+  "format": "vless-reality-uri",
+  "vlessUri": "vless://<redacted-credential>@example.invalid:443?...",
+  "warning": "PRELIMINARY ONLY: ..."
+}
+```
+
+The URI is derived from *saved* node parameters, not the active version;
+it is **not a subscription**, cannot automatically refresh, and may fail
+to connect. This operator-only opt-in is expressly not a `ready` claim.
+Errors are HTTP 400 for missing/invalid acknowledgement, 404 for an unknown
+account, and 409 when pre-import cannot safely be prepared. For security,
+responses include `Cache-Control: no-store`, and the successful operation's
+audit metadata never records a URI or credential.
+
+The ordinary `GET …/client-connection`, device subscription tokens and
+public `/sub/<token>` remain applied-only; no protocol or node deployment
+is initiated by the preview. See
+[`docs/operations/rg140-vless-preimport.md`](../operations/rg140-vless-preimport.md)
+for the full lifecycle and limitations.
 
 MTProto is the exception: its proxy uses one node-wide secret and the render
 does not list MTProto accounts. MTProto material is served whenever the
