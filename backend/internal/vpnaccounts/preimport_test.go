@@ -77,7 +77,6 @@ func TestUnappliedVLESSPreviewUsesSavedConfigWithoutServingPublicSubscription(t 
 }
 
 func TestUnappliedVLESSPreviewFailClosed(t *testing.T) {
-	future := time.Now().Add(time.Hour)
 	past := time.Now().Add(-time.Hour)
 	tests := []struct {
 		name   string
@@ -115,7 +114,6 @@ func TestUnappliedVLESSPreviewFailClosed(t *testing.T) {
 			s.subscription.savedServer.RealityPublicKey = ""
 		}, ErrPreImportNotPrepared},
 	}
-	_ = future
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			source := preImportSource()
