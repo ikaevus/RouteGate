@@ -26,6 +26,7 @@ import {
   protocolPreferenceView,
   sameProtocols,
 } from './protocolPreferenceModel';
+import { VpnAccountPreImportPanel } from './VpnAccountPreImportPanel';
 import './multi-protocol-access.css';
 
 export type ProtocolSelectionDraft = {
