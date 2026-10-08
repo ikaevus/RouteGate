@@ -12,6 +12,12 @@ export const accessDevicesEn = {
   'accessDevices.retryReadiness': 'Retry readiness check',
   'accessDevices.deviceList': 'Devices',
   'accessDevices.linkActive': 'Access link active',
+  'accessDevices.lastSubscriptionRequest': 'Last subscription request: {date}',
+  'accessDevices.noSubscriptionRequest': 'No request observed for the current subscription link.',
+  'accessDevices.subscriptionRequestUnknown': 'The last request time for this link is unavailable.',
+  'accessDevices.checkSubscriptionRequests': 'Check for new requests',
+  'accessDevices.checkingSubscriptionRequests': 'Checking requests…',
+  'accessDevices.subscriptionRequestHelp': 'This timestamp records a request to the current subscription URL, not successful import, VPN connection or traffic. To update a client, refresh the existing subscription inside the VPN app. Do not replace its link.',
   'accessDevices.setupAndCompatibility': 'Connection instructions',
   'accessDevices.manageDevice': 'Manage this device',
   'accessDevices.manageHint': 'These actions apply to “{name}”.',
@@ -87,8 +93,8 @@ export const accessDevicesEn = {
   'accessDevices.legacyLoadError': 'Could not load legacy account access.',
   'accessDevices.legacyCreatedAt': 'Issued/rotated: {date}',
   'accessDevices.legacyExpiresAt': 'Expires: {date}',
-  'accessDevices.legacyLastUsedAt': 'Last used: {date}',
-  'accessDevices.legacyNeverUsed': 'Never used',
+  'accessDevices.legacyLastUsedAt': 'Last subscription request: {date}',
+  'accessDevices.legacyNeverUsed': 'No subscription request observed',
 } as const;
 
 export const accessDevicesRu: Record<keyof typeof accessDevicesEn, string> = {
@@ -105,6 +111,12 @@ export const accessDevicesRu: Record<keyof typeof accessDevicesEn, string> = {
   'accessDevices.retryReadiness': 'Повторить проверку',
   'accessDevices.deviceList': 'Устройства',
   'accessDevices.linkActive': 'Ссылка доступа активна',
+  'accessDevices.lastSubscriptionRequest': 'Последнее обращение к подписке: {date}',
+  'accessDevices.noSubscriptionRequest': 'Обращений по текущей ссылке подписки пока не наблюдалось.',
+  'accessDevices.subscriptionRequestUnknown': 'Время последнего обращения по ссылке недоступно.',
+  'accessDevices.checkSubscriptionRequests': 'Проверить новые обращения',
+  'accessDevices.checkingSubscriptionRequests': 'Проверяем обращения…',
+  'accessDevices.subscriptionRequestHelp': 'Это время запроса текущей подписки, а не подтверждение импорта, подключения или работы VPN. Для обновления конфигурации открой VPN-клиент и обнови существующую подписку. Заменять ссылку не нужно.',
   'accessDevices.setupAndCompatibility': 'Инструкции подключения',
   'accessDevices.manageDevice': 'Управление устройством',
   'accessDevices.manageHint': 'Эти действия относятся к устройству «{name}».',
@@ -180,8 +192,8 @@ export const accessDevicesRu: Record<keyof typeof accessDevicesEn, string> = {
   'accessDevices.legacyLoadError': 'Не удалось загрузить устаревший доступ аккаунта.',
   'accessDevices.legacyCreatedAt': 'Выдана/обновлена: {date}',
   'accessDevices.legacyExpiresAt': 'Истекает: {date}',
-  'accessDevices.legacyLastUsedAt': 'Последнее использование: {date}',
-  'accessDevices.legacyNeverUsed': 'Ещё не использовалась',
+  'accessDevices.legacyLastUsedAt': 'Последнее обращение к подписке: {date}',
+  'accessDevices.legacyNeverUsed': 'Обращений к подписке пока не наблюдалось',
 };
 
 export type AccessDevicesTranslationKey = keyof typeof accessDevicesEn;
