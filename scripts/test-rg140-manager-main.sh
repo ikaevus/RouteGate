@@ -12,7 +12,12 @@ pre_sql="$repo/docs/operations/rg140-manager-main/preflight-schema-158.sql"
 post_sql="$repo/docs/operations/rg140-manager-main/postflight-schema-159.sql"
 workflow="$repo/.github/workflows/production-like-ops.yml"
 deploy_workflow="$repo/.github/workflows/production-like-deploy.yml"
-commit=c4137cc43a2385ac38fe71e059f33405535b6618
+[[ $# -le 1 ]] || { echo 'usage: test-rg140-manager-main.sh [pinned-commit]' >&2; exit 2; }
+commit=${1:-c4137cc43a2385ac38fe71e059f33405535b6618}
+case "$commit" in
+  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a) ;;
+  *) echo 'test candidate must be one of the two approved schema159 commits' >&2; exit 2 ;;
+esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 failures=0
