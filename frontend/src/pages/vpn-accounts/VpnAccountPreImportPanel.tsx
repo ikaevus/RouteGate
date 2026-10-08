@@ -1,21 +1,42 @@
-import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { previewUnappliedVLESS } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 
-// Scoped to a visible pending account and unmounted on navigation, apply or
-// account switch. Never persist credential material in Query Cache or storage.
+// Credentials must never enter TanStack Query's shared query or mutation
+// cache. The direct URI stays in component-local state and is invalidated on
+// navigation/account switch, even if its HTTP response arrives afterwards.
 export function VpnAccountPreImportPanel({ accountId }: { accountId: string }) {
   const ru = getCurrentLocale() === 'ru';
   const [acknowledged, setAcknowledged] = useState(false);
   const [link, setLink] = useState('');
+  const [pending, setPending] = useState(false);
+  const [requestError, setRequestError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
-  const preview = useMutation({
-    mutationFn: () => previewUnappliedVLESS(accountId, { acknowledgeUnapplied: true }),
-    onSuccess: (result) => { setLink(result.vlessUri); setCopied(false); },
-    onError: () => setLink(''),
-  });
+  const requestGeneration = useRef(0);
+
+  useEffect(() => {
+    return () => { requestGeneration.current += 1; };
+  }, [accountId]);
+
+  async function showPreview() {
+    if (!acknowledged || pending) return;
+    const generation = ++requestGeneration.current;
+    setPending(true);
+    setRequestError(false);
+    try {
+      const result = await previewUnappliedVLESS(accountId, { acknowledgeUnapplied: true });
+      if (requestGeneration.current === generation) {
+        setLink(result.vlessUri);
+        setCopied(false);
+      }
+    } catch {
+      if (requestGeneration.current === generation) setRequestError(true);
+    } finally {
+      if (requestGeneration.current === generation) setPending(false);
+    }
+  }
+
   async function copy() {
     setCopyError(false);
     try {
@@ -25,6 +46,7 @@ export function VpnAccountPreImportPanel({ accountId }: { accountId: string }) {
       setCopyError(true);
     }
   }
+
   return (
     <div className="form-message form-message-warning" role="group"
       aria-label={ru ? 'Предварительный импорт VLESS' : 'Preliminary VLESS import'}>
@@ -38,22 +60,22 @@ export function VpnAccountPreImportPanel({ accountId }: { accountId: string }) {
             <span>
               <input type="checkbox" checked={acknowledged}
                 onChange={(event) => setAcknowledged(event.target.checked)}
-                disabled={preview.isPending} />
+                disabled={pending} />
               {' '}{ru
                 ? 'Я понимаю, что доступ ещё не применён и ссылка может устареть.'
                 : 'I understand access is not applied and the link may become obsolete.'}
             </span>
           </label>
           <button className="small-button" type="button"
-            disabled={!acknowledged || preview.isPending}
-            onClick={() => preview.mutate()}>
-            {preview.isPending
+            disabled={!acknowledged || pending}
+            onClick={() => void showPreview()}>
+            {pending
               ? (ru ? 'Подготовка ссылки…' : 'Preparing link…')
               : (ru ? 'Показать предварительную VLESS-ссылку' : 'Show preliminary VLESS link')}
           </button>
         </>
       )}
-      {preview.isError && !link && (
+      {requestError && !link && (
         <p role="alert">{ru
           ? 'Не удалось подготовить ссылку. Проверьте, что аккаунт активен, VLESS выбран и параметры Reality сохранены.'
           : 'Could not prepare the link. Confirm the account is active, VLESS is selected and Reality settings are saved.'}</p>
@@ -68,7 +90,8 @@ export function VpnAccountPreImportPanel({ accountId }: { accountId: string }) {
               {copied ? (ru ? 'Скопировано' : 'Copied') : (ru ? 'Скопировать ссылку' : 'Copy link')}
             </button>
             <button type="button" className="small-button" onClick={() => {
-              setLink(''); setCopied(false); setCopyError(false); setAcknowledged(false); preview.reset();
+              requestGeneration.current += 1;
+              setLink(''); setCopied(false); setCopyError(false); setAcknowledged(false); setRequestError(false);
             }}>{ru ? 'Скрыть ссылку' : 'Hide link'}</button>
           </div>
           {copyError && <p role="alert">{ru
