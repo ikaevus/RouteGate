@@ -73,7 +73,10 @@ func BuildUnappliedVLESSPreview(ctx context.Context, source ClientConnectionSour
 	candidate := profile
 	candidate.Protocol = ClientProtocolVLESS
 	if err := validateClientProtocolTopologyForSource(ctx, source, saved, candidate); err != nil {
-		return UnappliedVLESSPreview{}, ErrPreImportNotAllowed
+		if errors.Is(err, ErrClientConnectionUnavailable) {
+			return UnappliedVLESSPreview{}, ErrPreImportNotAllowed
+		}
+		return UnappliedVLESSPreview{}, err
 	}
 	// The current sing-box adapter serves VLESS/Reality over TCP; non-TCP
 	// saved transports do not reach the node runtime when it is applied.
