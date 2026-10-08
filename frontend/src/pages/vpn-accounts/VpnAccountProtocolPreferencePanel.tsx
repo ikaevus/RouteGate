@@ -416,7 +416,7 @@ export function VpnAccountProtocolPreferencePanel({ accountId, active, draft, on
                 {view.message && <small>{copy.errorDetail}: {view.message}</small>}
               </div>
             )}
-            {active && view?.awaitingDeployment && !changed && !applying
+            {active && view?.activationPending && !changed && !applying
               && view.desired.includes('vless') && !view.active.includes('vless') && (
                 <VpnAccountPreImportPanel key={accountId} accountId={accountId} />
               )}
