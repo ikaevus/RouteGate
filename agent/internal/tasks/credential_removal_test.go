@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -315,5 +316,18 @@ func TestCredentialRemovalLastUserAndLegacyRejection(t *testing.T) {
 	}
 	if report, err := e.Execute(context.Background(), task); err != nil || report.State != "succeeded" {
 		t.Fatal(report, err)
+	}
+}
+
+func TestCredentialRemovalRejectsNonRegularFilesWithoutBlocking(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := syscall.Mkfifo(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRemovalFile(path, 1024, false); err == nil {
+		t.Fatal("accepted FIFO")
+	}
+	if _, err := readRemovalFile(filepath.Dir(path), 1024, false); err == nil {
+		t.Fatal("accepted directory")
 	}
 }
