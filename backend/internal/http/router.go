@@ -164,6 +164,9 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/notes", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountNotesHandler.Update))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/credentials", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetCredentials))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-connection", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientConnection))))
+	// Unapplied credential previews require an explicit operator POST with
+	// permissions for both VPN account management and node config inspection.
+	mux.Handle("POST /api/v1/vpn-accounts/{id}/client-connection/pre-import", authn(auth.RequirePermission("vpn_users:update")(auth.RequirePermission("configs:read")(stdhttp.HandlerFunc(vpnAccountsHandler.PreviewUnappliedVLESS)))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(vpnAccountsHandler.GetClientProfile))))
 	mux.Handle("PATCH /api/v1/vpn-accounts/{id}/client-profile", authn(auth.RequirePermission("vpn_users:update")(stdhttp.HandlerFunc(vpnAccountsHandler.UpdateClientProfile))))
 	mux.Handle("GET /api/v1/vpn-accounts/{id}/transfer", authn(auth.RequirePermission("vpn_users:read")(stdhttp.HandlerFunc(transfersHandler.Latest))))
