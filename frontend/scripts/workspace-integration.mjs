@@ -233,7 +233,13 @@ try {
     body: { displayName: 'Remote account name' } });
   await api(`/api/v1/vpn-accounts/${account.id}/notes`, { method: 'PATCH', token,
     body: { notes: 'Remote notes' } });
-  await page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Suspend', exact: true }).click();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /already-imported VPN credentials may keep working/);
+      await dialog.accept();
+    }),
+    page.locator('.vpn-account-lifecycle-actions').getByRole('button', { name: 'Suspend', exact: true }).click(),
+  ]);
   await page.waitForFunction(() => document.querySelector('#vpn-account-workspace-title')?.textContent === 'Remote account name');
   await page.waitForFunction(() => !document.querySelector('.vpn-account-edit-form button[type="submit"]')?.disabled);
   assert.equal(await name.inputValue(), 'Workspace persisted name', 'Refetch preserves identity draft');
