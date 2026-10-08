@@ -24,6 +24,7 @@ import { SubscriptionQrDialog } from '../../shared/ui/SubscriptionQrDialog';
 import { DeviceSendComposer } from './DeviceSendComposer';
 import { mayIssueFreshAccess, type AccountAccessReadiness } from './accountAccessReadiness';
 import { accountWorkspaceHref } from './accountWorkspace';
+import { subscriptionRequestEvidence } from './subscriptionRequestEvidence';
 import './access-devices.css';
 
 type RevealedAccess = {
@@ -312,6 +313,7 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
 
   function renderDeviceDetail(access: VpnAccountDeviceAccess) {
     const { device, compatibility } = access;
+    const evidence = subscriptionRequestEvidence(access);
     const reveal = revealed[device.id];
     const isRenaming = renamingId === device.id;
     const isSending = sendDeviceId === device.id;
@@ -408,7 +410,23 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
           </details>
         )}
         {access.hasActiveToken && (
-          <p className="vpn-access-device-note">{t('accessDevices.subscriptionContinuityHint')}</p>
+          <>
+            <p className="vpn-access-device-note">{t('accessDevices.subscriptionContinuityHint')}</p>
+            <div className="vpn-access-device-request-evidence">
+              <p className="vpn-access-device-note" role="status">
+                {evidence === 'observed'
+                  ? t('accessDevices.lastSubscriptionRequest', { date: formatDate(access.tokenLastUsedAt) })
+                  : evidence === 'unknown'
+                    ? t('accessDevices.subscriptionRequestUnknown')
+                    : t('accessDevices.noSubscriptionRequest')}
+              </p>
+              <button className="small-button" type="button" disabled={devicesQuery.isFetching}
+                onClick={() => void refresh()}>
+                {t(devicesQuery.isFetching ? 'accessDevices.checkingSubscriptionRequests' : 'accessDevices.checkSubscriptionRequests')}
+              </button>
+              <p className="vpn-access-device-note">{t('accessDevices.subscriptionRequestHelp')}</p>
+            </div>
+          </>
         )}
         <details className="vpn-access-device-management">
           <summary>{t('accessDevices.manageDevice')}</summary>
@@ -573,6 +591,12 @@ function AccountAccessWorkspace({ accountId }: { accountId: string }) {
                   : t('accessDevices.legacyNeverUsed')}
               </span>
             </div>
+
+            <p className="vpn-access-device-note">{t('accessDevices.subscriptionRequestHelp')}</p>
+            <button className="small-button" type="button" disabled={legacyAccessQuery.isFetching}
+              onClick={() => void refreshLegacyAccess()}>
+              {t(legacyAccessQuery.isFetching ? 'accessDevices.checkingSubscriptionRequests' : 'accessDevices.checkSubscriptionRequests')}
+            </button>
 
             {legacyRevealed ? (
               <>
