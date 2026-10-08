@@ -583,6 +583,9 @@ try {
 
   // Isolated CI account only: changing DB status cannot be presented as
   // a proven runtime credential removal. All dialogs describe the distinction.
+  // This fixture traverses status states earlier in the workspace test; reset
+  // to a known starting state explicitly before the revocation matrix.
+  await api(`/api/v1/vpn-accounts/${account.id}/activate`, { method: 'POST', token });
   await page.goto(`${workspace}/settings`);
   const lifecycle = page.locator('.vpn-account-lifecycle-actions');
   await lifecycle.waitFor();
