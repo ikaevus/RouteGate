@@ -77,10 +77,12 @@ export function VpnAccountsPage() {
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('create');
       nextParams.delete('page');
-      nextParams.set('addDevice', '1');
+      // New accounts may not be in the node's applied configuration yet.
+      // Start with the readiness-aware next action, not a premature device link.
+      nextParams.delete('addDevice');
       await queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] });
       const query = nextParams.toString();
-      navigate(`/vpn-accounts/${encodeURIComponent(account.id)}/access${query ? `?${query}` : ''}`);
+      navigate(`/vpn-accounts/${encodeURIComponent(account.id)}/overview${query ? `?${query}` : ''}`);
     },
   });
 
