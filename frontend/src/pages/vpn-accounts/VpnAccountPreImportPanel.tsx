@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { previewUnappliedVLESS } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { getCurrentLocale } from '../../shared/i18n/i18n';
 
@@ -7,6 +8,8 @@ import { getCurrentLocale } from '../../shared/i18n/i18n';
 // navigation/account switch, even if its HTTP response arrives afterwards.
 export function VpnAccountPreImportPanel({ accountId }: { accountId: string }) {
   const ru = getCurrentLocale() === 'ru';
+  const locationKey = useLocation().key;
+  const shownForLocation = useRef(locationKey);
   const [acknowledged, setAcknowledged] = useState(false);
   const [link, setLink] = useState('');
   const [pending, setPending] = useState(false);
@@ -14,6 +17,22 @@ export function VpnAccountPreImportPanel({ accountId }: { accountId: string }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const requestGeneration = useRef(0);
+
+  // The workspace hides inactive tabs rather than unmounting all of them.
+  // Also clear on every navigation, even if two rapid route changes are
+  // batched and React never renders an intermediate inactive state.
+  useLayoutEffect(() => {
+    if (shownForLocation.current !== locationKey) {
+      shownForLocation.current = locationKey;
+      requestGeneration.current += 1;
+      setLink('');
+      setAcknowledged(false);
+      setPending(false);
+      setRequestError(false);
+      setCopied(false);
+      setCopyError(false);
+    }
+  }, [locationKey]);
 
   useEffect(() => {
     return () => { requestGeneration.current += 1; };
