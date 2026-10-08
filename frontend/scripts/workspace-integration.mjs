@@ -574,27 +574,33 @@ try {
   await page.goto(`${workspace}/settings`);
   const lifecycle = page.locator('.vpn-account-lifecycle-actions');
   await lifecycle.waitFor();
-  const suspendDialog = page.waitForEvent('dialog');
-  await lifecycle.getByRole('button', { name: 'Suspend', exact: true }).click({ noWaitAfter: true });
-  const suspendConfirmation = await suspendDialog;
-  assert.match(suspendConfirmation.message(), /already-imported VPN credentials may keep working/);
-  await suspendConfirmation.accept();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /already-imported VPN credentials may keep working/);
+      await dialog.accept();
+    }),
+    lifecycle.getByRole('button', { name: 'Suspend', exact: true }).click(),
+  ]);
   await page.getByText('Account status changed. Removal of working VPN access on the node is NOT confirmed.').waitFor();
   await page.getByText('Node-side VPN access removal is not verified.', { exact: false }).waitFor();
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'suspended');
 
-  const revokeDialog = page.waitForEvent('dialog');
-  await lifecycle.getByRole('button', { name: 'Revoke', exact: true }).click({ noWaitAfter: true });
-  const revokeConfirmation = await revokeDialog;
-  assert.match(revokeConfirmation.message(), /NOT an immediate VPN disconnect/);
-  await revokeConfirmation.accept();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /NOT an immediate VPN disconnect/);
+      await dialog.accept();
+    }),
+    lifecycle.getByRole('button', { name: 'Revoke', exact: true }).click(),
+  ]);
   await page.getByText('Node-side VPN access removal is not verified.', { exact: false }).waitFor();
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'revoked');
-  const activateDialog = page.waitForEvent('dialog');
-  await lifecycle.getByRole('button', { name: 'Activate', exact: true }).click({ noWaitAfter: true });
-  const activateConfirmation = await activateDialog;
-  assert.match(activateConfirmation.message(), /Previously issued still-active subscription links/);
-  await activateConfirmation.accept();
+  await Promise.all([
+    page.waitForEvent('dialog').then(async (dialog) => {
+      assert.match(dialog.message(), /Previously issued still-active subscription links/);
+      await dialog.accept();
+    }),
+    lifecycle.getByRole('button', { name: 'Activate', exact: true }).click(),
+  ]);
   await page.getByText('Account activated. Verify node configuration apply', { exact: false }).waitFor();
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'active');
 
