@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getServers } from '../../entities/server/api/serverApi';
-import { getVpnAccountLegacySubscriptionAccess, getVpnAccountRoutingPolicy, getVpnAccountTraffic } from '../../entities/vpnAccount/api/vpnAccountApi';
+import { getVpnAccountClientProfileState, getVpnAccountLegacySubscriptionAccess, getVpnAccountRoutingPolicy, getVpnAccountTraffic } from '../../entities/vpnAccount/api/vpnAccountApi';
 import { listVpnAccountDevices } from '../../entities/vpnAccount/api/vpnAccountDeviceApi';
 import type { ManagedVpnAccount } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t } from '../../shared/i18n/i18n';
 import { accountWorkspaceHref, type AccountSection } from './accountWorkspace';
+import { accountAccessNextStep } from './accountAccessReadiness';
 
 function formatBytes(bytes: number): string {
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -38,25 +39,41 @@ export function AccountOverview({ account }: { account: ManagedVpnAccount }) {
     queryKey: ['vpn-account-legacy-access', accountId],
     queryFn: () => getVpnAccountLegacySubscriptionAccess(accountId),
   });
+  const readiness = useQuery({
+    queryKey: ['vpn-account-client-profile', accountId],
+    queryFn: () => getVpnAccountClientProfileState(accountId),
+    enabled: Boolean(account.serverId) && (account.status === 'active' || account.status === 'created'),
+  });
   const href = (section: AccountSection) => accountWorkspaceHref(accountId, section, searchParams);
   const serverName = servers.data?.items.find((server) => server.id === account.serverId)?.name;
   const activeDevices = devices.data?.items.filter(({ device }) => device.status === 'active').length;
-  const needsServer = (account.status === 'active' || account.status === 'created') && !account.serverId;
+  const eligible = account.status === 'active' || account.status === 'created';
   const needsDevice = account.status === 'active' && Boolean(account.serverId)
     && devices.isSuccess && activeDevices === 0
     && legacyAccess.isSuccess && !legacyAccess.data.hasActiveToken;
+  const readinessStatus = readiness.isError ? 'check_failed' : readiness.data?.connectionStatus ?? 'checking';
+  const nextStep = eligible ? accountAccessNextStep(Boolean(account.serverId), readinessStatus, needsDevice) : null;
   const accessHref = href('access');
   const addDeviceHref = `${accessHref}${accessHref.includes('?') ? '&' : '?'}addDevice=1`;
+  const nextHint = nextStep === 'assign_node' ? t('accountWorkspace.assignServerHint')
+    : nextStep === 'apply' ? t('accountWorkspace.applyFirstHint')
+    : nextStep === 'investigate' ? t('accountWorkspace.checkReadinessHint')
+    : nextStep === 'wait' ? t('accountWorkspace.checkingReadinessHint')
+    : nextStep === 'add_device' ? t('accountWorkspace.addDeviceHint') : '';
+  const nextAction = nextStep === 'assign_node' ? t('accountWorkspace.assignServer')
+    : nextStep === 'apply' ? t('accountWorkspace.applyFirst')
+    : nextStep === 'investigate' ? t('accountWorkspace.checkReadiness')
+    : nextStep === 'add_device' ? t('accountWorkspace.addDevice') : '';
+  const nextHref = nextStep === 'assign_node' ? href('routing')
+    : nextStep === 'add_device' ? addDeviceHref : href('protocols');
 
   return (
     <div className="vpn-account-overview">
-      {(needsServer || needsDevice) && (
+      {nextStep && (
         <div className="vpn-account-next-action" role="status">
           <strong>{t('accountWorkspace.attention')}</strong>
-          <p>{needsServer ? t('accountWorkspace.assignServerHint') : t('accountWorkspace.addDeviceHint')}</p>
-          <Link className="small-button" to={needsServer ? href('routing') : addDeviceHref}>
-            {needsServer ? t('accountWorkspace.assignServer') : t('accountWorkspace.addDevice')}
-          </Link>
+          <p>{nextHint}</p>
+          {nextStep !== 'wait' && <Link className="small-button" to={nextHref}>{nextAction}</Link>}
         </div>
       )}
 

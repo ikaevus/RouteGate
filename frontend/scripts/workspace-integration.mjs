@@ -266,13 +266,21 @@ try {
 
   await page.goto(`${workspace}/access?addDevice=1`);
   const form = page.locator('.vpn-access-device-add-form');
+  await page.getByText('Subscription not ready for import', { exact: true }).waitFor();
   await form.locator('input').fill('Integration laptop');
-  const created = page.waitForResponse(response => response.request().method() === 'POST'
-    && new URL(response.url()).pathname === `/api/v1/vpn-accounts/${account.id}/devices`);
-  await form.locator('button[type="submit"]').click();
-  const createdResponse = await created;
-  assert.ok(createdResponse.ok(), `Device creation: HTTP ${createdResponse.status()}`);
-  await page.locator('.vpn-access-device-detail').waitFor();
+  assert.equal(await form.locator('button[type="submit"]').isDisabled(), true,
+    'a node without a first apply must not issue a premature subscription via the admin UI');
+  await page.getByRole('link', { name: 'Open protocols & apply' }).waitFor();
+
+  // This isolated test fixture intentionally has no Agent / successful apply.
+  // Seed a device through the fixture API solely to keep exercising workspace
+  // persistence, without weakening the guarded public admin onboarding UI.
+  const seededDevice = await api(`/api/v1/vpn-accounts/${account.id}/devices`, {
+    method: 'POST', token,
+    body: { name: 'Integration laptop', clientType: 'hiddify', deviceType: 'windows' },
+  });
+  assert.equal(seededDevice.device.name, 'Integration laptop');
+  await form.getByRole('button', { name: 'Cancel' }).click();
   await page.reload();
   await page.locator('.vpn-access-device-detail').waitFor();
   assert.ok((await page.locator('.vpn-access-device-detail').innerText()).includes('Integration laptop'));
