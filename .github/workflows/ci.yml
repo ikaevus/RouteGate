@@ -354,6 +354,9 @@ jobs:
       - name: Test Getting Started node state model
         run: npm run test:getting-started
 
+      - name: Test account subscription readiness model
+        run: node --test src/pages/vpn-accounts/accountAccessReadiness.test.ts
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
