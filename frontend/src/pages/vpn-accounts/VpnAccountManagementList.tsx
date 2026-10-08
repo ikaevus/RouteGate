@@ -211,6 +211,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
   }
 
   const [operationRuntimeUnverified, setOperationRuntimeUnverified] = useState(false);
+  const [operationRemovedRecords, setOperationRemovedRecords] = useState(false);
   const bulkMutation = useMutation({
     mutationFn: ({ action, targetServerId }: BulkRunInput) => runBulkVpnAccountAction({
       action,
@@ -227,6 +228,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
       setOperationError('');
       setOperationMessage(copy.bulkDone(result.affectedCount));
       setOperationRuntimeUnverified(['suspend', 'revoke', 'delete'].includes(variables.action));
+      setOperationRemovedRecords(variables.action === 'delete');
       setOperationNeedsDeploy(result.configurationChanged && result.affectedServerIds.length > 0);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['vpn-accounts'] }),
@@ -240,6 +242,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
     onError: () => {
       setOperationMessage('');
       setOperationRuntimeUnverified(false);
+      setOperationRemovedRecords(false);
       setOperationNeedsDeploy(false);
       setOperationError(copy.bulkError);
     },
@@ -334,7 +337,7 @@ export function VpnAccountManagementList({ onCreate }: { onCreate: () => void })
       {operationMessage && (
         <div className={`form-message ${operationRuntimeUnverified ? 'form-message-warning' : 'form-message-success'}${operationNeedsDeploy ? ' vpn-account-config-notice' : ''}`}>
           <span>{operationMessage}</span>
-          {operationRuntimeUnverified && <span>{copy.runtimeNotConfirmed}</span>}
+          {operationRuntimeUnverified && <span>{operationRemovedRecords ? copy.deletedRuntimeNotConfirmed : copy.runtimeNotConfirmed}</span>}
           {operationNeedsDeploy && (
             <>
               <span>{copy.configNotice}</span>
