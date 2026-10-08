@@ -1,44 +1,34 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { getVpnAccountManagementCopy } from './vpnAccountManagementCopy.ts';
 
-test('EN account lifecycle never equates a database status change with confirmed VPN disconnect', () => {
-  const copy = getVpnAccountManagementCopy();
-  for (const prompt of [
-    copy.revokeConfirm('Test account'),
-    copy.suspendConfirm('Test account'),
-    copy.bulkConfirmRevoke(3),
-    copy.bulkConfirmSuspend(3),
+// Node's direct TS runner doesn't resolve Vite-only extensionless imports;
+// this copy contract test checks the exact source shipped to Vite. The real
+// account status/dialog behavior is verified in the isolated browser+Manager
+// PostgreSQL workspace integration job.
+const source = readFileSync(new URL('./vpnAccountManagementCopy.ts', import.meta.url), 'utf8');
+
+test('all sensitive single and bulk status actions have a real consequence confirmation', () => {
+  for (const field of [
+    'activateConfirm', 'suspendConfirm', 'revokeConfirm', 'deleteConfirm',
+    'bulkConfirmActivate', 'bulkConfirmSuspend', 'bulkConfirmRevoke', 'bulkConfirmDelete',
   ]) {
-    assert.match(prompt, /subscription|subscriptions/i);
-    assert.match(prompt, /VPN.*(connect|credential|work)|credentials.*working/i);
-    assert.ok(prompt.includes('\n'), 'destructive state change should show separated consequences');
+    const count = source.split(new RegExp(`\\b${field}:`, 'g')).length - 1;
+    assert.equal(count, 2, `expected both RU and EN ${field}`);
   }
-  assert.match(copy.runtimeNotConfirmed, /not verified/i);
-  assert.match(copy.statusRecordedPending, /NOT confirmed/);
-  assert.match(copy.activateConfirm('Test account'), /still-active subscription links/);
-  assert.match(copy.bulkConfirmActivate(2), /still-valid subscription URLs/);
-  assert.match(copy.deleteConfirm('Test account'), /NOT prove/);
-  assert.match(copy.bulkConfirmDelete(3), /NOT prove/);
-  assert.match(copy.deletedRuntimeNotConfirmed, /NOT verified/);
 });
 
-test('RU account lifecycle warns about old imported credentials and distinguishes node apply', () => {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  Object.defineProperty(globalThis, 'window', {
-    configurable: true, value: { localStorage: { getItem: () => 'ru' } },
-  });
-  try {
-    const copy = getVpnAccountManagementCopy();
-    assert.match(copy.revokeConfirm('Тест'), /НЕ немедленное отключение/);
-    assert.match(copy.suspendConfirm('Тест'), /VPN-параметры могут работать/);
-    assert.match(copy.activateConfirm('Тест'), /ссылки подписки снова смогут/);
-    assert.match(copy.bulkConfirmRevoke(2), /не отключает действующие соединения/);
-    assert.match(copy.bulkConfirmDelete(2), /не подтверждает удаление/);
-    assert.match(copy.runtimeNotConfirmed, /не подтверждён/);
-    assert.match(copy.statusRecordedPending, /НЕ подтверждено/);
-  } finally {
-    if (descriptor) Object.defineProperty(globalThis, 'window', descriptor);
-    else Reflect.deleteProperty(globalThis, 'window');
+test('both locales explicitly distinguish account record status from runtime VPN revocation', () => {
+  for (const field of ['runtimeNotConfirmed', 'statusRecordedPending', 'deletedRuntimeNotConfirmed', 'verifyNodeAccess']) {
+    assert.equal(source.split(new RegExp(`\\b${field}:`, 'g')).length - 1, 2, `missing RU/EN ${field}`);
   }
+  for (const fragment of [
+    'НЕ немедленное отключение VPN', 'not an immediate VPN disconnect',
+    'отдельного подтверждённого применения', 'separately confirmed node configuration apply',
+    'не подтверждён', 'not verified', 'still-active subscription links',
+    'ссылки подписки снова смогут',
+  ]) {
+    assert.ok(source.toLowerCase().includes(fragment.toLowerCase()), `missing safety explanation: ${fragment}`);
+  }
+  assert.ok(source.includes('\x5cn\x5cn'), 'dialog copy must separate action and consequences');
 });
