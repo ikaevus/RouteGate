@@ -20,13 +20,13 @@ before(async () => {
 });
 after(async () => { await browser?.close(); await vite?.close(); });
 
-async function open(width = 1440) {
+async function open(width = 1440, pendingAccess = false) {
   const page = await browser.newPage({ viewport: { width, height: 1000 } });
   const errors = [], writes = [];
   let reject = false, finish = true, profileReads = 0;
   const profile = { id: 'profile', vpnAccountId: accounts[0].id, name: '', clientType: 'generic', deviceType: 'other',
     fingerprintMode: 'auto', fingerprint: '', resolvedFingerprint: 'chrome', spiderX: '/',
-    protocol: 'auto', enabledProtocols: ['vless'], activeProtocols: ['vless'], createdAt: stamp, updatedAt: stamp };
+    protocol: 'auto', enabledProtocols: ['vless'], activeProtocols: pendingAccess ? [] : ['vless'], createdAt: stamp, updatedAt: stamp };
   page.on('pageerror', error => errors.push(error.stack ?? error.message));
   await page.addInitScript(() => {
     localStorage.setItem('routegate.locale', 'en');
@@ -51,12 +51,19 @@ async function open(width = 1440) {
     if (path === '/api/v1/servers/node/protocol-settings') return json({ serverId: 'node', protocol: 'vless',
       vless: { port: 8443 }, reality: { enabled: true }, shadowsocks: { ready: true },
       wireGuard: { ready: false }, hysteria2: { ready: false }, mtproto: { ready: false } });
+    if (method === 'POST' && path.endsWith('/client-connection/pre-import')) {
+      const request = route.request().postDataJSON();
+      if (request.acknowledgeUnapplied !== true || !pendingAccess) return json({ message: 'Pre-import not permitted' }, 409);
+      return json({ status: 'unapplied_preview', protocol: 'vless', format: 'vless-reality-uri',
+        vlessUri: 'vless://example-credential@203.0.113.10:443?security=reality#Unapplied', warning: 'PRELIMINARY ONLY' });
+    }
     if (path.endsWith('/client-profile')) {
       if (method === 'PATCH') {
         if (reject) return json({ message: 'Fixture rejected save' }, 409);
         Object.assign(profile, route.request().postDataJSON());
       } else profileReads++;
-      return json({ vpnAccountId: accounts[0].id, activeProtocol: 'vless', connectionStatus: 'ready', profile: { ...profile } });
+      return json({ vpnAccountId: accounts[0].id, activeProtocol: 'vless',
+        connectionStatus: pendingAccess ? 'awaiting_apply' : 'ready', profile: { ...profile } });
     }
     if (path.endsWith('/config/render') || path.endsWith('/validate')) return json({ configVersion: { id: 'version' }, validationResult: { valid: true, errors: [], warnings: [] } });
     if (path.endsWith('/apply')) return json({ job: { id: 'job' } }, 202);
@@ -143,6 +150,39 @@ test('failed save retains draft; retry locks controls across navigation and clea
     const refresh = f.page.waitForResponse(response => response.url().endsWith('/client-profile'));
     await section(f.page, 'protocols'); await refresh;
     await f.page.waitForFunction(() => document.querySelector('.vpn-account-protocol-workspace select')?.value === 'auto');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.page.close(); }
+});
+
+test('pre-import is opt-in, never auto-fetches, and clears the credential on navigation', async () => {
+  const f = await open(1440, true);
+  try {
+    const pending = f.panel.getByRole('group', { name: 'Preliminary VLESS import' });
+    await pending.waitFor();
+    const reveal = pending.getByRole('button', { name: 'Show preliminary VLESS link' });
+    assert.equal(await reveal.isDisabled(), true, 'operator must acknowledge first');
+    assert.equal(f.writes.filter(write => write.path.endsWith('/pre-import')).length, 0);
+    await pending.getByRole('checkbox').check();
+    const delivered = f.page.waitForResponse(response => response.url().endsWith('/client-connection/pre-import'));
+    await reveal.click();
+    assert.ok((await delivered).ok());
+    const credential = pending.getByRole('textbox', { name: 'Preliminary VLESS link' });
+    await credential.waitFor();
+    assert.match(await credential.inputValue(), /^vless:\/\//);
+    assert.equal(f.writes.filter(write => write.path.endsWith('/pre-import')).length, 1);
+    assert.deepEqual(f.writes.find(write => write.path.endsWith('/pre-import')).body, { acknowledgeUnapplied: true });
+    await section(f.page, 'settings');
+    await f.page.waitForURL(`${origin}/vpn-accounts/${accounts[0].id}/settings`);
+    await section(f.page, 'protocols');
+    await f.page.waitForURL(`${origin}/vpn-accounts/${accounts[0].id}/protocols`);
+    await f.panel.getByRole('group', { name: 'Preliminary VLESS import' }).waitFor();
+    await f.page.waitForFunction(() =>
+      !document.querySelector('textarea[aria-label="Preliminary VLESS link"]'));
+    assert.equal(await f.panel.getByRole('textbox', { name: 'Preliminary VLESS link' }).count(), 0,
+      'secret may not survive a tab switch');
+    assert.equal(await f.panel.getByRole('button', { name: 'Show preliminary VLESS link' }).isDisabled(), true);
+    assert.equal(f.writes.filter(write => write.path.endsWith('/apply')).length, 0,
+      'preview must not apply or change node configuration');
     assert.deepEqual(f.errors, []);
   } finally { await f.page.close(); }
 });

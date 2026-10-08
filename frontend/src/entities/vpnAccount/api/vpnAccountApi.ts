@@ -505,6 +505,25 @@ export function getVpnAccountClientConnection(
   );
 }
 
+export interface UnappliedVLESSPreview {
+  status: 'unapplied_preview';
+  protocol: 'vless';
+  format: 'vless-reality-uri';
+  vlessUri: string;
+  warning: string;
+}
+
+/** Explicit operator POST; no subscription bearer is issued or stored. */
+export function previewUnappliedVLESS(
+  accountId: string,
+  request: { acknowledgeUnapplied: true },
+): Promise<UnappliedVLESSPreview> {
+  return apiPost<typeof request, UnappliedVLESSPreview>(
+    `/api/v1/vpn-accounts/${encodeURIComponent(accountId)}/client-connection/pre-import`,
+    request,
+  );
+}
+
 export type VpnClientConnectionStatus =
   | 'ready'
   | 'awaiting_apply'

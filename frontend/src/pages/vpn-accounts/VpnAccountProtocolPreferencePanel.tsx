@@ -26,6 +26,7 @@ import {
   protocolPreferenceView,
   sameProtocols,
 } from './protocolPreferenceModel';
+import { VpnAccountPreImportPanel } from './VpnAccountPreImportPanel';
 import './multi-protocol-access.css';
 
 export type ProtocolSelectionDraft = {
@@ -415,6 +416,10 @@ export function VpnAccountProtocolPreferencePanel({ accountId, active, draft, on
                 {view.message && <small>{copy.errorDetail}: {view.message}</small>}
               </div>
             )}
+            {active && view?.activationPending && !changed && !applying
+              && view.desired.includes('vless') && !view.active.includes('vless') && (
+                <VpnAccountPreImportPanel key={accountId} accountId={accountId} />
+              )}
             {!view?.awaitingDeployment && activationPending && !saveMutation.isPending && (
               <div className="form-message form-message-warning">
                 <div>{copy.pending}</div>
