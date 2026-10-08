@@ -450,16 +450,21 @@ try {
     // RG-140: reassignment must warn before changing the active account node.
     // Without an explicit acceptance, Playwright dismisses window.confirm()
     // and the PATCH never happens.
-    if (index === 0) {
-      page.once('dialog', async dialog => {
-        assert.ok(dialog.message().includes('subscription'), 'the node transfer warning must explain subscription impact');
-        await dialog.accept();
-      });
+    const confirmTransfer = async (dialog) => {
+      assert.ok(dialog.message().includes('subscription'), 'the node transfer warning must explain subscription impact');
+      await dialog.accept();
+    };
+    // An already-safe reassignment path can write without a dialog. Do not
+    // leave a once-listener behind to hijack unrelated destructive dialogs.
+    if (index === 0) page.on('dialog', confirmTransfer);
+    try {
+      await routingForms.nth(index).locator('button[type="submit"]').click();
+      assert.ok((await savedResponse).ok());
+      await page.waitForFunction(() => !document.querySelector('.vpn-account-routing-form select')?.disabled);
+      await checkRoutingDraft();
+    } finally {
+      if (index === 0) page.off('dialog', confirmTransfer);
     }
-    await routingForms.nth(index).locator('button[type="submit"]').click();
-    assert.ok((await savedResponse).ok());
-    await page.waitForFunction(() => !document.querySelector('.vpn-account-routing-form select')?.disabled);
-    await checkRoutingDraft();
   }
   await saveRoutingForm(1, profilePath);
   await saveRoutingForm(2, groupPath);
