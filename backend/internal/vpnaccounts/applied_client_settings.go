@@ -40,7 +40,7 @@ const appliedPrimaryProtocolSQL = `COALESCE(
 
 // useAppliedClientSettings replaces the node parameters that clients must match
 // with those derived from the last successfully applied config version.
-// Settings saved after that apply stay invisible to clients until a later apply
+// Settings saved after that apply stay invisible to normal subscriptions until a later apply
 // succeeds, and settings the node runtime never honours (such as a non-TCP
 // VLESS transport) are replaced by what the node actually serves.
 func (s *SubscriptionServer) useAppliedClientSettings(applied platform.AppliedClientSettings, accountID string) {
