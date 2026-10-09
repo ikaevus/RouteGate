@@ -17,22 +17,23 @@ import (
 )
 
 type Runner struct {
-	cfg                config.Config
-	configPath         string
-	client             *client.Client
-	logger             *slog.Logger
-	trafficCollector   traffic.Collector
-	trafficTracker     *traffic.DeltaTracker
-	lastTrafficReport  time.Time
-	presenceCollector  presence.Collector
-	lastPresenceReport time.Time
-	vpnCoreAdapter     tasks.VPNCoreAdapter
-	wireGuardAdapter   tasks.VPNCoreAdapter
-	hysteria2Adapter   tasks.VPNCoreAdapter
-	shadowsocksAdapter tasks.VPNCoreAdapter
-	mtprotoAdapter     tasks.VPNCoreAdapter
-	runtimeCleaner     runtimecleanup.Cleaner
-	runtimeMutationDir string
+	cfg                         config.Config
+	configPath                  string
+	client                      *client.Client
+	logger                      *slog.Logger
+	trafficCollector            traffic.Collector
+	trafficTracker              *traffic.DeltaTracker
+	lastTrafficReport           time.Time
+	presenceCollector           presence.Collector
+	lastPresenceReport          time.Time
+	vpnCoreAdapter              tasks.VPNCoreAdapter
+	wireGuardAdapter            tasks.VPNCoreAdapter
+	hysteria2Adapter            tasks.VPNCoreAdapter
+	shadowsocksAdapter          tasks.VPNCoreAdapter
+	mtprotoAdapter              tasks.VPNCoreAdapter
+	runtimeCleaner              runtimecleanup.Cleaner
+	runtimeMutationDir          string
+	runtimeMutationManagerReady bool
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -191,10 +192,13 @@ func (r *Runner) ensureRegistered(ctx context.Context) error {
 
 func (r *Runner) sendHeartbeat(ctx context.Context) error {
 	info := systeminfo.Collect()
+	r.prepareRuntimeMutationHeartbeat(&info)
+	r.runtimeMutationManagerReady = false
 	res, err := r.client.Heartbeat(ctx, r.cfg.AgentToken, info)
 	if err != nil {
 		return err
 	}
+	r.runtimeMutationManagerReady = res.OK && res.AgentID == r.cfg.AgentID && res.ServerID == r.cfg.ServerID && res.RuntimeMutationFencingAccepted
 	r.logger.Info("heartbeat accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "server_status", res.ServerStatus)
 	return nil
 }

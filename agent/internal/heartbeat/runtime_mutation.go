@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ikaevus/routegate/agent/internal/client"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 )
 
@@ -18,7 +19,7 @@ func (r *Runner) withRuntimeMutation(ctx context.Context, task tasks.ConfigTask,
 	if dir == "" {
 		dir = tasks.DefaultRuntimeMutationDir
 	}
-	if !r.cfg.ExperimentalRuntimeMutationFencing && !tasks.RuntimeMutationStatePresent(dir) {
+	if !r.cfg.ExperimentalRuntimeMutationFencing && !r.runtimeMutationManagerReady && !tasks.RuntimeMutationStatePresent(dir) {
 		return execute(ctx)
 	}
 	switch task.EffectiveKind() {
@@ -37,6 +38,9 @@ func (r *Runner) withRuntimeMutation(ctx context.Context, task tasks.ConfigTask,
 		return tasks.ErrRuntimeMutationBlocked
 	}
 	if task.Status != "in_progress" || r.cfg.AgentID == "" || r.cfg.ServerID == "" || task.AgentID != r.cfg.AgentID || task.ServerID != r.cfg.ServerID {
+		return tasks.ErrRuntimeMutationBlocked
+	}
+	if !r.runtimeMutationManagerReady {
 		return tasks.ErrRuntimeMutationBlocked
 	}
 	lease, err := tasks.BeginRuntimeMutation(dir, task.ID, task.EffectiveKind())
@@ -63,4 +67,18 @@ func (r *Runner) withRuntimeMutation(ctx context.Context, task tasks.ConfigTask,
 		return errRuntimeMutationRecovery
 	}
 	return nil
+}
+
+func (r *Runner) prepareRuntimeMutationHeartbeat(info *systeminfo.Info) {
+	dir := r.runtimeMutationDir
+	if dir == "" {
+		dir = tasks.DefaultRuntimeMutationDir
+	}
+	if r.cfg.ExperimentalRuntimeMutationFencing || tasks.RuntimeMutationStatePresent(dir) {
+		if info.Capabilities == nil {
+			info.Capabilities = map[string]any{}
+		}
+		// This requests timeout preservation only, NOT credential-removal support.
+		info.Capabilities["runtimeMutationFencingV1"] = true
+	}
 }

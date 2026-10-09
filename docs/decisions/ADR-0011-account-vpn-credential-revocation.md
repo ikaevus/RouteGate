@@ -378,6 +378,19 @@ Fenced handlers require a positive Manager result acknowledgement: the legacy
 client shortcut treating HTTP 404 after an uncertain response as success is
 disabled in their context. HTTP 500 followed by 404 therefore retains the fence;
 HTTP 500 followed by success retries only the report, not the runtime mutation.
+They also suppress ordinary `failed` result envelopes: the legacy result schema
+cannot distinguish proven failure from an uncertain mutation. In both cases the
+Manager job remains active until a future explicit reconciliation path exists.
+
+The Agent requests `runtimeMutationFencingV1` timeout preservation in authenticated
+heartbeats. Manager persists that mode in Agent capabilities, retains it across
+later omissions/false values and credential replacement, and exempts that Agent's
+active config/operation jobs from the five-minute orphan-to-failed heuristic.
+The response acknowledges the persisted policy. Experimental mutations cannot
+start without this positive, identity-bound acknowledgement, so an older Manager
+cannot silently use the old timeout semantics. This is **not** a credential
+removal capability or a claim that all mutation/recovery paths are complete.
+There is deliberately no automatic downgrade of the persisted safety mode.
 
 The fixed state directory is `/var/lib/routegate-agent/runtime-mutations`, outside
 the default artifact cleanup roots. Its stable parent must already be provisioned.
@@ -401,6 +414,9 @@ identity mismatch and disabled removal/updates. Config tests exercise real
 temporary-file promotion and rollback with a fake service adapter while checking
 that the lease stays held. These are not production tests or proof of a complete
 Manager/PostgreSQL-to-Agent revocation workflow.
+Focused PostgreSQL tests separately prove old in-progress jobs remain active
+across repeated heartbeats, capability omission/false and Agent credential
+replacement, while unfenced legacy jobs retain their existing timeout behavior.
 
 **Recovery limitation:** legacy handlers do not yet provide phase-specific
 proof or durable success receipts for read-only result replay. Therefore even

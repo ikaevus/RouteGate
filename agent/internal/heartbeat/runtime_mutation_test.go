@@ -18,6 +18,7 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/client"
 	"github.com/ikaevus/routegate/agent/internal/config"
 	"github.com/ikaevus/routegate/agent/internal/platform"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 )
 
@@ -67,6 +68,7 @@ func fencedRunnerFixture(t *testing.T, kind string, resultCodes ...int) (*Runner
 	r.client = client.New(srv.URL)
 	r.vpnCoreAdapter = a
 	r.runtimeMutationDir = filepath.Join(t.TempDir(), "mutations")
+	r.runtimeMutationManagerReady = true // Negotiated by the protocol fixture.
 	return r, a, results
 }
 
@@ -111,11 +113,16 @@ func TestFencedDispatchPreservesUncertaintyAcrossRestart(t *testing.T) {
 			fresh := NewRunner(r.cfg, "", r.logger)
 			fresh.cfg.ExperimentalRuntimeMutationFencing = false
 			fresh.runtimeMutationDir = r.runtimeMutationDir
+			fresh.runtimeMutationManagerReady = true
 			fresh.vpnCoreAdapter = a
 			if err := fresh.processNextTask(context.Background()); !errors.Is(err, tasks.ErrRuntimeMutationBlocked) {
 				t.Fatal(err)
 			}
-			if a.calls != 1 || results.Load() != 1 {
+			wantResults := int32(1)
+			if mode == "handler failure" {
+				wantResults = 0
+			}
+			if a.calls != 1 || results.Load() != wantResults {
 				t.Fatal("retried runtime or invented terminal result", a.calls, results.Load())
 			}
 		})
@@ -187,6 +194,7 @@ func TestFencedDispatchClassificationAndIdentity(t *testing.T) {
 func TestFencedDispatchDefaultAndCancellation(t *testing.T) {
 	r, a, _ := fencedRunnerFixture(t, tasks.TaskKindVPNCoreService, 204)
 	r.cfg.ExperimentalRuntimeMutationFencing = false
+	r.runtimeMutationManagerReady = false
 	if err := r.processNextTask(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +205,7 @@ func TestFencedDispatchDefaultAndCancellation(t *testing.T) {
 		t.Fatal("default path created state", err)
 	}
 	r.cfg.ExperimentalRuntimeMutationFencing = true
+	r.runtimeMutationManagerReady = true
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	task := tasks.ConfigTask{ID: fencedTaskID, AgentID: fencedAgentID, ServerID: fencedServerID, Status: "in_progress", Kind: tasks.TaskKindVPNCoreService}
@@ -276,10 +285,50 @@ func TestFencedDispatchConfigApplyAndRollback(t *testing.T) {
 			if fail && err != nil || !fail && !os.IsNotExist(err) {
 				t.Fatal("wrong intent retention", err)
 			}
-			if results.Load() != 1 {
+			wantResults := int32(1)
+			if fail {
+				wantResults = 0
+			}
+			if results.Load() != wantResults {
 				t.Fatal("missing terminal report")
 			}
 		})
+	}
+}
+
+func TestFencedDispatchRequiresManagerNegotiation(t *testing.T) {
+	r, a, results := fencedRunnerFixture(t, tasks.TaskKindVPNCoreService, 204)
+	r.runtimeMutationManagerReady = false
+	if err := r.processNextTask(context.Background()); !errors.Is(err, tasks.ErrRuntimeMutationBlocked) {
+		t.Fatal(err)
+	}
+	if a.calls != 0 || results.Load() != 0 {
+		t.Fatal("mutation ran without timeout preservation")
+	}
+	if _, err := os.Stat(r.runtimeMutationDir); !os.IsNotExist(err) {
+		t.Fatal("unnegotiated job acquired intent")
+	}
+}
+
+func TestFencedHeartbeatRequestsTimeoutPreservation(t *testing.T) {
+	r, _, _ := fencedRunnerFixture(t, tasks.TaskKindVPNCoreService, 204)
+	for _, enabled := range []bool{false, true} {
+		r.cfg.ExperimentalRuntimeMutationFencing = enabled
+		info := systeminfo.Info{}
+		r.prepareRuntimeMutationHeartbeat(&info)
+		got, _ := info.Capabilities["runtimeMutationFencingV1"].(bool)
+		if got != enabled {
+			t.Fatal("wrong policy request")
+		}
+	}
+	r.cfg.ExperimentalRuntimeMutationFencing = false
+	if err := os.Mkdir(r.runtimeMutationDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	info := systeminfo.Info{}
+	r.prepareRuntimeMutationHeartbeat(&info)
+	if info.Capabilities["runtimeMutationFencingV1"] != true {
+		t.Fatal("existing state not negotiated")
 	}
 }
 

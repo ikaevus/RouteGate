@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -80,10 +81,11 @@ type heartbeatRequest struct {
 }
 
 type HeartbeatResponse struct {
-	OK           bool   `json:"ok"`
-	AgentID      string `json:"agentId"`
-	ServerID     string `json:"serverId"`
-	ServerStatus string `json:"serverStatus"`
+	RuntimeMutationFencingAccepted bool   `json:"runtimeMutationFencingAccepted"`
+	OK                             bool   `json:"ok"`
+	AgentID                        string `json:"agentId"`
+	ServerID                       string `json:"serverId"`
+	ServerStatus                   string `json:"serverStatus"`
 }
 
 type nextTaskResponse struct {
@@ -188,6 +190,12 @@ func (c *Client) NextTask(ctx context.Context, agentToken string) (*tasks.Config
 }
 
 func (c *Client) CompleteTask(ctx context.Context, agentToken, jobID string, req completeTaskRequest) error {
+	strict, _ := ctx.Value(strictTaskAcknowledgementKey{}).(bool)
+	if strict && req.Status != "succeeded" {
+		// An ordinary failed envelope cannot represent an uncertain mutation.
+		// Retain Manager's active job until explicit reconciliation exists.
+		return errors.New("fenced task requires runtime reconciliation")
+	}
 	if strings.TrimSpace(jobID) == "" {
 		return fmt.Errorf("job id is required")
 	}
@@ -207,7 +215,6 @@ func (c *Client) CompleteTask(ctx context.Context, agentToken, jobID string, req
 			// handed it out, so a 404 after an uncertain prior completion attempt is
 			// safe to treat as an idempotent acknowledgement rather than abandoning
 			// the already-applied runtime state.
-			strict, _ := ctx.Value(strictTaskAcknowledgementKey{}).(bool)
 			if statusErr.statusCode == http.StatusNotFound && hadUncertainAttempt && !strict {
 				return nil
 			}
