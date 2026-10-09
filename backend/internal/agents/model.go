@@ -42,6 +42,11 @@ const (
 
 type Capabilities map[string]any
 
+func (c Capabilities) RuntimeMutationFencingEnabled() bool {
+	enabled, _ := c["runtimeMutationFencingV1"].(bool)
+	return enabled
+}
+
 type Agent struct {
 	ID              string        `json:"id"`
 	ServerID        string        `json:"serverId"`

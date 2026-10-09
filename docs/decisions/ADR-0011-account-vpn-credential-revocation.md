@@ -357,3 +357,72 @@ handoff/reconciliation contract; holding a lease only in its dispatcher is
 insufficient. Wire the handlers only together with truthful bounded failure
 reporting and explicit recovery, then test crash/restart and detached handoff
 end-to-end before enabling the Manager confirmation/outbox or revocation UI.
+
+### Experimental heartbeat admission (fifth implementation slice)
+
+The heartbeat task loop now has an **off-by-default development gate**:
+`experimental_runtime_mutation_fencing`. No installer, capability advertisement
+or Manager endpoint enables it. It is for disposable isolation tests only,
+not for enabling revocation on an existing node. Configuration save/registration
+preserves an explicit opt-in; default saved configs remain unchanged.
+
+When opted in, synchronous config apply (including internal rollback), service,
+installation and maintenance handlers acquire the durable lease before entering
+the handler and hold it through Manager result acknowledgement. They must match
+the local Agent/server and an in-progress task. Handler error, failed result
+delivery, process death or unexpected marker change retains the fence. A
+cancelled context observed **before** invoking the handler is the one provable
+no-mutation cancellation that may clear its own live lease automatically.
+Successful legacy task completion does not establish revocation evidence.
+Fenced handlers require a positive Manager result acknowledgement: the legacy
+client shortcut treating HTTP 404 after an uncertain response as success is
+disabled in their context. HTTP 500 followed by 404 therefore retains the fence;
+HTTP 500 followed by success retries only the report, not the runtime mutation.
+They also suppress ordinary `failed` result envelopes: the legacy result schema
+cannot distinguish proven failure from an uncertain mutation. In both cases the
+Manager job remains active until a future explicit reconciliation path exists.
+
+The Agent requests `runtimeMutationFencingV1` timeout preservation in authenticated
+heartbeats. Manager persists that mode in Agent capabilities, retains it across
+later omissions/false values and credential replacement, and exempts that Agent's
+active config/operation jobs from the five-minute orphan-to-failed heuristic.
+The response acknowledges the persisted policy. Experimental mutations cannot
+start without this positive, identity-bound acknowledgement, so an older Manager
+cannot silently use the old timeout semantics. This is **not** a credential
+removal capability or a claim that all mutation/recovery paths are complete.
+There is deliberately no automatic downgrade of the persisted safety mode.
+
+The fixed state directory is `/var/lib/routegate-agent/runtime-mutations`, outside
+the default artifact cleanup roots. Its stable parent must already be provisioned.
+Existing state makes admission sticky even if the opt-in flag is removed on
+restart. Malformed state fails closed. Diagnostics and existing platform-update
+receipt reconciliation remain available; unknown kinds and credential-removal
+dispatch remain disabled. Admission failures do **not** post a fabricated
+terminal result for what may be an uncertain/redelivered task.
+
+Detached update dispatch is refused while the experimental gate is active, and
+the update preparation and worker entrypoints independently refuse existing
+shared state. This does **not** fence an updater that already passed entry
+checks: drain/stop all such workers before opting in. Dispatcher/worker atomic
+handoff is still required before advertising any complete fencing capability.
+Direct privileged tools and scripts remain outside the Agent admission boundary.
+
+The isolated HTTP Manager fixture exercises actual Agent task polling, dispatch
+and result acknowledgement. It covers success, handler failure, failed result
+acknowledgement, a fresh Runner with the flag removed, all mutation kinds,
+identity mismatch and disabled removal/updates. Config tests exercise real
+temporary-file promotion and rollback with a fake service adapter while checking
+that the lease stays held. These are not production tests or proof of a complete
+Manager/PostgreSQL-to-Agent revocation workflow.
+Focused PostgreSQL tests separately prove old in-progress jobs remain active
+across repeated heartbeats, capability omission/false and Agent credential
+replacement, while unfenced legacy jobs retain their existing timeout behavior.
+
+**Recovery limitation:** legacy handlers do not yet provide phase-specific
+proof or durable success receipts for read-only result replay. Therefore even
+a validation failure conservatively retains its intent. A successful result
+can also reach Manager before local fence cleanup fails; the runtime result is
+not rewritten, but the local gate remains blocked. There is no supported
+operator unlock/recovery route yet. Do not activate this gate on production or
+remove its state to resume jobs. Implement authenticated reconciliation, safe
+result replay and worker handoff before rollout or enabling the revocation UI.
