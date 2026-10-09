@@ -273,3 +273,53 @@ to that preview; capability negotiation; strict result verification; blocked
 subscription/reactivation semantics; reconciliation of pending/failed/recovery
 states without automatically restoring the credential. Test Manager/PostgreSQL
 concurrency and all Agent mutation fences before enabling dispatch or UI.
+
+### Durable Manager preparation (third implementation slice)
+
+Migration 000160 adds an internal preparation ledger and transactional audit.
+`revocations.Service.Prepare` locks the account/node, composes with transfer and
+Manager-update admission, checks current applied version/hash, account identity,
+Agent identity/current authenticated heartbeat, and rejects conflicting jobs.
+It creates a secret-bearing candidate from the pinned applied snapshot and
+stores both version-1 runtime digests. Retry of the same actor/target/baseline
+returns the same preparation; a different binding cannot reuse it.
+
+The desired-state comparison is read-only, including credential resolution:
+no config version, apply task or WireGuard credential is created. It permits
+only the selected account's active/suspended/revoked status difference and
+rejects unrelated rendered changes and recent edits to hidden disabled accounts.
+This conservative check may require resolving unapplied changes before a
+preparation can be made. It is not a fresh on-node measurement: that still
+belongs to the explicitly authorized Agent execution.
+
+A preparation reserves the whole node, because sing-box config and process
+are shared. PostgreSQL guards block account/credential/protocol/routing edits,
+config/service/update tasks, transfer admission, active-version changes and
+Agent credential rotation while reserved. Shared routing and Manager updates
+are fenced too; Agent heartbeat remains writable. The persisted baseline and
+candidate/audit survive cleanup and restart. Cancellation is explicit,
+idempotent, and only releases a **never-dispatched** preparation; it never
+changes account/subscription state or restores a UUID. There is no automatic
+expiry/unlock. Downgrade refuses to discard any preparation/audit history.
+
+The only persisted states in this slice are `prepared` and `cancelled`.
+`prepared` is not `pending` execution. The schema refuses a `confirmed` write.
+There is no HTTP route, task producer, worker, Agent capability advertisement,
+confirmation control or enabled dispatcher. This is deliberately not a usable
+revocation operation yet and does not close #545.
+
+`VerifySuccess` separately validates bounded, strict version-1 Agent evidence
+against a trusted dispatch binding. It rejects wrong job/account/node/Agent,
+version/hash/port mismatches, missing restart generation, unsupported outcomes,
+duplicate/unknown fields and credential-bearing extensions. Manager and Agent
+use shared golden digest vectors despite being separate Go modules. This pure
+verifier does not authenticate the sender, promote applied membership or write
+`confirmed`; all three remain the future coordinator's responsibility.
+
+Next activation gate: add a capability-negotiated durable outbox and explicit
+confirmation bound to this preparation; recheck freshness/credential generation
+and saved state at confirmation; add common Agent mutation fences; atomically
+verify authenticated evidence, promote applied state and persist pending,
+failed, recovery-required or confirmed outcomes; retain uncertain reservations
+and add explicit reconciliation. Exercise that complete path with PostgreSQL,
+Agent restart/lost acknowledgment and real Reality traffic before enabling UI.
