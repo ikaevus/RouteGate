@@ -32,6 +32,7 @@ type Runner struct {
 	shadowsocksAdapter tasks.VPNCoreAdapter
 	mtprotoAdapter     tasks.VPNCoreAdapter
 	runtimeCleaner     runtimecleanup.Cleaner
+	runtimeMutationDir string
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -71,7 +72,8 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 			cfg.MTGPath,
 			cfg.MTProtoServiceName,
 		),
-		runtimeCleaner: runtimecleanup.New(cfg),
+		runtimeCleaner:     runtimecleanup.New(cfg),
+		runtimeMutationDir: tasks.DefaultRuntimeMutationDir,
 	}
 	if cfg.TrafficCollectionEnabled {
 		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
@@ -235,19 +237,27 @@ func (r *Runner) processNextTask(ctx context.Context) error {
 		return nil
 	}
 
+	return r.dispatchTask(ctx, *task)
+}
+
+func (r *Runner) dispatchTask(ctx context.Context, task tasks.ConfigTask) error {
+	return r.withRuntimeMutation(ctx, task, func(taskCtx context.Context) error { return r.dispatchTaskUnfenced(taskCtx, task) })
+}
+
+func (r *Runner) dispatchTaskUnfenced(ctx context.Context, task tasks.ConfigTask) error {
 	switch task.EffectiveKind() {
 	case tasks.TaskKindVPNCoreService:
-		return r.processVPNCoreServiceTask(ctx, *task)
+		return r.processVPNCoreServiceTask(ctx, task)
 	case tasks.TaskKindVPNCoreInstall:
-		return r.processVPNCoreInstallTask(ctx, *task)
+		return r.processVPNCoreInstallTask(ctx, task)
 	case tasks.TaskKindDiagnostic:
-		return r.processDiagnosticTask(ctx, *task)
+		return r.processDiagnosticTask(ctx, task)
 	case tasks.TaskKindPlatformUpdate:
-		return r.processPlatformUpdateReconciliationTask(ctx, *task)
+		return r.processPlatformUpdateReconciliationTask(ctx, task)
 	case tasks.TaskKindMaintenance:
-		return r.processMaintenanceTask(ctx, *task)
+		return r.processMaintenanceTask(ctx, task)
 	case tasks.TaskKindConfigApply:
-		return r.processConfigApplyTask(ctx, *task)
+		return r.processConfigApplyTask(ctx, task)
 	default:
 		err := fmt.Errorf("unsupported agent task kind %q", task.Kind)
 		report := map[string]any{"kind": task.Kind, "status": "rejected"}

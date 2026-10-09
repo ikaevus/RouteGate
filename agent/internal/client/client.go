@@ -32,6 +32,15 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type strictTaskAcknowledgementKey struct{}
+
+// WithStrictTaskAcknowledgement disables the legacy uncertain-attempt/404
+// shortcut for safety-gated operations. A missing job is not positive evidence
+// that Manager accepted this exact result. No global client state is changed.
+func WithStrictTaskAcknowledgement(ctx context.Context) context.Context {
+	return context.WithValue(ctx, strictTaskAcknowledgementKey{}, true)
+}
+
 type httpStatusError struct {
 	method     string
 	path       string
@@ -198,7 +207,8 @@ func (c *Client) CompleteTask(ctx context.Context, agentToken, jobID string, req
 			// handed it out, so a 404 after an uncertain prior completion attempt is
 			// safe to treat as an idempotent acknowledgement rather than abandoning
 			// the already-applied runtime state.
-			if statusErr.statusCode == http.StatusNotFound && hadUncertainAttempt {
+			strict, _ := ctx.Value(strictTaskAcknowledgementKey{}).(bool)
+			if statusErr.statusCode == http.StatusNotFound && hadUncertainAttempt && !strict {
 				return nil
 			}
 			if statusErr.statusCode != http.StatusRequestTimeout &&

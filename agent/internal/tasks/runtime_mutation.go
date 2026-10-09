@@ -12,6 +12,17 @@ import (
 // ErrRuntimeMutationBlocked never includes paths, credentials or receipt data.
 var ErrRuntimeMutationBlocked = errors.New("runtime mutation blocked: exclusive state unavailable or recovery required")
 
+// DefaultRuntimeMutationDir is outside every normal staging/backup cleanup root.
+// The experimental heartbeat gate and future removal dispatcher must share it.
+const DefaultRuntimeMutationDir = "/var/lib/routegate-agent/runtime-mutations"
+
+// RuntimeMutationStatePresent is sticky and fail-closed on inspection errors.
+// It does not create directories, change receipts, or authorize a mutation.
+func RuntimeMutationStatePresent(dir string) bool {
+	_, err := os.Lstat(dir)
+	return !os.IsNotExist(err)
+}
+
 // RuntimeMutation is an admission lease, not proof of a successful operation.
 // Close releases the process lock but deliberately retains the durable marker.
 // Only a live caller that has verified a safe terminal runtime state may call
