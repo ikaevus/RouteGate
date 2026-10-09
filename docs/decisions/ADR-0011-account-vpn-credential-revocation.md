@@ -323,3 +323,37 @@ verify authenticated evidence, promote applied state and persist pending,
 failed, recovery-required or confirmed outcomes; retain uncertain reservations
 and add explicit reconciliation. Exercise that complete path with PostgreSQL,
 Agent restart/lost acknowledgment and real Reality traffic before enabling UI.
+
+### Shared Agent mutation admission primitive (fourth implementation slice)
+
+`tasks.BeginRuntimeMutation` shares the scoped executor's private `runtime.lock`
+and introduces a fsynced `mutation-inflight.json` intent for future legacy
+config apply/rollback, service, install, maintenance and platform-update callers.
+It checks both legacy and removal markers while holding the same nonblocking
+filesystem lock. The directory's stable parent must already exist; admission
+persists the newly created directory entry before recording an intent. Receipts
+and lock files must be local, private and owned by the Agent identity.
+
+`Close` releases only the process lock, never the intent. Process exit therefore
+cannot authorize a retry, even with an identical task ID. `Complete` is only for
+a live owner after a verified safe terminal runtime result; it cannot be used
+for timeout, unknown outcome or detached-worker dispatch acknowledgement. It
+checks the unchanged intent and absence of a removal marker before durable
+clearance. There is no force-unlock or restart reconciliation API in this slice.
+
+The scoped executor now checks this legacy intent before any execution **or
+successful receipt replay**. A prior success cannot bypass an intervening
+unknown mutation. Tests cover mutual exclusion in both directions, all admitted
+task classes, malformed state, file types, same-task retry, and a subprocess
+exiting without releasing its lease. No VPN runtime is needed for these tests;
+the existing isolated actual-executor/Reality CI remains the runtime regression.
+
+**Not yet wired:** ordinary heartbeat task handlers, direct commands and detached
+update workers do not acquire this lease yet. No production configuration path
+is selected, no new task kind is dispatched, and no capability is advertised.
+This is a reusable admission prerequisite, not a claim that every mutation path
+is fenced. A detached updater needs worker-owned admission and a persisted
+handoff/reconciliation contract; holding a lease only in its dispatcher is
+insufficient. Wire the handlers only together with truthful bounded failure
+reporting and explicit recovery, then test crash/restart and detached handoff
+end-to-end before enabling the Manager confirmation/outbox or revocation UI.
