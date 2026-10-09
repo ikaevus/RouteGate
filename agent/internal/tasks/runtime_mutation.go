@@ -28,9 +28,10 @@ func RuntimeMutationStatePresent(dir string) bool {
 // Only a live caller that has verified a safe terminal runtime state may call
 // Complete. There is deliberately no force-unlock or crash-recovery API here.
 //
-// This primitive is not yet wired to legacy handlers or detached workers. All
-// participating processes MUST use the same private, stable directory as the
-// CredentialRemovalExecutor, outside config staging/backup cleanup roots.
+// Heartbeat integration is experimental and off by default; detached-worker
+// handoff is not implemented. All participating processes MUST use the same
+// private, stable directory as the CredentialRemovalExecutor, outside config
+// staging/backup cleanup roots.
 type RuntimeMutation struct {
 	mu        sync.Mutex
 	lock      *os.File
