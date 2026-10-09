@@ -166,7 +166,7 @@ func TestClientProfileSchemaInvariantRepairRepairsAlreadyAppliedHistoricalDrift(
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000159_staged_account_transfers" {
-		t.Fatalf("applied schema version = %q, want 000159_staged_account_transfers", version)
+	if version != "000160_credential_revocation_preparations" {
+		t.Fatalf("applied schema version = %q, want 000160_credential_revocation_preparations", version)
 	}
 }
