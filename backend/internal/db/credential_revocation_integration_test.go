@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ikaevus/routegate/backend/internal/configs"
 	"github.com/ikaevus/routegate/backend/internal/revocations"
 	"github.com/ikaevus/routegate/backend/internal/transfers"
+	"github.com/ikaevus/routegate/backend/internal/vpnaccounts"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +22,20 @@ func removalPreparationFixture(t *testing.T) (context.Context, *pgxpool.Pool, re
 	t.Helper()
 	ctx, pool, node, target, account, done := transferFixture(t)
 	in := revocations.PrepareInput{AccountID: account, ServerID: node, Actor: "operator"}
+	if _, err := pool.Exec(ctx, `INSERT INTO vpn_client_profiles(vpn_account_id,active_protocol) VALUES($1::uuid,'vless') ON CONFLICT(vpn_account_id) DO NOTHING`, account); err != nil {
+		done()
+		t.Fatal(err)
+	}
+	accounts := vpnaccounts.NewRepository(pool)
+	device, err := accounts.CreateDevice(ctx, vpnaccounts.CreateDeviceInput{VPNAccountID: account, Name: "Existing device", ClientType: vpnaccounts.ClientTypeHiddify, DeviceType: vpnaccounts.DevicePlatformIOS})
+	if err != nil {
+		done()
+		t.Fatal(err)
+	}
+	if _, err = accounts.CreateDeviceSubscriptionToken(ctx, device.ID, vpnaccounts.HashSubscriptionToken("existing-device-token"), nil); err != nil {
+		done()
+		t.Fatal(err)
+	}
 	if err := pool.QueryRow(ctx, `SELECT cv.id::text,cv.config_hash FROM servers s JOIN config_versions cv ON cv.id=s.active_config_version_id WHERE s.id=$1::uuid`, node).Scan(&in.BaselineVersionID, &in.BaselineHash); err != nil {
 		done()
 		t.Fatal(err)
@@ -31,6 +48,10 @@ func TestCredentialRevocationPreparationPreservesAccountAndVersions(t *testing.T
 			ctx, pool, in, _, done := removalPreparationFixture(t)
 			defer done()
 			if _, err := pool.Exec(ctx, `UPDATE vpn_accounts SET status=$2 WHERE id=$1::uuid`, in.AccountID, status); err != nil {
+				t.Fatal(err)
+			}
+			var beforeTokens, afterTokens string
+			if err := pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text,'[]') FROM vpn_subscription_tokens t`).Scan(&beforeTokens); err != nil {
 				t.Fatal(err)
 			}
 			var beforeVersions, beforeJobs int
@@ -70,6 +91,12 @@ func TestCredentialRevocationPreparationPreservesAccountAndVersions(t *testing.T
 			if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM config_versions),(SELECT count(*) FROM config_apply_jobs),row_to_json(a)::text FROM vpn_accounts a WHERE id=$1::uuid`, in.AccountID).Scan(&afterVersions, &afterJobs, &after); err != nil {
 				t.Fatal(err)
 			}
+			if err := pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text,'[]') FROM vpn_subscription_tokens t`).Scan(&afterTokens); err != nil {
+				t.Fatal(err)
+			}
+			if beforeTokens != afterTokens {
+				t.Fatal("subscription token was replaced or changed")
+			}
 			if beforeVersions != afterVersions || beforeJobs != afterJobs || before != after {
 				t.Fatal("preparation changed account or queued/rendered configuration")
 			}
@@ -106,6 +133,9 @@ func TestCredentialRevocationPreparationPreservesAccountAndVersions(t *testing.T
 			if _, err = pool.Exec(ctx, `UPDATE vpn_accounts SET display_name='after cancellation' WHERE id=$1::uuid`, in.AccountID); err != nil {
 				t.Fatal("reservation not released", err)
 			}
+			if _, err = pool.Exec(ctx, `UPDATE config_versions SET applied_at=now() WHERE id=$1::uuid`, in.BaselineVersionID); err != nil {
+				t.Fatal("cancelled preparation blocks later legitimate apply metadata", err)
+			}
 			if _, err = pool.Exec(ctx, `UPDATE config_versions SET config_hash=repeat('a',64) WHERE id=$1::uuid`, in.BaselineVersionID); err == nil {
 				t.Fatal("cancelled baseline proof mutable")
 			}
@@ -126,7 +156,7 @@ func TestCredentialRevocationReservationsBlockConflicts(t *testing.T) {
 	}{
 		{"status", `UPDATE vpn_accounts SET status='revoked' WHERE id=$1::uuid`, []any{in.AccountID}},
 		{"delete", `DELETE FROM vpn_accounts WHERE id=$1::uuid`, []any{in.AccountID}},
-		{"settings", `UPDATE servers SET vless_port=9443 WHERE id=$1::uuid`, []any{in.ServerID}},
+		{"settings", `UPDATE servers SET vless_port=19443 WHERE id=$1::uuid`, []any{in.ServerID}},
 		{"active pointer", `UPDATE servers SET active_config_version_id=NULL WHERE id=$1::uuid`, []any{in.ServerID}},
 		{"apply", `INSERT INTO config_apply_jobs(server_id,agent_id,config_version_id,action) SELECT server_id,id,$2::uuid,'apply' FROM agents WHERE server_id=$1::uuid`, []any{in.ServerID, in.BaselineVersionID}},
 		{"job cleanup", `DELETE FROM config_apply_jobs WHERE server_id=$1::uuid`, []any{in.ServerID}},
@@ -194,7 +224,7 @@ func TestCredentialRevocationPreflightFailsAtomically(t *testing.T) {
 			case "stale heartbeat":
 				_, err = pool.Exec(ctx, `UPDATE agents SET last_authenticated_heartbeat_at=now()-interval '10 minutes' WHERE server_id=$1::uuid`, in.ServerID)
 			case "unapplied port":
-				_, err = pool.Exec(ctx, `UPDATE servers SET vless_port=9443 WHERE id=$1::uuid`, in.ServerID)
+				_, err = pool.Exec(ctx, `UPDATE servers SET vless_port=19443 WHERE id=$1::uuid`, in.ServerID)
 			case "unrelated account edit":
 				_, err = pool.Exec(ctx, `UPDATE vpn_accounts SET display_name='pending edit' WHERE server_id=$1::uuid AND id<>$2::uuid`, in.ServerID, in.AccountID)
 			case "wrong baseline":
@@ -215,5 +245,97 @@ func TestCredentialRevocationPreflightFailsAtomically(t *testing.T) {
 				t.Fatal("partial preparation", count, err)
 			}
 		})
+	}
+}
+
+func TestCredentialRevocationSeesJobCommittedWhileAdmissionWaits(t *testing.T) {
+	ctx, pool, in, _, done := removalPreparationFixture(t)
+	defer done()
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback(ctx)
+	if _, err = blocker.Exec(ctx, `INSERT INTO config_apply_jobs(server_id,agent_id,config_version_id,action) SELECT server_id,id,$2::uuid,'apply' FROM agents WHERE server_id=$1::uuid`, in.ServerID, in.BaselineVersionID); err != nil {
+		t.Fatal(err)
+	}
+	config, err := pgxpool.ParseConfig(os.Getenv("ROUTEGATE_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["application_name"] = "routegate-revocation-admission-race"
+	contender, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer contender.Close()
+	result := make(chan error, 1)
+	go func() { _, err := revocations.NewService(contender).Prepare(ctx, in); result <- err }()
+	waiting := false
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var count int
+		if err = pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE application_name='routegate-revocation-admission-race' AND wait_event_type='Lock' AND query LIKE '%routegate_transfer_node_guard%'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count > 0 {
+			waiting = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("preparation did not wait on node admission")
+	}
+	if err = blocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-result:
+		if !errors.Is(err, revocations.ErrPreflight) {
+			t.Fatal("ignored job committed during admission", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("admission did not resume")
+	}
+	var count int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM vpn_credential_revocations`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("partial raced preparation", count, err)
+	}
+}
+func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
+	ctx, pool, in, _, done := removalPreparationFixture(t)
+	defer done()
+	down, err := os.ReadFile("../../migrations/000160_credential_revocation_preparations.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, err := os.ReadFile("../../migrations/000160_credential_revocation_preparations.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(down)); err != nil {
+		t.Fatal("empty-schema downgrade", err)
+	}
+	if _, err = pool.Exec(ctx, string(up)); err != nil {
+		t.Fatal("reapply", err)
+	}
+	service := revocations.NewService(pool)
+	p, err := service.Prepare(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(down)); err == nil {
+		t.Fatal("discarded active preparation")
+	}
+	if _, err = service.Cancel(ctx, p.ID, in.Actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(down)); err == nil {
+		t.Fatal("discarded cancelled audit")
+	}
+	var count int
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM vpn_credential_revocation_events WHERE operation_id=$1::uuid`, p.ID).Scan(&count); err != nil || count != 2 {
+		t.Fatal("downgrade partially removed history", count, err)
 	}
 }

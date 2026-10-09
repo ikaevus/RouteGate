@@ -111,6 +111,7 @@ func (s *Service) prepare(ctx context.Context, in PrepareInput) (Preparation, er
  AND a.last_authenticated_heartbeat_at>now()-interval '90 seconds'
  AND a.last_authenticated_heartbeat_generation=a.credential_generation
  AND a.capabilities @> '{"sing-box":true,"systemctl":true,"ss":true}'::jsonb
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(a.capabilities->'routegate'->'vpnCoreAdapters','[]'::jsonb)) c WHERE c->>'core'='sing-box' AND c->>'protocol'='vless' AND c->'transports' ? 'tcp' AND c->'securityModes' ? 'reality')
  AND (a.capabilities->'vpnCore'->>'state'='running' OR EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(a.capabilities->'vpnCores','[]'::jsonb)) c WHERE c->>'type'='sing-box' AND c->>'state'='running')),false)
  FROM servers s JOIN agents a ON a.server_id=s.id WHERE s.id=$1::uuid FOR UPDATE OF a`, node).Scan(&active, &agent, &generation, &ready)
 	if err != nil {

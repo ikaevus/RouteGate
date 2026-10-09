@@ -75,15 +75,27 @@ BEGIN
 END; $$;
 CREATE TRIGGER rg141_account BEFORE INSERT OR UPDATE OR DELETE ON vpn_accounts FOR EACH ROW EXECUTE FUNCTION routegate_revocation_account_guard();
 CREATE FUNCTION routegate_revocation_preferences_guard() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE account uuid; node uuid;
+DECLARE account uuid; node uuid; current_node uuid;
 BEGIN
+ IF TG_TABLE_NAME='traffic_limits' AND TG_OP='UPDATE' THEN
+  IF (to_jsonb(OLD)-ARRAY['enforcement_status','limit_exceeded_at','enforcement_updated_at','updated_at'])=(to_jsonb(NEW)-ARRAY['enforcement_status','limit_exceeded_at','enforcement_updated_at','updated_at']) THEN RETURN NEW; END IF;
+ END IF;
  IF TG_OP='UPDATE' AND (to_jsonb(OLD)-'updated_at')=(to_jsonb(NEW)-'updated_at') THEN RETURN NEW; END IF;
  IF TG_TABLE_NAME='vpn_client_profiles' AND TG_OP='INSERT' AND EXISTS(SELECT 1 FROM vpn_client_profiles WHERE vpn_account_id=NEW.vpn_account_id) THEN RETURN NEW; END IF;
  IF TG_TABLE_NAME='vpn_account_protocols' AND TG_OP='INSERT' THEN
  IF NOT NEW.desired_explicit THEN RETURN NEW; END IF; END IF;
+ IF TG_OP='UPDATE' AND OLD.vpn_account_id IS DISTINCT FROM NEW.vpn_account_id THEN
+  SELECT server_id INTO node FROM vpn_accounts WHERE id=OLD.vpn_account_id;PERFORM routegate_revocation_node_guard(node);
+  SELECT server_id INTO current_node FROM vpn_accounts WHERE id=OLD.vpn_account_id;
+  IF current_node IS DISTINCT FROM node THEN RAISE EXCEPTION USING ERRCODE='P0141',MESSAGE='account_placement_changed'; END IF;
+ END IF;
  IF TG_OP='DELETE' THEN account:=OLD.vpn_account_id; ELSE account:=NEW.vpn_account_id; END IF;
- SELECT server_id INTO node FROM vpn_accounts WHERE id=account FOR UPDATE;
+ -- Policy disabling must remain possible while an unrelated operation waits
+ -- on the account row. Serialize via the node, then recheck placement instead.
+ SELECT server_id INTO node FROM vpn_accounts WHERE id=account;
  PERFORM routegate_revocation_node_guard(node);
+ SELECT server_id INTO current_node FROM vpn_accounts WHERE id=account;
+ IF current_node IS DISTINCT FROM node THEN RAISE EXCEPTION USING ERRCODE='P0141',MESSAGE='account_placement_changed'; END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW;
 END; $$;
 CREATE TRIGGER rg141_profile BEFORE INSERT OR UPDATE OR DELETE ON vpn_client_profiles FOR EACH ROW EXECUTE FUNCTION routegate_revocation_preferences_guard();
@@ -113,7 +125,7 @@ BEGIN
  IF TG_OP<>'INSERT' THEN
   IF EXISTS(SELECT 1 FROM vpn_credential_revocations WHERE baseline_version_id=OLD.id) THEN
    IF TG_OP='DELETE' THEN RAISE EXCEPTION USING ERRCODE='P0141',MESSAGE='revocation_proof_retained'; END IF;
-   IF (to_jsonb(OLD)-'pinned') IS DISTINCT FROM (to_jsonb(NEW)-'pinned') THEN RAISE EXCEPTION USING ERRCODE='P0141',MESSAGE='revocation_proof_retained'; END IF;
+   IF (to_jsonb(OLD)-ARRAY['pinned','status','applied_at']) IS DISTINCT FROM (to_jsonb(NEW)-ARRAY['pinned','status','applied_at']) THEN RAISE EXCEPTION USING ERRCODE='P0141',MESSAGE='revocation_proof_retained'; END IF;
   END IF;
   PERFORM routegate_revocation_node_guard(OLD.server_id);
  END IF;

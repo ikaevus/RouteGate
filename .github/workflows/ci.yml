@@ -46,6 +46,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Verify revocation preparation transactions and conflict guards
+        run: go test ./internal/db -run '^TestCredentialRevocation' -count=1 -timeout=120s -v
+
       - name: Run tests
         run: go test ./...
 
