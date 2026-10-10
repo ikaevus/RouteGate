@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { content, type CardIcon, type Locale, type SiteContent } from './content'
 
 const githubUrl = 'https://github.com/ikaevus/RouteGate'
@@ -65,7 +65,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
 }
 
 function Icon({ name }: { name: CardIcon }) {
-  const paths: Record<CardIcon, React.ReactNode> = {
+  const paths: Record<CardIcon, ReactNode> = {
     server: <><rect x="4" y="5" width="16" height="6" rx="2" /><rect x="4" y="13" width="16" height="6" rx="2" /><path d="M8 8h.01M8 16h.01M12 8h5M12 16h5" /></>,
     protocol: <><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="7" r="2.5" /><circle cx="18" cy="17" r="2.5" /><path d="M8.5 11l7-3M8.5 13l7 3" /></>,
     devices: <><rect x="3" y="4" width="13" height="10" rx="2" /><path d="M7 18h5M9.5 14v4" /><rect x="17" y="8" width="4" height="9" rx="1" /></>,
@@ -205,14 +205,15 @@ function CodePreview({ t }: { t: SiteContent['source'] }) {
         <span className="code-line indent"><em>switch</em> strings.TrimSpace(profileKey) {'{'}</span>
         <span className="code-line indent2"><em>case</em> ProfileHostOverview, ProfileVPNCoreStatus,</span>
         <span className="code-line indent2">ProfileManagerCertificate:</span>
-        <span className="code-line indent3"><em>return</em> true</span>
+        <span className="code-line indent2"><em>return</em> true</span>
         <span className="code-line indent2"><em>default</em>:</span>
-        <span className="code-line indent3"><em>return</em> false</span>
+        <span className="code-line indent2"><em>return</em> false</span>
         <span className="code-line indent">{'}'}</span>
         <span className="code-line">{'}'}</span>
         <span className="code-line empty"> </span>
-        <span className="code-line"><em>if</em> !ValidProfile(profileKey) {'{'}</span>
-        <span className="code-line indent"><em>return</em> nil, fmt.Errorf(<b>"unsupported diagnostic profile %q"</b>, profileKey)</span>
+        <span className="code-line comment">// compile-time allow-listed diagnostics; no command / args / script input</span>
+        <span className="code-line"><em>func</em> Execute(profileKey <b>string</b>) (map[<b>string</b>]any, <b>error</b>) {'{'}</span>
+        <span className="code-line indent"><em>return</em> ExecuteWithOptions(profileKey, Options{'{}'})</span>
         <span className="code-line">{'}'}</span>
       </code></pre>
       <div className="code-status"><span>main</span><span>{t.repository}</span><span>AGPLv3-or-later</span></div>
@@ -342,7 +343,7 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
         <section className="section product-section container" id="product">
           <div className="section-heading"><div><span>{t.product.eyebrow}</span><h2>{t.product.title}</h2></div><p>{t.product.intro}</p></div>
           <div className="feature-grid">
-            {t.product.cards.map((card, index) => (
+            {t.product.cards.map((card) => (
               <article className="feature-card" key={card.title}>
                 <span className="feature-icon"><Icon name={card.icon} /></span>
                 <div><h3>{card.title}</h3><p>{card.text}</p></div>
