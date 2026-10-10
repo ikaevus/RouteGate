@@ -38,21 +38,21 @@
 .hero-map-preview-wrap {
   width: min(880px, 100%);
   justify-self: end;
-  filter: drop-shadow(0 28px 58px rgba(0,0,0,.14));
+  filter: drop-shadow(0 30px 64px rgba(0,0,0,.18));
 }
 
 .hero-map-preview {
   position: relative;
   padding: 14px;
   overflow: hidden;
-  border: 1px solid rgba(96,165,250,.035);
+  border: 1px solid rgba(96,165,250,.07);
   border-radius: 22px;
   background:
-    linear-gradient(145deg, rgba(11,26,45,.72), rgba(6,16,29,.78)),
+    linear-gradient(145deg, rgba(12,28,48,.82), rgba(6,16,29,.86)),
     #07111f;
   box-shadow:
-    inset 0 1px rgba(255,255,255,.018),
-    0 20px 54px rgba(0,0,0,.14);
+    inset 0 1px rgba(255,255,255,.022),
+    0 22px 60px rgba(0,0,0,.18);
 }
 
 .hero-map-preview::before {
@@ -61,8 +61,8 @@
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(135deg, rgba(255,255,255,.018), transparent 24%),
-    radial-gradient(circle at 72% 12%, rgba(37,99,235,.075), transparent 36%);
+    linear-gradient(135deg, rgba(255,255,255,.022), transparent 24%),
+    radial-gradient(circle at 72% 12%, rgba(37,99,235,.085), transparent 36%);
 }
 
 .hero-map-preview__chrome,
@@ -179,10 +179,10 @@
 .hero-map-preview__map-panel {
   margin-top: 10px;
   overflow: hidden;
-  border: 0;
+  border: 1px solid rgba(148,163,184,.04);
   border-radius: 13px;
-  background: rgba(7,18,32,.34);
-  box-shadow: inset 0 1px rgba(255,255,255,.012);
+  background: rgba(7,18,32,.46);
+  box-shadow: inset 0 1px rgba(255,255,255,.018);
 }
 
 .hero-map-preview__map-heading {
