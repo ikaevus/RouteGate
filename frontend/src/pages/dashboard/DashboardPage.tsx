@@ -1,5 +1,5 @@
 import { groupConnections } from '../../entities/connection/model/groupConnections';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getMe } from '../../entities/auth/api/authApi';
@@ -20,6 +20,7 @@ import { getManagerHealth } from '../../entities/health/api/healthApi';
 import { getPagedVpnAccounts } from '../../entities/vpnAccount/api/vpnAccountManagementApi';
 import { t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
+import { AnimatedValue } from './AnimatedValue';
 import { GettingStartedWidget } from './GettingStartedWidget';
 import './DashboardPage.css';
 
@@ -96,12 +97,12 @@ function formatAuditResource(event: DashboardRecentAuditEvent): string {
   return event.resourceId ? `${event.resourceType} · ${event.resourceId}` : event.resourceType;
 }
 
-function KpiWidget({ title, value, meta, tone, icon, to }: { title: string; value: string; meta: string; tone: string; icon: string; to: string }) {
+function KpiWidget({ title, value, meta, tone, icon, to, live }: { title: string; value: string; meta: string; tone: string; icon: string; to: string; live: boolean }) {
   return (
-    <Link to={to} className={`dashboard-widget kpi-widget kpi-widget-${tone}`}>
+    <Link to={to} className={`dashboard-widget kpi-widget kpi-widget-${tone}${live ? ' kpi-widget-live' : ''}`}>
       <div>
         <div className="kpi-title"><span className="kpi-dot" />{title}</div>
-        <div className="kpi-value">{value}</div>
+        <div className="kpi-value"><AnimatedValue value={value} /></div>
         <div className="kpi-meta">{meta}</div>
       </div>
       <div className="kpi-icon" aria-hidden="true">{icon}</div>
@@ -132,6 +133,8 @@ function UnavailableWidget({ title, subtitle, className }: { title: string; subt
   );
 }
 
+const HEARTBEAT_PATH = 'M0 24 H70 L78 24 L84 14 L90 34 L97 6 L104 40 L110 24 L118 24 H160 L166 18 L172 28 L178 24 H240';
+
 function InfrastructureHealthWidget({
   managerHealthy,
   serversCount,
@@ -151,6 +154,10 @@ function InfrastructureHealthWidget({
     [t('dashboard.agents'), agentsAvailable ? (agentsCount > 0 ? 'healthy' : 'pending') : 'warning', agentsAvailable ? String(agentsCount) : t('common.notAvailable')],
   ];
 
+  const pulseState = rows.some(([, status]) => status === 'warning')
+    ? 'warning'
+    : rows.every(([, status]) => status === 'healthy') ? 'healthy' : 'pending';
+
   return (
     <WidgetPanel title={t('dashboard.infrastructureHealth')} className="health-widget">
       <div className="health-list">
@@ -161,6 +168,13 @@ function InfrastructureHealthWidget({
             <StatusBadge status={String(status)} />
           </div>
         ))}
+      </div>
+      <div className={`health-pulse health-pulse--${pulseState}`} aria-hidden="true">
+        <svg viewBox="0 0 240 48" preserveAspectRatio="none">
+          <path className="health-pulse-grid" d="M0 24 H240" />
+          <path className="health-pulse-trace" d={HEARTBEAT_PATH} />
+          <path className="health-pulse-line" pathLength={100} d={HEARTBEAT_PATH} />
+        </svg>
       </div>
     </WidgetPanel>
   );
@@ -193,12 +207,14 @@ function NodeDistributionWidget({ distribution, available }: { distribution?: Da
       ) : (
         <div className="node-distribution-content">
           <div className="node-distribution-map" aria-label={t('dashboard.nodeDistribution')}>
-            {markers.map((marker) => (
+            {markers.map((marker, index) => (
               <span
                 className={`node-country-marker node-country-marker-${marker.mapRegion}`}
                 key={marker.key}
+                style={{ '--marker-index': index } as CSSProperties}
                 title={`${marker.label} · ${marker.count}`}
               >
+                <i className="node-country-marker-ping" aria-hidden="true" />
                 <span className={`server-country-flag server-country-${marker.countryCode.toLowerCase()}`} aria-hidden="true" />
                 <strong>{marker.count}</strong>
               </span>
@@ -256,6 +272,9 @@ function TrafficOverviewWidget({ daily, available }: { daily: DashboardDailyTraf
     <WidgetPanel title={t('dashboard.trafficOverview')} subtitle={`(${t('dashboard.last30Days')})`} className="traffic-widget">
       {!available ? (
         <div className="traffic-empty-state">
+          <div className="traffic-empty-wave" aria-hidden="true">
+            {Array.from({ length: 18 }, (_, index) => <span key={index} style={{ '--bar-index': index } as CSSProperties} />)}
+          </div>
           <strong>N/A</strong>
           <span>{t('dashboard.noTrafficData')}</span>
         </div>
@@ -270,7 +289,7 @@ function TrafficOverviewWidget({ daily, available }: { daily: DashboardDailyTraf
               const percentage = maximum > 0 ? (item.totalBytes / maximum) * 100 : 0;
               const showLabel = index === 0 || index === daily.length - 1 || index % 7 === 0;
               return (
-                <div className="traffic-overview-column" key={item.date} title={`${formatTrafficDate(item.date)} · ${formatBytes(item.totalBytes)}`}>
+                <div className="traffic-overview-column" key={item.date} style={{ '--bar-index': index } as CSSProperties} title={`${formatTrafficDate(item.date)} · ${formatBytes(item.totalBytes)}`}>
                   <div className="traffic-overview-bar-track">
                     <span className="traffic-overview-bar" style={{ height: `${percentage}%` }} />
                   </div>
@@ -528,6 +547,7 @@ export function DashboardPage() {
           meta={serversQuery.isSuccess ? `${t('dashboard.online')}: ${connectedServersCount} · ${t('dashboard.offline')}: ${disconnectedServersCount}` : t(serversQuery.isPending ? 'common.loading' : 'common.notAvailable')}
           tone="blue"
           icon="▤"
+          live={serversQuery.isSuccess && activeServersCount > 0}
         />
         <KpiWidget
           title={t('dashboard.onlineAgents')}
@@ -536,6 +556,7 @@ export function DashboardPage() {
           meta={agentsQuery.isSuccess ? `${t('dashboard.connected')}: ${onlineAgentsCount} · ${t('dashboard.noConnection')}: ${offlineAgentsCount}` : t(agentsQuery.isPending ? 'common.loading' : 'common.notAvailable')}
           tone="cyan"
           icon="⌘"
+          live={agentsQuery.isSuccess && onlineAgentsCount > 0}
         />
         <KpiWidget
           title={t('dashboard.onlineVpnUsers')}
@@ -544,6 +565,7 @@ export function DashboardPage() {
           meta={t('dashboard.activeAccountsMeta', { active: activeVpnAccounts, total: vpnAccountsCount })}
           tone="purple"
           icon="◉"
+          live={clientConnectionsQuery.isSuccess && onlineVpnUsers > 0}
         />
         <KpiWidget
           title={t('dashboard.monthlyTraffic')}
@@ -554,6 +576,7 @@ export function DashboardPage() {
             : t('dashboard.noTrafficData')}
           tone="amber"
           icon="☁"
+          live={monthlyTrafficAvailable}
         />
 
         <InfrastructureHealthWidget

@@ -29,6 +29,7 @@ import './shared/rg-status-glass.css';
 import './shared/rg130-mobile-safe-area.css';
 import './shared/rg131-portal-mobile.css';
 import './shared/rg114-ui-acceptance.css';
+import './shared/rg-dashboard-live.css';
 
 const storedTheme = window.localStorage.getItem('routegate.admin.theme');
 document.documentElement.dataset.theme = storedTheme === 'light' ? 'light' : 'dark';
