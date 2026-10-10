@@ -417,10 +417,6 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
               </details>
             ))}
           </div>
-          <div className="security-note">
-            <div><strong>{t.faq.securityTitle}</strong><p>{t.faq.securityText}</p></div>
-            <a href={securityUrl} target="_blank" rel="noreferrer">{t.faq.securityLink}<span>↗</span></a>
-          </div>
         </section>
 
         <section className="final-cta container" id="start">
