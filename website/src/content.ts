@@ -120,7 +120,7 @@ export const content: Record<Locale, SiteContent> = {
       title: 'Коротко о требованиях и границах',
       intro: 'То, что обычно нужно понять до установки и до оценки RouteGate как платформы.',
       items: [
-        { question: 'Какие протоколы доступны в стабильном релизе?', answer: 'Стабильный v0.1.0 поддерживает проверенный путь VLESS / Reality. В текущей ветке main уже реализованы WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS; это не означает, что они входят в v0.1.0.' },
+        { question: 'Какие VPN-протоколы поддерживает RouteGate?', answer: 'RouteGate поддерживает VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS.' },
         { question: 'Что нужно для первого сервера?', answer: 'Чистый Ubuntu 24.04 LTS VPS на amd64, DNS-имя, доступ root или sudo и доступные TCP-порты 80 и 443 для Manager.' },
         { question: 'RouteGate — это VPN-сервис для конечного пользователя?', answer: 'Нет. Это платформа для самостоятельного развёртывания и управления собственной VPN-инфраструктурой. Оператор сам разворачивает и контролирует серверы и данные.' },
         { question: 'RouteGate скрывает ограничения клиента?', answer: 'Нет. Подключение само по себе не считается доказательством поддержки маршрутизации. Интерфейс должен показывать совместимость и известные ограничения явно.' },
@@ -224,7 +224,7 @@ export const content: Record<Locale, SiteContent> = {
       title: 'Requirements and boundaries',
       intro: 'The essentials to understand before installing RouteGate or evaluating the platform.',
       items: [
-        { question: 'Which protocols are available in the stable release?', answer: 'Stable v0.1.0 supports the validated VLESS / Reality path. The current main branch already implements WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS; that does not mean they are included in v0.1.0.' },
+        { question: 'Which VPN protocols does RouteGate support?', answer: 'RouteGate supports VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS.' },
         { question: 'What does the first server require?', answer: 'A clean Ubuntu 24.04 LTS amd64 VPS, a DNS hostname, root or working sudo access, and reachable TCP ports 80 and 443 for Manager.' },
         { question: 'Is RouteGate a consumer VPN service?', answer: 'No. RouteGate is a self-hosted management platform for infrastructure you operate and control.' },
         { question: 'Does RouteGate hide client limitations?', answer: 'No. Successful connectivity is not presented as proof of routing-policy support. Compatibility state and known limitations should remain explicit.' },
