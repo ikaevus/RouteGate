@@ -35,6 +35,12 @@
   line-height: 1.7;
 }
 
+.hero-meta {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: start;
+}
+
 .hero-map-preview-wrap {
   width: min(880px, 100%);
   justify-self: end;
@@ -125,8 +131,7 @@
 
 .hero-map-preview__health i,
 .hero-map-preview__online i,
-.hero-map-preview__status i,
-.hero-map-preview__map-footer i {
+.hero-map-preview__status i {
   width: 6px;
   height: 6px;
   flex: 0 0 auto;
@@ -152,8 +157,8 @@
 .hero-map-preview__metrics article > span {
   display: block;
   min-height: 22px;
-  color: #7187a0;
-  font-size: 8px;
+  color: #8196ad;
+  font-size: 9px;
   line-height: 1.4;
 }
 
@@ -172,8 +177,8 @@
 }
 
 .hero-map-preview__metrics small {
-  color: #4fd1a0;
-  font-size: 7px;
+  color: #69d9ad;
+  font-size: 8px;
 }
 
 .hero-map-preview__map-panel {
@@ -206,8 +211,8 @@
 }
 
 .hero-map-preview__map-heading span {
-  color: #667e99;
-  font-size: 8px;
+  color: #7189a4;
+  font-size: 9px;
 }
 
 .hero-map-preview__online {
@@ -353,14 +358,23 @@
   align-items: center;
   gap: 14px;
   border-top: 0;
-  color: #637b96;
-  font-size: 7px;
+  color: #7188a2;
+  font-size: 8px;
 }
 
 .hero-map-preview__map-footer span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.hero-map-preview__map-footer i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 12px rgba(59,130,246,.58);
 }
 
 .hero-map-preview__map-footer i.hub {
@@ -409,8 +423,8 @@
 .hero-map-preview__caption {
   display: block;
   margin: 10px 7px 0;
-  color: #516985;
-  font-size: 7px;
+  color: #607a97;
+  font-size: 8px;
   letter-spacing: .06em;
   text-align: right;
 }
@@ -458,6 +472,14 @@
     font-size: clamp(34px, 9vw, 46px);
   }
 
+  .hero-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-meta span {
+    text-align: center;
+  }
+
   .hero-map-preview {
     padding: 10px;
     border-radius: 16px;
@@ -481,6 +503,10 @@
 }
 
 @media (max-width: 520px) {
+  .hero-meta {
+    grid-template-columns: 1fr;
+  }
+
   .hero-map-preview__chrome {
     align-items: flex-start;
   }
