@@ -1,0 +1,441 @@
+/*
+ * Dashboard motion layer: live indicators, entrance and hover feedback, so
+ * the overview reads as a monitored system rather than a static report.
+ * Everything here is decorative and switched off for reduced motion.
+ */
+
+.dashboard-page {
+  --rg-live-green: #22c55e;
+  --rg-live-green-soft: rgba(34, 197, 94, 0.5);
+}
+
+/* ---- Entrance: widgets rise in once, in reading order ---- */
+
+.dashboard-page .dashboard-reference-grid > *,
+.dashboard-page .dashboard-activity-grid > * {
+  animation: rg-dashboard-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+.dashboard-page .dashboard-reference-grid > :nth-child(2) { animation-delay: 0.04s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(3) { animation-delay: 0.08s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(4) { animation-delay: 0.12s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(5) { animation-delay: 0.16s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(6) { animation-delay: 0.2s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(7) { animation-delay: 0.24s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(8) { animation-delay: 0.28s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(9) { animation-delay: 0.32s; }
+.dashboard-page .dashboard-reference-grid > :nth-child(n + 10) { animation-delay: 0.36s; }
+.dashboard-page .dashboard-activity-grid > :nth-child(2) { animation-delay: 0.42s; }
+.dashboard-page .dashboard-activity-grid > :nth-child(3) { animation-delay: 0.48s; }
+
+.dashboard-page .dashboard-widget {
+  transition: border-color 0.2s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.dashboard-page .dashboard-widget:hover {
+  border-color: rgba(71, 98, 138, 0.96);
+}
+
+/* ---- KPI cards: tone accent, hover lift, live dot, value flash ---- */
+
+.dashboard-page .kpi-widget { --kpi-tone: #3b82f6; }
+.dashboard-page .kpi-widget-cyan { --kpi-tone: #22d3ee; }
+.dashboard-page .kpi-widget-purple { --kpi-tone: #a855f7; }
+.dashboard-page .kpi-widget-amber { --kpi-tone: #f59e0b; }
+
+.dashboard-page a.kpi-widget {
+  isolation: isolate;
+  overflow: hidden;
+  position: relative;
+}
+
+.dashboard-page a.kpi-widget::before {
+  background: radial-gradient(circle at 88% 30%, color-mix(in srgb, var(--kpi-tone) 26%, transparent), transparent 62%);
+  content: '';
+  inset: 0;
+  opacity: 0.55;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+
+.dashboard-page a.kpi-widget::after {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--kpi-tone) 85%, transparent), transparent);
+  content: '';
+  height: 1px;
+  left: 12%;
+  opacity: 0.55;
+  pointer-events: none;
+  position: absolute;
+  right: 12%;
+  top: 0;
+  transition: opacity 0.3s ease;
+}
+
+.dashboard-page a.kpi-widget:hover,
+.dashboard-page a.kpi-widget:focus-visible {
+  border-color: color-mix(in srgb, var(--kpi-tone) 55%, transparent);
+  box-shadow:
+    0 18px 44px rgba(2, 6, 23, 0.28),
+    0 0 0 1px color-mix(in srgb, var(--kpi-tone) 18%, transparent),
+    0 10px 36px -12px color-mix(in srgb, var(--kpi-tone) 55%, transparent);
+  transform: translateY(-2px);
+}
+
+.dashboard-page a.kpi-widget:hover::before,
+.dashboard-page a.kpi-widget:focus-visible::before,
+.dashboard-page a.kpi-widget:hover::after,
+.dashboard-page a.kpi-widget:focus-visible::after {
+  opacity: 1;
+}
+
+.dashboard-page .kpi-widget .kpi-dot {
+  background: #64748b;
+  box-shadow: none;
+}
+
+.dashboard-page .kpi-widget-live .kpi-dot {
+  background: var(--rg-live-green);
+  animation: rg-live-ping 2.4s ease-out infinite;
+}
+
+.dashboard-page .kpi-widget .kpi-icon {
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1.4), box-shadow 0.3s ease;
+}
+
+.dashboard-page .kpi-widget-live .kpi-icon {
+  animation: rg-kpi-icon-breathe 4.8s ease-in-out infinite;
+}
+
+.dashboard-page .kpi-widget:nth-of-type(odd) .kpi-icon { animation-delay: -2.4s; }
+
+.dashboard-page a.kpi-widget:hover .kpi-icon,
+.dashboard-page a.kpi-widget:focus-visible .kpi-icon {
+  transform: scale(1.07) rotate(-4deg);
+}
+
+.dashboard-page .kpi-value-text {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.4s ease, text-shadow 0.4s ease;
+}
+
+.dashboard-page .kpi-value-changed {
+  color: color-mix(in srgb, var(--kpi-tone) 70%, #fff);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--kpi-tone) 60%, transparent);
+}
+
+/* ---- Live dots in tables ---- */
+
+.dashboard-page .server-online-dot,
+.dashboard-page .online-user-state--online i {
+  animation: rg-live-ping 2.4s ease-out infinite;
+}
+
+.dashboard-page .dashboard-table-row:nth-child(even) .server-online-dot,
+.dashboard-page .dashboard-table-row:nth-child(even) .online-user-state--online i {
+  animation-delay: -1.2s;
+}
+
+.dashboard-page .online-users-table .online-user-state--online { color: #4ade80; }
+.dashboard-page .online-users-table .online-user-state--recent { color: #fbbf24; }
+
+.dashboard-page .dashboard-table-row:not(.dashboard-table-head) {
+  border-radius: 8px;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.dashboard-page .dashboard-table-row:not(.dashboard-table-head):hover {
+  background-color: rgba(59, 130, 246, 0.07);
+  box-shadow: -8px 0 0 rgba(59, 130, 246, 0.07), 8px 0 0 rgba(59, 130, 246, 0.07);
+}
+
+/* ---- Infrastructure health: heartbeat trace ---- */
+
+.dashboard-page .health-widget {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-page .health-pulse {
+  --pulse-color: var(--rg-live-green);
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  height: 72px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.dashboard-page .health-pulse--pending { --pulse-color: #60a5fa; }
+.dashboard-page .health-pulse--warning { --pulse-color: #f59e0b; }
+
+.dashboard-page .health-pulse svg {
+  display: block;
+  height: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.dashboard-page .health-pulse path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dashboard-page .health-pulse-grid {
+  stroke: rgba(148, 163, 184, 0.14);
+  stroke-dasharray: 3 5;
+  stroke-width: 1;
+}
+
+.dashboard-page .health-pulse-trace {
+  stroke: color-mix(in srgb, var(--pulse-color) 16%, transparent);
+  stroke-width: 1.5;
+}
+
+.dashboard-page .health-pulse-line {
+  animation: rg-heartbeat 2.8s linear infinite;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--pulse-color) 80%, transparent));
+  stroke: var(--pulse-color);
+  stroke-dasharray: 34 66;
+  stroke-width: 2;
+}
+
+.dashboard-page .health-pulse--warning .health-pulse-line { animation-duration: 1.6s; }
+
+/* ---- Node distribution: radar sweep, marker pings, growing bars ---- */
+
+.dashboard-page .node-distribution-map::after {
+  animation: rg-map-sweep 7s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.09) 45%, rgba(56, 189, 248, 0.16) 50%, transparent 55%);
+  content: '';
+  inset: 0 auto 0 0;
+  pointer-events: none;
+  position: absolute;
+  width: 40%;
+}
+
+.dashboard-page .node-country-marker {
+  animation: rg-marker-pop 0.5s cubic-bezier(0.2, 0.7, 0.2, 1.5) backwards;
+  animation-delay: calc(0.35s + var(--marker-index, 0) * 0.12s);
+  border-color: rgba(56, 189, 248, 0.45);
+  transition: scale 0.2s ease, border-color 0.2s ease;
+}
+
+.dashboard-page .node-country-marker:hover {
+  border-color: rgba(125, 211, 252, 0.9);
+  scale: 1.12;
+  z-index: 3;
+}
+
+.dashboard-page .node-country-marker-ping {
+  animation: rg-marker-ping 2.6s ease-out infinite;
+  animation-delay: calc(var(--marker-index, 0) * 0.7s);
+  border: 1.5px solid rgba(56, 189, 248, 0.75);
+  border-radius: inherit;
+  inset: -1px;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+.dashboard-page .node-distribution-track span {
+  animation: rg-grow-x 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s backwards;
+  overflow: hidden;
+  position: relative;
+  transform-origin: left center;
+}
+
+.dashboard-page .node-distribution-track span::after {
+  animation: rg-shimmer 3.2s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  content: '';
+  inset: 0;
+  position: absolute;
+  transform: translateX(-100%);
+}
+
+/* ---- Traffic: growing bars, idle wave behind the empty state ---- */
+
+.dashboard-page .traffic-overview-bar {
+  animation: rg-grow-y 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  animation-delay: calc(0.3s + var(--bar-index, 0) * 0.018s);
+  transform-origin: bottom center;
+  transition: filter 0.15s ease;
+}
+
+.dashboard-page .traffic-overview-column:hover .traffic-overview-bar {
+  filter: brightness(1.35) drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
+}
+
+.dashboard-page .traffic-empty-state {
+  isolation: isolate;
+  overflow: hidden;
+  position: relative;
+}
+
+.dashboard-page .traffic-empty-wave {
+  align-items: end;
+  bottom: 0;
+  display: flex;
+  gap: 5px;
+  height: 58%;
+  left: 14px;
+  opacity: 0.35;
+  position: absolute;
+  right: 14px;
+  z-index: -1;
+}
+
+.dashboard-page .traffic-empty-wave span {
+  animation: rg-idle-wave 2.6s ease-in-out infinite;
+  animation-delay: calc(var(--bar-index, 0) * -0.16s);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.32), rgba(59, 130, 246, 0.02));
+  border-radius: 3px 3px 0 0;
+  flex: 1;
+  height: 100%;
+  transform-origin: bottom center;
+}
+
+/* ---- Quick actions: shine on the primary action, nudging arrows ---- */
+
+.dashboard-page .quick-primary-action {
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-page .quick-primary-action::after {
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+  content: '';
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-120%);
+}
+
+.dashboard-page .quick-primary-action:hover {
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.42);
+  transform: translateY(-1px);
+}
+
+.dashboard-page .quick-primary-action:hover::after {
+  transform: translateX(120%);
+  transition: transform 0.7s ease;
+}
+
+.dashboard-page .quick-action-list a strong {
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.dashboard-page .quick-action-list a:hover strong,
+.dashboard-page .quick-action-list a:focus-visible strong {
+  color: #60a5fa;
+  transform: translateX(3px);
+}
+
+/* ---- Light theme ---- */
+
+:root[data-theme='light'] .dashboard-page .dashboard-widget:hover {
+  border-color: color-mix(in srgb, #94a3b8 70%, #2563eb 30%);
+}
+
+:root[data-theme='light'] .dashboard-page a.kpi-widget::before { opacity: 0.35; }
+:root[data-theme='light'] .dashboard-page a.kpi-widget:hover::before { opacity: 0.6; }
+
+:root[data-theme='light'] .dashboard-page a.kpi-widget:hover,
+:root[data-theme='light'] .dashboard-page a.kpi-widget:focus-visible {
+  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--kpi-tone) 60%, transparent);
+}
+
+:root[data-theme='light'] .dashboard-page .kpi-value-changed {
+  color: color-mix(in srgb, var(--kpi-tone) 80%, #07111f);
+  text-shadow: none;
+}
+
+:root[data-theme='light'] .dashboard-page .online-users-table .online-user-state--online { color: #168f4b; }
+:root[data-theme='light'] .dashboard-page .online-users-table .online-user-state--recent { color: #b56b0a; }
+
+:root[data-theme='light'] .dashboard-page .health-pulse--healthy { --pulse-color: #16a34a; }
+:root[data-theme='light'] .dashboard-page .health-pulse-trace {
+  stroke: color-mix(in srgb, var(--pulse-color) 16%, transparent);
+  stroke-width: 1.5;
+}
+
+.dashboard-page .health-pulse-line { filter: none; }
+
+:root[data-theme='light'] .dashboard-page .node-distribution-map::after {
+  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.06) 45%, rgba(37, 99, 235, 0.1) 50%, transparent 55%);
+}
+
+:root[data-theme='light'] .dashboard-page .traffic-empty-wave span {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.18), rgba(37, 99, 235, 0.02));
+}
+
+/* ---- Keyframes ---- */
+
+@keyframes rg-dashboard-rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+@keyframes rg-live-ping {
+  0% { box-shadow: 0 0 0 0 var(--rg-live-green-soft), 0 0 10px rgba(34, 197, 94, 0.6); }
+  70% { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0), 0 0 10px rgba(34, 197, 94, 0.6); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0), 0 0 10px rgba(34, 197, 94, 0.6); }
+}
+
+@keyframes rg-kpi-icon-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 22px -2px color-mix(in srgb, var(--kpi-tone) 45%, transparent); }
+}
+
+@keyframes rg-heartbeat {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes rg-map-sweep {
+  0% { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(260%); }
+}
+
+@keyframes rg-marker-pop {
+  from { opacity: 0; scale: 0.4; }
+}
+
+@keyframes rg-marker-ping {
+  0% { opacity: 0.85; transform: scale(1); }
+  80%, 100% { opacity: 0; transform: scale(1.9, 2.2); }
+}
+
+@keyframes rg-grow-x {
+  from { transform: scaleX(0); }
+}
+
+@keyframes rg-grow-y {
+  from { transform: scaleY(0); }
+}
+
+@keyframes rg-shimmer {
+  0% { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(100%); }
+}
+
+@keyframes rg-idle-wave {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page *,
+  .dashboard-page *::before,
+  .dashboard-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .dashboard-page .dashboard-widget:hover,
+  .dashboard-page a.kpi-widget:hover {
+    transform: none;
+  }
+}
