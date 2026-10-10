@@ -59,14 +59,16 @@ func observeRuntimeRecoveryChallenge(ctx context.Context, dir string, binding Ru
 	deny := func() (RuntimeRecoveryChallengeResponse, error) {
 		return RuntimeRecoveryChallengeResponse{}, ErrRuntimeMutationBlocked
 	}
-	started := now()
+	// UTC strips the monotonic component: rollback policy concerns wall time,
+	// whereas context deadlines independently use Go's duration-based timer.
+	started := now().UTC()
 	if ctx.Err() != nil || !challenge.valid(binding, started) {
 		return deny()
 	}
 	bounded, cancel := context.WithDeadline(ctx, challenge.ExpiresAt)
 	defer cancel()
 	observation, err := ObserveRuntimeRecovery(bounded, dir, binding, challenge.Expected.TaskID, activePath, adapter)
-	finished := now()
+	finished := now().UTC()
 	if err != nil || bounded.Err() != nil || finished.Before(started) || !challenge.valid(binding, finished) || observation != challenge.Expected {
 		return deny()
 	}
