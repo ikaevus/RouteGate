@@ -35,7 +35,15 @@ func validRuntimeWitness(w RuntimeRecoveryWitness) bool {
 // RuntimeRecoveryTargetHash binds a config-apply checkpoint to the actual task's
 // sing-box candidate, rather than whichever file happened to be present later.
 func RuntimeRecoveryTargetHash(task ConfigTask) (string, error) {
-	data, err := extractSingBoxConfig(task.RenderedConfig)
+	envelope, _, _, err := canonicalRemovalJSON(task.RenderedConfig)
+	if err != nil || envelope["schemaVersion"] != "routegate.config.v1" {
+		return "", ErrRuntimeMutationBlocked
+	}
+	config, ok := envelope["singBox"].(map[string]any)
+	if !ok {
+		return "", ErrRuntimeMutationBlocked
+	}
+	data, err := json.Marshal(config)
 	if err != nil {
 		return "", ErrRuntimeMutationBlocked
 	}
