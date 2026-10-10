@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { content, type Locale, type SiteContent } from './content'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { content, type CardIcon, type Locale, type SiteContent } from './content'
 
 const githubUrl = 'https://github.com/ikaevus/RouteGate'
 const docsUrl = `${githubUrl}/tree/main/docs`
@@ -7,7 +7,9 @@ const installGuideUrl = `${githubUrl}/blob/main/docs/guides/first-install.md`
 const releasesUrl = `${githubUrl}/releases`
 const securityUrl = `${githubUrl}/blob/main/SECURITY.md`
 const licenseUrl = `${githubUrl}/blob/main/LICENSE`
-const sourceCodeUrl = `${githubUrl}/blob/main/backend/internal/configs/lifecycle.go#L34-L67`
+const verifiedUpdatesUrl = `${githubUrl}/blob/main/docs/architecture/verified-host-updates.md`
+const compatibilityMatrixUrl = `${githubUrl}/blob/main/docs/architecture/client-compatibility-matrix.md`
+const sourceCodeUrl = `${githubUrl}/blob/main/agent/internal/diagnostics/diagnostics.go#L22-L35`
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
 
 const installCommand = [
@@ -62,12 +64,16 @@ function Brand({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function Icon({ name }: { name: 'server' | 'account' | 'route' | 'client' }) {
-  const paths = {
+function Icon({ name }: { name: CardIcon }) {
+  const paths: Record<CardIcon, ReactNode> = {
     server: <><rect x="4" y="5" width="16" height="6" rx="2" /><rect x="4" y="13" width="16" height="6" rx="2" /><path d="M8 8h.01M8 16h.01M12 8h5M12 16h5" /></>,
-    account: <><circle cx="12" cy="8" r="3" /><path d="M5 20c.6-4 2.8-6 7-6s6.4 2 7 6" /></>,
+    protocol: <><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="7" r="2.5" /><circle cx="18" cy="17" r="2.5" /><path d="M8.5 11l7-3M8.5 13l7 3" /></>,
+    devices: <><rect x="3" y="4" width="13" height="10" rx="2" /><path d="M7 18h5M9.5 14v4" /><rect x="17" y="8" width="4" height="9" rx="1" /></>,
     route: <><circle cx="6" cy="17" r="2" /><circle cx="18" cy="7" r="2" /><path d="M8 17h2a4 4 0 0 0 4-4v-2a4 4 0 0 1 4-4" /></>,
-    client: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></>,
+    manager: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h4M7 12h10M7 16h7" /></>,
+    agent: <><circle cx="7" cy="12" r="3" /><circle cx="17" cy="7" r="2" /><circle cx="17" cy="17" r="2" /><path d="M10 11l5-3M10 13l5 3" /></>,
+    runtime: <><rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 9h8M8 13h5M17 13h.01" /></>,
+    access: <><circle cx="9" cy="9" r="3" /><path d="M4 20c.5-3.5 2.2-5 5-5 2.1 0 3.6.8 4.5 2.5M15 11l2 2 4-4" /></>,
   }
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
@@ -195,15 +201,20 @@ function CodePreview({ t }: { t: SiteContent['source'] }) {
         <small>Go</small>
       </div>
       <pre aria-label="RouteGate source code preview"><code>
-        <span className="code-line"><em>func</em> (s *Service) DeleteVersion(</span>
-        <span className="code-line indent">ctx <b>context.Context</b>, serverID, versionID <b>string</b>,</span>
-        <span className="code-line">) <b>error</b> {'{'}</span>
-        <span className="code-line indent">version, err := s.repository.GetConfigVersion(ctx, serverID, versionID)</span>
-        <span className="code-line indent"><em>if</em> err != nil {'{'} <em>return</em> err {'}'}</span>
+        <span className="code-line"><em>func</em> ValidProfile(profileKey <b>string</b>) <b>bool</b> {'{'}</span>
+        <span className="code-line indent"><em>switch</em> strings.TrimSpace(profileKey) {'{'}</span>
+        <span className="code-line indent2"><em>case</em> ProfileHostOverview, ProfileVPNCoreStatus,</span>
+        <span className="code-line indent2">ProfileManagerCertificate:</span>
+        <span className="code-line indent2"><em>return</em> true</span>
+        <span className="code-line indent2"><em>default</em>:</span>
+        <span className="code-line indent2"><em>return</em> false</span>
+        <span className="code-line indent">{'}'}</span>
+        <span className="code-line">{'}'}</span>
         <span className="code-line empty"> </span>
-        <span className="code-line indent"><em>if</em> currentID == version.ID {'{'} <em>return</em> ErrConfigVersionCurrent {'}'}</span>
-        <span className="code-line indent"><em>if</em> version.Pinned {'{'} <em>return</em> ErrConfigVersionPinned {'}'}</span>
-        <span className="code-line indent"><em>if</em> active {'{'} <em>return</em> ErrConfigVersionDeploymentActive {'}'}</span>
+        <span className="code-line comment">// Execute runs one compile-time allow-listed diagnostic collector. There is no</span>
+        <span className="code-line comment">// command, args, script, or arbitrary shell input in the diagnostic protocol.</span>
+        <span className="code-line"><em>func</em> Execute(profileKey <b>string</b>) (map[<b>string</b>]any, <b>error</b>) {'{'}</span>
+        <span className="code-line indent"><em>return</em> ExecuteWithOptions(profileKey, Options{'{}'})</span>
         <span className="code-line">{'}'}</span>
       </code></pre>
       <div className="code-status"><span>main</span><span>{t.repository}</span><span>AGPLv3-or-later</span></div>
@@ -276,7 +287,6 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
       setInstallCopied(false)
     }
   }
-  const icons: Array<'server' | 'account' | 'route' | 'client'> = ['server', 'account', 'route', 'client']
 
   useEffect(() => {
     const descriptions: Record<Locale, string> = {
@@ -334,9 +344,9 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
         <section className="section product-section container" id="product">
           <div className="section-heading"><div><span>{t.product.eyebrow}</span><h2>{t.product.title}</h2></div><p>{t.product.intro}</p></div>
           <div className="feature-grid">
-            {t.product.cards.map((card, index) => (
+            {t.product.cards.map((card) => (
               <article className="feature-card" key={card.title}>
-                <span className="feature-icon"><Icon name={icons[index]} /></span>
+                <span className="feature-icon"><Icon name={card.icon} /></span>
                 <div><h3>{card.title}</h3><p>{card.text}</p></div>
               </article>
             ))}
@@ -352,7 +362,7 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
             <div className="workflow">
               {t.workflow.steps.map((step, index) => (
                 <article key={step.title}>
-                  <div className="workflow-icon"><b>{index + 1}</b><Icon name={icons[index]} /></div>
+                  <div className="workflow-icon"><b>{index + 1}</b><Icon name={step.icon} /></div>
                   <div><h3>{step.title}</h3><p>{step.text}</p></div>
                   {index < t.workflow.steps.length - 1 && <i className="workflow-arrow" aria-hidden="true">→</i>}
                 </article>
@@ -386,6 +396,46 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
             <div className="install-panel-footer">
               <span>{t.deployment.commandNote}</span>
               <a href={installGuideUrl} target="_blank" rel="noreferrer">{t.action.installGuide}<span>↗</span></a>
+            </div>
+          </div>
+        </section>
+
+        <section className="section assurance-section" id="assurance">
+          <div className="container">
+            <div className="section-heading assurance-heading">
+              <div><span>{t.assurance.eyebrow}</span><h2>{t.assurance.title}</h2></div>
+              <p>{t.assurance.intro}</p>
+            </div>
+
+            <div className="assurance-update">
+              <div className="assurance-update-copy">
+                <span>01</span>
+                <div>
+                  <h3>{t.assurance.updateTitle}</h3>
+                  <p>{t.assurance.updateText}</p>
+                  <a href={verifiedUpdatesUrl} target="_blank" rel="noreferrer">{t.assurance.updateLink}<span>↗</span></a>
+                </div>
+              </div>
+              <div className="assurance-flow" aria-label={t.assurance.updateTitle}>
+                {t.assurance.updateSteps.map((step, index) => (
+                  <span key={step}><b>{step}</b>{index < t.assurance.updateSteps.length - 1 && <i>→</i>}</span>
+                ))}
+              </div>
+              <div className="assurance-fallback">{t.assurance.updateFallback}</div>
+            </div>
+
+            <div className="assurance-compatibility">
+              <div className="assurance-equation" aria-label={t.assurance.compatibilityEquation.join(' ')}>
+                <span>{t.assurance.compatibilityEquation[0]}</span>
+                <b>{t.assurance.compatibilityEquation[1]}</b>
+                <span>{t.assurance.compatibilityEquation[2]}</span>
+              </div>
+              <div>
+                <span className="assurance-index">02</span>
+                <h3>{t.assurance.compatibilityTitle}</h3>
+                <p>{t.assurance.compatibilityText}</p>
+                <a href={compatibilityMatrixUrl} target="_blank" rel="noreferrer">{t.assurance.compatibilityLink}<span>↗</span></a>
+              </div>
             </div>
           </div>
         </section>
