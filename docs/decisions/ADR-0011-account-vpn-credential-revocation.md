@@ -419,10 +419,50 @@ across repeated heartbeats, capability omission/false and Agent credential
 replacement, while unfenced legacy jobs retain their existing timeout behavior.
 
 **Recovery limitation:** legacy handlers do not yet provide phase-specific
-proof or durable success receipts for read-only result replay. Therefore even
+proof (durable historical success delivery is added below). Therefore even
 a validation failure conservatively retains its intent. A successful result
 can also reach Manager before local fence cleanup fails; the runtime result is
 not rewritten, but the local gate remains blocked. There is no supported
 operator unlock/recovery route yet. Do not activate this gate on production or
 remove its state to resume jobs. Implement authenticated reconciliation, safe
 result replay and worker handoff before rollout or enabling the revocation UI.
+
+### Durable historical results (sixth implementation slice)
+
+The experimental synchronous dispatch gate saves its successful result envelope
+before the first HTTP result attempt. `mutation-result.json` uses the existing
+private-file atomic rename and file/directory fsync helpers under the shared
+runtime lock. Receipts are bounded (512 KiB envelope, 1 MiB stored receipt),
+private (0600), and bound to Manager URL, Agent ID, server ID, task ID and the
+exact durable intent digest. The binding stores no token or rendered config.
+The existing report itself may contain command output and must be treated as
+sensitive local state; it is never included in recovery logs. A persistence
+failure prevents result delivery and retains the intent.
+
+After Manager's identity-bound fencing acknowledgement, each task poll first
+attempts delivery of an unacknowledged receipt, even if Manager no longer returns
+the task. Delivery uses the saved JSON without decoding/re-encoding numbers,
+the current Agent token, and strict acknowledgement semantics. HTTP 404 remains
+uncertain, including when Manager previously committed the result and lost its
+response. This slice does not add a Manager result-lookup/idempotency contract.
+Missing, malformed, substituted, publicly readable or differently bound receipts
+cannot authorize replay. A missing receipt never authorizes runtime retry.
+
+**Delivery is not recovery authorization.** Replay invokes no runtime handler
+and never clears the mutation intent. After positive HTTP acknowledgement it
+durably marks the receipt acknowledged to avoid repeated delivery; both receipt
+and intent stay available for future authenticated reconciliation. Neither
+historical success nor a fresh heartbeat proves that the runtime remains in the
+same state after a restart. The original live owner can remove its unchanged
+receipt and intent only after its successful handler and result acknowledgement.
+A crash between those cleanup steps conservatively leaves recovery required.
+Both legacy admission and scoped removal reject leftover receipt state.
+
+Isolated tests kill an actual Agent test subprocess after the result request
+arrives but before acknowledgement. A new Runner replays the identical report
+with no runtime execution and no task returned by the Manager fixture. Tests
+also cover receipt write failure, identity changes, corrupt/unsafe files,
+competing admission, missing/changed intent, lost acknowledgement and sticky
+restart protection. The mode remains off by default. Authenticated operator
+reconciliation/unlock, Manager exact-result evidence and detached-worker handoff
+remain prerequisites for production rollout; no revocation endpoint is enabled.
