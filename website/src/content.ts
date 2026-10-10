@@ -1,6 +1,7 @@
 export type Locale = 'ru' | 'en'
 
-type Card = { title: string; text: string }
+export type CardIcon = 'server' | 'protocol' | 'devices' | 'route' | 'manager' | 'agent' | 'runtime' | 'access'
+type Card = { title: string; text: string; icon: CardIcon }
 type RoadmapColumn = { title: string; items: string[] }
 type FAQItem = { question: string; answer: string }
 
@@ -19,6 +20,12 @@ export type SiteContent = {
   deployment: {
     eyebrow: string; title: string; text: string; cards: Card[]
     commandLabel: string; commandTitle: string; commandNote: string
+  }
+  assurance: {
+    eyebrow: string; title: string; intro: string
+    updateTitle: string; updateText: string; updateSteps: string[]; updateFallback: string
+    compatibilityTitle: string; compatibilityEquation: [string, string, string]; compatibilityText: string
+    updateLink: string; compatibilityLink: string
   }
   roadmap: { eyebrow: string; title: string; intro: string; columns: RoadmapColumn[] }
   faq: {
@@ -51,20 +58,20 @@ export const content: Record<Locale, SiteContent> = {
       title: 'От VPN-узла до пользовательского доступа',
       intro: 'RouteGate управляет жизненным циклом инфраструктуры и клиентского доступа, а не только генерирует конфигурации.',
       cards: [
-        { title: 'Управляемые VPN-узлы', text: 'Подключайте локальные и удалённые Linux-узлы через RouteGate Agent с явным состоянием и проверками.' },
-        { title: 'Несколько протоколов', text: 'VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS в одной модели управления.' },
-        { title: 'Доступ и устройства', text: 'VPN-аккаунты, отдельные устройства, подписки, QR-коды, отзыв и ротация доступа.' },
-        { title: 'Маршрутизация и доставка', text: 'Профили Direct, VPN и Block с доставкой под возможности конкретного VPN-клиента.' },
+        { title: 'Управляемые VPN-узлы', text: 'Подключайте локальные и удалённые Linux-узлы через RouteGate Agent с явным состоянием и проверками.', icon: 'server' },
+        { title: 'Несколько протоколов', text: 'Стабильный v0.1.0 поддерживает VLESS / Reality. В текущей ветке main уже реализованы WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS.', icon: 'protocol' },
+        { title: 'Доступ и устройства', text: 'VPN-аккаунты, отдельные устройства, подписки, QR-коды, отзыв и ротация доступа.', icon: 'devices' },
+        { title: 'Маршрутизация и доставка', text: 'Профили Direct, VPN и Block с доставкой под возможности конкретного VPN-клиента.', icon: 'route' },
       ],
     },
     workflow: {
       eyebrow: 'КАК ЭТО РАБОТАЕТ',
       title: 'Безопасный путь от узла до клиента',
       steps: [
-        { title: 'Manager', text: 'Единая панель, состояние и управляемые рабочие процессы.' },
-        { title: 'Agent', text: 'Ограниченные операции на Linux-узлах без произвольного удалённого shell.' },
-        { title: 'VPN-компонент', text: 'Установка, рендер, проверка, применение и контроль состояния.' },
-        { title: 'Доступ пользователя', text: 'Устройства, подписки, QR и инструкции без инфраструктурных деталей.' },
+        { title: 'Manager', text: 'Единая панель, состояние и управляемые рабочие процессы.', icon: 'manager' },
+        { title: 'Agent', text: 'Ограниченные операции на Linux-узлах без произвольного удалённого shell.', icon: 'agent' },
+        { title: 'VPN-компонент', text: 'Установка, рендер, проверка, применение и контроль состояния.', icon: 'runtime' },
+        { title: 'Доступ пользователя', text: 'Устройства, подписки, QR и инструкции без инфраструктурных деталей.', icon: 'access' },
       ],
     },
     source: {
@@ -72,7 +79,7 @@ export const content: Record<Locale, SiteContent> = {
       title: 'Открытый исходный код',
       text: 'Manager, Agent, панель администратора и Портал пользователя развиваются в открытом репозитории. Исходный код RouteGate доступен на GitHub — его можно изучать, собирать самостоятельно и использовать для собственного развёртывания.',
       points: ['Исходники на GitHub', 'Самостоятельная сборка', 'Самостоятельное развёртывание', 'AGPLv3-or-later'],
-      repository: 'backend/internal/configs/lifecycle.go',
+      repository: 'agent/internal/diagnostics/diagnostics.go',
     },
     deployment: {
       eyebrow: 'УСТАНОВКА',
@@ -81,29 +88,43 @@ export const content: Record<Locale, SiteContent> = {
       cards: [
         { title: 'Проверяемая установка', text: 'Скачайте install.sh, просмотрите его и только затем запускайте с повышенными правами.' },
         { title: 'Платформа сначала', text: 'Установщик поднимает Manager, Agent, PostgreSQL, nginx и защищённую точку входа.' },
-        { title: 'VPN-компонент по требованию', text: 'VLESS, WireGuard, Hysteria2, Shadowsocks или MTProto устанавливаются после выбора протокола.' },
+        { title: 'VPN-компонент по требованию', text: 'Стабильный v0.1.0 использует управляемый VLESS / Reality через sing-box. Дополнительные протоколы уже развиваются в ветке main, но не входят в этот стабильный релиз.' },
         { title: 'Безопасный первый вход', text: 'Одноразовая ссылка /setup создаёт первого администратора без заводского пароля.' },
       ],
       commandLabel: 'БЫСТРЫЙ СТАРТ',
       commandTitle: 'Скачать, проверить и установить v0.1.0',
-      commandNote: 'Для новой версии замените VERSION на нужный release tag. Не запускайте удалённый скрипт вслепую через curl | sudo bash.',
+      commandNote: 'Команда ниже фиксирует стабильный v0.1.0. Возможности ветки main могут опережать стабильный релиз. Не запускайте удалённый скрипт вслепую через curl | sudo bash.',
+    },
+    assurance: {
+      eyebrow: 'ПРОВЕРЯЕМОСТЬ И ГРАНИЦЫ',
+      title: 'Обновление должно быть доказуемым. Совместимость — явной.',
+      intro: 'RouteGate не считает загрузку нового бинарника успешным обновлением и не выдаёт обычное VPN-подключение за подтверждённую поддержку маршрутизации.',
+      updateTitle: 'Проверяемое обновление',
+      updateText: 'Путь обновления связывает релиз с манифестом, SHA-256 и provenance, затем проходит preflight, резервное копирование, применение и health proof. Удалённые VPN-узлы допускаются к раскатке последовательно, по одному.',
+      updateSteps: ['Release', 'Manifest + SHA-256', 'Provenance', 'Preflight', 'Backup', 'Apply', 'Health proof'],
+      updateFallback: 'Проверка не пройдена → остановка или восстановление',
+      compatibilityTitle: 'Без скрытого понижения возможностей',
+      compatibilityEquation: ['VPN подключён', '≠', 'Маршрутизация подтверждена'],
+      compatibilityText: 'Если клиент способен подключиться, но не может корректно перенести назначенный Routing Profile, RouteGate не должен показывать это как полноценную поддержку Smart Routing.',
+      updateLink: 'Как устроены обновления',
+      compatibilityLink: 'Матрица совместимости клиентов',
     },
     roadmap: {
       eyebrow: 'ДОРОЖНАЯ КАРТА',
       title: 'Куда развивается RouteGate',
       intro: 'Это продуктовая карта направлений, а не обещание дат. Уже работающие возможности отделены от текущего усиления и следующих задач.',
       columns: [
-        { title: 'Уже работает', items: [
-          'Управляемые VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS.',
-          'Доступ и устройства, клиентские подписки, QR и Портал пользователя.',
-          'Профили маршрутизации и доставка с учётом возможностей конкретного клиента.',
-          'Проверяемые обновления платформы и последовательное обновление VPN-узлов.',
+        { title: 'Стабильный v0.1.0', items: [
+          'Проверенный путь VLESS / Reality на Ubuntu 24.04 LTS amd64.',
+          'Manager, Agent, PostgreSQL, nginx/HTTPS и безопасный одноразовый /setup.',
+          'VPN-аккаунты, QR/VLESS-доставка, Config Deploy и основы маршрутизации.',
+          'Проверенный clean-host сценарий и восстановление сервисов после перезагрузки.',
         ]},
-        { title: 'Сейчас усиливаем', items: [
-          'Непрерывность подписок и безопасный перенос аккаунтов между узлами.',
-          'Совместимость VPN-клиентов и честное отображение ограничений маршрутизации.',
-          'Надёжность, восстановление, обслуживание и эксплуатационные сценарии.',
-          'Документацию, установку и публичный сайт в соответствии с текущим продуктом.',
+        { title: 'Текущая ветка main', items: [
+          'Управляемые VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS.',
+          'Доступ и устройства, подписки, Портал пользователя и доставка с учётом возможностей клиента.',
+          'Проверяемые обновления платформы и последовательное обновление VPN-узлов.',
+          'Явная совместимость клиентов без скрытого понижения возможностей маршрутизации.',
         ]},
         { title: 'Дальше', items: [
           'Более безопасная автоматизация выбора узлов и аварийного переключения без скрытых переносов.',
@@ -118,7 +139,7 @@ export const content: Record<Locale, SiteContent> = {
       title: 'Коротко о требованиях и границах',
       intro: 'То, что обычно нужно понять до установки и до оценки RouteGate как платформы.',
       items: [
-        { question: 'Какие протоколы управляются сейчас?', answer: 'В текущей модели RouteGate есть управляемые семейства VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS.' },
+        { question: 'Какие протоколы доступны в стабильном релизе?', answer: 'Стабильный v0.1.0 поддерживает проверенный путь VLESS / Reality. В текущей ветке main уже реализованы WireGuard, Hysteria2, Shadowsocks 2022 и MTProto / FakeTLS; это не означает, что они входят в v0.1.0.' },
         { question: 'Что нужно для первого сервера?', answer: 'Чистый Ubuntu 24.04 LTS VPS на amd64, DNS-имя, доступ root или sudo и доступные TCP-порты 80 и 443 для Manager.' },
         { question: 'RouteGate — это VPN-сервис для конечного пользователя?', answer: 'Нет. Это платформа для самостоятельного развёртывания и управления собственной VPN-инфраструктурой. Оператор сам разворачивает и контролирует серверы и данные.' },
         { question: 'RouteGate скрывает ограничения клиента?', answer: 'Нет. Подключение само по себе не считается доказательством поддержки маршрутизации. Интерфейс должен показывать совместимость и известные ограничения явно.' },
@@ -155,20 +176,20 @@ export const content: Record<Locale, SiteContent> = {
       title: 'From VPN nodes to user access',
       intro: 'RouteGate manages infrastructure and client-access lifecycle rather than only generating configuration files.',
       cards: [
-        { title: 'Managed VPN nodes', text: 'Connect local and remote Linux nodes through RouteGate Agent with explicit state and validation.' },
-        { title: 'Multiple protocols', text: 'VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS in one management model.' },
-        { title: 'Access & Devices', text: 'VPN accounts, per-device access, subscriptions, QR codes, revocation, and rotation.' },
-        { title: 'Routing & delivery', text: 'Direct, VPN, and Block profiles delivered according to each VPN client’s capabilities.' },
+        { title: 'Managed VPN nodes', text: 'Connect local and remote Linux nodes through RouteGate Agent with explicit state and validation.', icon: 'server' },
+        { title: 'Multiple protocols', text: 'Stable v0.1.0 supports VLESS / Reality. The current main branch already implements WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS.', icon: 'protocol' },
+        { title: 'Access & Devices', text: 'VPN accounts, per-device access, subscriptions, QR codes, revocation, and rotation.', icon: 'devices' },
+        { title: 'Routing & delivery', text: 'Direct, VPN, and Block profiles delivered according to each VPN client’s capabilities.', icon: 'route' },
       ],
     },
     workflow: {
       eyebrow: 'HOW IT WORKS',
       title: 'A safe path from node to client',
       steps: [
-        { title: 'Manager', text: 'One control plane for state and guided operational workflows.' },
-        { title: 'Agent', text: 'Allow-listed Linux node operations without arbitrary remote shell authority.' },
-        { title: 'VPN runtime', text: 'Install, render, validate, apply, and verify managed runtime state.' },
-        { title: 'User access', text: 'Devices, subscriptions, QR, and guidance without infrastructure internals.' },
+        { title: 'Manager', text: 'One control plane for state and guided operational workflows.', icon: 'manager' },
+        { title: 'Agent', text: 'Allow-listed Linux node operations without arbitrary remote shell authority.', icon: 'agent' },
+        { title: 'VPN runtime', text: 'Install, render, validate, apply, and verify managed runtime state.', icon: 'runtime' },
+        { title: 'User access', text: 'Devices, subscriptions, QR, and guidance without infrastructure internals.', icon: 'access' },
       ],
     },
     source: {
@@ -176,7 +197,7 @@ export const content: Record<Locale, SiteContent> = {
       title: 'Open source',
       text: 'Manager, Agent, Admin UI, and User Portal are developed in the public repository. RouteGate source code is available on GitHub to inspect, build, and deploy yourself.',
       points: ['Source on GitHub', 'Build from source', 'Self-hosted deployment', 'AGPLv3-or-later'],
-      repository: 'backend/internal/configs/lifecycle.go',
+      repository: 'agent/internal/diagnostics/diagnostics.go',
     },
     deployment: {
       eyebrow: 'INSTALLATION',
@@ -185,29 +206,43 @@ export const content: Record<Locale, SiteContent> = {
       cards: [
         { title: 'Reviewable install', text: 'Download install.sh, inspect it, and only then run it with elevated privileges.' },
         { title: 'Platform first', text: 'The installer brings up Manager, Agent, PostgreSQL, nginx, and the protected entry point.' },
-        { title: 'Runtime on demand', text: 'VLESS, WireGuard, Hysteria2, Shadowsocks, or MTProto runtime is installed after protocol selection.' },
+        { title: 'Runtime on demand', text: 'Stable v0.1.0 uses managed VLESS / Reality through sing-box. Additional protocols are already developed on main, but are not part of this stable release.' },
         { title: 'Secure first access', text: 'A single-use /setup link creates the first administrator without a factory password.' },
       ],
       commandLabel: 'QUICK START',
       commandTitle: 'Download, review, and install v0.1.0',
-      commandNote: 'For a newer release, replace VERSION with the desired release tag. Do not blindly pipe a remote script into sudo bash.',
+      commandNote: 'The command below pins stable v0.1.0. The main branch may contain capabilities that have not reached a stable release yet. Do not blindly pipe a remote script into sudo bash.',
+    },
+    assurance: {
+      eyebrow: 'VERIFIABILITY & BOUNDARIES',
+      title: 'Updates should be provable. Compatibility should be explicit.',
+      intro: 'RouteGate does not treat a downloaded binary as a successful update, and it does not present ordinary VPN connectivity as proof of routing-policy support.',
+      updateTitle: 'Verified update path',
+      updateText: 'The update path binds a release to a manifest, SHA-256, and provenance, then proceeds through preflight, backup, apply, and health proof. Remote VPN nodes advance through ordered one-node-at-a-time rollout.',
+      updateSteps: ['Release', 'Manifest + SHA-256', 'Provenance', 'Preflight', 'Backup', 'Apply', 'Health proof'],
+      updateFallback: 'Verification failed → stop or recover',
+      compatibilityTitle: 'No silent capability downgrade',
+      compatibilityEquation: ['VPN connected', '≠', 'Routing verified'],
+      compatibilityText: 'If a client can connect but cannot faithfully carry the assigned Routing Profile, RouteGate should not present that state as full Smart Routing support.',
+      updateLink: 'How verified updates work',
+      compatibilityLink: 'Client compatibility matrix',
     },
     roadmap: {
       eyebrow: 'ROADMAP',
       title: 'Where RouteGate is heading',
       intro: 'This is a product-direction map, not a promise of dates. Shipped capability is separated from current hardening and later work.',
       columns: [
-        { title: 'Shipped', items: [
-          'Managed VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS.',
-          'Access & Devices, client subscriptions, QR delivery, and User Portal.',
-          'Routing profiles and capability-aware client delivery.',
-          'Verified platform updates and ordered VPN-node rollout.',
+        { title: 'Stable v0.1.0', items: [
+          'Validated VLESS / Reality path on Ubuntu 24.04 LTS amd64.',
+          'Manager, Agent, PostgreSQL, nginx/HTTPS, and secure single-use /setup.',
+          'VPN accounts, QR/VLESS delivery, Config Deploy, and routing foundations.',
+          'Validated clean-host installation and service recovery after reboot.',
         ]},
-        { title: 'Current focus', items: [
-          'Subscription continuity and safe account transfer between nodes.',
-          'VPN-client compatibility and explicit routing-delivery limitations.',
-          'Reliability, recovery, maintenance, and operational workflows.',
-          'Documentation, installation, and public-site alignment with the current product.',
+        { title: 'Current main branch', items: [
+          'Managed VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS.',
+          'Access & Devices, subscriptions, User Portal, and capability-aware client delivery.',
+          'Verified platform updates and ordered VPN-node rollout.',
+          'Explicit client compatibility without silent routing-capability downgrade.',
         ]},
         { title: 'Next', items: [
           'Safer node-selection and failover automation without hidden account moves.',
@@ -222,7 +257,7 @@ export const content: Record<Locale, SiteContent> = {
       title: 'Requirements and boundaries',
       intro: 'The essentials to understand before installing RouteGate or evaluating the platform.',
       items: [
-        { question: 'Which protocols are managed today?', answer: 'The current RouteGate model includes managed VLESS / Reality, WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS families.' },
+        { question: 'Which protocols are available in the stable release?', answer: 'Stable v0.1.0 supports the validated VLESS / Reality path. The current main branch already implements WireGuard, Hysteria2, Shadowsocks 2022, and MTProto / FakeTLS; that does not mean they are included in v0.1.0.' },
         { question: 'What does the first server require?', answer: 'A clean Ubuntu 24.04 LTS amd64 VPS, a DNS hostname, root or working sudo access, and reachable TCP ports 80 and 443 for Manager.' },
         { question: 'Is RouteGate a consumer VPN service?', answer: 'No. RouteGate is a self-hosted management platform for infrastructure you operate and control.' },
         { question: 'Does RouteGate hide client limitations?', answer: 'No. Successful connectivity is not presented as proof of routing-policy support. Compatibility state and known limitations should remain explicit.' },
