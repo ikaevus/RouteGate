@@ -1,7 +1,8 @@
 export type Locale = 'ru' | 'en'
 
 export type CardIcon = 'server' | 'protocol' | 'devices' | 'route' | 'manager' | 'agent' | 'runtime' | 'access'
-type Card = { title: string; text: string; icon: CardIcon }
+type Card = { title: string; text: string }
+type IconCard = Card & { icon: CardIcon }
 type RoadmapColumn = { title: string; items: string[] }
 type FAQItem = { question: string; answer: string }
 
@@ -14,8 +15,8 @@ export type SiteContent = {
     infrastructure: string; healthy: string; map: string; online: string; activity: string
     applied: string; connected: string; latency: string
   }
-  product: { eyebrow: string; title: string; intro: string; cards: Card[] }
-  workflow: { eyebrow: string; title: string; steps: Card[] }
+  product: { eyebrow: string; title: string; intro: string; cards: IconCard[] }
+  workflow: { eyebrow: string; title: string; steps: IconCard[] }
   source: { eyebrow: string; title: string; text: string; points: string[]; repository: string }
   deployment: {
     eyebrow: string; title: string; text: string; cards: Card[]
@@ -77,7 +78,7 @@ export const content: Record<Locale, SiteContent> = {
     source: {
       eyebrow: 'GITHUB · AGPLv3-OR-LATER',
       title: 'Открытый исходный код',
-      text: 'Manager, Agent, панель администратора и Портал пользователя развиваются в открытом репозитории. Исходный код RouteGate доступен на GitHub — его можно изучать, собирать самостоятельно и использовать для собственного развёртывания.',
+      text: 'Manager, Agent, панель администратора и Портал пользователя развиваются в открытом репозитории. Справа — небольшой пример из Agent: допустимые профили диагностики перечислены явно, без произвольной команды или скрипта.',
       points: ['Исходники на GitHub', 'Самостоятельная сборка', 'Самостоятельное развёртывание', 'AGPLv3-or-later'],
       repository: 'agent/internal/diagnostics/diagnostics.go',
     },
@@ -195,7 +196,7 @@ export const content: Record<Locale, SiteContent> = {
     source: {
       eyebrow: 'GITHUB · AGPLv3-OR-LATER',
       title: 'Open source',
-      text: 'Manager, Agent, Admin UI, and User Portal are developed in the public repository. RouteGate source code is available on GitHub to inspect, build, and deploy yourself.',
+      text: 'Manager, Agent, Admin UI, and User Portal are developed in the public repository. The excerpt on the right shows one Agent boundary: diagnostic profiles are explicitly allow-listed rather than accepting an arbitrary command or script.',
       points: ['Source on GitHub', 'Build from source', 'Self-hosted deployment', 'AGPLv3-or-later'],
       repository: 'agent/internal/diagnostics/diagnostics.go',
     },
