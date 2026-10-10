@@ -9,7 +9,7 @@ const securityUrl = `${githubUrl}/blob/main/SECURITY.md`
 const licenseUrl = `${githubUrl}/blob/main/LICENSE`
 const verifiedUpdatesUrl = `${githubUrl}/blob/main/docs/architecture/verified-host-updates.md`
 const compatibilityMatrixUrl = `${githubUrl}/blob/main/docs/architecture/client-compatibility-matrix.md`
-const sourceCodeUrl = `${githubUrl}/blob/main/agent/internal/diagnostics/diagnostics.go#L22-L42`
+const sourceCodeUrl = `${githubUrl}/blob/main/agent/internal/diagnostics/diagnostics.go#L22-L35`
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
 
 const installCommand = [
@@ -211,7 +211,8 @@ function CodePreview({ t }: { t: SiteContent['source'] }) {
         <span className="code-line indent">{'}'}</span>
         <span className="code-line">{'}'}</span>
         <span className="code-line empty"> </span>
-        <span className="code-line comment">// compile-time allow-listed diagnostics; no command / args / script input</span>
+        <span className="code-line comment">// Execute runs one compile-time allow-listed diagnostic collector. There is no</span>
+        <span className="code-line comment">// command, args, script, or arbitrary shell input in the diagnostic protocol.</span>
         <span className="code-line"><em>func</em> Execute(profileKey <b>string</b>) (map[<b>string</b>]any, <b>error</b>) {'{'}</span>
         <span className="code-line indent"><em>return</em> ExecuteWithOptions(profileKey, Options{'{}'})</span>
         <span className="code-line">{'}'}</span>
