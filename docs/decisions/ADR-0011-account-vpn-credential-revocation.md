@@ -558,3 +558,41 @@ config rejection, old/unacknowledged receipts, identity mismatch, concurrent
 locks and evidence changes during health checks. The disposable systemd/Reality
 test also saves a witness from a real service restart, observes the exact process,
 then proves another real restart invalidates it while the fence remains intact.
+
+### Challenge-bound observation (ninth implementation slice)
+
+`ObserveRuntimeRecoveryChallenge` is an internal Agent-only read-only primitive,
+not a recovery endpoint or unlock grant. A typed request contains schema version,
+operation UUID, a 256-bit nonce encoded as lowercase hex, issue/expiry timestamps,
+and the exact expected observation from the previous slice. The future Manager
+issuer must generate the nonce cryptographically and persist the request under
+an authenticated operator approval and node reservation. The Agent checks nonce
+shape, not entropy or uniqueness. No issuer or network exposure exists yet.
+
+The request has at most two minutes of validity. Future-issued, expired and
+overlong requests fail closed, without clock-skew grace. The collector propagates
+the expiry as a context deadline, reuses the shared-lock observation and compares
+every observation field, including the historical and current process identities.
+It rechecks time and cancellation after observation and rejects a backwards clock
+step visible between its start and finish. Manager/Agent clock synchronization is
+an operational prerequisite, not an inferred property of heartbeat success.
+
+The response includes the operation ID, observation time, measured observation
+and SHA-256 of Go `encoding/json` serialization of the complete typed challenge.
+This is a request-binding digest, not a signature or digest of arbitrary raw HTTP
+JSON. A future cross-module protocol must pin serialization with shared golden
+vectors before transport is added. The local Manager URL is checked through the
+receipt binding and is not exposed in the response.
+
+Read-only retries of the same nonce are allowed. This primitive does not consume
+nonces, persist authorization, change runtime files, clear fences or guarantee
+that the observed process will remain unchanged after it returns. A future
+commit protocol must reserve the node, authenticate explicit approval, persist
+one-time challenge consumption and audit, re-observe under the lock at commit,
+and recover safely from every partial write. Historical delivery acknowledgement
+and this response remain insufficient authorization for release. All dispatch,
+operator UI and production activation remain absent.
+
+Tests cover exact request binding, identical retries, nonce changes, every
+observation identity/hash/generation mismatch, deadlines, cancellation, clock
+regression, concurrent admission, unchanged durable files and retained fences.
