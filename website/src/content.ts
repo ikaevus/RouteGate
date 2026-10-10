@@ -22,12 +22,6 @@ export type SiteContent = {
     eyebrow: string; title: string; text: string; cards: Card[]
     commandLabel: string; commandTitle: string; commandNote: string
   }
-  assurance: {
-    eyebrow: string; title: string; intro: string
-    updateTitle: string; updateText: string; updateSteps: string[]; updateFallback: string
-    compatibilityTitle: string; compatibilityEquation: [string, string, string]; compatibilityText: string
-    updateLink: string; compatibilityLink: string
-  }
   roadmap: { eyebrow: string; title: string; intro: string; columns: RoadmapColumn[] }
   faq: {
     eyebrow: string; title: string; intro: string; items: FAQItem[]
@@ -95,20 +89,6 @@ export const content: Record<Locale, SiteContent> = {
       commandLabel: 'БЫСТРЫЙ СТАРТ',
       commandTitle: 'Скачать, проверить и установить v0.1.0',
       commandNote: 'Команда ниже фиксирует стабильный v0.1.0. Возможности ветки main могут опережать стабильный релиз. Не запускайте удалённый скрипт вслепую через curl | sudo bash.',
-    },
-    assurance: {
-      eyebrow: 'ПРОВЕРЯЕМОСТЬ И ГРАНИЦЫ',
-      title: 'Обновление должно быть доказуемым. Совместимость — явной.',
-      intro: 'RouteGate не считает загрузку нового бинарника успешным обновлением и не выдаёт обычное VPN-подключение за подтверждённую поддержку маршрутизации.',
-      updateTitle: 'Проверяемое обновление',
-      updateText: 'Путь обновления связывает релиз с манифестом, SHA-256 и provenance, затем проходит preflight, резервное копирование, применение и health proof. Удалённые VPN-узлы допускаются к раскатке последовательно, по одному.',
-      updateSteps: ['Release', 'Manifest + SHA-256', 'Provenance', 'Preflight', 'Backup', 'Apply', 'Health proof'],
-      updateFallback: 'Проверка не пройдена → остановка или восстановление',
-      compatibilityTitle: 'Без скрытого понижения возможностей',
-      compatibilityEquation: ['VPN подключён', '≠', 'Маршрутизация подтверждена'],
-      compatibilityText: 'Если клиент способен подключиться, но не может корректно перенести назначенный Routing Profile, RouteGate не должен показывать это как полноценную поддержку Smart Routing.',
-      updateLink: 'Как устроены обновления',
-      compatibilityLink: 'Матрица совместимости клиентов',
     },
     roadmap: {
       eyebrow: 'ДОРОЖНАЯ КАРТА',
@@ -213,20 +193,6 @@ export const content: Record<Locale, SiteContent> = {
       commandLabel: 'QUICK START',
       commandTitle: 'Download, review, and install v0.1.0',
       commandNote: 'The command below pins stable v0.1.0. The main branch may contain capabilities that have not reached a stable release yet. Do not blindly pipe a remote script into sudo bash.',
-    },
-    assurance: {
-      eyebrow: 'VERIFIABILITY & BOUNDARIES',
-      title: 'Updates should be provable. Compatibility should be explicit.',
-      intro: 'RouteGate does not treat a downloaded binary as a successful update, and it does not present ordinary VPN connectivity as proof of routing-policy support.',
-      updateTitle: 'Verified update path',
-      updateText: 'The update path binds a release to a manifest, SHA-256, and provenance, then proceeds through preflight, backup, apply, and health proof. Remote VPN nodes advance through ordered one-node-at-a-time rollout.',
-      updateSteps: ['Release', 'Manifest + SHA-256', 'Provenance', 'Preflight', 'Backup', 'Apply', 'Health proof'],
-      updateFallback: 'Verification failed → stop or recover',
-      compatibilityTitle: 'No silent capability downgrade',
-      compatibilityEquation: ['VPN connected', '≠', 'Routing verified'],
-      compatibilityText: 'If a client can connect but cannot faithfully carry the assigned Routing Profile, RouteGate should not present that state as full Smart Routing support.',
-      updateLink: 'How verified updates work',
-      compatibilityLink: 'Client compatibility matrix',
     },
     roadmap: {
       eyebrow: 'ROADMAP',

@@ -7,8 +7,6 @@ const installGuideUrl = `${githubUrl}/blob/main/docs/guides/first-install.md`
 const releasesUrl = `${githubUrl}/releases`
 const securityUrl = `${githubUrl}/blob/main/SECURITY.md`
 const licenseUrl = `${githubUrl}/blob/main/LICENSE`
-const verifiedUpdatesUrl = `${githubUrl}/blob/main/docs/architecture/verified-host-updates.md`
-const compatibilityMatrixUrl = `${githubUrl}/blob/main/docs/architecture/client-compatibility-matrix.md`
 const sourceCodeUrl = `${githubUrl}/blob/main/agent/internal/diagnostics/diagnostics.go#L22-L35`
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
 
@@ -396,46 +394,6 @@ export function App({ initialLocale: requestedLocale }: { initialLocale?: Locale
             <div className="install-panel-footer">
               <span>{t.deployment.commandNote}</span>
               <a href={installGuideUrl} target="_blank" rel="noreferrer">{t.action.installGuide}<span>↗</span></a>
-            </div>
-          </div>
-        </section>
-
-        <section className="section assurance-section" id="assurance">
-          <div className="container">
-            <div className="section-heading assurance-heading">
-              <div><span>{t.assurance.eyebrow}</span><h2>{t.assurance.title}</h2></div>
-              <p>{t.assurance.intro}</p>
-            </div>
-
-            <div className="assurance-update">
-              <div className="assurance-update-copy">
-                <span>01</span>
-                <div>
-                  <h3>{t.assurance.updateTitle}</h3>
-                  <p>{t.assurance.updateText}</p>
-                  <a href={verifiedUpdatesUrl} target="_blank" rel="noreferrer">{t.assurance.updateLink}<span>↗</span></a>
-                </div>
-              </div>
-              <div className="assurance-flow" aria-label={t.assurance.updateTitle}>
-                {t.assurance.updateSteps.map((step, index) => (
-                  <span key={step}><b>{step}</b>{index < t.assurance.updateSteps.length - 1 && <i>→</i>}</span>
-                ))}
-              </div>
-              <div className="assurance-fallback">{t.assurance.updateFallback}</div>
-            </div>
-
-            <div className="assurance-compatibility">
-              <div className="assurance-equation" aria-label={t.assurance.compatibilityEquation.join(' ')}>
-                <span>{t.assurance.compatibilityEquation[0]}</span>
-                <b>{t.assurance.compatibilityEquation[1]}</b>
-                <span>{t.assurance.compatibilityEquation[2]}</span>
-              </div>
-              <div>
-                <span className="assurance-index">02</span>
-                <h3>{t.assurance.compatibilityTitle}</h3>
-                <p>{t.assurance.compatibilityText}</p>
-                <a href={compatibilityMatrixUrl} target="_blank" rel="noreferrer">{t.assurance.compatibilityLink}<span>↗</span></a>
-              </div>
             </div>
           </div>
         </section>
