@@ -466,3 +466,43 @@ competing admission, missing/changed intent, lost acknowledgement and sticky
 restart protection. The mode remains off by default. Authenticated operator
 reconciliation/unlock, Manager exact-result evidence and detached-worker handoff
 remain prerequisites for production rollout; no revocation endpoint is enabled.
+
+### Manager historical-result verification (seventh implementation slice)
+
+`POST /api/v1/agent/tasks/{job_id}/result/verify` is an authenticated, read-only
+observation endpoint for Agents with persisted `runtimeMutationFencingV1`.
+It accepts the original bounded success envelope and compares its structured
+payload with the stored successful config/service/install/maintenance job.
+It requires the current Agent token and matching Agent/server ownership, an
+empty stored error, and exactly one eligible job. It neither rewrites the result
+nor updates job timestamps or lifecycle state. Unsupported task kinds, unknown
+jobs and foreign identities cannot yield positive evidence. Responses are
+`Cache-Control: no-store` and contain no stored report or credentials.
+
+The response binds schema version, verified flag, task/Agent/server IDs and a
+SHA-256 digest of the exact submitted envelope bytes. Payload comparison uses
+PostgreSQL JSONB equality (object order and equivalent numeric formatting do not
+matter), with `json.RawMessage` preserving numeric values during verification.
+Omitted/null payload follows the existing completion contract's empty object.
+This does not repair old payloads rounded by legacy completion decoding: if a
+stored value differs from the Agent's durable envelope, verification fails
+closed rather than guessing that they were equivalent.
+
+When durable result delivery fails, Agent can use this observation to recognize
+that Manager already committed the result before its HTTP response was lost.
+It verifies all response bindings before marking the local receipt acknowledged.
+An older Manager, rejected request, mismatched report, non-success job or missing
+evidence leaves the receipt unacknowledged. No runtime handler is retried.
+
+This closes the lost-response delivery ambiguity only. It does **not** authorize
+clearing the local mutation marker, assert current runtime health, confirm VPN
+credential revocation or terminate existing sessions. The fence remains held
+logically after restart until a future authenticated reconciliation operation
+checks fresh runtime evidence and explicitly authorizes recovery. No operator
+unlock route is introduced here; the experimental mutation mode remains off.
+
+Tests cover the Agent's rejection of identity/digest/schema mismatches and prove
+that verified replay retains the fence. PostgreSQL tests exercise actual Manager
+completion and verification handlers: initial commit, duplicate completion 404,
+successful historical readback, unchanged result/timestamps, payload mismatch,
+large exact integers, non-success state, foreign token and legacy capability.
