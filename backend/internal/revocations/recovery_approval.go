@@ -50,9 +50,14 @@ func (s *Service) approveRecoveryObservation(ctx context.Context, in RecoveryObs
 		return RecoveryObservationApproval{}, err
 	}
 	defer tx.Rollback(ctx)
-	// Stabilize removals as well as additions of authority, including absent rows.
-	// Short transaction only; no network I/O or runtime observation while held.
-	if _, err = tx.Exec(ctx, `LOCK TABLE users,auth_sessions,user_roles,roles,role_permissions,permissions IN SHARE MODE`); err != nil {
+	// Lock only this user/session; other users' login and session updates must
+	// remain writable. RBAC table locks stabilize removal of authority, including
+	// absent mappings. Admission waits are bounded, with no network I/O held.
+	if _, err = tx.Exec(ctx, `SET LOCAL lock_timeout='2s'; LOCK TABLE user_roles,roles,role_permissions,permissions IN SHARE MODE`); err != nil {
+		return RecoveryObservationApproval{}, err
+	}
+	var lockedUser string
+	if err = tx.QueryRow(ctx, `SELECT u.id::text FROM users u JOIN auth_sessions s ON s.user_id=u.id WHERE u.id=$1::uuid AND s.id=$2::uuid FOR SHARE OF u,s`, u.ID, u.SessionID).Scan(&lockedUser); err != nil {
 		return RecoveryObservationApproval{}, err
 	}
 	var allowed bool

@@ -217,3 +217,52 @@ func TestRuntimeMutationFencingObservationApprovalExpiredRetry(t *testing.T) {
 		t.Fatal("expired challenge changed", err)
 	}
 }
+
+func TestRuntimeMutationFencingObservationApprovalDoesNotBlockOtherSessions(t *testing.T) {
+	ctx, pool, in, _, done := observationApprovalFixture(t)
+	defer done()
+	var otherUser, otherSession string
+	if err := pool.QueryRow(ctx, `INSERT INTO users(email,display_name) VALUES('other@isolated.invalid','Other') RETURNING id::text`).Scan(&otherUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO auth_sessions(user_id,token_hash,expires_at) VALUES($1::uuid,'other-token',clock_timestamp()+interval '1 hour') RETURNING id::text`, otherUser).Scan(&otherSession); err != nil {
+		t.Fatal(err)
+	}
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Rollback(ctx)
+	if _, err = blocker.Exec(ctx, `SELECT id FROM servers WHERE id=(SELECT server_id FROM runtime_recovery_preparations WHERE id=$1::uuid) FOR UPDATE`, in.PreparationID); err != nil {
+		t.Fatal(err)
+	}
+	result := make(chan error, 1)
+	go func() { _, err := revocations.NewService(pool).ApproveRecoveryObservation(ctx, in); result <- err }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var locked bool
+		if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation='roles'::regclass AND mode='ShareLock' AND granted AND pid<>pg_backend_pid())`).Scan(&locked); err != nil {
+			t.Fatal(err)
+		}
+		if locked {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("approval did not acquire authority lock")
+		}
+		if _, err = pool.Exec(ctx, `SELECT pg_sleep(0.01)`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	short, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	if _, err = pool.Exec(short, `UPDATE auth_sessions SET last_used_at=clock_timestamp() WHERE id=$1::uuid`, otherSession); err != nil {
+		t.Fatal("unrelated session blocked", err)
+	}
+	if err = blocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-result; err != nil {
+		t.Fatal("approval failed after node released", err)
+	}
+}

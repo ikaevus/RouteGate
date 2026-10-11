@@ -658,6 +658,9 @@ session, role and permission records are stabilized under short transaction
 locks, then rechecked against the database rather than trusting stale context
 claims. Actor and session IDs come from authentication, not input fields.
 This conservative first scope excludes operator/read-only and portal identities.
+Only the approving user's/session's rows are locked; unrelated session updates
+remain writable. RBAC mappings are table-locked to stabilize permission removal,
+and lock waits have a two-second limit. There is no network I/O inside approval.
 
 Under node/preparation/Agent locks, it requires an active reservation, exact
 task/Agent/server/marker/receipt/envelope binding and current authenticated Agent
