@@ -50,24 +50,9 @@ func (s *Service) approveRecoveryObservation(ctx context.Context, in RecoveryObs
 		return RecoveryObservationApproval{}, err
 	}
 	defer tx.Rollback(ctx)
-	// Lock only this user/session; other users' login and session updates must
-	// remain writable. RBAC table locks stabilize removal of authority, including
-	// absent mappings. Admission waits are bounded, with no network I/O held.
-	if _, err = tx.Exec(ctx, `SET LOCAL lock_timeout='2s'; LOCK TABLE user_roles,roles,role_permissions,permissions IN SHARE MODE`); err != nil {
+	// Wait for node/preparation/Agent admission before holding authority locks.
+	if _, err = tx.Exec(ctx, `SET LOCAL lock_timeout='2s'`); err != nil {
 		return RecoveryObservationApproval{}, err
-	}
-	var lockedUser string
-	if err = tx.QueryRow(ctx, `SELECT u.id::text FROM users u JOIN auth_sessions s ON s.user_id=u.id WHERE u.id=$1::uuid AND s.id=$2::uuid FOR SHARE OF u,s`, u.ID, u.SessionID).Scan(&lockedUser); err != nil {
-		return RecoveryObservationApproval{}, err
-	}
-	var allowed bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users u JOIN auth_sessions s ON s.user_id=u.id
- WHERE u.id=$1::uuid AND s.id=$2::uuid AND u.status='active' AND u.user_type='human'
- AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
- AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.code IN ('admin','super_admin'))
- AND EXISTS(SELECT 1 FROM user_roles ur JOIN role_permissions rp ON rp.role_id=ur.role_id JOIN permissions p ON p.id=rp.permission_id WHERE ur.user_id=u.id AND p.code='configs:apply'))`, u.ID, u.SessionID).Scan(&allowed)
-	if err != nil || !allowed {
-		return RecoveryObservationApproval{}, ErrPreflight
 	}
 	var node string
 	if err = tx.QueryRow(ctx, `SELECT server_id::text FROM runtime_recovery_preparations WHERE id=$1::uuid`, in.PreparationID).Scan(&node); err != nil {
@@ -90,6 +75,24 @@ func (s *Service) approveRecoveryObservation(ctx context.Context, in RecoveryObs
  AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds',false)
  FROM agents WHERE id=$1::uuid AND server_id=$2::uuid FOR UPDATE`, agent, node, generation).Scan(&ready)
 	if err != nil || !ready {
+		return RecoveryObservationApproval{}, ErrPreflight
+	}
+	// Other users' login/session updates remain writable. RBAC table locks
+	// stabilize permission removal; only the approving user/session rows lock.
+	if _, err = tx.Exec(ctx, `LOCK TABLE user_roles,roles,role_permissions,permissions IN SHARE MODE`); err != nil {
+		return RecoveryObservationApproval{}, err
+	}
+	var lockedUser string
+	if err = tx.QueryRow(ctx, `SELECT u.id::text FROM users u JOIN auth_sessions s ON s.user_id=u.id WHERE u.id=$1::uuid AND s.id=$2::uuid FOR SHARE OF u,s`, u.ID, u.SessionID).Scan(&lockedUser); err != nil {
+		return RecoveryObservationApproval{}, err
+	}
+	var allowed bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users u JOIN auth_sessions s ON s.user_id=u.id
+ WHERE u.id=$1::uuid AND s.id=$2::uuid AND u.status='active' AND u.user_type='human'
+ AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+ AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.code IN ('admin','super_admin'))
+ AND EXISTS(SELECT 1 FROM user_roles ur JOIN role_permissions rp ON rp.role_id=ur.role_id JOIN permissions p ON p.id=rp.permission_id WHERE ur.user_id=u.id AND p.code='configs:apply'))`, u.ID, u.SessionID).Scan(&allowed)
+	if err != nil || !allowed {
 		return RecoveryObservationApproval{}, ErrPreflight
 	}
 	var saved, actor, hash string

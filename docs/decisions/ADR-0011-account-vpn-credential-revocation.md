@@ -661,6 +661,8 @@ This conservative first scope excludes operator/read-only and portal identities.
 Only the approving user's/session's rows are locked; unrelated session updates
 remain writable. RBAC mappings are table-locked to stabilize permission removal,
 and lock waits have a two-second limit. There is no network I/O inside approval.
+Node/preparation/Agent locks are acquired before authority locks, so a busy node
+does not block unrelated session updates or role maintenance while admission waits.
 
 Under node/preparation/Agent locks, it requires an active reservation, exact
 task/Agent/server/marker/receipt/envelope binding and current authenticated Agent

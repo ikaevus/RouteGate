@@ -241,14 +241,14 @@ func TestRuntimeMutationFencingObservationApprovalDoesNotBlockOtherSessions(t *t
 	deadline := time.Now().Add(time.Second)
 	for {
 		var locked bool
-		if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation='roles'::regclass AND mode='ShareLock' AND granted AND pid<>pg_backend_pid())`).Scan(&locked); err != nil {
+		if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE query LIKE '%SELECT id FROM servers WHERE id=%FOR UPDATE%' AND wait_event_type='Lock' AND pid<>pg_backend_pid())`).Scan(&locked); err != nil {
 			t.Fatal(err)
 		}
 		if locked {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("approval did not acquire authority lock")
+			t.Fatal("approval did not wait for node admission")
 		}
 		if _, err = pool.Exec(ctx, `SELECT pg_sleep(0.01)`); err != nil {
 			t.Fatal(err)
@@ -258,6 +258,9 @@ func TestRuntimeMutationFencingObservationApprovalDoesNotBlockOtherSessions(t *t
 	defer cancel()
 	if _, err = pool.Exec(short, `UPDATE auth_sessions SET last_used_at=clock_timestamp() WHERE id=$1::uuid`, otherSession); err != nil {
 		t.Fatal("unrelated session blocked", err)
+	}
+	if _, err = pool.Exec(short, `UPDATE roles SET name=name WHERE code='admin'`); err != nil {
+		t.Fatal("role maintenance blocked by busy node", err)
 	}
 	if err = blocker.Commit(ctx); err != nil {
 		t.Fatal(err)
