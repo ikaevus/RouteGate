@@ -172,3 +172,26 @@ func TestRuntimeMutationFencingRecoveryConcurrentPreparation(t *testing.T) {
 		t.Fatal(events, err)
 	}
 }
+
+func TestRuntimeMutationFencingRecoveryFreshnessUsesAdmissionTime(t *testing.T) {
+	ctx, pool, in, _, done := recoveryPreparationFixture(t)
+	defer done()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	// now() is frozen at transaction start: it must not prolong readiness while
+	// admission waits. Only this disposable test transaction delays for 2s.
+	if _, err = tx.Exec(ctx, `UPDATE agents SET last_authenticated_heartbeat_at=now()-interval '89 seconds' WHERE id=$1::uuid`, in.AgentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_sleep(2)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO runtime_recovery_preparations(server_id,agent_id,agent_credential_generation,task_id,marker_hash,receipt_hash,envelope_hash,requested_by,last_action_by)
+	SELECT server_id,id,credential_generation,$2::uuid,repeat('a',64),repeat('b',64),repeat('c',64),'operator','operator' FROM agents WHERE id=$1::uuid`, in.AgentID, in.TaskID)
+	if err == nil || !strings.Contains(err.Error(), "runtime_recovery_agent_not_ready") {
+		t.Fatal("expired heartbeat admitted", err)
+	}
+}

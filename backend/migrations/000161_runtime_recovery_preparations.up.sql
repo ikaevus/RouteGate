@@ -69,7 +69,7 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM agents a JOIN servers s ON s.id=a.server_id
  WHERE a.id=NEW.agent_id AND a.server_id=NEW.server_id AND a.credential_generation=NEW.agent_credential_generation
  AND s.status='active' AND s.deployment_role IN ('vpn','hybrid') AND s.vpn_protocol='vless'
- AND a.status='online' AND a.last_authenticated_heartbeat_at>now()-interval '90 seconds'
+ AND a.status='online' AND a.last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds'
  AND a.last_authenticated_heartbeat_generation=a.credential_generation
  AND a.capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb) THEN
  RAISE EXCEPTION USING ERRCODE='P0142',MESSAGE='runtime_recovery_agent_not_ready'; END IF;
