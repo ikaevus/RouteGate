@@ -647,3 +647,43 @@ conflicting jobs/revocations, immutable history, heartbeat availability and
 unchanged accounts/tokens/config versions/jobs. Authenticated approval, full
 observation binding, challenge issuance/consumption and crash-safe release remain
 unfinished. No production schema migration or feature activation is authorized.
+
+### Authenticated approval of read-only observation (eleventh implementation slice)
+
+`ApproveRecoveryObservation` is an internal service method with no HTTP route,
+UI, Agent dispatcher or unlock command. It requires explicit confirmation to
+collect **read-only evidence**, an authenticated active human admin/super-admin
+context with `configs:apply`, and a current matching database session. User,
+session, role and permission records are stabilized under short transaction
+locks, then rechecked against the database rather than trusting stale context
+claims. Actor and session IDs come from authentication, not input fields.
+This conservative first scope excludes operator/read-only and portal identities.
+
+Under node/preparation/Agent locks, it requires an active reservation, exact
+task/Agent/server/marker/receipt/envelope binding and current authenticated Agent
+readiness. The expected runtime witness is strictly parsed, bounded and checked
+for valid identifiers/hashes/generations. It remains a **claimed observation**,
+not verified current runtime evidence. Agent must independently collect and
+compare it; permission to request evidence is not permission to release a fence.
+
+Migration 000162 persists the approval as its own immutable audit record, with
+actor/session attribution, complete typed challenge bytes and digest. A random
+256-bit nonce and a two-minute deadline are created once per preparation.
+Exact retries by the same currently authorized user return identical bytes and
+never renew the deadline. Expired, cancelled, rebound or foreign-user requests
+fail closed. Cancellation is still safe because no mutation dispatch exists;
+it invalidates Manager-side approval retrieval. A previously copied request
+could still elicit a read-only observation until expiry; it cannot change state.
+No nonce consumption or mutation grant is implied by issuing this request.
+
+The shared `testdata/recovery-challenge-v1.json` golden vector pins the Manager
+and Agent typed JSON serialization and SHA-256. PostgreSQL tests cover live
+session/permission rejection, exact binding, concurrent idempotence, immutable
+audit, cancellation, expiry without renewal and retained reservations. Downgrade
+refuses to delete even expired/cancelled approval history. No secrets or runtime
+configs are stored in this approval record.
+
+Authenticated transport, response verification, one-time mutation authorization,
+commit-time re-observation and crash-safe audited release remain unimplemented.
+Issuance does not contact an Agent, revoke credentials, terminate sessions, change
+account status, clear a fence or activate the experimental mode in production.
