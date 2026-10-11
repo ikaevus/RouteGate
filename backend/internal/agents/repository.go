@@ -85,6 +85,7 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			registered_at = EXCLUDED.registered_at,
 			last_seen_at = EXCLUDED.last_seen_at,
 			credential_generation = agents.credential_generation + 1,
+			current_runtime_mutation_fencing = false,
 			last_authenticated_heartbeat_at = NULL,
 			last_authenticated_heartbeat_generation = NULL,
 			updated_at = now()
@@ -159,6 +160,7 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 				protocol_version = COALESCE($4, protocol_version),
 				capabilities = COALESCE($5, capabilities) || CASE WHEN capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
 				last_authenticated_heartbeat_at = $2,
+				current_runtime_mutation_fencing = COALESCE($5::jsonb @> '{"runtimeMutationFencingV1":true}'::jsonb, false),
 				last_authenticated_heartbeat_generation = credential_generation,
 				updated_at = $2
 			WHERE id = $1::uuid
@@ -174,6 +176,7 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 			UPDATE agents
 			SET
 				last_seen_at = now(),
+				current_runtime_mutation_fencing = false,
 				status = 'online',
 				agent_version = COALESCE(NULLIF($2, ''), agent_version),
 				version = COALESCE(NULLIF($2, ''), version),

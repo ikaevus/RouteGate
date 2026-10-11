@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/revocations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -16,6 +17,21 @@ func recoveryPreparationFixture(t *testing.T) (context.Context, *pgxpool.Pool, r
 	ctx, pool, removal, _, done := removalPreparationFixture(t)
 	in := revocations.RuntimeRecoveryInput{ServerID: removal.ServerID, MarkerHash: strings.Repeat("a", 64), ReceiptHash: strings.Repeat("b", 64), Actor: "operator", Envelope: json.RawMessage(`{"status":"succeeded","resultPayload":{"value":9007199254740993}}`)}
 	if err := pool.QueryRow(ctx, `UPDATE agents SET capabilities=capabilities || '{"runtimeMutationFencingV1":true}'::jsonb WHERE server_id=$1::uuid RETURNING id::text`, in.ServerID).Scan(&in.AgentID); err != nil {
+		done()
+		t.Fatal(err)
+	}
+	var token string
+	if err := pool.QueryRow(ctx, `SELECT token_hash FROM agents WHERE id=$1::uuid`, in.AgentID).Scan(&token); err != nil {
+		done()
+		t.Fatal(err)
+	}
+	repo := agents.NewRepository(pool)
+	agent, err := repo.FindAgentByTokenHash(ctx, token)
+	if err != nil {
+		done()
+		t.Fatal(err)
+	}
+	if _, err = repo.UpdateAgentHeartbeat(ctx, agents.UpdateAgentHeartbeatInput{TokenHash: token, Capabilities: agent.Capabilities}); err != nil {
 		done()
 		t.Fatal(err)
 	}
@@ -193,5 +209,49 @@ func TestRuntimeMutationFencingRecoveryFreshnessUsesAdmissionTime(t *testing.T) 
 	SELECT server_id,id,credential_generation,$2::uuid,repeat('a',64),repeat('b',64),repeat('c',64),'operator','operator' FROM agents WHERE id=$1::uuid`, in.AgentID, in.TaskID)
 	if err == nil || !strings.Contains(err.Error(), "runtime_recovery_agent_not_ready") {
 		t.Fatal("expired heartbeat admitted", err)
+	}
+}
+
+func TestRuntimeMutationFencingRecoveryRequiresCurrentAdvertisement(t *testing.T) {
+	for _, mode := range []string{"omitted", "false", "empty", "replacement", "unauthenticated"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, pool, in, _, done := recoveryPreparationFixture(t)
+			defer done()
+			var token string
+			if err := pool.QueryRow(ctx, `SELECT token_hash FROM agents WHERE id=$1::uuid`, in.AgentID).Scan(&token); err != nil {
+				t.Fatal(err)
+			}
+			repo := agents.NewRepository(pool)
+			input := agents.UpdateAgentHeartbeatInput{TokenHash: token}
+			switch mode {
+			case "false":
+				input.Capabilities = agents.Capabilities{"runtimeMutationFencingV1": false}
+			case "empty":
+				input.Capabilities = agents.Capabilities{}
+			case "replacement":
+				if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{ServerID: in.ServerID, AgentVersion: "old", TokenHash: "recovery-replacement", Capabilities: agents.Capabilities{}}); err != nil {
+					t.Fatal(err)
+				}
+				input.TokenHash = "recovery-replacement"
+			case "unauthenticated":
+				input.TokenHash = ""
+				input.AgentID = in.AgentID
+				input.Capabilities = agents.Capabilities{"runtimeMutationFencingV1": true}
+			}
+			a, err := repo.UpdateAgentHeartbeat(ctx, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !a.Capabilities.RuntimeMutationFencingEnabled() {
+				t.Fatal("sticky protection lost")
+			}
+			var supported bool
+			if err = pool.QueryRow(ctx, `SELECT current_runtime_mutation_fencing FROM agents WHERE id=$1::uuid`, in.AgentID).Scan(&supported); err != nil || supported {
+				t.Fatal("unsupported current advert", supported, err)
+			}
+			if _, err = revocations.NewService(pool).PrepareRuntimeRecovery(ctx, in); err == nil {
+				t.Fatal("sticky policy mistaken for current support")
+			}
+		})
 	}
 }

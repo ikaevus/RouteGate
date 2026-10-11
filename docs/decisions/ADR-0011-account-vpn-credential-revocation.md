@@ -609,6 +609,14 @@ preserved, duplicate keys are rejected, and the full supplied result is compared
 but never stored in this ledger or logged. The ledger retains only identifiers,
 claimed marker/receipt hashes, exact envelope digest and operator attribution.
 
+The sticky `runtimeMutationFencingV1` timeout-protection policy is not a current
+capability advertisement. A separate `current_runtime_mutation_fencing` column
+defaults to false and is set only from an explicit true value in the latest
+bearer-authenticated heartbeat. Omission, false, identity-only heartbeat and
+Agent replacement clear current support without removing sticky protection.
+Preparation requires both. Heartbeat freshness uses `clock_timestamp()`, not
+transaction-start `now()`, so lock waits cannot extend the admission window.
+
 This is **not operator approval or authenticated Agent evidence**. No HTTP route,
 challenge issuer, outbox, dispatcher or release exists here. The future caller
 must authenticate the administrator and Agent evidence independently; it must

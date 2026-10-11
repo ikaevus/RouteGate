@@ -1,5 +1,7 @@
 -- Internal, never-dispatched preparations. Cancellation releases ONLY Manager
 -- admission; it cannot clear the Agent's durable runtime fence.
+-- Existing sticky policy must not stand in for a current authenticated advert.
+ALTER TABLE agents ADD COLUMN current_runtime_mutation_fencing boolean NOT NULL DEFAULT false;
 CREATE TABLE runtime_recovery_preparations (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  server_id uuid NOT NULL REFERENCES servers(id),
@@ -71,6 +73,7 @@ BEGIN
  AND s.status='active' AND s.deployment_role IN ('vpn','hybrid') AND s.vpn_protocol='vless'
  AND a.status='online' AND a.last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds'
  AND a.last_authenticated_heartbeat_generation=a.credential_generation
+ AND a.current_runtime_mutation_fencing
  AND a.capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb) THEN
  RAISE EXCEPTION USING ERRCODE='P0142',MESSAGE='runtime_recovery_agent_not_ready'; END IF;
  SELECT count(*) INTO eligible FROM (

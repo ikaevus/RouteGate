@@ -27,3 +27,4 @@ DROP TABLE runtime_recovery_events;
 DROP TABLE runtime_recovery_preparations;
 DROP FUNCTION routegate_runtime_recovery_audit();
 DROP FUNCTION routegate_runtime_recovery_ledger_guard();
+ALTER TABLE agents DROP COLUMN current_runtime_mutation_fencing;
