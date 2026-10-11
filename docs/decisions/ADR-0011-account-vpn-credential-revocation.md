@@ -596,3 +596,46 @@ operator UI and production activation remain absent.
 Tests cover exact request binding, identical retries, nonce changes, every
 observation identity/hash/generation mismatch, deadlines, cancellation, clock
 regression, concurrent admission, unchanged durable files and retained fences.
+
+### Manager recovery preparation and admission (tenth implementation slice)
+
+Migration 000161 adds an internal `runtime_recovery_preparations` ledger with
+only `prepared` and `cancelled` states. `PrepareRuntimeRecovery` reserves a node
+for a previously successful config apply or VPN service restart. It checks the
+current Agent identity/generation, recent authenticated heartbeat, persisted
+experimental fencing capability, exact historical success payload and absence
+of competing jobs, transfers, revocations and Manager updates. JSON numbers are
+preserved, duplicate keys are rejected, and the full supplied result is compared
+but never stored in this ledger or logged. The ledger retains only identifiers,
+claimed marker/receipt hashes, exact envelope digest and operator attribution.
+
+This is **not operator approval or authenticated Agent evidence**. No HTTP route,
+challenge issuer, outbox, dispatcher or release exists here. The future caller
+must authenticate the administrator and Agent evidence independently; it must
+not derive the actor from untrusted request content. Preparation hashes are
+claims to pin a later operation, not proof that the Agent holds those files.
+Current process/file evidence must still be obtained with the challenge protocol.
+
+Existing database admission guards now also reject mutations while recovery is
+prepared: jobs, config versions, account/config-affecting preferences, node
+settings, transfers, Agent rotation, routing and Manager updates. Revocation
+ledger insertion has an explicit guard because it does not create a task.
+The reservation serializes through the shared Manager-update advisory lock,
+routing table locks and node row, with Agent identity locked by the service.
+Heartbeat remains writable. Exact retries return the original preparation;
+they do not renew readiness or assert that runtime is healthy.
+
+Insertion and cancellation append immutable audit events in the same transaction.
+Metadata cannot be rebound, a false confirmed state cannot be stored, and rows
+or events cannot be deleted. There is no expiry worker or timeout release.
+`CancelRuntimeRecovery` only releases never-dispatched Manager admission, never
+an Agent fence, runtime credential, subscription token or account status. A
+downgrade refuses to discard even cancelled recovery history. Migration 000160
+guards are restored on an empty-ledger downgrade.
+
+Tests cover exact retry across service instances, concurrent idempotent requests,
+payload precision and malformed input, stale/unsupported Agent and task states,
+conflicting jobs/revocations, immutable history, heartbeat availability and
+unchanged accounts/tokens/config versions/jobs. Authenticated approval, full
+observation binding, challenge issuance/consumption and crash-safe release remain
+unfinished. No production schema migration or feature activation is authorized.

@@ -306,6 +306,14 @@ func TestCredentialRevocationSeesJobCommittedWhileAdmissionWaits(t *testing.T) {
 func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
 	ctx, pool, in, _, done := removalPreparationFixture(t)
 	defer done()
+	// Downgrade in reverse order: remove newer dependent guards first.
+	recoveryDown, err := os.ReadFile("../../migrations/000161_runtime_recovery_preparations.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(recoveryDown)); err != nil {
+		t.Fatal(err)
+	}
 	down, err := os.ReadFile("../../migrations/000160_credential_revocation_preparations.down.sql")
 	if err != nil {
 		t.Fatal(err)
