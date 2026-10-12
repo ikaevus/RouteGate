@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -194,19 +195,43 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if err != nil || observation.Witness != witness {
 		t.Fatal("production runtime witness did not match", err)
 	}
+	now := time.Now().UTC()
+	grant := RuntimeRecoveryMutationGrant{1, runtimeRecoveryGrantPurpose, task.ID, strings.Repeat("d", 64), 7, strings.Repeat("e", 64), strings.Repeat("f", 64), now.Add(-time.Second), now.Add(time.Minute), observation}
+	grantData, _ := json.Marshal(grant)
+	commit, err := BeginRuntimeRecoveryCommit(ctx, e.receiptDir, RuntimeRecoveryGrantBinding{RuntimeResultBinding: binding, AgentCredentialGeneration: 7}, grantData, e.activePath, adapter)
+	if err != nil {
+		t.Fatal("real process commit observation failed", err)
+	}
+	defer commit.Close()
+	proof, err := commit.Proof(ctx)
+	if err != nil || proof.Observation != observation {
+		t.Fatal("real locked commit proof mismatch", err)
+	}
+	if lock, err := lockRuntimeMutation(e.receiptDir); err == nil {
+		lock.Close()
+		t.Fatal("real commit observation dropped lock")
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := commit.Proof(ctx); err == nil {
+		t.Fatal("new process accepted old locked commit witness")
+	}
+	commit.Close()
 	if _, err := ObserveRuntimeRecovery(ctx, e.receiptDir, binding, task.ID, e.activePath, adapter); err == nil {
 		t.Fatal("new process accepted old recovery witness")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile)) {
+		t.Fatal("real process drift discarded consumption")
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, "mutation-inflight.json")) {
 		t.Fatal("observation cleared fence")
 	}
 	t.Log("recovery observation matches real process, rejects subsequent restart and retains fence")
+	t.Log("durable grant consumption holds admission lock, rejects external restart and retains consumption/fence")
 }
 func bindRemovalCandidate(t *testing.T, task *ConfigTask, object map[string]any) {
 	runtime := removalMarshal(t, object)

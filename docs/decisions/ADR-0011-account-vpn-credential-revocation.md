@@ -811,3 +811,64 @@ recover safely from every partial write. Neither this grant record nor its
 issuance acknowledgement can release Agent state. No config/credential/account,
 subscription or runtime job is changed. #545 remains open; no production
 migration, activation, merge or deployment is authorized.
+
+### Agent locked re-observation and local grant consumption (fourteenth slice)
+
+`BeginRuntimeRecoveryCommit` is a dormant internal primitive. There is no grant
+HTTP delivery, dispatcher, advertised commit capability, Manager consumption
+endpoint or fence-release method. Callers must first authenticate the Manager
+grant and independently establish current Agent credential generation; copying
+the generation from grant JSON into the local binding is forbidden. The current
+Agent credential-generation negotiation still needs integration before activation.
+The shared grant golden vector now pins both Manager and Agent typed JSON/hash.
+
+The bounded strict decoder rejects duplicate/unknown/aliased fields, trailing
+input, malformed identities/hashes/witnesses, wrong purpose/generation and
+overlong lifetime. The local Manager/Agent/server binding must match the durable
+acknowledged task receipt and grant. Clock synchronization remains required;
+future-issued, expired and backwards wall-clock observations fail closed.
+
+The primitive acquires the existing private shared admission flock and reuses
+the existing observer without releasing/reacquiring the lock. It verifies the
+exact marker, acknowledged receipt, envelope, running process/config/listener
+and historical/current invocation identities against the grant. No runtime
+validation/apply/restart/credential mutation is invoked by this code.
+
+Before returning a live owner or proof it atomically writes and fsyncs private
+`recovery-consumption.json`, binding the complete grant and digest, current local
+identity/generation, observed time and measured state. It re-observes after
+persistence while still holding the lock. The retained record gates duplicate
+consumption, including a different grant: there is no auto retry, cleanup or
+resume of an interrupted consumption. Failure after publication retains the
+record and original fence even when no caller received a proof.
+
+The returned lease keeps flock until explicit `Close`, which only releases the
+process lock. `Proof` rechecks the unchanged durable record and independently
+re-observes current runtime under that same lock; it returns only operation,
+grant/consumption digests, time and measured observation. No nonce, Manager URL,
+local path, runtime config or credential is exposed. Drift, cancellation, expiry,
+lost state or a visible backwards clock step permanently poisons the live owner.
+Future network commit must keep this owner alive and re-observe through it;
+historical proof alone cannot authorize a later unlock.
+
+Nonce consumption is local durable intent, not Manager commit or successful
+recovery. Process exit drops kernel flock but preserves consumption/receipt/fence.
+Ordinary mutation admission/completion, result persistence/replay and scoped
+removal reject even malformed or isolated consumption records. This protection
+survives flag removal because the shared state directory remains present.
+Read-only observation stays possible; mutation admission never becomes a fallback
+when consumption cannot be validated. No Complete/Unlock/delete API is exposed.
+
+Tests cover exact wire/hash, shared-lock ownership, repeat and concurrent
+consumption, generation/identity/witness/time rejection, drift before and after
+persistence, poisoned owners, unchanged runtime/receipt/fence, consumption-only
+admission guards, subprocess exit and SIGKILL. The existing disposable systemd/Reality
+test exercises this primitive against the real process, holds the lock, then
+intentionally simulates an external service restart and requires proof rejection
+while preserving consumption and fence. Test restarts are isolated fault injection,
+not commands performed by the commit primitive.
+
+Authenticated grant transport/current-generation negotiation, Manager commit
+acceptance, reconciliation/abort and crash-safe fence release remain unfinished.
+No production activation/deployment or real-user revocation is authorized; #545
+remains open. No schema migration is added; Manager schema remains 000164.
