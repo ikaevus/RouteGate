@@ -98,7 +98,7 @@ func TestVPNSubscriptionTokenPrimaryKeyRepair(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&latestSchema); err != nil {
 		t.Fatalf("read latest schema: %v", err)
 	}
-	if latestSchema != "000163_recovery_observation_evidence" {
-		t.Fatalf("latest schema = %q, want 000163_recovery_observation_evidence", latestSchema)
+	if latestSchema != "000164_recovery_mutation_grants" {
+		t.Fatalf("latest schema = %q, want 000164_recovery_mutation_grants", latestSchema)
 	}
 }

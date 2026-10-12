@@ -109,8 +109,8 @@ func TestClientProfilePostRestoreRepairRestoresObservedInvariants(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000163_recovery_observation_evidence" {
-		t.Fatalf("applied schema version = %q, want 000163_recovery_observation_evidence", version)
+	if version != "000164_recovery_mutation_grants" {
+		t.Fatalf("applied schema version = %q, want 000164_recovery_mutation_grants", version)
 	}
 }
 

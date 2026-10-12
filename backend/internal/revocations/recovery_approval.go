@@ -78,23 +78,8 @@ func (s *Service) approveRecoveryObservation(ctx context.Context, in RecoveryObs
 	if err != nil || !ready {
 		return RecoveryObservationApproval{}, ErrPreflight
 	}
-	// Other users' login/session updates remain writable. RBAC table locks
-	// stabilize permission removal; only the approving user/session rows lock.
-	if _, err = tx.Exec(ctx, `LOCK TABLE user_roles,roles,role_permissions,permissions IN SHARE MODE`); err != nil {
+	if err = lockRecoveryAuthority(ctx, tx, u); err != nil {
 		return RecoveryObservationApproval{}, err
-	}
-	var lockedUser string
-	if err = tx.QueryRow(ctx, `SELECT u.id::text FROM users u JOIN auth_sessions s ON s.user_id=u.id WHERE u.id=$1::uuid AND s.id=$2::uuid FOR SHARE OF u,s`, u.ID, u.SessionID).Scan(&lockedUser); err != nil {
-		return RecoveryObservationApproval{}, err
-	}
-	var allowed bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users u JOIN auth_sessions s ON s.user_id=u.id
- WHERE u.id=$1::uuid AND s.id=$2::uuid AND u.status='active' AND u.user_type='human'
- AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
- AND EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.code IN ('admin','super_admin'))
- AND EXISTS(SELECT 1 FROM user_roles ur JOIN role_permissions rp ON rp.role_id=ur.role_id JOIN permissions p ON p.id=rp.permission_id WHERE ur.user_id=u.id AND p.code='configs:apply'))`, u.ID, u.SessionID).Scan(&allowed)
-	if err != nil || !allowed {
-		return RecoveryObservationApproval{}, ErrPreflight
 	}
 	var saved, actor, hash string
 	err = tx.QueryRow(ctx, `SELECT challenge,actor_user_id::text,challenge_hash FROM runtime_recovery_observation_approvals WHERE preparation_id=$1::uuid`, in.PreparationID).Scan(&saved, &actor, &hash)

@@ -756,3 +756,58 @@ durable state, runtime config/process, account credentials and subscription
 tokens are unchanged. No release, re-observation-at-commit, crash-safe unlock or
 end-to-end credential revocation exists yet; #545 remains open. No production
 activation, migration or deployment is authorized by this development slice.
+
+### Internal mutation-grant issuance (thirteenth slice)
+
+`IssueRecoveryMutationGrant` is an internal Manager service method, with no HTTP,
+polling, CLI, worker, operator UI or Agent consumer. It creates at most one
+immutable grant per recovery preparation, only after authenticated evidence has
+been retained. This slice implements single issuance, not one-time execution:
+nonce consumption, delivery and actual release remain absent and must not be
+inferred from the ledger or its JSON contract.
+
+The caller explicitly confirms fence recovery and supplies the exact challenge
+and accepted-response hashes. Actor/session identity comes only from current
+human admin/super-admin authentication with `configs:apply`. Read-only approval
+does not authorize issuance. The same human who approved observation must issue
+the grant in this conservative scope; current authority is rechecked against
+database user/session/RBAC records. Shared authority locking is reused from
+observation approval, after server/preparation/Agent admission. Unrelated
+sessions stay writable while a contended node waits.
+
+Issuance rechecks prepared reservation, current Agent token hash and credential
+generation, current fencing/observation capability, authenticated heartbeat
+freshness and the original observation deadline. It strictly decodes and hashes
+the immutable accepted response, compares the exact preparation/challenge,
+measured observation, process identities, config and receipt hashes. It never
+uses an operator-supplied expected snapshot as authenticated evidence. Heartbeat
+remains readiness metadata and does not prove VPN traffic or continued process
+stability. Session expiry and wall time are checked again after authority waits.
+
+The typed contract pins schema/purpose, preparation ID, a new cryptographically
+random 256-bit nonce, Agent credential generation, challenge/response hashes,
+issue/expiry times and the complete expected observation. Grant expiry is the
+original challenge expiry, so issuance cannot renew observation freshness.
+Retries by the same currently authorized actor return identical bytes/hash;
+concurrent issuers serialize on the node. Expired, cancelled, unsupported,
+unattributed or mismatched requests fail with generic secret-safe errors. The
+nonce is future authorization material and must not be logged or exposed through
+ordinary task/result, diagnostic or subscription APIs.
+
+Migration 000164 retains exact grant bytes, digest, actor/session and timestamps
+as immutable audit history. The database guard independently checks evidence,
+bindings, current readiness, deadline and human authority. Unique preparation
+and nonce constraints prevent multiple issuances. Update/delete and destructive
+downgrade are refused. A grant-bearing reservation cannot use ordinary Cancel,
+even after expiry: timeout cannot prove a copied authorization was unused.
+Future abort/reconciliation must establish a safe release before admitting new
+node mutations; there is no automatic expiry/unlock or manual bypass here.
+
+A future transport must negotiate distinct current grant/commit support rather
+than assume observation capability implies mutation support. A consumer must
+validate the exact grant and current identities, re-observe under the Agent
+mutation lock, hold that lock through commit, durably consume the nonce and
+recover safely from every partial write. Neither this grant record nor its
+issuance acknowledgement can release Agent state. No config/credential/account,
+subscription or runtime job is changed. #545 remains open; no production
+migration, activation, merge or deployment is authorized.
