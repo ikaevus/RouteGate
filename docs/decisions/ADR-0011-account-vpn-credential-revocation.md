@@ -692,3 +692,57 @@ Authenticated transport, response verification, one-time mutation authorization,
 commit-time re-observation and crash-safe audited release remain unimplemented.
 Issuance does not contact an Agent, revoke credentials, terminate sessions, change
 account status, clear a fence or activate the experimental mode in production.
+
+### Authenticated observation transport and retained evidence (twelfth slice)
+
+The existing bearer-authenticated `GET /api/v1/agent/tasks/next` pull transport
+now returns an optional `recoveryChallenge` in place of a runtime task. There is
+no second poller, inbound Agent listener, job producer or mutation dispatch.
+The composition root injects the recovery service into the Agent handler to
+avoid a dependency cycle through config rendering and traffic services. The
+existing HTTP client, Manager URL and deployment transport trust are reused;
+production requires the configured authenticated HTTPS Manager connection.
+No operator preparation/approval endpoint or UI is exposed by this slice.
+
+Polling reads an already approved challenge. Under server, preparation and Agent
+locks it checks prepared state, current token, credential generation, current
+explicit capability, sticky timeout protection and recent authenticated heartbeat.
+Clock checks use `clock_timestamp()` after lock waits. Responses are `no-store`.
+Cancelled, expired or accepted preparations are not delivered. A challenge copied
+before cancellation can still collect read-only data until expiry, but cannot
+have its evidence accepted after cancellation. No runtime authority is conveyed.
+
+The Agent loop calls the existing locked process/config/receipt observer with
+its local Manager/Agent/server binding and configured VLESS adapter. It sends
+`POST /api/v1/agent/recovery-observations/{operation_id}/evidence` only after the
+collector proves the complete expected observation. This is a separate result
+type: it cannot terminalize the old runtime job through ordinary task completion.
+Heartbeat is readiness metadata, not evidence of working VPN traffic.
+
+Acceptance repeats token/generation/readiness and cancellation checks under the
+same reservation locks. The bounded 8 KiB response rejects duplicate keys,
+unknown or aliased field names, trailing input and malformed observations. It
+must bind the exact operation, typed challenge digest (including nonce), task,
+Agent/server, marker/receipt/envelope and every witness field. Observation time
+must be within the challenge interval and no later than Manager wall time.
+Manager and Agent clocks must be synchronized; there is no skew grace.
+
+Migration 000163 retains the first accepted typed response, its digest, challenge
+digest, observed time and database acceptance time as immutable history. The
+database guard rechecks reservation, bindings, time and Agent readiness at insert.
+The reservation lock serializes cancellation and concurrent acceptance. Identical
+typed retries acknowledge the same record; changed observations cannot overwrite
+it. Reordering transport object keys does not change the typed response digest.
+Acknowledgements bind schema, operation, challenge and typed response digest.
+Retries repeat identical bytes; an in-memory Agent cache also preserves those
+bytes across subsequent polls. Restart may re-observe but cannot replace accepted
+evidence. A lost acknowledgement does not clear the fence. Late retries after
+expiry/cancellation fail closed; the stored record remains available for future
+authenticated readback work. Downgrade refuses to discard retained evidence.
+
+This record is authenticated historical observation, not a mutation grant,
+nonce consumption or proof that the runtime stays unchanged afterward. Agent
+durable state, runtime config/process, account credentials and subscription
+tokens are unchanged. No release, re-observation-at-commit, crash-safe unlock or
+end-to-end credential revocation exists yet; #545 remains open. No production
+activation, migration or deployment is authorized by this development slice.

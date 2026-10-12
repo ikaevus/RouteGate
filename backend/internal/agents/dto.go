@@ -1,5 +1,7 @@
 package agents
 
+import "encoding/json"
+
 type ListAgentsResponse struct {
 	Items []Agent `json:"items"`
 }
@@ -37,7 +39,8 @@ type AgentHeartbeatResponse struct {
 }
 
 type AgentNextTaskResponse struct {
-	Task *AgentConfigTask `json:"task,omitempty"`
+	Task              *AgentConfigTask `json:"task,omitempty"`
+	RecoveryChallenge json.RawMessage  `json:"recoveryChallenge,omitempty"`
 }
 
 type CompleteAgentTaskRequest struct {

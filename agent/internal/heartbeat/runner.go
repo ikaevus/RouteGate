@@ -34,6 +34,7 @@ type Runner struct {
 	runtimeCleaner              runtimecleanup.Cleaner
 	runtimeMutationDir          string
 	runtimeMutationManagerReady bool
+	recoveryResponse            *tasks.RuntimeRecoveryChallengeResponse
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -233,10 +234,15 @@ func (r *Runner) reportTrafficUsage(ctx context.Context) error {
 
 func (r *Runner) processNextTask(ctx context.Context) error {
 	r.replayRuntimeResult(ctx)
-	task, err := r.client.NextTask(ctx, r.cfg.AgentToken)
+	work, err := r.client.NextWork(ctx, r.cfg.AgentToken)
 	if err != nil {
 		return err
 	}
+	if work.RecoveryChallenge != nil {
+		return r.processRecoveryObservation(ctx, *work.RecoveryChallenge)
+	}
+	r.recoveryResponse = nil
+	task := work.Task
 	if task == nil {
 		r.logger.Debug("no agent task available")
 		return nil

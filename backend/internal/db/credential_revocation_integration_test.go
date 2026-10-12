@@ -307,6 +307,13 @@ func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
 	ctx, pool, in, _, done := removalPreparationFixture(t)
 	defer done()
 	// Downgrade in reverse order: remove newer dependent guards first.
+	evidenceDown, err := os.ReadFile("../../migrations/000163_recovery_observation_evidence.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(evidenceDown)); err != nil {
+		t.Fatal(err)
+	}
 	approvalDown, err := os.ReadFile("../../migrations/000162_recovery_observation_approvals.down.sql")
 	if err != nil {
 		t.Fatal(err)

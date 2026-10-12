@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000162_recovery_observation_approvals" {
-		t.Fatalf("applied schema version = %q, want 000162_recovery_observation_approvals", version)
+	if version != "000163_recovery_observation_evidence" {
+		t.Fatalf("applied schema version = %q, want 000163_recovery_observation_evidence", version)
 	}
 	assertRawTrafficArchivalPreservesDailyRollup(t, ctx, pool)
 	assertAgentMaintenanceJobContract(t, ctx, pool)
@@ -530,8 +530,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000162_recovery_observation_approvals" {
-		t.Fatalf("applied schema version = %q, want 000162_recovery_observation_approvals", version)
+	if version != "000163_recovery_observation_evidence" {
+		t.Fatalf("applied schema version = %q, want 000163_recovery_observation_evidence", version)
 	}
 }
 

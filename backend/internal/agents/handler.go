@@ -43,6 +43,7 @@ type Handler struct {
 	audit              *audit.Recorder
 	generateAgentToken func() (string, error)
 	now                func() time.Time
+	recovery           RecoveryTransport
 }
 
 func NewHandler(logger *slog.Logger, pool *pgxpool.Pool) *Handler {
@@ -256,12 +257,29 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) NextTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	token, ok := agentBearerToken(r.Header.Get("Authorization"))
 	if !ok {
 		writeAgentUnauthorized(w)
 		return
 	}
 	tokenHash := HashToken(token)
+	if h.recovery != nil {
+		challenge, recoveryErr := h.recovery.NextRecoveryChallenge(r.Context(), tokenHash)
+		if errors.Is(recoveryErr, pgx.ErrNoRows) {
+			writeAgentUnauthorized(w)
+			return
+		}
+		if recoveryErr != nil && !errors.Is(recoveryErr, ErrObservationRejected) {
+			h.logger.Error("poll recovery observation failed")
+			httpx.WriteJSON(w, http.StatusInternalServerError, httpx.Error("database_error", "Failed to fetch next agent task."))
+			return
+		}
+		if recoveryErr == nil && challenge != nil {
+			httpx.WriteJSON(w, http.StatusOK, AgentNextTaskResponse{RecoveryChallenge: challenge})
+			return
+		}
+	}
 
 	var task *AgentConfigTask
 	var err error
