@@ -950,6 +950,11 @@ proofs and replaced/foreign credentials fail closed. Both responses include
 `recorded`, canonical `proofHash` and SHA256 of exact request bytes, with no-store
 and bounded strict payloads; errors/logs expose no raw data.
 
+Missing/conflicting proof is a definitive rejection. Query/connection/time-out
+failures preserve uncertainty and produce a sanitized 500, never a false 409
+claim of absence. Shared admission also preserves infrastructure errors. A
+caller must retain durable state through any indeterminate acknowledgement.
+
 Recorded evidence is an authenticated Agent claim, not remote attestation of
 continued local flock ownership or working VPN traffic. Receipt/readback is
 storage acknowledgement, never unlock permission. Reservation/grant/Agent fence,

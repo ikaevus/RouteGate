@@ -83,7 +83,10 @@ func (s *Service) AcceptRecoveryCommit(ctx context.Context, tokenHash, operation
 	}
 	defer tx.Rollback(ctx)
 	g, hash, now, err := lockRecoveryGrantDelivery(ctx, tx, tokenHash, operation)
-	if err != nil || p.GrantHash != hash || p.Observation != g.Expected || p.ObservedAt.Before(g.IssuedAt) || !p.ObservedAt.Before(g.ExpiresAt) || p.ObservedAt.After(now) {
+	if err != nil {
+		return zero, err
+	}
+	if p.GrantHash != hash || p.Observation != g.Expected || p.ObservedAt.Before(g.IssuedAt) || !p.ObservedAt.Before(g.ExpiresAt) || p.ObservedAt.After(now) {
 		return zero, ErrPreflight
 	}
 	wire, err := json.Marshal(p)
@@ -111,7 +114,10 @@ func (s *Service) AcceptRecoveryCommit(ctx context.Context, tokenHash, operation
 	// Even an identical retry cannot turn expired historical storage into fresh
 	// admission after a slow query or lock wait.
 	var current bool
-	if err = tx.QueryRow(ctx, `SELECT clock_timestamp()<$1 AND clock_timestamp()>=$4 AND EXISTS(SELECT 1 FROM auth_sessions s JOIN runtime_recovery_mutation_grants g ON g.actor_session_id=s.id WHERE g.preparation_id=$2::uuid AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM agents WHERE id=$3::uuid AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds')`, g.ExpiresAt, operation, g.Expected.AgentID, p.ObservedAt).Scan(&current); err != nil || !current {
+	if err = tx.QueryRow(ctx, `SELECT clock_timestamp()<$1 AND clock_timestamp()>=$4 AND EXISTS(SELECT 1 FROM auth_sessions s JOIN runtime_recovery_mutation_grants g ON g.actor_session_id=s.id WHERE g.preparation_id=$2::uuid AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM agents WHERE id=$3::uuid AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds')`, g.ExpiresAt, operation, g.Expected.AgentID, p.ObservedAt).Scan(&current); err != nil {
+		return zero, err
+	}
+	if !current {
 		return zero, ErrPreflight
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -141,7 +147,7 @@ func (s *Service) VerifyRecoveryCommit(ctx context.Context, tokenHash, operation
  JOIN agents a ON a.id=p.agent_id AND a.server_id=p.server_id AND a.credential_generation=p.agent_credential_generation
  WHERE c.preparation_id=$1::uuid AND a.token_hash=$2 AND a.credential_generation>0 AND a.id=$3::uuid AND a.server_id=$4::uuid`, operation, tokenHash, p.Observation.AgentID, p.Observation.ServerID).Scan(&saved, &grantHash, &proofHash, &consumptionHash)
 	if err != nil {
-		return zero, ErrPreflight
+		return zero, recoveryAdmissionError(err)
 	}
 	receipt := recoveryCommitReceipt(p, wire, data)
 	if saved != string(wire) || grantHash != p.GrantHash || consumptionHash != p.ConsumptionHash || proofHash != receipt.ProofHash {

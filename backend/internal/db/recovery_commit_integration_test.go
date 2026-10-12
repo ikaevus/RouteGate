@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -408,5 +409,39 @@ func TestRuntimeMutationFencingRecoveryCommitDowngradeRace(t *testing.T) {
 	r, err := f.svc.VerifyRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
 	if err != nil || !r.Recorded || r.ProofHash != recoveryTestHash(wire) {
 		t.Fatal("raced evidence not retained", err)
+	}
+}
+
+func TestRuntimeMutationFencingRecoveryCommitIndeterminateReadback(t *testing.T) {
+	f := newRecoveryCommitFixture(t, 0)
+	wire, _ := json.Marshal(f.proof)
+	r, err := f.svc.AcceptRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(f.ctx)
+	cancel()
+	expired, expire := context.WithDeadline(f.ctx, time.Now().Add(-time.Second))
+	defer expire()
+	for _, ctx := range []context.Context{cancelled, expired} {
+		out, e := f.svc.VerifyRecoveryCommit(ctx, f.token, f.proof.OperationID, wire)
+		if e == nil || errors.Is(e, revocations.ErrPreflight) || !errors.Is(e, ctx.Err()) || out.Recorded {
+			t.Fatal("indeterminate readback became rejection/receipt", e)
+		}
+		if _, e = f.svc.AcceptRecoveryCommit(ctx, f.token, f.proof.OperationID, wire); e == nil || errors.Is(e, revocations.ErrPreflight) {
+			t.Fatal("cancelled retry became definitive rejection", e)
+		}
+	}
+	closed, err := pgxpool.NewWithConfig(f.ctx, f.pool.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed.Close()
+	if out, e := revocations.NewService(closed).VerifyRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire); e == nil || errors.Is(e, revocations.ErrPreflight) || out.Recorded {
+		t.Fatal("unavailable database became definitive absence", e)
+	}
+	verified, err := f.svc.VerifyRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
+	if err != nil || verified != r {
+		t.Fatal("indeterminate failures lost retained proof", err)
 	}
 }
