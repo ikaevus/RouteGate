@@ -27,34 +27,40 @@ func (m *RuntimeRecoveryCommit) submissionUnchanged() bool {
 // held across the synchronous callback. Escaped and zero guards fail closed.
 // Callers must use this guard rather than calling owner methods in the callback.
 type RuntimeRecoveryCommitGuard struct {
+	state *runtimeRecoveryCommitGuardState
+}
+
+// Copies share the same expiring state; copying the public guard cannot retain
+// an owner reference after WithSubmission has ended.
+type runtimeRecoveryCommitGuardState struct {
 	mu    sync.Mutex
 	owner *RuntimeRecoveryCommit
 }
 
 func (g *RuntimeRecoveryCommitGuard) Proof(ctx context.Context) (RuntimeRecoveryCommitProof, error) {
-	if g == nil {
+	if g == nil || g.state == nil {
 		return RuntimeRecoveryCommitProof{}, ErrRuntimeMutationBlocked
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.owner == nil {
+	g.state.mu.Lock()
+	defer g.state.mu.Unlock()
+	if g.state.owner == nil {
 		return RuntimeRecoveryCommitProof{}, ErrRuntimeMutationBlocked
 	}
-	return g.owner.proofLocked(ctx)
+	return g.state.owner.proofLocked(ctx)
 }
 
 // PinProof durably fixes exact submission bytes before HTTP. Subsequent calls
 // re-observe but return the same original proof. Nothing is overwritten/resumed.
 func (g *RuntimeRecoveryCommitGuard) PinProof(ctx context.Context) (RuntimeRecoveryCommitProof, error) {
-	if g == nil {
+	if g == nil || g.state == nil {
 		return RuntimeRecoveryCommitProof{}, ErrRuntimeMutationBlocked
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.owner == nil {
+	g.state.mu.Lock()
+	defer g.state.mu.Unlock()
+	if g.state.owner == nil {
 		return RuntimeRecoveryCommitProof{}, ErrRuntimeMutationBlocked
 	}
-	m := g.owner
+	m := g.state.owner
 	p, err := m.proofLocked(ctx)
 	if err != nil {
 		return RuntimeRecoveryCommitProof{}, err
@@ -86,8 +92,8 @@ func (m *RuntimeRecoveryCommit) WithSubmission(ctx context.Context, binding Runt
 	if m.binding != binding || m.grantHash != grantHash {
 		return ErrRuntimeMutationBlocked
 	}
-	g := &RuntimeRecoveryCommitGuard{owner: m}
-	defer func() { g.mu.Lock(); g.owner = nil; g.mu.Unlock() }()
+	g := &RuntimeRecoveryCommitGuard{state: &runtimeRecoveryCommitGuardState{owner: m}}
+	defer func() { g.state.mu.Lock(); g.state.owner = nil; g.state.mu.Unlock() }()
 	if _, err := g.Proof(ctx); err != nil {
 		return err
 	}

@@ -27,9 +27,11 @@ func TestRuntimeMutationRecoverySubmissionPinnedAcrossCalls(t *testing.T) {
 	}
 	var first RuntimeRecoveryCommitProof
 	var escaped *RuntimeRecoveryCommitGuard
+	var copied RuntimeRecoveryCommitGuard
 	for i := 0; i < 2; i++ {
 		err = m.WithSubmission(context.Background(), b, markerDigest(wire), func(g *RuntimeRecoveryCommitGuard) error {
 			escaped = g
+			copied = *g
 			p, e := g.PinProof(context.Background())
 			if e != nil {
 				return e
@@ -61,6 +63,16 @@ func TestRuntimeMutationRecoverySubmissionPinnedAcrossCalls(t *testing.T) {
 	}
 	if _, err = escaped.PinProof(context.Background()); err == nil {
 		t.Fatal("escaped guard pinned again")
+	}
+	if _, err = copied.Proof(context.Background()); err == nil {
+		t.Fatal("copied guard retained expired owner")
+	}
+	if _, err = copied.PinProof(context.Background()); err == nil {
+		t.Fatal("copied guard pinned after callback")
+	}
+	var zero RuntimeRecoveryCommitGuard
+	if _, err = zero.Proof(context.Background()); err == nil {
+		t.Fatal("zero guard accepted")
 	}
 	data, err := readRemovalFile(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile), 8192, true)
 	want, _ := json.Marshal(first)
