@@ -365,3 +365,48 @@ func TestRuntimeMutationFencingRecoveryCommitRetryAuthorityLoss(t *testing.T) {
 		t.Fatal("retry/readback changed protected state")
 	}
 }
+
+func TestRuntimeMutationFencingRecoveryCommitDowngradeRace(t *testing.T) {
+	f := newRecoveryCommitFixture(t, 0)
+	wire, _ := json.Marshal(f.proof)
+	down, err := os.ReadFile("../../migrations/000165_recovery_commit_evidence.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := f.pool.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(f.ctx)
+	if _, err = tx.Exec(f.ctx, `INSERT INTO runtime_recovery_commit_evidence(preparation_id,grant_hash,consumption_hash,proof,proof_hash,observed_at) VALUES($1::uuid,$2,$3,$4::text,$5,($4::text::jsonb->>'observedAt')::timestamptz)`, f.proof.OperationID, f.proof.GrantHash, f.proof.ConsumptionHash, string(wire), recoveryTestHash(wire)); err != nil {
+		t.Fatal(err)
+	}
+	bounded, cancel := context.WithTimeout(f.ctx, 3*time.Second)
+	defer cancel()
+	ch := make(chan error, 1)
+	go func() { _, e := f.pool.Exec(bounded, string(down)); ch <- e }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var waiting bool
+		if err = f.pool.QueryRow(f.ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE query LIKE '%recovery_commit_evidence_retained%' AND wait_event_type='Lock' AND pid<>pg_backend_pid())`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("downgrade did not serialize with insertion")
+		}
+		f.exec(t, `SELECT pg_sleep(0.01)`)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-ch; err == nil {
+		t.Fatal("raced downgrade discarded committed proof")
+	}
+	r, err := f.svc.VerifyRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
+	if err != nil || !r.Recorded || r.ProofHash != recoveryTestHash(wire) {
+		t.Fatal("raced evidence not retained", err)
+	}
+}
