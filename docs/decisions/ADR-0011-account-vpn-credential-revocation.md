@@ -872,3 +872,46 @@ Authenticated grant transport/current-generation negotiation, Manager commit
 acceptance, reconciliation/abort and crash-safe fence release remain unfinished.
 No production activation/deployment or real-user revocation is authorized; #545
 remains open. No schema migration is added; Manager schema remains 000164.
+
+### Independently verified read-only grant delivery (fifteenth slice)
+
+`POST /api/v1/agent/identity/verify` checks current bearer credentials without
+renewing heartbeat, claiming tasks or measuring VPN health. A strict bounded
+request binds configured Agent/server IDs and a fresh Agent-generated 256-bit
+nonce. Manager returns current positive credential generation and SHA256 of
+the exact request bytes. Replaced tokens/foreign IDs cannot establish binding.
+Authenticated Manager transport remains the existing trust boundary; the
+request hash binds freshness and is not an independent signature.
+
+`POST /api/v1/agent/recovery-observations/{operation_id}/grant` returns only an
+existing immutable grant. A separate nonce-bound request includes independently
+verified generation. Under existing server/preparation/Agent locks, Manager
+rechecks current token/generation, prepared reservation, exact challenge/evidence
+and current authenticated heartbeat readiness. Distinct current capability
+`runtimeRecoveryGrantReadV1` is required. False/omitted/nil/identity-only heartbeat
+and replacement clear it; sticky fencing remains. This advertises read support,
+never commit/unlock support.
+
+Grant issuer/session come from immutable attribution and undergo current DB
+active-human/admin/configs:apply checks. Authority locks follow node locks and
+cover only that user's/session's rows plus role/permission mapping tables.
+Deadline/session expiry/heartbeat freshness use wall time after waits. Refusal
+does not cancel grant-bearing reservations. Retries/concurrent reads return
+identical authority/hash/nonce/deadline, with individual request hashes. Read
+nonces are not consumed or stored; no Agent/account/token/config/job is mutated.
+
+`Client.FetchRecoveryGrant` verifies identity first; generation is never copied
+from grant JSON into the trusted binding. Both reads reuse configured HTTP
+transport/timeout, refuse redirects, bound response size and reject
+duplicate/unknown/aliased/missing fields, trailing JSON, invalid bindings/hashes
+and expired/future authority. Errors expose no bearer, nonce, response body or
+network URL. `ValidateRuntimeRecoveryGrant` checks wire data without local state.
+No Runner or dispatcher automatically invokes fetch or local consumption.
+
+Delivery is historical authority, not a live-owner commit or permission to
+release a fence. Credentials/issuer/runtime can change after the reply; future
+Manager commit must recheck them while Agent retains its admission owner and
+re-observes. Manager commit acceptance/readback, automatic consumption integration,
+abort/reconciliation and crash-safe fence release remain absent. Existing golden
+wire/hash contracts and schema 000164 are unchanged. #545 remains open; no
+production activation, real-user revocation, merge or deployment is authorized.

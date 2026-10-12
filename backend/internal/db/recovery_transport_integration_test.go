@@ -26,6 +26,9 @@ func TestRuntimeMutationFencingRecoveryTransportCurrentCapability(t *testing.T) 
 			}
 			svc := revocations.NewService(pool)
 			repo := agents.NewRepository(pool)
+			if _, err := repo.UpdateAgentHeartbeat(ctx, agents.UpdateAgentHeartbeatInput{TokenHash: token, Capabilities: agents.Capabilities{"runtimeMutationFencingV1": true, "runtimeRecoveryObservationV1": true, "runtimeRecoveryGrantReadV1": true}}); err != nil {
+				t.Fatal(err)
+			}
 			if mode == "replacement" {
 				if _, err := svc.CancelRuntimeRecovery(ctx, in.PreparationID, u.ID); err != nil {
 					t.Fatal(err)
@@ -34,7 +37,7 @@ func TestRuntimeMutationFencingRecoveryTransportCurrentCapability(t *testing.T) 
 				if err := pool.QueryRow(ctx, `SELECT server_id::text FROM agents WHERE id=$1::uuid`, agentID).Scan(&serverID); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{ServerID: serverID, TokenHash: "replacement-isolated", Capabilities: agents.Capabilities{"runtimeMutationFencingV1": true, "runtimeRecoveryObservationV1": true}}); err != nil {
+				if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{ServerID: serverID, TokenHash: "replacement-isolated", Capabilities: agents.Capabilities{"runtimeMutationFencingV1": true, "runtimeRecoveryObservationV1": true, "runtimeRecoveryGrantReadV1": true}}); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -48,13 +51,14 @@ func TestRuntimeMutationFencingRecoveryTransportCurrentCapability(t *testing.T) 
 					input.TokenHash = ""
 					input.AgentID = agentID
 					input.Capabilities["runtimeRecoveryObservationV1"] = true
+					input.Capabilities["runtimeRecoveryGrantReadV1"] = true
 				}
 				if _, err := repo.UpdateAgentHeartbeat(ctx, input); err != nil {
 					t.Fatal(err)
 				}
 			}
-			var capable, sticky bool
-			if err := pool.QueryRow(ctx, `SELECT capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb,capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb FROM agents WHERE id=$1::uuid`, agentID).Scan(&capable, &sticky); err != nil || capable || !sticky {
+			var capable, grantRead, sticky bool
+			if err := pool.QueryRow(ctx, `SELECT capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb,capabilities @> '{"runtimeRecoveryGrantReadV1":true}'::jsonb,capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb FROM agents WHERE id=$1::uuid`, agentID).Scan(&capable, &grantRead, &sticky); err != nil || capable || grantRead || !sticky {
 				t.Fatal("current support retained or sticky safety lost", err)
 			}
 			if _, err := svc.ApproveRecoveryObservation(ctx, in); err == nil {

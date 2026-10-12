@@ -15,7 +15,7 @@ const runtimeRecoveryConsumptionLimit = 16384
 const runtimeRecoveryGrantPurpose = "runtime_mutation_fence_release_v1"
 
 // Mirrors Manager's versioned grant contract, pinned by the shared golden
-// fixture. No Agent transport/dispatch or fence-release capability exists yet.
+// fixture. No Agent commit dispatch or fence-release capability exists yet.
 type RuntimeRecoveryMutationGrant struct {
 	SchemaVersion             int                        `json:"schemaVersion"`
 	Purpose                   string                     `json:"purpose"`
@@ -31,7 +31,7 @@ type RuntimeRecoveryMutationGrant struct {
 
 // Binding must come from independently authenticated current credentials,
 // never by copying the generation from untrusted grant data. Integration with
-// credential-generation negotiation is still required before activation.
+// credential-generation negotiation must precede any trusted caller.
 type RuntimeRecoveryGrantBinding struct {
 	RuntimeResultBinding
 	AgentCredentialGeneration int64 `json:"agentCredentialGeneration"`
@@ -105,6 +105,20 @@ func decodeRuntimeRecoveryMutationGrant(data []byte) (RuntimeRecoveryMutationGra
 
 func (g RuntimeRecoveryMutationGrant) validBinding(b RuntimeRecoveryGrantBinding, now time.Time) bool {
 	return b.ManagerURL != "" && len(b.ManagerURL) <= 2048 && b.AgentCredentialGeneration > 0 && g.AgentCredentialGeneration == b.AgentCredentialGeneration && g.Expected.AgentID == b.AgentID && g.Expected.ServerID == b.ServerID && !now.Before(g.IssuedAt) && now.Before(g.ExpiresAt)
+}
+
+// ValidateRuntimeRecoveryGrant validates transport data without touching local
+// state. The binding must be independently authenticated before this call.
+func ValidateRuntimeRecoveryGrant(data []byte, binding RuntimeRecoveryGrantBinding, now time.Time) (RuntimeRecoveryMutationGrant, string, error) {
+	g, err := decodeRuntimeRecoveryMutationGrant(data)
+	if err != nil || !g.validBinding(binding, now.UTC()) {
+		return RuntimeRecoveryMutationGrant{}, "", ErrRuntimeMutationBlocked
+	}
+	wire, err := json.Marshal(g)
+	if err != nil {
+		return RuntimeRecoveryMutationGrant{}, "", ErrRuntimeMutationBlocked
+	}
+	return g, markerDigest(wire), nil
 }
 
 // BeginRuntimeRecoveryCommit is dormant: it does not authenticate/deliver a
