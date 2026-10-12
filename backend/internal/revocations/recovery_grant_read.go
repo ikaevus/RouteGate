@@ -6,7 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type RecoveryGrantReadInput struct {
@@ -63,38 +66,65 @@ func (s *Service) ReadRecoveryGrant(ctx context.Context, tokenHash, operation st
 		return zero, err
 	}
 	defer tx.Rollback(ctx)
-	c, challengeHash, _, err := lockRecoveryTransport(ctx, tx, tokenHash, operation)
-	if err != nil || c.Expected.AgentID != in.AgentID || c.Expected.ServerID != in.ServerID {
-		return zero, ErrPreflight
+	g, hash, _, err := lockRecoveryGrantDelivery(ctx, tx, tokenHash, operation)
+	if err != nil {
+		return zero, err
 	}
-	var saved, hash, actor, session, evidenceHash string
-	var generation int64
-	err = tx.QueryRow(ctx, `SELECT g.grant_payload,g.grant_hash,g.actor_user_id::text,g.actor_session_id::text,p.agent_credential_generation,e.response_hash
- FROM runtime_recovery_mutation_grants g JOIN runtime_recovery_preparations p ON p.id=g.preparation_id
- JOIN runtime_recovery_observation_evidence e ON e.preparation_id=p.id WHERE g.preparation_id=$1::uuid`, operation).Scan(&saved, &hash, &actor, &session, &generation, &evidenceHash)
-	if err != nil || generation != in.AgentCredentialGeneration {
-		return zero, ErrPreflight
-	}
-	var supported bool
-	if err = tx.QueryRow(ctx, `SELECT capabilities @> '{"runtimeRecoveryGrantReadV1":true}'::jsonb FROM agents WHERE id=$1::uuid AND credential_generation=$2`, in.AgentID, generation).Scan(&supported); err != nil || !supported {
-		return zero, ErrPreflight
-	}
-	if err = lockRecoveryAuthoritySubject(ctx, tx, actor, session); err != nil {
-		return zero, ErrPreflight
-	}
-	g, err := decodeRecoveryMutationGrant([]byte(saved))
-	sum := sha256.Sum256([]byte(saved))
-	if err != nil || hash != hex.EncodeToString(sum[:]) || g.OperationID != operation || g.AgentCredentialGeneration != generation || g.Expected != c.Expected || g.ChallengeHash != challengeHash || g.EvidenceHash != evidenceHash {
-		return zero, ErrPreflight
-	}
-	var now time.Time
-	var current bool
-	if err = tx.QueryRow(ctx, `SELECT clock_timestamp(),EXISTS(SELECT 1 FROM auth_sessions WHERE id=$1::uuid AND revoked_at IS NULL AND expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM agents WHERE id=$2::uuid AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds')`, session, in.AgentID).Scan(&now, &current); err != nil || !current || now.Before(g.IssuedAt) || !now.Before(g.ExpiresAt) {
+	if g.Expected.AgentID != in.AgentID || g.Expected.ServerID != in.ServerID || g.AgentCredentialGeneration != in.AgentCredentialGeneration {
 		return zero, ErrPreflight
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return zero, err
 	}
 	digest := sha256.Sum256(data)
-	return RecoveryGrantRead{1, operation, in.AgentID, in.ServerID, generation, hex.EncodeToString(digest[:]), hash, g}, nil
+	return RecoveryGrantRead{1, operation, in.AgentID, in.ServerID, g.AgentCredentialGeneration, hex.EncodeToString(digest[:]), hash, g}, nil
+}
+
+func recoveryAdmissionError(err error) error {
+	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, ErrPreflight) {
+		return ErrPreflight
+	}
+	return err
+}
+
+// Shared admission for authority delivery and fresh commit-proof recording.
+// Callers keep these locks through their final ledger operation/commit.
+func lockRecoveryGrantDelivery(ctx context.Context, tx pgx.Tx, tokenHash, operation string) (RecoveryMutationGrant, string, time.Time, error) {
+	var zero RecoveryMutationGrant
+	c, challengeHash, _, err := lockRecoveryTransport(ctx, tx, tokenHash, operation)
+	if err != nil {
+		return zero, "", time.Time{}, recoveryAdmissionError(err)
+	}
+	var saved, hash, actor, session, evidenceHash string
+	var generation int64
+	err = tx.QueryRow(ctx, `SELECT g.grant_payload,g.grant_hash,g.actor_user_id::text,g.actor_session_id::text,p.agent_credential_generation,e.response_hash
+ FROM runtime_recovery_mutation_grants g JOIN runtime_recovery_preparations p ON p.id=g.preparation_id
+ JOIN runtime_recovery_observation_evidence e ON e.preparation_id=p.id WHERE g.preparation_id=$1::uuid`, operation).Scan(&saved, &hash, &actor, &session, &generation, &evidenceHash)
+	if err != nil {
+		return zero, "", time.Time{}, recoveryAdmissionError(err)
+	}
+	var supported bool
+	if err = tx.QueryRow(ctx, `SELECT capabilities @> '{"runtimeRecoveryGrantReadV1":true}'::jsonb FROM agents WHERE id=$1::uuid AND credential_generation=$2`, c.Expected.AgentID, generation).Scan(&supported); err != nil {
+		return zero, "", time.Time{}, recoveryAdmissionError(err)
+	}
+	if !supported {
+		return zero, "", time.Time{}, ErrPreflight
+	}
+	if err = lockRecoveryAuthoritySubject(ctx, tx, actor, session); err != nil {
+		return zero, "", time.Time{}, recoveryAdmissionError(err)
+	}
+	g, err := decodeRecoveryMutationGrant([]byte(saved))
+	sum := sha256.Sum256([]byte(saved))
+	if err != nil || hash != hex.EncodeToString(sum[:]) || g.OperationID != operation || g.AgentCredentialGeneration != generation || g.Expected != c.Expected || g.ChallengeHash != challengeHash || g.EvidenceHash != evidenceHash {
+		return zero, "", time.Time{}, ErrPreflight
+	}
+	var now time.Time
+	var current bool
+	if err = tx.QueryRow(ctx, `SELECT clock_timestamp(),EXISTS(SELECT 1 FROM auth_sessions WHERE id=$1::uuid AND revoked_at IS NULL AND expires_at>clock_timestamp()) AND EXISTS(SELECT 1 FROM agents WHERE id=$2::uuid AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds')`, session, c.Expected.AgentID).Scan(&now, &current); err != nil {
+		return zero, "", time.Time{}, recoveryAdmissionError(err)
+	}
+	if !current || now.Before(g.IssuedAt) || !now.Before(g.ExpiresAt) {
+		return zero, "", time.Time{}, ErrPreflight
+	}
+	return g, hash, now, nil
 }
