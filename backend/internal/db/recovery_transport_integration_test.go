@@ -229,7 +229,7 @@ func TestRuntimeMutationFencingRecoveryTransport(t *testing.T) {
 }
 
 func TestRuntimeMutationFencingRecoveryTransportRejects(t *testing.T) {
-	for _, mode := range []string{"token", "generation", "capability", "sticky_only", "stale", "heartbeat_generation", "cancelled", "operation", "hash", "nonce", "task", "agent", "server", "marker", "receipt", "envelope", "runtime", "generation_witness", "previous", "port", "future", "before_issued", "expired", "duplicate", "unknown", "trailing", "oversize"} {
+	for _, mode := range []string{"token", "generation", "capability", "transport_capability", "sticky_only", "stale", "heartbeat_generation", "cancelled", "operation", "hash", "nonce", "task", "agent", "server", "marker", "receipt", "envelope", "runtime", "generation_witness", "previous", "port", "future", "before_issued", "expired", "duplicate", "unknown", "trailing", "oversize"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, pool, in, u, done := observationApprovalFixture(t)
 			defer done()
@@ -268,6 +268,11 @@ func TestRuntimeMutationFencingRecoveryTransportRejects(t *testing.T) {
 				return
 			case "capability":
 				exec(`UPDATE agents SET capabilities='{}'`)
+			case "transport_capability":
+				exec(`UPDATE agents SET capabilities=capabilities-'runtimeRecoveryObservationV1'`)
+				if challenge, err := svc.NextRecoveryChallenge(ctx, token); err == nil || challenge != nil {
+					t.Fatal("unsupported challenge delivered", err)
+				}
 			case "sticky_only":
 				exec(`UPDATE agents SET current_runtime_mutation_fencing=false`)
 			case "stale":

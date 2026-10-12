@@ -184,7 +184,7 @@ func (s *Service) AcceptRecoveryEvidence(ctx context.Context, tokenHash, operati
 		// PostgreSQL's text timestamp parser rounds it. Using the same parser
 		// for column and trigger avoids rejecting valid nanosecond responses.
 		_, err = tx.Exec(ctx, `INSERT INTO runtime_recovery_observation_evidence(preparation_id,challenge_hash,response,response_hash,observed_at)
- VALUES($1::uuid,$2,$3,$4,($3::jsonb->>'observedAt')::timestamptz)`, operation, hash, string(canonical), responseHash)
+ VALUES($1::uuid,$2,$3::text,$4,($3::text::jsonb->>'observedAt')::timestamptz)`, operation, hash, string(canonical), responseHash)
 		if err != nil {
 			return ack, err
 		}
