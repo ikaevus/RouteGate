@@ -4,12 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ikaevus/routegate/backend/internal/revocations"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestRuntimeMutationFencingRecoveryTransportWaitInvalidation(t *testing.T) {
@@ -198,9 +200,19 @@ func TestRuntimeMutationFencingRecoveryTransportRejects(t *testing.T) {
 			case "token":
 				token = "foreign-token"
 			case "generation":
-				// A new generation with its own authenticated heartbeat is a
-				// legal row, but cannot match the old preparation generation.
-				exec(`UPDATE agents SET credential_generation=credential_generation+1,last_authenticated_heartbeat_generation=credential_generation+1`)
+				// Reservation guards already prohibit generation replacement;
+				// exercise that rejection rather than bypassing the guard to
+				// manufacture an unreachable row for the transport verifier.
+				_, err = pool.Exec(ctx, `UPDATE agents SET credential_generation=credential_generation+1,last_authenticated_heartbeat_generation=credential_generation+1`)
+				var pgErr *pgconn.PgError
+				if !errors.As(err, &pgErr) || pgErr.Code != "P0142" {
+					t.Fatal("generation replacement was not fenced", err)
+				}
+				var unchanged bool
+				if err = pool.QueryRow(ctx, `SELECT a.credential_generation=p.agent_credential_generation FROM agents a JOIN runtime_recovery_preparations p ON p.agent_id=a.id WHERE p.id=$1::uuid`, in.PreparationID).Scan(&unchanged); err != nil || !unchanged {
+					t.Fatal("generation changed", err)
+				}
+				return
 			case "capability":
 				exec(`UPDATE agents SET capabilities='{}'`)
 			case "sticky_only":
