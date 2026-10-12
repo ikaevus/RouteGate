@@ -220,7 +220,7 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		if e != nil || p != p2 {
 			return ErrRuntimeMutationBlocked
 		}
-		return nil
+		return g.RecordReceipt(ctx, receiptForRecoveryProof(p))
 	}); err != nil {
 		t.Fatal("real process submission pin failed", err)
 	}
@@ -242,6 +242,9 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
 		t.Fatal("real process drift discarded submission")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
+		t.Fatal("real process drift discarded acknowledgement")
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, "mutation-inflight.json")) {
 		t.Fatal("observation cleared fence")

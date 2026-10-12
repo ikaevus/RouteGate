@@ -90,7 +90,7 @@ func TestRuntimeMutationRecoveryCommitTransport(t *testing.T) {
 					http.Error(w, "denied", 401)
 					return
 				}
-				rp := RecoveryCommitReceipt{1, true, frozen.OperationID, frozen.GrantHash, frozen.ConsumptionHash, recoveryReadHash(data), recoveryReadHash(data)}
+				rp := RecoveryCommitReceipt{SchemaVersion: 1, Recorded: true, OperationID: frozen.OperationID, GrantHash: frozen.GrantHash, ConsumptionHash: frozen.ConsumptionHash, ProofHash: recoveryReadHash(data), RequestHash: recoveryReadHash(data)}
 				switch mode {
 				case "wrong_hash":
 					rp.ProofHash = strings.Repeat("a", 64)
