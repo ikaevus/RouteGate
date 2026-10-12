@@ -211,6 +211,19 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		lock.Close()
 		t.Fatal("real commit observation dropped lock")
 	}
+	if err = commit.WithSubmission(ctx, RuntimeRecoveryGrantBinding{RuntimeResultBinding: binding, AgentCredentialGeneration: 7}, markerDigest(grantData), func(g *RuntimeRecoveryCommitGuard) error {
+		p, e := g.PinProof(ctx)
+		if e != nil {
+			return e
+		}
+		p2, e := g.PinProof(ctx)
+		if e != nil || p != p2 {
+			return ErrRuntimeMutationBlocked
+		}
+		return nil
+	}); err != nil {
+		t.Fatal("real process submission pin failed", err)
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -226,6 +239,9 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile)) {
 		t.Fatal("real process drift discarded consumption")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
+		t.Fatal("real process drift discarded submission")
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, "mutation-inflight.json")) {
 		t.Fatal("observation cleared fence")

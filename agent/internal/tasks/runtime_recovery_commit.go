@@ -72,6 +72,8 @@ type RuntimeRecoveryCommit struct {
 	now             func() time.Time
 	lastChecked     time.Time
 	poisoned        bool
+	submission      []byte
+	frozen          RuntimeRecoveryCommitProof
 }
 
 func decodeRuntimeRecoveryMutationGrant(data []byte) (RuntimeRecoveryMutationGrant, error) {
@@ -141,7 +143,7 @@ func beginRuntimeRecoveryCommit(ctx context.Context, dir string, binding Runtime
 	}
 	m := &RuntimeRecoveryCommit{lock: lock, dir: dir, activePath: activePath, binding: binding, grant: g, adapter: adapter, now: now, lastChecked: started}
 	fail := func() (*RuntimeRecoveryCommit, error) { m.Close(); return nil, ErrRuntimeMutationBlocked }
-	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryConsumptionFile)) {
+	if !runtimeRecoveryStateAbsent(dir) {
 		return fail()
 	}
 	bounded, cancel := context.WithDeadline(ctx, g.ExpiresAt)
@@ -175,11 +177,15 @@ func beginRuntimeRecoveryCommit(ctx context.Context, dir string, binding Runtime
 func (m *RuntimeRecoveryCommit) Proof(ctx context.Context) (RuntimeRecoveryCommitProof, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.proofLocked(ctx)
+}
+
+func (m *RuntimeRecoveryCommit) proofLocked(ctx context.Context) (RuntimeRecoveryCommitProof, error) {
 	deny := func() (RuntimeRecoveryCommitProof, error) {
 		m.poisoned = true
 		return RuntimeRecoveryCommitProof{}, ErrRuntimeMutationBlocked
 	}
-	if m.lock == nil || m.poisoned || m.now == nil || ctx.Err() != nil {
+	if m.lock == nil || m.poisoned || m.now == nil || ctx.Err() != nil || !m.submissionUnchanged() {
 		return deny()
 	}
 	started := m.now().UTC()
@@ -196,7 +202,7 @@ func (m *RuntimeRecoveryCommit) Proof(ctx context.Context) (RuntimeRecoveryCommi
 	o, err := observeRuntimeRecoveryLocked(bounded, m.dir, m.binding.RuntimeResultBinding, m.grant.Expected.TaskID, m.activePath, m.adapter, m.lock)
 	after, fileErr := readRemovalFile(path, runtimeRecoveryConsumptionLimit, true)
 	finished := m.now().UTC()
-	if err != nil || fileErr != nil || bounded.Err() != nil || !bytes.Equal(after, m.record) || finished.Before(started) || !m.grant.validBinding(m.binding, finished) || o != m.grant.Expected {
+	if err != nil || fileErr != nil || bounded.Err() != nil || !bytes.Equal(after, m.record) || finished.Before(started) || !m.grant.validBinding(m.binding, finished) || o != m.grant.Expected || !m.submissionUnchanged() {
 		return deny()
 	}
 	m.lastChecked = finished

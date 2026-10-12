@@ -964,3 +964,45 @@ and historical readback, and re-observe before any separately designed crash-saf
 release. Automatic consumption/submission integration, abort/reconciliation and
 fence release remain unfinished. #545 remains open. Schema 000165 applies only
 to isolated development/tests; no production migration, merge or deployment.
+
+### Dormant Agent commit submission with a live owner (seventeenth slice)
+
+`Client.SubmitRecoveryCommit` accepts only an existing concrete
+`RuntimeRecoveryCommit` and a previously independently verified grant binding.
+Manager URL, exact grant hash, identity/generation and lifetime must match.
+It adds no Runner dispatch, operator UI or advertised commit/unlock capability.
+
+`WithSubmission` holds the owner's mutex and admission flock through synchronous
+HTTP, retries and readback. Concurrent `Close` waits. A short-lived guard exposes
+only measured proof and durable pinning; escaped/zero guards fail closed. Fresh
+observation checks original consumption and current config/process/listener;
+drift, cancellation, expiry, backwards time or changed submission bytes poison
+the owner. Callback errors are sanitized and never erase state.
+
+Before first HTTP, `PinProof` atomically writes/fsyncs private
+`recovery-submission.json` with exact typed proof bytes. Consumption remains
+unchanged, so its digest stays stable. The same live owner returns identical
+pinned proof across retries and separate submit calls while independently
+re-observing current state. No rewrite, nonce renewal or automatic process resume
+exists. Publication errors retain any durable files and prevent HTTP.
+Malformed/standalone submission state also blocks ordinary mutation admission,
+completion, result save/replay and scoped removal, including after flag removal.
+
+The client reuses bounded strict recovery transport, rejecting redirects,
+duplicate/unknown/aliased/missing fields and trailing/oversized replies. It sends
+one frozen body to commit and exact historical readback; changing observation
+time on retries would conflict with immutable Manager evidence and is forbidden.
+Every exchange is bracketed by fresh local proof checks, and a final check occurs
+before the owner guard returns. All receipt hashes/bindings must match exactly.
+Retries are bounded by the original grant deadline and existing attempt/backoff
+limits. HTTP/network/parse uncertainty remains unconfirmed, never safe absence.
+Readback can confirm storage after an uncertain or rejected POST but cannot heal
+local drift or turn a historical receipt into release permission.
+
+Neither success nor failure closes the owner, applies config, restarts runtime,
+deletes consumption/submission/receipt/fence or consumes a second grant. Exit and
+SIGKILL drop kernel flock but retain durable submission and consumption; a new
+owner cannot automatically resume. Manager acknowledgement is not persisted as
+an Agent release receipt here. Abort/reconciliation and crash-safe fence release,
+operator workflow and end-to-end account credential revocation remain unfinished.
+#545 stays open. Schema remains 000165; no production activation/merge/deploy.
