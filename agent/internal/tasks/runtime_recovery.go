@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 )
 
@@ -115,6 +116,21 @@ func ObserveRuntimeRecovery(ctx context.Context, dir string, binding RuntimeResu
 		return deny()
 	}
 	defer lock.Close()
+	return observeRuntimeRecoveryLocked(ctx, dir, binding, taskID, activePath, adapter, lock)
+}
+
+// Internal collector for an already-held admission lock. Recovery commit
+// leases must not unlock/relock between re-observation and durable consumption.
+func observeRuntimeRecoveryLocked(ctx context.Context, dir string, binding RuntimeResultBinding, taskID, activePath string, adapter VPNCoreAdapter, lock *os.File) (RuntimeRecoveryObservation, error) {
+	deny := func() (RuntimeRecoveryObservation, error) {
+		return RuntimeRecoveryObservation{}, ErrRuntimeMutationBlocked
+	}
+	if lock == nil || !canonicalTaskIDPattern.MatchString(taskID) {
+		return deny()
+	}
+	if _, err := lock.Stat(); err != nil {
+		return deny()
+	}
 	markerPath := filepath.Join(dir, "mutation-inflight.json")
 	receiptPath := filepath.Join(dir, runtimeResultFile)
 	marker, err := readRemovalFile(markerPath, 16384, true)
