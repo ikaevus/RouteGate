@@ -17,8 +17,50 @@ import (
 	"time"
 
 	"github.com/ikaevus/routegate/agent/internal/config"
+	"github.com/ikaevus/routegate/agent/internal/systeminfo"
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 )
+
+func TestRuntimeMutationRecoveryTransportCadenceAndCapability(t *testing.T) {
+	for _, mode := range []string{"ordinary", "enabled", "sticky", "short", "unobservable"} {
+		t.Run(mode, func(t *testing.T) {
+			r := NewRunner(config.Config{HeartbeatIntervalSeconds: 600, ServiceControlEnabled: true}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+			r.runtimeMutationDir = filepath.Join(t.TempDir(), "mutations")
+			switch mode {
+			case "enabled", "short", "unobservable":
+				r.cfg.ExperimentalRuntimeMutationFencing = true
+			case "sticky":
+				lease, err := tasks.BeginRuntimeMutation(r.runtimeMutationDir, fencedTaskID, tasks.TaskKindVPNCoreService)
+				if err != nil {
+					t.Fatal(err)
+				}
+				lease.Close()
+			}
+			if mode == "short" {
+				r.cfg.HeartbeatIntervalSeconds = 5
+			}
+			if mode == "unobservable" {
+				r.cfg.ServiceControlEnabled = false
+			}
+			want := 30 * time.Second
+			if mode == "ordinary" {
+				want = 600 * time.Second
+			}
+			if mode == "short" {
+				want = 5 * time.Second
+			}
+			if got := r.workPollInterval(); got != want {
+				t.Fatal("challenge cadence outlives its deadline", got, want)
+			}
+			var info systeminfo.Info
+			r.prepareRuntimeMutationHeartbeat(&info)
+			capable := info.Capabilities["runtimeRecoveryObservationV1"] == true
+			if capable != (mode != "ordinary" && mode != "unobservable") {
+				t.Fatal("wrong read-only transport advertisement")
+			}
+		})
+	}
+}
 
 func TestRuntimeMutationRecoveryTransportRetainsFence(t *testing.T) {
 	for _, mode := range []string{"accepted", "lost_ack", "wrong_ack", "unready", "wrong_identity", "expired", "ambiguous"} {

@@ -149,5 +149,10 @@ func (r *Runner) prepareRuntimeMutationHeartbeat(info *systeminfo.Info) {
 		}
 		// This requests timeout preservation only, NOT credential-removal support.
 		info.Capabilities["runtimeMutationFencingV1"] = true
+		// Distinct, current support for this read-only transport. Older fencing
+		// Agents must not receive challenges they cannot answer.
+		if r.cfg.ServiceControlEnabled && tasks.SupportsRuntimeRecovery(r.vpnCoreAdapter) {
+			info.Capabilities["runtimeRecoveryObservationV1"] = true
+		}
 	}
 }

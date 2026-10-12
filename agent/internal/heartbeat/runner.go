@@ -124,13 +124,14 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 	if err := r.reportClientPresence(ctx); err != nil {
 		r.logger.Warn("report client presence failed", "error", err)
 	}
-	ticker := time.NewTicker(r.cfg.HeartbeatInterval())
+	ticker := time.NewTicker(r.workPollInterval())
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			ticker.Reset(r.workPollInterval())
 			if err := r.sendHeartbeat(ctx); err != nil {
 				r.logger.Warn("heartbeat failed", "error", err)
 			}

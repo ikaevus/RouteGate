@@ -10,6 +10,23 @@ import (
 	"github.com/ikaevus/routegate/agent/internal/tasks"
 )
 
+// Reuse the heartbeat/poll loop and keep both authenticated readiness and
+// challenge delivery fresh even when the configured interval is very large.
+func (r *Runner) workPollInterval() time.Duration {
+	interval := r.cfg.HeartbeatInterval()
+	dir := r.runtimeMutationDir
+	if dir == "" {
+		dir = tasks.DefaultRuntimeMutationDir
+	}
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	if (r.cfg.ExperimentalRuntimeMutationFencing || tasks.RuntimeMutationStatePresent(dir)) && interval > 30*time.Second {
+		return 30 * time.Second
+	}
+	return interval
+}
+
 func (r *Runner) processRecoveryObservation(ctx context.Context, c tasks.RuntimeRecoveryChallenge) error {
 	if !r.runtimeMutationManagerReady || !r.cfg.ServiceControlEnabled || !tasks.SupportsRuntimeRecovery(r.vpnCoreAdapter) || c.Expected.AgentID != r.cfg.AgentID || c.Expected.ServerID != r.cfg.ServerID || time.Now().Before(c.IssuedAt) || !time.Now().Before(c.ExpiresAt) {
 		return tasks.ErrRuntimeMutationBlocked

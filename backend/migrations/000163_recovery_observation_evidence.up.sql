@@ -29,6 +29,7 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM agents WHERE id=prep.agent_id AND server_id=prep.server_id
  AND credential_generation=prep.agent_credential_generation AND status='online'
  AND current_runtime_mutation_fencing AND capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb
+ AND capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb
  AND last_authenticated_heartbeat_generation=credential_generation
  AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds') THEN
  RAISE EXCEPTION USING ERRCODE='P0143',MESSAGE='recovery_agent_not_ready'; END IF;

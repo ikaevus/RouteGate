@@ -707,6 +707,16 @@ No operator preparation/approval endpoint or UI is exposed by this slice.
 Polling reads an already approved challenge. Under server, preparation and Agent
 locks it checks prepared state, current token, credential generation, current
 explicit capability, sticky timeout protection and recent authenticated heartbeat.
+Approval, delivery and acceptance also require distinct current
+`runtimeRecoveryObservationV1` support. It is advertised only by the new Agent
+with fencing mode/state and a usable local VLESS observation adapter. Manager
+retains it only from an explicit true authenticated heartbeat; false, omission,
+identity-only heartbeat and replacement clear it. Sticky fencing never implies
+transport support. Old Agents cannot consume a challenge they cannot answer.
+In fencing mode or with retained fence state, the existing heartbeat/poll loop
+caps its interval at 30 seconds, preserving shorter configured intervals and
+ordinary unfenced cadence. There is no extra polling loop. Long configured
+intervals therefore cannot outlive the challenge or authenticated readiness.
 Clock checks use `clock_timestamp()` after lock waits. Responses are `no-store`.
 Cancelled, expired or accepted preparations are not delivered. A challenge copied
 before cancellation can still collect read-only data until expiry, but cannot

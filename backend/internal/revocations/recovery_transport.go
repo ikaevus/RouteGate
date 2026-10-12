@@ -87,6 +87,7 @@ func lockRecoveryTransport(ctx context.Context, tx pgx.Tx, tokenHash, operation 
 	var ready bool
 	err = tx.QueryRow(ctx, `SELECT COALESCE(status='online' AND credential_generation=$4 AND current_runtime_mutation_fencing
  AND capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb
+ AND capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb
  AND last_authenticated_heartbeat_generation=credential_generation
  AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds',false)
  FROM agents WHERE id=$1::uuid AND server_id=$2::uuid AND token_hash=$3 FOR UPDATE`, agent, node, tokenHash, generation).Scan(&ready)
@@ -178,8 +179,12 @@ func (s *Service) AcceptRecoveryEvidence(ctx context.Context, tokenHash, operati
 			return ack, ErrPreflight
 		}
 	} else if err == pgx.ErrNoRows {
+		// Derive the indexed timestamp from the retained JSON in PostgreSQL.
+		// pgx binary time encoding truncates sub-microsecond precision, whereas
+		// PostgreSQL's text timestamp parser rounds it. Using the same parser
+		// for column and trigger avoids rejecting valid nanosecond responses.
 		_, err = tx.Exec(ctx, `INSERT INTO runtime_recovery_observation_evidence(preparation_id,challenge_hash,response,response_hash,observed_at)
- VALUES($1::uuid,$2,$3,$4,$5)`, operation, hash, string(canonical), responseHash, r.ObservedAt)
+ VALUES($1::uuid,$2,$3,$4,($3::jsonb->>'observedAt')::timestamptz)`, operation, hash, string(canonical), responseHash)
 		if err != nil {
 			return ack, err
 		}

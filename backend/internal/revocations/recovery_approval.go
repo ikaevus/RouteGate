@@ -71,6 +71,7 @@ func (s *Service) approveRecoveryObservation(ctx context.Context, in RecoveryObs
 	var ready bool
 	err = tx.QueryRow(ctx, `SELECT COALESCE(status='online' AND credential_generation=$3 AND current_runtime_mutation_fencing
  AND capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb
+ AND capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb
  AND last_authenticated_heartbeat_generation=credential_generation
  AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds',false)
  FROM agents WHERE id=$1::uuid AND server_id=$2::uuid FOR UPDATE`, agent, node, generation).Scan(&ready)

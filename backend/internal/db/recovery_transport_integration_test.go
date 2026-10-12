@@ -10,9 +10,59 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/revocations"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestRuntimeMutationFencingRecoveryTransportCurrentCapability(t *testing.T) {
+	for _, mode := range []string{"old_agent", "false", "omitted", "nil", "identity_only", "replacement"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, pool, in, u, done := observationApprovalFixture(t)
+			defer done()
+			var token, agentID string
+			if err := pool.QueryRow(ctx, `SELECT a.token_hash,a.id::text FROM agents a JOIN runtime_recovery_preparations p ON p.agent_id=a.id WHERE p.id=$1::uuid`, in.PreparationID).Scan(&token, &agentID); err != nil {
+				t.Fatal(err)
+			}
+			svc := revocations.NewService(pool)
+			repo := agents.NewRepository(pool)
+			if mode == "replacement" {
+				if _, err := svc.CancelRuntimeRecovery(ctx, in.PreparationID, u.ID); err != nil {
+					t.Fatal(err)
+				}
+				var serverID string
+				if err := pool.QueryRow(ctx, `SELECT server_id::text FROM agents WHERE id=$1::uuid`, agentID).Scan(&serverID); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := repo.CreateOrReplaceAgentForServer(ctx, agents.CreateOrReplaceAgentInput{ServerID: serverID, TokenHash: "replacement-isolated", Capabilities: agents.Capabilities{"runtimeMutationFencingV1": true, "runtimeRecoveryObservationV1": true}}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				input := agents.UpdateAgentHeartbeatInput{TokenHash: token, Capabilities: agents.Capabilities{"runtimeMutationFencingV1": true}}
+				switch mode {
+				case "false":
+					input.Capabilities["runtimeRecoveryObservationV1"] = false
+				case "nil":
+					input.Capabilities = nil
+				case "identity_only":
+					input.TokenHash = ""
+					input.AgentID = agentID
+					input.Capabilities["runtimeRecoveryObservationV1"] = true
+				}
+				if _, err := repo.UpdateAgentHeartbeat(ctx, input); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var capable, sticky bool
+			if err := pool.QueryRow(ctx, `SELECT capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb,capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb FROM agents WHERE id=$1::uuid`, agentID).Scan(&capable, &sticky); err != nil || capable || !sticky {
+				t.Fatal("current support retained or sticky safety lost", err)
+			}
+			if _, err := svc.ApproveRecoveryObservation(ctx, in); err == nil {
+				t.Fatal("unsupported transport approved")
+			}
+		})
+	}
+}
 
 func TestRuntimeMutationFencingRecoveryTransportWaitInvalidation(t *testing.T) {
 	for _, mode := range []string{"cancelled", "expired"} {
@@ -116,7 +166,10 @@ func TestRuntimeMutationFencingRecoveryTransport(t *testing.T) {
 	if err != nil || c == nil || *c != approval.Challenge {
 		t.Fatal("delivery changed challenge", err)
 	}
-	r := revocations.RecoveryChallengeResponse{SchemaVersion: 1, OperationID: in.PreparationID, ChallengeHash: approval.ChallengeHash, ObservedAt: time.Now().UTC(), Observation: c.Expected}
+	// Force text rounding to differ from pgx binary timestamp truncation.
+	// The exact nanoseconds remain in immutable response/hash; the column is
+	// derived with PostgreSQL's same parser used by the binding trigger.
+	r := revocations.RecoveryChallengeResponse{SchemaVersion: 1, OperationID: in.PreparationID, ChallengeHash: approval.ChallengeHash, ObservedAt: time.Now().UTC().Truncate(time.Microsecond).Add(999 * time.Nanosecond), Observation: c.Expected}
 	data, _ := json.Marshal(r)
 	type result struct {
 		ack revocations.RecoveryEvidenceAcknowledgement
