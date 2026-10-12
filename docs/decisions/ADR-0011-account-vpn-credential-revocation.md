@@ -915,3 +915,47 @@ re-observes. Manager commit acceptance/readback, automatic consumption integrati
 abort/reconciliation and crash-safe fence release remain absent. Existing golden
 wire/hash contracts and schema 000164 are unchanged. #545 remains open; no
 production activation, real-user revocation, merge or deployment is authorized.
+
+### Manager commit-proof recording and historical readback (sixteenth slice)
+
+`POST /api/v1/agent/recovery-observations/{operation_id}/commit` records the
+Agent's typed live-owner proof once in immutable `runtime_recovery_commit_evidence`
+(migration 000165). The shared `recovery-commit-v1.json` golden vector pins field
+order and hash against Agent `RuntimeRecoveryCommitProof`. No Agent submission
+client, Runner dispatch or advertised commit/unlock capability is added here.
+
+Admission reuses grant delivery's server/preparation/Agent and issuer authority
+locks, current bearer/generation, exact immutable challenge/evidence, prepared
+reservation and current fencing/observation/read support. Heartbeat is readiness
+only. Grant hash pins the nonce and complete grant; observation must match its
+exact expected task/Agent/server/runtime/process/listener/receipt state.
+`observedAt` must be within the grant lifetime and no later than Manager wall
+time. Session/deadline/heartbeat are rechecked after waits and before commit.
+
+One record per preparation binds grant hash, local durable consumption digest,
+exact typed proof bytes/hash, indexed observation time and immutable acceptance
+time. Consumption digest is unique. The DB trigger independently enforces
+current readiness, binding and issuer authority in the same lock order, rejects
+updates/deletes, and downgrade refuses retained history. JSON timestamp parsing
+preserves sub-microsecond wire precision without pgx truncation mismatches.
+Identical concurrent/retry requests reuse the same record without renewing time;
+different observation time/consumption/grant/state cannot replace it. Fresh
+admission still applies to retries; expiry or authority loss cannot be bypassed.
+
+`POST /api/v1/agent/recovery-observations/{operation_id}/commit/verify` observes
+the exact retained proof using current bearer/generation and Agent/server IDs.
+It performs no writes/admission locks and deliberately remains historical after
+grant expiry, issuer revocation or heartbeat/capability loss. Different or absent
+proofs and replaced/foreign credentials fail closed. Both responses include
+`recorded`, canonical `proofHash` and SHA256 of exact request bytes, with no-store
+and bounded strict payloads; errors/logs expose no raw data.
+
+Recorded evidence is an authenticated Agent claim, not remote attestation of
+continued local flock ownership or working VPN traffic. Receipt/readback is
+storage acknowledgement, never unlock permission. Reservation/grant/Agent fence,
+accounts, subscription tokens, config and jobs are retained. Future Agent client
+must freeze submitted proof, keep its live local owner through uncertain HTTP
+and historical readback, and re-observe before any separately designed crash-safe
+release. Automatic consumption/submission integration, abort/reconciliation and
+fence release remain unfinished. #545 remains open. Schema 000165 applies only
+to isolated development/tests; no production migration, merge or deployment.
