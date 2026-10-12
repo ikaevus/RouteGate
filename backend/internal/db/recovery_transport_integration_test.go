@@ -198,7 +198,9 @@ func TestRuntimeMutationFencingRecoveryTransportRejects(t *testing.T) {
 			case "token":
 				token = "foreign-token"
 			case "generation":
-				exec(`UPDATE agents SET credential_generation=credential_generation+1`)
+				// A new generation with its own authenticated heartbeat is a
+				// legal row, but cannot match the old preparation generation.
+				exec(`UPDATE agents SET credential_generation=credential_generation+1,last_authenticated_heartbeat_generation=credential_generation+1`)
 			case "capability":
 				exec(`UPDATE agents SET capabilities='{}'`)
 			case "sticky_only":
@@ -206,7 +208,9 @@ func TestRuntimeMutationFencingRecoveryTransportRejects(t *testing.T) {
 			case "stale":
 				exec(`UPDATE agents SET last_authenticated_heartbeat_at=clock_timestamp()-interval '10 minutes'`)
 			case "heartbeat_generation":
-				exec(`UPDATE agents SET last_authenticated_heartbeat_generation=credential_generation+1`)
+				// Database constraints prohibit a non-null mismatched generation.
+				// Clearing the proof pair models no current authenticated proof.
+				exec(`UPDATE agents SET last_authenticated_heartbeat_generation=NULL,last_authenticated_heartbeat_at=NULL`)
 			case "cancelled":
 				if _, err = svc.CancelRuntimeRecovery(ctx, in.PreparationID, u.ID); err != nil {
 					t.Fatal(err)
