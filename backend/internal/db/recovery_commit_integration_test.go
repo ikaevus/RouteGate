@@ -65,7 +65,7 @@ func (f recoveryCommitFixture) exec(t *testing.T, sql string, args ...any) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitEvidence(t *testing.T) {
+func TestRecoveryCommitEvidence(t *testing.T) {
 	f := newRecoveryCommitFixture(t, 0)
 	wire, _ := json.Marshal(f.proof)
 	before := f.snapshot(t)
@@ -152,7 +152,7 @@ func TestRuntimeMutationFencingRecoveryCommitEvidence(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitRejects(t *testing.T) {
+func TestRecoveryCommitRejects(t *testing.T) {
 	for _, mode := range []string{"wrong_token", "wrong_path", "wrong_grant", "foreign_agent", "foreign_server", "foreign_task", "runtime_drift", "before_grant", "future_observation", "after_expiry", "stale_agent", "offline_agent", "fencing_lost", "observation_capability_lost", "read_capability_lost", "revoked_issuer", "expired_session", "disabled_issuer", "service_issuer", "removed_role", "removed_permission"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newRecoveryCommitFixture(t, 0)
@@ -219,7 +219,7 @@ func TestRuntimeMutationFencingRecoveryCommitRejects(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitHistoricalReadback(t *testing.T) {
+func TestRecoveryCommitHistoricalReadback(t *testing.T) {
 	f := newRecoveryCommitFixture(t, time.Second)
 	wire, _ := json.Marshal(f.proof)
 	r, err := f.svc.AcceptRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
@@ -257,7 +257,7 @@ func TestRuntimeMutationFencingRecoveryCommitHistoricalReadback(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitWaitExpiry(t *testing.T) {
+func TestRecoveryCommitWaitExpiry(t *testing.T) {
 	f := newRecoveryCommitFixture(t, time.Second)
 	wire, _ := json.Marshal(f.proof)
 	tx, err := f.pool.Begin(f.ctx)
@@ -302,7 +302,7 @@ func TestRuntimeMutationFencingRecoveryCommitWaitExpiry(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitSQLGuard(t *testing.T) {
+func TestRecoveryCommitSQLGuard(t *testing.T) {
 	f := newRecoveryCommitFixture(t, 0)
 	insert := func(p revocations.RecoveryCommitProof) error {
 		data, _ := json.Marshal(p)
@@ -346,7 +346,7 @@ func TestRuntimeMutationFencingRecoveryCommitSQLGuard(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitRetryAuthorityLoss(t *testing.T) {
+func TestRecoveryCommitRetryAuthorityLoss(t *testing.T) {
 	f := newRecoveryCommitFixture(t, 0)
 	wire, _ := json.Marshal(f.proof)
 	r, err := f.svc.AcceptRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
@@ -367,7 +367,7 @@ func TestRuntimeMutationFencingRecoveryCommitRetryAuthorityLoss(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitDowngradeRace(t *testing.T) {
+func TestRecoveryCommitDowngradeRace(t *testing.T) {
 	f := newRecoveryCommitFixture(t, 0)
 	wire, _ := json.Marshal(f.proof)
 	down, err := os.ReadFile("../../migrations/000165_recovery_commit_evidence.down.sql")
@@ -412,7 +412,7 @@ func TestRuntimeMutationFencingRecoveryCommitDowngradeRace(t *testing.T) {
 	}
 }
 
-func TestRuntimeMutationFencingRecoveryCommitIndeterminateReadback(t *testing.T) {
+func TestRecoveryCommitIndeterminateReadback(t *testing.T) {
 	f := newRecoveryCommitFixture(t, 0)
 	wire, _ := json.Marshal(f.proof)
 	r, err := f.svc.AcceptRecoveryCommit(f.ctx, f.token, f.proof.OperationID, wire)
