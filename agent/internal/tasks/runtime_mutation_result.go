@@ -66,7 +66,7 @@ func (m *RuntimeMutation) SaveResultWithRuntimeWitness(binding RuntimeResultBind
 		return ErrRuntimeMutationBlocked
 	}
 	current, err := readRemovalFile(m.path, 16384, true)
-	if err != nil || !bytes.Equal(current, m.marker) || !runtimeMarkerAbsent(filepath.Join(filepath.Dir(m.path), "inflight.json")) || !runtimeMarkerAbsent(filepath.Join(filepath.Dir(m.path), runtimeRecoveryConsumptionFile)) {
+	if err != nil || !bytes.Equal(current, m.marker) || !runtimeMarkerAbsent(filepath.Join(filepath.Dir(m.path), "inflight.json")) || !runtimeRecoveryStateAbsent(filepath.Dir(m.path)) {
 		return ErrRuntimeMutationBlocked
 	}
 	path := filepath.Join(filepath.Dir(m.path), runtimeResultFile)
@@ -103,7 +103,7 @@ func ReplayRuntimeResult(dir string, binding RuntimeResultBinding, deliver func(
 		return ErrRuntimeMutationBlocked
 	}
 	defer lock.Close()
-	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryConsumptionFile)) {
+	if !runtimeRecoveryStateAbsent(dir) {
 		return ErrRuntimeMutationBlocked
 	}
 	path := filepath.Join(dir, runtimeResultFile)

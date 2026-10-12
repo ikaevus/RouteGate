@@ -111,9 +111,15 @@ func (c *Client) FetchRecoveryGrant(ctx context.Context, token, agentID, serverI
 // require bounded, exact JSON; server errors and network URLs are never logged
 // or returned to the caller because they may contain credentials or nonces.
 func (c *Client) recoveryRead(ctx context.Context, path, token string, data []byte, out any) error {
+	_, err := c.recoveryExchange(ctx, path, token, data, out)
+	return err
+}
+
+// Preserve HTTP status for bounded commit retries without exposing error bodies.
+func (c *Client) recoveryExchange(ctx context.Context, path, token string, data []byte, out any) (int, error) {
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.managerURL+path, bytes.NewReader(data))
 	if err != nil {
-		return errRecoveryGrantRead
+		return 0, errRecoveryGrantRead
 	}
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("Content-Type", "application/json")
@@ -122,20 +128,20 @@ func (c *Client) recoveryRead(ctx context.Context, path, token string, data []by
 	h.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := h.Do(r)
 	if err != nil {
-		return errRecoveryGrantRead
+		return 0, errRecoveryGrantRead
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return errRecoveryGrantRead
+		return resp.StatusCode, errRecoveryGrantRead
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 16385))
 	if err != nil || len(body) > 16384 {
-		return errRecoveryGrantRead
+		return resp.StatusCode, errRecoveryGrantRead
 	}
 	if strictRecoveryReply(body, out) != nil {
-		return errRecoveryGrantRead
+		return resp.StatusCode, errRecoveryGrantRead
 	}
-	return nil
+	return resp.StatusCode, nil
 }
 
 // Recursively reject duplicate keys, then compare with typed JSON to reject

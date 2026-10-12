@@ -262,28 +262,30 @@ func TestRuntimeMutationRecoveryCommitPoisonedOwner(t *testing.T) {
 }
 
 func TestRuntimeMutationRecoveryConsumptionAloneGuardsMutations(t *testing.T) {
-	for _, contents := range []string{"{}", "", "malformed"} {
-		t.Run(contents, func(t *testing.T) {
-			e, task, a, _ := removalExecutorFixture(t)
-			l, err := lockRuntimeMutation(e.receiptDir)
-			if err != nil {
-				t.Fatal(err)
-			}
-			l.Close()
-			if err = os.WriteFile(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile), []byte(contents), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if lease, err := BeginRuntimeMutation(e.receiptDir, task.ID, TaskKindVPNCoreService); err == nil {
-				lease.Close()
-				t.Fatal("consumption-only state admitted mutation")
-			}
-			if _, err = e.Execute(context.Background(), task); err == nil || a.restarts != 0 {
-				t.Fatal("consumption-only state admitted removal")
-			}
-			if ReplayRuntimeResult(e.receiptDir, RuntimeResultBinding{}, func(string, []byte) error { t.Error("unexpected delivery"); return nil }) == nil {
-				t.Fatal("consumption-only state allowed replay")
-			}
-		})
+	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile} {
+		for _, contents := range []string{"{}", "", "malformed"} {
+			t.Run(name+contents, func(t *testing.T) {
+				e, task, a, _ := removalExecutorFixture(t)
+				l, err := lockRuntimeMutation(e.receiptDir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				l.Close()
+				if err = os.WriteFile(filepath.Join(e.receiptDir, name), []byte(contents), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if lease, err := BeginRuntimeMutation(e.receiptDir, task.ID, TaskKindVPNCoreService); err == nil {
+					lease.Close()
+					t.Fatal("consumption-only state admitted mutation")
+				}
+				if _, err = e.Execute(context.Background(), task); err == nil || a.restarts != 0 {
+					t.Fatal("consumption-only state admitted removal")
+				}
+				if ReplayRuntimeResult(e.receiptDir, RuntimeResultBinding{}, func(string, []byte) error { t.Error("unexpected delivery"); return nil }) == nil {
+					t.Fatal("consumption-only state allowed replay")
+				}
+			})
+		}
 	}
 }
 
@@ -327,8 +329,12 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 		}
 		wire, _ := json.Marshal(in.Grant)
 		adapter := &removalAdapter{generation: in.Grant.Expected.Witness.Generation}
-		if _, err := BeginRuntimeRecoveryCommit(context.Background(), in.Dir, in.Binding, wire, in.Active, adapter); err != nil {
+		m, err := BeginRuntimeRecoveryCommit(context.Background(), in.Dir, in.Binding, wire, in.Active, adapter)
+		if err != nil {
 			os.Exit(3)
+		}
+		if m.WithSubmission(context.Background(), in.Binding, markerDigest(wire), func(g *RuntimeRecoveryCommitGuard) error { _, e := g.PinProof(context.Background()); return e }) != nil {
+			os.Exit(5)
 		}
 		if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
 			if os.WriteFile(filepath.Join(in.Dir, "test-commit-ready"), []byte("ready"), 0600) != nil {
@@ -353,6 +359,9 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile)) {
 		t.Fatal("crash lost consumption")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
+		t.Fatal("crash lost pinned submission")
 	}
 	if m, err := BeginRuntimeRecoveryCommit(context.Background(), e.receiptDir, b, wire, e.activePath, a); err == nil {
 		m.Close()
@@ -393,6 +402,9 @@ func TestRuntimeMutationRecoveryCommitProcessKill(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile)) {
 		t.Fatal("SIGKILL lost consumption")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
+		t.Fatal("SIGKILL lost pinned submission")
 	}
 	if m, err := BeginRuntimeRecoveryCommit(context.Background(), e.receiptDir, b, wire, e.activePath, a); err == nil {
 		m.Close()
