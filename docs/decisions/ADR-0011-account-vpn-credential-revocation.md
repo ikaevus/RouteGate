@@ -1006,3 +1006,34 @@ owner cannot automatically resume. Manager acknowledgement is not persisted as
 an Agent release receipt here. Abort/reconciliation and crash-safe fence release,
 operator workflow and end-to-end account credential revocation remain unfinished.
 #545 stays open. Schema remains 000165; no production activation/merge/deploy.
+
+### Durable Agent historical storage acknowledgement (eighteenth slice)
+
+After strict transport verification, `Client.SubmitRecoveryCommit` calls the
+still-live submission guard's `RecordReceipt` before returning success. Manager
+receipt fields now share the Agent tasks type; a common acknowledgement golden
+vector pins unchanged Manager/Agent field order and hash. Schema remains 000165.
+
+The guard independently matches schema/recorded/operation/grant/consumption and
+proof/request hashes against exact private pinned bytes. An unpinned or mismatched
+receipt cannot be recorded. It re-observes current runtime before and after
+atomic write/fsync of private `recovery-acknowledgement.json`. Same-owner retries
+reuse identical retained bytes without renewal/overwrite. Concurrent Close waits
+through acknowledgement persistence and the final observation.
+
+The owner checks unchanged acknowledgement alongside consumption/submission on
+every proof. Unexpected, malformed, removed or changed acknowledgement poisons
+ownership; publication uncertainty retains files and never returns a confirmed
+result. Standalone acknowledgement also blocks mutation admission/completion,
+result save/replay and scoped removal, including after experimental flag removal.
+Callback/transport/storage errors expose no sensitive payloads or paths.
+
+Receipt persistence only records Manager's historical storage statement. It
+proves neither current issuer authority nor VPN traffic nor future release
+permission. No marker/receipt/consumption/submission/acknowledgement is deleted,
+and no config validation/apply/restart or account/token mutation is invoked.
+Process exit/SIGKILL retain acknowledgement and all fence state; a new owner
+cannot resume even with a valid acknowledgement. Read-only crash reconciliation,
+fresh release authority and the crash-safe release protocol remain future work.
+No Runner dispatch/operator activation, production access/change, merge or deploy
+is authorized. #545 remains unfinished.

@@ -1,0 +1,72 @@
+package tasks
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"path/filepath"
+)
+
+const runtimeRecoveryAcknowledgementFile = "recovery-acknowledgement.json"
+
+// Mirrors Manager's historical storage receipt. Recorded is never release
+// authority, and persistence never clears or resumes Agent mutation state.
+type RuntimeRecoveryCommitReceipt struct {
+	SchemaVersion   int    `json:"schemaVersion"`
+	Recorded        bool   `json:"recorded"`
+	OperationID     string `json:"operationId"`
+	GrantHash       string `json:"grantHash"`
+	ConsumptionHash string `json:"consumptionHash"`
+	ProofHash       string `json:"proofHash"`
+	RequestHash     string `json:"requestHash"`
+}
+
+func (m *RuntimeRecoveryCommit) acknowledgementUnchanged() bool {
+	path := filepath.Join(m.dir, runtimeRecoveryAcknowledgementFile)
+	if m.acknowledgement == nil {
+		return runtimeMarkerAbsent(path)
+	}
+	data, err := readRemovalFile(path, 4096, true)
+	return err == nil && bytes.Equal(data, m.acknowledgement)
+}
+
+// RecordReceipt may only be called with a still-live submission guard after
+// transport verification. It independently binds the receipt to exact private
+// pinned bytes and re-observes before and after atomic write/fsync. Publication
+// uncertainty retains all files and poisons the owner; nothing is overwritten.
+func (g *RuntimeRecoveryCommitGuard) RecordReceipt(ctx context.Context, r RuntimeRecoveryCommitReceipt) error {
+	if g == nil || g.state == nil {
+		return ErrRuntimeMutationBlocked
+	}
+	g.state.mu.Lock()
+	defer g.state.mu.Unlock()
+	if g.state.owner == nil {
+		return ErrRuntimeMutationBlocked
+	}
+	m := g.state.owner
+	if _, err := m.proofLocked(ctx); err != nil {
+		return err
+	}
+	if m.submission == nil || r.SchemaVersion != 1 || !r.Recorded || r.OperationID != m.frozen.OperationID || r.GrantHash != m.grantHash || r.ConsumptionHash != m.frozen.ConsumptionHash || r.ProofHash != markerDigest(m.submission) || r.RequestHash != r.ProofHash {
+		return ErrRuntimeMutationBlocked
+	}
+	data, err := json.Marshal(r)
+	if err != nil || len(data) > 4096 {
+		return ErrRuntimeMutationBlocked
+	}
+	if m.acknowledgement != nil {
+		if !bytes.Equal(data, m.acknowledgement) {
+			return ErrRuntimeMutationBlocked
+		}
+		return nil
+	}
+	if writeRemovalFile(filepath.Join(m.dir, runtimeRecoveryAcknowledgementFile), data) != nil {
+		m.poisoned = true
+		return ErrRuntimeMutationBlocked
+	}
+	m.acknowledgement = data
+	if _, err = m.proofLocked(ctx); err != nil {
+		return err
+	}
+	return nil
+}

@@ -262,7 +262,7 @@ func TestRuntimeMutationRecoveryCommitPoisonedOwner(t *testing.T) {
 }
 
 func TestRuntimeMutationRecoveryConsumptionAloneGuardsMutations(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile} {
+	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile} {
 		for _, contents := range []string{"{}", "", "malformed"} {
 			t.Run(name+contents, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)
@@ -333,7 +333,13 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 		if err != nil {
 			os.Exit(3)
 		}
-		if m.WithSubmission(context.Background(), in.Binding, markerDigest(wire), func(g *RuntimeRecoveryCommitGuard) error { _, e := g.PinProof(context.Background()); return e }) != nil {
+		if m.WithSubmission(context.Background(), in.Binding, markerDigest(wire), func(g *RuntimeRecoveryCommitGuard) error {
+			p, e := g.PinProof(context.Background())
+			if e != nil {
+				return e
+			}
+			return g.RecordReceipt(context.Background(), receiptForRecoveryProof(p))
+		}) != nil {
 			os.Exit(5)
 		}
 		if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
@@ -362,6 +368,9 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
 		t.Fatal("crash lost pinned submission")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
+		t.Fatal("crash lost acknowledgement")
 	}
 	if m, err := BeginRuntimeRecoveryCommit(context.Background(), e.receiptDir, b, wire, e.activePath, a); err == nil {
 		m.Close()
@@ -405,6 +414,9 @@ func TestRuntimeMutationRecoveryCommitProcessKill(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
 		t.Fatal("SIGKILL lost pinned submission")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
+		t.Fatal("SIGKILL lost acknowledgement")
 	}
 	if m, err := BeginRuntimeRecoveryCommit(context.Background(), e.receiptDir, b, wire, e.activePath, a); err == nil {
 		m.Close()

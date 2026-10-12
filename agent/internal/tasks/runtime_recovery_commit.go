@@ -73,6 +73,7 @@ type RuntimeRecoveryCommit struct {
 	lastChecked     time.Time
 	poisoned        bool
 	submission      []byte
+	acknowledgement []byte
 	frozen          RuntimeRecoveryCommitProof
 }
 

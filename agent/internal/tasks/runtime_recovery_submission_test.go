@@ -106,7 +106,11 @@ func TestRuntimeMutationRecoverySubmissionCloseWaits(t *testing.T) {
 		}
 		close(entered)
 		<-release
-		w.WriteHeader(200)
+		var p RuntimeRecoveryCommitProof
+		if json.Unmarshal(data, &p) != nil {
+			t.Error("invalid pinned HTTP proof")
+		}
+		json.NewEncoder(w).Encode(receiptForRecoveryProof(p))
 	}))
 	defer srv.Close()
 	unblock := func() {
@@ -129,8 +133,13 @@ func TestRuntimeMutationRecoverySubmissionCloseWaits(t *testing.T) {
 			if e != nil {
 				return e
 			}
+			var receipt RuntimeRecoveryCommitReceipt
+			decodeErr := json.NewDecoder(resp.Body).Decode(&receipt)
 			resp.Body.Close()
-			return nil
+			if decodeErr != nil {
+				return decodeErr
+			}
+			return g.RecordReceipt(context.Background(), receipt)
 		})
 	}()
 	select {
@@ -158,6 +167,9 @@ func TestRuntimeMutationRecoverySubmissionCloseWaits(t *testing.T) {
 	}
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) || runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile)) {
 		t.Fatal("Close erased durable state")
+	}
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
+		t.Fatal("HTTP acknowledgement was not durable before Close")
 	}
 }
 

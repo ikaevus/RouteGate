@@ -14,15 +14,7 @@ import (
 var ErrRecoveryCommitUnconfirmed = errors.New("recovery commit storage was not confirmed")
 
 // Historical storage receipt only, never permission to release an Agent fence.
-type RecoveryCommitReceipt struct {
-	SchemaVersion   int    `json:"schemaVersion"`
-	Recorded        bool   `json:"recorded"`
-	OperationID     string `json:"operationId"`
-	GrantHash       string `json:"grantHash"`
-	ConsumptionHash string `json:"consumptionHash"`
-	ProofHash       string `json:"proofHash"`
-	RequestHash     string `json:"requestHash"`
-}
+type RecoveryCommitReceipt = tasks.RuntimeRecoveryCommitReceipt
 
 // SubmitRecoveryCommit is dormant: no Runner invokes it. Caller owns the live
 // lease and must defer Close. We never close, unlock, delete or resume state.
@@ -44,7 +36,13 @@ func (c *Client) SubmitRecoveryCommit(ctx context.Context, token string, verifie
 			return ErrRecoveryCommitUnconfirmed
 		}
 		result, e = c.submitRecoveryCommit(bounded, token, verified, frozen, guard.Proof)
-		return e
+		if e != nil {
+			return e
+		}
+		if guard.RecordReceipt(bounded, result) != nil {
+			return ErrRecoveryCommitUnconfirmed
+		}
+		return nil
 	})
 	if err != nil {
 		return zero, ErrRecoveryCommitUnconfirmed
