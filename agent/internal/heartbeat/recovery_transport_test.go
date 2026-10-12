@@ -58,6 +58,9 @@ func TestRuntimeMutationRecoveryTransportCadenceAndCapability(t *testing.T) {
 			if capable != (mode != "ordinary" && mode != "unobservable") {
 				t.Fatal("wrong read-only transport advertisement")
 			}
+			if (info.Capabilities["runtimeRecoveryGrantReadV1"] == true) != capable {
+				t.Fatal("wrong read-only grant advertisement")
+			}
 		})
 	}
 }

@@ -20,6 +20,40 @@ type RecoveryTransport interface {
 	AcceptRecoveryEvidence(context.Context, string, string, []byte) (json.RawMessage, error)
 }
 
+type recoveryGrantReader interface {
+	ReadRecoveryGrant(context.Context, string, string, []byte) (json.RawMessage, error)
+}
+
+func (h *Handler) RecoveryGrant(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	token, ok := agentBearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		writeAgentUnauthorized(w)
+		return
+	}
+	reader, ok := h.recovery.(recoveryGrantReader)
+	if !ok {
+		httpx.WriteJSON(w, 501, httpx.Error("unsupported", "Grant read is unavailable."))
+		return
+	}
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
+	if err != nil || !json.Valid(data) {
+		httpx.WriteJSON(w, 400, httpx.Error("invalid_request", "A bounded grant read request is required."))
+		return
+	}
+	result, err := reader.ReadRecoveryGrant(r.Context(), HashToken(token), r.PathValue("operation_id"), data)
+	if errors.Is(err, ErrObservationRejected) || errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteJSON(w, 409, httpx.Error("grant_rejected", "Recovery grant was not delivered."))
+		return
+	}
+	if err != nil {
+		h.logger.Error("recovery grant read failed")
+		httpx.WriteJSON(w, 500, httpx.Error("grant_read_failed", "Recovery grant was not delivered."))
+		return
+	}
+	httpx.WriteJSON(w, 200, result)
+}
+
 func (h *Handler) SetRecoveryTransport(transport RecoveryTransport) {
 	h.recovery = transport
 }

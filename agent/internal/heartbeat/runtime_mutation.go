@@ -153,6 +153,8 @@ func (r *Runner) prepareRuntimeMutationHeartbeat(info *systeminfo.Info) {
 		// Agents must not receive challenges they cannot answer.
 		if r.cfg.ServiceControlEnabled && tasks.SupportsRuntimeRecovery(r.vpnCoreAdapter) {
 			info.Capabilities["runtimeRecoveryObservationV1"] = true
+			// Read-only grant verification support, never commit/unlock support.
+			info.Capabilities["runtimeRecoveryGrantReadV1"] = true
 		}
 	}
 }
