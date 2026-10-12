@@ -126,7 +126,8 @@ func (s *Service) prepareRuntimeRecovery(ctx context.Context, in RuntimeRecovery
 	return p, tx.Commit(ctx)
 }
 
-// CancelRuntimeRecovery only cancels a never-dispatched Manager preparation.
+// CancelRuntimeRecovery releases Manager admission and invalidates read-only
+// challenge acceptance. It never cancels a mutation: no mutation dispatch exists.
 // No Agent contact, automatic expiry, background release or credential restore.
 func (s *Service) CancelRuntimeRecovery(ctx context.Context, id, actor string) (RecoveryPreparation, error) {
 	if !evidenceID.MatchString(id) || strings.TrimSpace(actor) == "" || len(actor) > 200 {

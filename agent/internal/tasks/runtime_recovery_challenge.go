@@ -9,8 +9,8 @@ import (
 const runtimeRecoveryChallengeLifetime = 2 * time.Minute
 
 // RuntimeRecoveryChallenge is an internal observation request, NOT an unlock
-// grant. A future authenticated Manager transport must issue a random 256-bit
-// nonce, reserve the node and persist the exact request and operator approval.
+// grant. The authenticated Manager transport issues a random 256-bit nonce,
+// reserves the node and persists the exact request and operator approval.
 // This collector neither authenticates the caller nor consumes the nonce.
 type RuntimeRecoveryChallenge struct {
 	SchemaVersion int                        `json:"schemaVersion"`
@@ -47,8 +47,8 @@ func (c RuntimeRecoveryChallenge) valid(binding RuntimeResultBinding, now time.T
 }
 
 // ObserveRuntimeRecoveryChallenge reuses the locked observer and requires exact
-// equality with the Manager's expected evidence. It has no dispatch/HTTP/CLI
-// entry point. Clock disagreement fails closed; there is no clock-skew grace.
+// equality with the Manager's expected evidence. The Agent polling loop can
+// invoke this read-only collector. Clock disagreement fails closed, with no grace.
 // A subsequent commit MUST independently re-observe under its own held lock;
 // this returned snapshot cannot eliminate a later state-change race.
 func ObserveRuntimeRecoveryChallenge(ctx context.Context, dir string, binding RuntimeResultBinding, challenge RuntimeRecoveryChallenge, activePath string, adapter VPNCoreAdapter) (RuntimeRecoveryChallengeResponse, error) {

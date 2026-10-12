@@ -101,6 +101,75 @@ type nextTaskResponse struct {
 	Task *tasks.ConfigTask `json:"task,omitempty"`
 }
 
+type NextWorkResponse struct {
+	Task              *tasks.ConfigTask               `json:"task,omitempty"`
+	RecoveryChallenge *tasks.RuntimeRecoveryChallenge `json:"recoveryChallenge,omitempty"`
+}
+
+// NextWork reuses authenticated polling. An observation is not a runtime task;
+// ambiguous responses cannot cause task dispatch.
+func (c *Client) NextWork(ctx context.Context, token string) (NextWorkResponse, error) {
+	var result NextWorkResponse
+	if c.doJSON(ctx, http.MethodGet, "/api/v1/agent/tasks/next", token, nil, &result) != nil || (result.Task != nil && result.RecoveryChallenge != nil) {
+		return NextWorkResponse{}, errors.New("agent work polling failed")
+	}
+	return result, nil
+}
+
+// SubmitRecoveryEvidence retries the identical typed response. A matching
+// acknowledgement only confirms Manager storage and never permits an unlock.
+func (c *Client) SubmitRecoveryEvidence(ctx context.Context, token string, challenge tasks.RuntimeRecoveryChallenge, response tasks.RuntimeRecoveryChallengeResponse) error {
+	deny := errors.New("recovery observation evidence was not acknowledged")
+	challengeData, err := json.Marshal(challenge)
+	if err != nil {
+		return deny
+	}
+	challengeSum := sha256.Sum256(challengeData)
+	if response.OperationID != challenge.OperationID || response.ChallengeHash != hex.EncodeToString(challengeSum[:]) || response.SchemaVersion != 1 || response.Observation != challenge.Expected {
+		return deny
+	}
+	data, err := json.Marshal(response)
+	if err != nil {
+		return deny
+	}
+	sum := sha256.Sum256(data)
+	bounded, cancel := context.WithDeadline(ctx, challenge.ExpiresAt)
+	defer cancel()
+	for attempt := 0; attempt < completeTaskMaxAttempts; attempt++ {
+		if bounded.Err() != nil || time.Now().Before(challenge.IssuedAt) || !time.Now().Before(challenge.ExpiresAt) {
+			return deny
+		}
+		var ack struct {
+			SchemaVersion int    `json:"schemaVersion"`
+			Accepted      bool   `json:"accepted"`
+			OperationID   string `json:"operationId"`
+			ChallengeHash string `json:"challengeHash"`
+			ResponseHash  string `json:"responseHash"`
+		}
+		err = c.doJSON(bounded, http.MethodPost, "/api/v1/agent/recovery-observations/"+url.PathEscape(response.OperationID)+"/evidence", token, json.RawMessage(data), &ack)
+		if err == nil {
+			if bounded.Err() != nil || !time.Now().Before(challenge.ExpiresAt) || ack.SchemaVersion != 1 || !ack.Accepted || ack.OperationID != response.OperationID || ack.ChallengeHash != response.ChallengeHash || ack.ResponseHash != hex.EncodeToString(sum[:]) {
+				return deny
+			}
+			return nil
+		}
+		var status *httpStatusError
+		if errors.As(err, &status) && status.statusCode < 500 {
+			return deny
+		}
+		if attempt+1 < completeTaskMaxAttempts {
+			timer := time.NewTimer(completeTaskRetryBaseWait)
+			select {
+			case <-bounded.Done():
+				timer.Stop()
+				return deny
+			case <-timer.C:
+			}
+		}
+	}
+	return deny
+}
+
 type completeTaskRequest struct {
 	Status        string         `json:"status"`
 	ErrorMessage  string         `json:"errorMessage,omitempty"`

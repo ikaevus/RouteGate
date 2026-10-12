@@ -81,7 +81,7 @@ func (r *Repository) CreateOrReplaceAgentForServer(ctx context.Context, input Cr
 			protocol_version = EXCLUDED.protocol_version,
 			status = EXCLUDED.status,
 			token_hash = EXCLUDED.token_hash,
-			capabilities = EXCLUDED.capabilities || CASE WHEN agents.capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
+			capabilities = (EXCLUDED.capabilities - 'runtimeRecoveryObservationV1') || CASE WHEN agents.capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
 			registered_at = EXCLUDED.registered_at,
 			last_seen_at = EXCLUDED.last_seen_at,
 			credential_generation = agents.credential_generation + 1,
@@ -158,7 +158,9 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 				agent_version = COALESCE(NULLIF($3, ''), agent_version),
 				version = COALESCE(NULLIF($3, ''), version),
 				protocol_version = COALESCE($4, protocol_version),
-				capabilities = COALESCE($5, capabilities) || CASE WHEN capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
+				capabilities = (COALESCE($5, capabilities) - 'runtimeRecoveryObservationV1')
+				 || CASE WHEN COALESCE($5::jsonb @> '{"runtimeRecoveryObservationV1":true}'::jsonb,false) THEN '{"runtimeRecoveryObservationV1":true}'::jsonb ELSE '{}'::jsonb END
+				 || CASE WHEN capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
 				last_authenticated_heartbeat_at = $2,
 				current_runtime_mutation_fencing = COALESCE($5::jsonb @> '{"runtimeMutationFencingV1":true}'::jsonb, false),
 				last_authenticated_heartbeat_generation = credential_generation,
@@ -181,7 +183,7 @@ func (r *Repository) UpdateAgentHeartbeat(ctx context.Context, input UpdateAgent
 				agent_version = COALESCE(NULLIF($2, ''), agent_version),
 				version = COALESCE(NULLIF($2, ''), version),
 				protocol_version = COALESCE($3, protocol_version),
-				capabilities = COALESCE($4, capabilities) || CASE WHEN capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
+				capabilities = (COALESCE($4, capabilities) - 'runtimeRecoveryObservationV1') || CASE WHEN capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb THEN '{"runtimeMutationFencingV1":true}'::jsonb ELSE '{}'::jsonb END,
 				updated_at = now()
 			WHERE id = $1::uuid
 			RETURNING

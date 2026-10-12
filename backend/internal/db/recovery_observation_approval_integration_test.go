@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/revocations"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,15 @@ func observationApprovalFixture(t *testing.T) (context.Context, *pgxpool.Pool, r
 	ctx, pool, in, _, done := recoveryPreparationFixture(t)
 	p, err := revocations.NewService(pool).PrepareRuntimeRecovery(ctx, in)
 	if err != nil {
+		done()
+		t.Fatal(err)
+	}
+	var token string
+	if err = pool.QueryRow(ctx, `SELECT token_hash FROM agents WHERE id=$1::uuid`, in.AgentID).Scan(&token); err != nil {
+		done()
+		t.Fatal(err)
+	}
+	if _, err = agents.NewRepository(pool).UpdateAgentHeartbeat(ctx, agents.UpdateAgentHeartbeatInput{TokenHash: token, Capabilities: agents.Capabilities{"runtimeMutationFencingV1": true, "runtimeRecoveryObservationV1": true}}); err != nil {
 		done()
 		t.Fatal(err)
 	}

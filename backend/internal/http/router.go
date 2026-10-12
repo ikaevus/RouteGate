@@ -17,6 +17,7 @@ import (
 	"github.com/ikaevus/routegate/backend/internal/maintenance"
 	"github.com/ikaevus/routegate/backend/internal/nodegroups"
 	"github.com/ikaevus/routegate/backend/internal/portal"
+	"github.com/ikaevus/routegate/backend/internal/revocations"
 	"github.com/ikaevus/routegate/backend/internal/roles"
 	"github.com/ikaevus/routegate/backend/internal/routingprofiles"
 	"github.com/ikaevus/routegate/backend/internal/servers"
@@ -37,6 +38,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	serversHandler := servers.NewHandler(logger, pool, cfg.PublicURL)
 	geoIPHandler := geoip.NewHandler(logger, pool, cfg.GeoIP.Enabled)
 	agentsHandler := agents.NewHandler(logger, pool)
+	agentsHandler.SetRecoveryTransport(recoveryTransport{service: revocations.NewService(pool)})
 	configsHandler := configs.NewHandler(logger, pool)
 	dashboardHandler := dashboard.NewHandler(logger, pool)
 	usersHandler := users.NewHandler(logger, pool)
@@ -218,6 +220,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.HandleFunc("GET /api/v1/agent/tasks/next", agentsHandler.NextTask)
 	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result", agentsHandler.CompleteTask)
 	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result/verify", agentsHandler.VerifyTaskResult)
+	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/evidence", agentsHandler.RecoveryEvidence)
 	mux.HandleFunc("POST /api/v1/agent/traffic-usage", trafficHandler.ReportUsage)
 	mux.HandleFunc("POST /api/v1/agent/traffic-reports", trafficHandler.ReportUsage)
 	mux.HandleFunc("POST /api/v1/agent/client-presence", connectionsHandler.ReportSnapshot)

@@ -34,6 +34,7 @@ type Runner struct {
 	runtimeCleaner              runtimecleanup.Cleaner
 	runtimeMutationDir          string
 	runtimeMutationManagerReady bool
+	recoveryResponse            *tasks.RuntimeRecoveryChallengeResponse
 }
 
 func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runner {
@@ -123,13 +124,14 @@ func (r *Runner) Run(ctx context.Context, once bool) error {
 	if err := r.reportClientPresence(ctx); err != nil {
 		r.logger.Warn("report client presence failed", "error", err)
 	}
-	ticker := time.NewTicker(r.cfg.HeartbeatInterval())
+	ticker := time.NewTicker(r.workPollInterval())
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			ticker.Reset(r.workPollInterval())
 			if err := r.sendHeartbeat(ctx); err != nil {
 				r.logger.Warn("heartbeat failed", "error", err)
 			}
@@ -233,10 +235,15 @@ func (r *Runner) reportTrafficUsage(ctx context.Context) error {
 
 func (r *Runner) processNextTask(ctx context.Context) error {
 	r.replayRuntimeResult(ctx)
-	task, err := r.client.NextTask(ctx, r.cfg.AgentToken)
+	work, err := r.client.NextWork(ctx, r.cfg.AgentToken)
 	if err != nil {
 		return err
 	}
+	if work.RecoveryChallenge != nil {
+		return r.processRecoveryObservation(ctx, *work.RecoveryChallenge)
+	}
+	r.recoveryResponse = nil
+	task := work.Task
 	if task == nil {
 		r.logger.Debug("no agent task available")
 		return nil
