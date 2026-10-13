@@ -132,13 +132,24 @@ func (m *RuntimeMutation) Close() error {
 }
 
 func lockRuntimeMutation(dir string) (*os.File, error) {
+	return lockRuntimeMutationMode(dir, true)
+}
+
+// Historical reads must neither provision a directory nor create a lock file.
+func lockRuntimeMutationExisting(dir string) (*os.File, error) {
+	return lockRuntimeMutationMode(dir, false)
+}
+
+func lockRuntimeMutationMode(dir string, create bool) (*os.File, error) {
 	if !filepath.IsAbs(dir) {
 		return nil, ErrRuntimeMutationBlocked
 	}
 	// The stable parent must be provisioned by the caller. Creating only this
 	// directory lets us durably persist its entry before writing an intent.
-	if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
-		return nil, err
+	if create {
+		if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
+			return nil, err
+		}
 	}
 	info, err := os.Lstat(dir)
 	if err != nil {
@@ -157,7 +168,11 @@ func lockRuntimeMutation(dir string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	fd, err := syscall.Open(filepath.Join(dir, "runtime.lock"), syscall.O_RDWR|syscall.O_CREAT|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	flags := syscall.O_RDONLY | syscall.O_NONBLOCK | syscall.O_NOFOLLOW | syscall.O_CLOEXEC
+	if create {
+		flags = syscall.O_RDWR | syscall.O_CREAT | syscall.O_NONBLOCK | syscall.O_NOFOLLOW | syscall.O_CLOEXEC
+	}
+	fd, err := syscall.Open(filepath.Join(dir, "runtime.lock"), flags, 0600)
 	if err != nil {
 		return nil, err
 	}

@@ -1037,3 +1037,35 @@ cannot resume even with a valid acknowledgement. Read-only crash reconciliation,
 fresh release authority and the crash-safe release protocol remain future work.
 No Runner dispatch/operator activation, production access/change, merge or deploy
 is authorized. #545 remains unfinished.
+
+### Read-only crash reconciliation (nineteenth slice)
+
+Dormant `Client.ReconcileRecoveryCommit` independently authenticates current
+Agent identity/generation using the existing nonce-bound identity exchange, then
+reads a crashed owner's exact pinned proof under the shared admission flock.
+It calls only the existing historical `/commit/verify` endpoint, never commit,
+grant delivery or mutation dispatch. Token/generation replacement fails closed;
+Manager independently rechecks current credentials during readback.
+
+The existing lock implementation now has a non-provisioning read mode: private
+directory and lock must already exist; neither is created. Consumption and
+submission must be exact typed JSON, with valid original grant structure and
+historical timestamps, matching Manager/Agent/server/generation, grant and
+consumption hashes, exact expected observation, original acknowledged task
+receipt/intent and witness bindings. Optional local acknowledgement must exactly
+match the pinned proof. Malformed/standalone/foreign state is not adopted.
+All retained bytes and absence of a competing removal intent are checked before
+and after synchronous HTTP. A live owner or concurrent reader retains exclusive
+admission; changes/cancellation/transport failures return sanitized uncertainty.
+
+Grant expiry and current runtime drift do not invalidate historical storage.
+No current runtime observation or heartbeat is treated as VPN traffic proof.
+The returned receipt is checked against every exact pinned proof/hash field;
+absence, credential rotation or network uncertainty never mean safe absence.
+There are no retries that submit new authority and no local write, deletion,
+acknowledgement adoption, lease resume or fence release. Original state remains
+blocked, including after exit/SIGKILL. Caller can retry this read independently.
+
+Fresh release authority, crash-safe fence release, operator workflow and
+end-to-end account credential revocation remain future work. Schema remains
+000165; #545 remains unfinished. No production activation/merge/deploy.
