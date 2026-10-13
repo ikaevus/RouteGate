@@ -1141,3 +1141,38 @@ writes acknowledgement, changes config or releases a fence. No Runner calls this
 method. Heartbeat is transport readiness only. Fresh local runtime observation,
 durable final nonce consumption, crash-safe release/abort and operator workflow
 remain future work. Schema stays000166 and #545 remains unfinished.
+
+### Agent durable final consumption (twenty-second slice)
+
+Dormant `BeginRuntimeRecoveryFinalization` owns the existing shared admission
+flock through fresh observation and final authorization consumption. It reuses
+the internal exact historical snapshot validator without reopening/releasing
+the lock. Binding/generation must come from independently authenticated current
+delivery, not authorization JSON. Expected original grant/consumption/pinned
+commit proof and optional acknowledgement must remain exact. Final nonce must
+be distinct from the original consumption grant nonce.
+
+The consumer freshly verifies config/process/listener against the exact expected
+observation before atomic write/fsync of private `recovery-final-consumption.json`,
+then repeats observation and byte checks after publication. The retained typed
+record binds authorization/hash, current identity/generation and measured state.
+Expiry, cancellation, backwards wall time, file/runtime drift or publication
+uncertainty retain files and prevent confirmed ownership. Repeated `Proof`
+observations remain under the held flock; any drift poisons the owner permanently.
+Proof exposes measured hashes/observation only, never nonce, credentials or paths.
+
+There is no Complete/Release/resume method. Close serializes with observations
+and drops only the lock, preserving original and final consumption plus all
+fences. A new owner cannot consume/resume an existing final record. Public
+historical delivery also refuses final-consumed state; no state is adopted or
+overwritten. Standalone/malformed final state blocks normal mutation admission,
+completion/result save/replay and scoped removal, including after flag removal.
+Exit/SIGKILL release only kernel flock; final consumption/fences survive.
+
+Disposable systemd/Reality regression consumes final authority under the actual
+current process, deliberately restarts externally, then rejects stale final
+proof while retaining all state. This is not Manager+Agent final release E2E.
+No Runner/HTTP consumer activation, config apply/restart, file deletion, fence
+release or Manager reservation release is implemented here. Crash-safe final
+release/abort and operator credential-revocation workflow remain future work;
+schema stays000166 and #545 remains unfinished. No production/merge/deploy.

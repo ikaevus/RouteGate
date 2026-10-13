@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 )
 
@@ -20,6 +21,29 @@ func WithHistoricalRecoverySubmission(ctx context.Context, dir string, binding R
 		return ErrRuntimeMutationBlocked
 	}
 	defer lock.Close()
+	return withHistoricalRecoverySubmissionLocked(ctx, dir, binding, lock, func(p RuntimeRecoveryCommitProof, _ func() bool) error {
+		path := filepath.Join(dir, runtimeRecoveryFinalConsumptionFile)
+		if !runtimeMarkerAbsent(path) {
+			return ErrRuntimeMutationBlocked
+		}
+		err := fn(p)
+		if !runtimeMarkerAbsent(path) {
+			return ErrRuntimeMutationBlocked
+		}
+		return err
+	})
+}
+
+// Internal reuse for a final consumer holding the same existing flock. The
+// snapshot closure is filesystem-only; each caller enforces its own context.
+func withHistoricalRecoverySubmissionLocked(ctx context.Context, dir string, binding RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryCommitProof, func() bool) error) error {
+	if lock == nil || ctx.Err() != nil || fn == nil {
+		return ErrRuntimeMutationBlocked
+	}
+	if _, err := lock.Stat(); err != nil {
+		return ErrRuntimeMutationBlocked
+	}
+	var err error
 	paths := []string{"mutation-inflight.json", runtimeResultFile, runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile}
 	limits := []int64{16384, runtimeResultLimit, runtimeRecoveryConsumptionLimit, 8192, 4096}
 	data := make([][]byte, len(paths))
@@ -34,7 +58,7 @@ func WithHistoricalRecoverySubmission(ctx context.Context, dir string, binding R
 		}
 	}
 	unchanged := func() bool {
-		if ctx.Err() != nil || !runtimeMarkerAbsent(filepath.Join(dir, "inflight.json")) {
+		if !runtimeMarkerAbsent(filepath.Join(dir, "inflight.json")) {
 			return false
 		}
 		for i, name := range paths {
@@ -77,7 +101,7 @@ func WithHistoricalRecoverySubmission(ctx context.Context, dir string, binding R
 			return ErrRuntimeMutationBlocked
 		}
 	}
-	if !unchanged() || fn(proof) != nil || !unchanged() {
+	if ctx.Err() != nil || !unchanged() || fn(proof, unchanged) != nil || ctx.Err() != nil || !unchanged() {
 		return ErrRuntimeMutationBlocked
 	}
 	return nil
