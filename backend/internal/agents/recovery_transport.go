@@ -24,15 +24,36 @@ type recoveryGrantReader interface {
 	ReadRecoveryGrant(context.Context, string, string, []byte) (json.RawMessage, error)
 }
 
+type recoveryReleaseReader interface {
+	ReadRecoveryReleaseAuthorization(context.Context, string, string, []byte) (json.RawMessage, error)
+}
+
 func (h *Handler) RecoveryGrant(w http.ResponseWriter, r *http.Request) {
+	h.recoveryAuthorityRead(w, r, false)
+}
+
+func (h *Handler) RecoveryReleaseAuthorization(w http.ResponseWriter, r *http.Request) {
+	h.recoveryAuthorityRead(w, r, true)
+}
+
+func (h *Handler) recoveryAuthorityRead(w http.ResponseWriter, r *http.Request, release bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	token, ok := agentBearerToken(r.Header.Get("Authorization"))
 	if !ok {
 		writeAgentUnauthorized(w)
 		return
 	}
-	reader, ok := h.recovery.(recoveryGrantReader)
-	if !ok {
+	var read func(context.Context, string, string, []byte) (json.RawMessage, error)
+	if release {
+		if reader, supported := h.recovery.(recoveryReleaseReader); supported {
+			read = reader.ReadRecoveryReleaseAuthorization
+		}
+	} else {
+		if reader, supported := h.recovery.(recoveryGrantReader); supported {
+			read = reader.ReadRecoveryGrant
+		}
+	}
+	if read == nil {
 		httpx.WriteJSON(w, 501, httpx.Error("unsupported", "Grant read is unavailable."))
 		return
 	}
@@ -41,7 +62,7 @@ func (h *Handler) RecoveryGrant(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, 400, httpx.Error("invalid_request", "A bounded grant read request is required."))
 		return
 	}
-	result, err := reader.ReadRecoveryGrant(r.Context(), HashToken(token), r.PathValue("operation_id"), data)
+	result, err := read(r.Context(), HashToken(token), r.PathValue("operation_id"), data)
 	if errors.Is(err, ErrObservationRejected) || errors.Is(err, pgx.ErrNoRows) {
 		httpx.WriteJSON(w, 409, httpx.Error("grant_rejected", "Recovery grant was not delivered."))
 		return

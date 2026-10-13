@@ -43,6 +43,17 @@ func (t recoveryTransport) ReadRecoveryGrant(ctx context.Context, token, operati
 	return json.Marshal(result)
 }
 
+func (t recoveryTransport) ReadRecoveryReleaseAuthorization(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
+	result, err := t.service.ReadRecoveryReleaseAuthorization(ctx, token, operation, data)
+	if errors.Is(err, revocations.ErrPreflight) {
+		return nil, agents.ErrObservationRejected
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+
 func (t recoveryTransport) NextRecoveryChallenge(ctx context.Context, token string) (json.RawMessage, error) {
 	c, err := t.service.NextRecoveryChallenge(ctx, token)
 	if errors.Is(err, revocations.ErrPreflight) {
