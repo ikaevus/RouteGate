@@ -8,6 +8,22 @@ CREATE TABLE runtime_recovery_finalization_evidence (
  observed_at timestamptz NOT NULL,
  accepted_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+-- Preserve raw keys until duplicate detection; jsonb alone would discard them.
+-- This wire contains only bound strings, integer fields and objects. Emit the
+-- shared typed field order and compact scalars before immutable retention.
+CREATE FUNCTION routegate_recovery_finalization_wire(value json) RETURNS text LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+DECLARE result text; kind text:=json_typeof(value);
+BEGIN
+ IF kind='object' THEN
+ IF EXISTS(SELECT 1 FROM json_each(value) GROUP BY key HAVING count(*)>1) THEN
+ RAISE EXCEPTION USING ERRCODE='P0147',MESSAGE='recovery_finalization_duplicate_key'; END IF;
+ SELECT '{'||COALESCE(string_agg(to_json(key)::text||':'||routegate_recovery_finalization_wire(v),',' ORDER BY array_position(ARRAY['schemaVersion','operationId','authorizationHash','finalConsumptionHash','observedAt','observation','taskId','agentId','serverId','markerHash','receiptHash','envelopeHash','witness','runtimeHash','generation','previousGeneration','listenerPort','invocationId','pid','startedMonotonic'],key),key),'')||'}' INTO result FROM json_each(value) AS fields(key,v);
+ RETURN result;
+ ELSIF kind='string' THEN RETURN to_json(value#>>'{}')::text;
+ ELSIF kind='number' THEN RETURN trim_scale(value::text::numeric)::text;
+ ELSE RAISE EXCEPTION USING ERRCODE='P0147',MESSAGE='recovery_finalization_invalid_wire';
+ END IF;
+END; $$;
 CREATE FUNCTION routegate_recovery_finalization_evidence_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE node uuid; prep runtime_recovery_preparations; authority runtime_recovery_release_authorizations; data jsonb;
 BEGIN
@@ -20,6 +36,8 @@ BEGIN
  LOCK TABLE user_roles,roles,role_permissions,permissions IN SHARE MODE;
  PERFORM u.id FROM users u JOIN auth_sessions s ON s.user_id=u.id
  WHERE u.id=authority.actor_user_id AND s.id=authority.actor_session_id FOR SHARE OF u,s;
+ IF NEW.proof<>routegate_recovery_finalization_wire(NEW.proof::json) THEN
+ RAISE EXCEPTION USING ERRCODE='P0147',MESSAGE='recovery_finalization_noncanonical_wire'; END IF;
  data:=NEW.proof::jsonb;
  IF prep.id IS NULL OR prep.state<>'prepared' OR authority.preparation_id IS NULL
  OR clock_timestamp()<authority.issued_at OR clock_timestamp()>=authority.expires_at
@@ -29,6 +47,8 @@ BEGIN
  OR NOT COALESCE(jsonb_typeof(data)='object' AND data->'schemaVersion'='1'::jsonb
  AND data->>'operationId'=prep.id::text AND data->>'authorizationHash'=NEW.authorization_hash
  AND data->>'finalConsumptionHash'=NEW.final_consumption_hash AND (data->>'observedAt')::timestamptz=NEW.observed_at
+ AND data->>'observedAt' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{0,8}[1-9])?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$'
+ AND data->>'observedAt' !~ '[+-]00:00$'
  AND data->'observation'=(authority.authorization_payload::jsonb)->'expected'
  AND data-ARRAY['schemaVersion','operationId','authorizationHash','finalConsumptionHash','observedAt','observation']='{}'::jsonb,false) THEN
  RAISE EXCEPTION USING ERRCODE='P0147',MESSAGE='recovery_finalization_binding_mismatch'; END IF;

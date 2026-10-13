@@ -4,4 +4,5 @@ DO $$ BEGIN
  RAISE EXCEPTION 'recovery_finalization_evidence_retained'; END IF;
  DROP TABLE runtime_recovery_finalization_evidence;
  DROP FUNCTION routegate_recovery_finalization_evidence_guard();
+ DROP FUNCTION routegate_recovery_finalization_wire(json);
 END; $$;

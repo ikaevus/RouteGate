@@ -13,6 +13,7 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/agents"
 	"github.com/ikaevus/routegate/backend/internal/revocations"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -324,6 +325,43 @@ func TestRecoveryFinalizationSQLGuard(t *testing.T) {
 	var count int
 	if err := f.pool.QueryRow(f.ctx, `SELECT count(*) FROM runtime_recovery_finalization_evidence`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("SQL refusal retained partial proof", err)
+	}
+}
+
+func TestRecoveryFinalizationRawSQLWire(t *testing.T) {
+	f := newRecoveryFinalizationFixture(t, 0)
+	wire, err := json.Marshal(f.proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := string(wire)
+	withoutSchema := strings.Replace(base, `"schemaVersion":1,`, "", 1)
+	before := f.snapshot(t)
+	for _, bad := range []struct{ wire, message string }{
+		{`{"schemaVersion":2,` + base[1:], "recovery_finalization_duplicate_key"},
+		{strings.Replace(base, `"witness":{"schemaVersion":1`, `"witness":{"schemaVersion":2,"schemaVersion":1`, 1), "recovery_finalization_duplicate_key"},
+		{`{"schema\u0056ersion":2,` + base[1:], "recovery_finalization_duplicate_key"},
+		{" " + base, "recovery_finalization_noncanonical_wire"},
+		{strings.Replace(base, `"schemaVersion":1`, `"schemaVersion":1.0`, 1), "recovery_finalization_noncanonical_wire"},
+		{withoutSchema[:len(withoutSchema)-1] + `,"schemaVersion":1}`, "recovery_finalization_noncanonical_wire"},
+		{strings.Replace(base, `"operationId"`, `"operation\u0049d"`, 1), "recovery_finalization_noncanonical_wire"},
+		{strings.Replace(base, `"listenerPort":443`, `"listenerPort":443.0`, 1), "recovery_finalization_noncanonical_wire"},
+	} {
+		_, err = f.pool.Exec(f.ctx, `INSERT INTO runtime_recovery_finalization_evidence(preparation_id,authorization_hash,final_consumption_hash,proof,proof_hash,observed_at) VALUES($1::uuid,$2,$3,$4::text,$5,($4::text::jsonb->>'observedAt')::timestamptz)`, f.proof.OperationID, f.proof.AuthorizationHash, f.proof.FinalConsumptionHash, bad.wire, recoveryTestHash([]byte(bad.wire)))
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "P0147" || pgErr.Message != bad.message {
+			t.Fatal("raw SQL wire rejection", err)
+		}
+	}
+	var count int
+	if err = f.pool.QueryRow(f.ctx, `SELECT count(*) FROM runtime_recovery_finalization_evidence`).Scan(&count); err != nil || count != 0 || f.snapshot(t) != before {
+		t.Fatal("invalid raw proof poisoned retained history", err)
+	}
+	if _, err = f.svc.AcceptRecoveryFinalization(f.ctx, f.token, f.proof.OperationID, wire); err != nil {
+		t.Fatal("canonical typed proof rejected after refusals", err)
+	}
+	if r, e := f.svc.VerifyRecoveryFinalization(f.ctx, f.token, f.proof.OperationID, wire); e != nil || !r.Recorded || r.ProofHash != recoveryTestHash(wire) {
+		t.Fatal("retained canonical proof cannot be verified", e)
 	}
 }
 

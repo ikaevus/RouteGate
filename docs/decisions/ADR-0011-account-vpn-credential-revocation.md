@@ -1191,8 +1191,13 @@ window, never in Manager's future. Heartbeat remains transport readiness only.
 Schema 000167 retains one immutable typed proof per preparation, with unique
 final-consumption hash, exact authorization/proof hashes and measured/accepted
 timestamps. SQL guards repeat current admission and exact-binding checks; history
-cannot be updated/deleted or lost through a raced downgrade. Identical retries
-recheck current authority, keep original acceptance time and cannot replace proof.
+cannot be updated/deleted or lost through a raced downgrade.
+SQL retention checks raw JSON before jsonb conversion: duplicate keys at every
+depth (including escaped names) are rejected, and compact typed field order,
+scalar encoding and canonical RFC3339Nano timestamps are required. Direct inserts
+cannot poison immutable history with wire bytes the Manager cannot confirm.
+Identical retries recheck current authority, keep original acceptance time and
+cannot replace proof.
 Receipts separately bind canonical typed proof and exact request bytes. Shared
 Manager/Agent golden pins final-proof field order/hash and nanosecond wire time;
 indexed timestamps use PostgreSQL's JSON parser consistently.
