@@ -137,7 +137,7 @@ func (s *Service) issueRecoveryReleaseAuthorization(ctx context.Context, in Reco
 		return zero, ErrPreflight
 	}
 	var saved, hash, actor, session string
-	err = tx.QueryRow(ctx, `SELECT authorization,authorization_hash,actor_user_id::text,actor_session_id::text FROM runtime_recovery_release_authorizations WHERE preparation_id=$1::uuid`, in.PreparationID).Scan(&saved, &hash, &actor, &session)
+	err = tx.QueryRow(ctx, `SELECT authorization_payload,authorization_hash,actor_user_id::text,actor_session_id::text FROM runtime_recovery_release_authorizations WHERE preparation_id=$1::uuid`, in.PreparationID).Scan(&saved, &hash, &actor, &session)
 	if err == nil {
 		a, e := decodeRecoveryReleaseAuthorization([]byte(saved))
 		sum := sha256.Sum256([]byte(saved))
@@ -167,7 +167,7 @@ func (s *Service) issueRecoveryReleaseAuthorization(ctx context.Context, in Reco
 	}
 	sum := sha256.Sum256(data)
 	hash = hex.EncodeToString(sum[:])
-	_, err = tx.Exec(ctx, `INSERT INTO runtime_recovery_release_authorizations(preparation_id,actor_user_id,actor_session_id,authorization,authorization_hash,issued_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::text,$5,($4::text::jsonb->>'issuedAt')::timestamptz,($4::text::jsonb->>'expiresAt')::timestamptz)`, in.PreparationID, u.ID, u.SessionID, string(data), hash)
+	_, err = tx.Exec(ctx, `INSERT INTO runtime_recovery_release_authorizations(preparation_id,actor_user_id,actor_session_id,authorization_payload,authorization_hash,issued_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::text,$5,($4::text::jsonb->>'issuedAt')::timestamptz,($4::text::jsonb->>'expiresAt')::timestamptz)`, in.PreparationID, u.ID, u.SessionID, string(data), hash)
 	if err != nil {
 		return zero, err
 	}

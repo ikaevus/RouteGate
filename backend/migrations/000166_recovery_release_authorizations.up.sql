@@ -1,14 +1,14 @@
--- Dormant conditional final authorization only. No delivery or Agent unlock.
+-- Dormant conditional final authorization_payload only. No delivery or Agent unlock.
 CREATE TABLE runtime_recovery_release_authorizations (
  preparation_id uuid PRIMARY KEY REFERENCES runtime_recovery_commit_evidence(preparation_id),
  actor_user_id uuid NOT NULL,
  actor_session_id uuid NOT NULL,
- authorization text NOT NULL CHECK(octet_length(authorization) BETWEEN 1 AND 8192),
+ authorization_payload text NOT NULL CHECK(octet_length(authorization_payload) BETWEEN 1 AND 8192),
  authorization_hash text NOT NULL UNIQUE CHECK(authorization_hash ~ '^[0-9a-f]{64}$'),
  issued_at timestamptz NOT NULL,
  expires_at timestamptz NOT NULL CHECK(expires_at>issued_at AND expires_at<=issued_at+interval '2 minutes')
 );
-CREATE UNIQUE INDEX runtime_recovery_release_nonce ON runtime_recovery_release_authorizations ((authorization::jsonb->>'nonce'));
+CREATE UNIQUE INDEX runtime_recovery_release_nonce ON runtime_recovery_release_authorizations ((authorization_payload::jsonb->>'nonce'));
 CREATE FUNCTION routegate_recovery_release_authorization_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE node uuid; prep runtime_recovery_preparations; evidence runtime_recovery_commit_evidence; grant_record runtime_recovery_mutation_grants; data jsonb;
 BEGIN
@@ -22,12 +22,12 @@ BEGIN
  LOCK TABLE user_roles,roles,role_permissions,permissions IN SHARE MODE;
  PERFORM u.id FROM users u JOIN auth_sessions s ON s.user_id=u.id
  WHERE u.id=NEW.actor_user_id AND s.id=NEW.actor_session_id FOR SHARE OF u,s;
- data:=NEW.authorization::jsonb;
+ data:=NEW.authorization_payload::jsonb;
  IF prep.id IS NULL OR prep.state<>'prepared' OR evidence.preparation_id IS NULL OR grant_record.preparation_id IS NULL
  OR evidence.grant_hash<>grant_record.grant_hash
  OR NEW.issued_at<evidence.accepted_at OR NEW.issued_at<evidence.observed_at OR NEW.issued_at>clock_timestamp()
  OR NEW.expires_at<=clock_timestamp()
- OR NEW.authorization_hash<>encode(digest(NEW.authorization,'sha256'),'hex')
+ OR NEW.authorization_hash<>encode(digest(NEW.authorization_payload,'sha256'),'hex')
  OR NOT COALESCE(jsonb_typeof(data)='object' AND data->'schemaVersion'='1'::jsonb
  AND data->>'purpose'='runtime_mutation_fence_final_release_v1'
  AND data->>'operationId'=prep.id::text AND data->>'nonce' ~ '^[0-9a-f]{64}$'

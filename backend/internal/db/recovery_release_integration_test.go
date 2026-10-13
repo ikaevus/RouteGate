@@ -46,10 +46,10 @@ func TestRecoveryReleaseAuthorization(t *testing.T) {
 	}
 	var saved, hash, actor, session string
 	var count int
-	if err := f.pool.QueryRow(f.ctx, `SELECT authorization,authorization_hash,actor_user_id::text,actor_session_id::text FROM runtime_recovery_release_authorizations`).Scan(&saved, &hash, &actor, &session); err != nil || saved != string(wire) || hash != x.a.AuthorizationHash || actor != f.actor.ID || session != f.actor.SessionID {
+	if err := f.pool.QueryRow(f.ctx, `SELECT authorization_payload,authorization_hash,actor_user_id::text,actor_session_id::text FROM runtime_recovery_release_authorizations`).Scan(&saved, &hash, &actor, &session); err != nil || saved != string(wire) || hash != x.a.AuthorizationHash || actor != f.actor.ID || session != f.actor.SessionID {
 		t.Fatal("attribution lost", err)
 	}
-	for _, sql := range []string{`UPDATE runtime_recovery_release_authorizations SET authorization=authorization`, `DELETE FROM runtime_recovery_release_authorizations`} {
+	for _, sql := range []string{`UPDATE runtime_recovery_release_authorizations SET authorization_payload=authorization_payload`, `DELETE FROM runtime_recovery_release_authorizations`} {
 		if _, err := f.pool.Exec(f.ctx, sql); err == nil {
 			t.Fatal("authorization history mutable")
 		}
@@ -198,7 +198,7 @@ func TestRecoveryReleaseSessionDeadlineAndRetry(t *testing.T) {
 		t.Fatal("expired authorization renewed")
 	}
 	var saved string
-	if err = f.pool.QueryRow(f.ctx, `SELECT authorization FROM runtime_recovery_release_authorizations`).Scan(&saved); err != nil {
+	if err = f.pool.QueryRow(f.ctx, `SELECT authorization_payload FROM runtime_recovery_release_authorizations`).Scan(&saved); err != nil {
 		t.Fatal(err)
 	}
 	wire, _ := json.Marshal(a.Authorization)
@@ -219,7 +219,7 @@ func TestRecoveryReleaseRetryAuthorityLoss(t *testing.T) {
 		t.Fatal("retry adopted revoked authority")
 	}
 	var saved string
-	if err = f.pool.QueryRow(f.ctx, `SELECT authorization FROM runtime_recovery_release_authorizations`).Scan(&saved); err != nil {
+	if err = f.pool.QueryRow(f.ctx, `SELECT authorization_payload FROM runtime_recovery_release_authorizations`).Scan(&saved); err != nil {
 		t.Fatal(err)
 	}
 	wire, _ := json.Marshal(a.Authorization)
@@ -238,7 +238,7 @@ func releaseSQLFixture(t *testing.T, f recoveryCommitFixture) revocations.Recove
 	return revocations.RecoveryReleaseAuthorization{SchemaVersion: 1, Purpose: "runtime_mutation_fence_final_release_v1", OperationID: f.proof.OperationID, Nonce: strings.Repeat("a", 64), AgentCredentialGeneration: f.grant.Grant.AgentCredentialGeneration, GrantHash: f.proof.GrantHash, ConsumptionHash: f.proof.ConsumptionHash, CommitProofHash: recoveryTestHash(wire), IssuedAt: now.UTC(), ExpiresAt: now.UTC().Add(time.Minute), Expected: f.proof.Observation}
 }
 
-const releaseInsertSQL = `INSERT INTO runtime_recovery_release_authorizations(preparation_id,actor_user_id,actor_session_id,authorization,authorization_hash,issued_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::text,$5,($4::text::jsonb->>'issuedAt')::timestamptz,($4::text::jsonb->>'expiresAt')::timestamptz)`
+const releaseInsertSQL = `INSERT INTO runtime_recovery_release_authorizations(preparation_id,actor_user_id,actor_session_id,authorization_payload,authorization_hash,issued_at,expires_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::text,$5,($4::text::jsonb->>'issuedAt')::timestamptz,($4::text::jsonb->>'expiresAt')::timestamptz)`
 
 func TestRecoveryReleaseSQLGuard(t *testing.T) {
 	f, _ := releaseFixture(t, 0, true)
@@ -374,7 +374,7 @@ func TestRecoveryReleaseDowngradeRace(t *testing.T) {
 		t.Fatal("raced downgrade erased authority")
 	}
 	var saved string
-	if err = f.pool.QueryRow(f.ctx, `SELECT authorization FROM runtime_recovery_release_authorizations`).Scan(&saved); err != nil || saved != string(wire) {
+	if err = f.pool.QueryRow(f.ctx, `SELECT authorization_payload FROM runtime_recovery_release_authorizations`).Scan(&saved); err != nil || saved != string(wire) {
 		t.Fatal("raced authority lost", err)
 	}
 }
