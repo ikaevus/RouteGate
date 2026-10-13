@@ -42,6 +42,9 @@ type RuntimeRecoveryFinalization struct {
 	pinned            RuntimeRecoveryCommitProof
 	unchanged         func() bool
 	record            []byte
+	submission        []byte
+	frozen            RuntimeRecoveryFinalizationProof
+	acknowledgement   []byte
 	now               func() time.Time
 	lastChecked       time.Time
 	poisoned          bool
@@ -64,7 +67,7 @@ func beginRuntimeRecoveryFinalization(ctx context.Context, dir string, binding R
 	}
 	m := &RuntimeRecoveryFinalization{lock: lock, dir: dir, activePath: activePath, adapter: adapter, binding: binding, now: now, lastChecked: started}
 	fail := func() (*RuntimeRecoveryFinalization, error) { m.Close(); return nil, ErrRuntimeMutationBlocked }
-	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalConsumptionFile)) {
+	if !runtimeRecoveryFinalStateAbsent(dir) {
 		return fail()
 	}
 	err = withHistoricalRecoverySubmissionLocked(ctx, dir, binding, lock, func(p RuntimeRecoveryCommitProof, unchanged func() bool) error {
@@ -109,11 +112,14 @@ func (m *RuntimeRecoveryFinalization) Proof(ctx context.Context) (RuntimeRecover
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.proofLocked(ctx)
+}
+func (m *RuntimeRecoveryFinalization) proofLocked(ctx context.Context) (RuntimeRecoveryFinalizationProof, error) {
 	deny := func() (RuntimeRecoveryFinalizationProof, error) {
 		m.poisoned = true
 		return RuntimeRecoveryFinalizationProof{}, ErrRuntimeMutationBlocked
 	}
-	if m.lock == nil || m.poisoned || m.now == nil || m.unchanged == nil || ctx.Err() != nil || !m.unchanged() {
+	if m.lock == nil || m.poisoned || m.now == nil || m.unchanged == nil || ctx.Err() != nil || !m.unchanged() || !m.finalSubmissionUnchanged() {
 		return deny()
 	}
 	file := filepath.Join(m.dir, runtimeRecoveryFinalConsumptionFile)
@@ -137,7 +143,7 @@ func (m *RuntimeRecoveryFinalization) Proof(ctx context.Context) (RuntimeRecover
 	defer cancel()
 	o, err := observeRuntimeRecoveryLocked(bounded, m.dir, m.binding.RuntimeResultBinding, a.Expected.TaskID, m.activePath, m.adapter, m.lock)
 	finished := m.now().UTC()
-	if err != nil || bounded.Err() != nil || finished.Before(started) || finished.Before(a.IssuedAt) || !finished.Before(a.ExpiresAt) || o != a.Expected || !m.unchanged() || !recordUnchanged() {
+	if err != nil || bounded.Err() != nil || finished.Before(started) || finished.Before(a.IssuedAt) || !finished.Before(a.ExpiresAt) || o != a.Expected || !m.unchanged() || !recordUnchanged() || !m.finalSubmissionUnchanged() {
 		return deny()
 	}
 	m.lastChecked = finished

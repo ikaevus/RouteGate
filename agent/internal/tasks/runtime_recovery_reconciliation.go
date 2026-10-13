@@ -22,12 +22,11 @@ func WithHistoricalRecoverySubmission(ctx context.Context, dir string, binding R
 	}
 	defer lock.Close()
 	return withHistoricalRecoverySubmissionLocked(ctx, dir, binding, lock, func(p RuntimeRecoveryCommitProof, _ func() bool) error {
-		path := filepath.Join(dir, runtimeRecoveryFinalConsumptionFile)
-		if !runtimeMarkerAbsent(path) {
+		if !runtimeRecoveryFinalStateAbsent(dir) {
 			return ErrRuntimeMutationBlocked
 		}
 		err := fn(p)
-		if !runtimeMarkerAbsent(path) {
+		if !runtimeRecoveryFinalStateAbsent(dir) {
 			return ErrRuntimeMutationBlocked
 		}
 		return err

@@ -66,40 +66,5 @@ func (c *Client) submitRecoveryCommit(ctx context.Context, token string, verifie
 		return r.SchemaVersion == 1 && r.Recorded && r.OperationID == frozen.OperationID && r.GrantHash == frozen.GrantHash && r.ConsumptionHash == frozen.ConsumptionHash && r.ProofHash == hash && r.RequestHash == hash
 	}
 	path := "/api/v1/agent/recovery-observations/" + url.PathEscape(frozen.OperationID) + "/commit"
-	for attempt := 0; attempt < completeTaskMaxAttempts; attempt++ {
-		if !check() {
-			return zero, ErrRecoveryCommitUnconfirmed
-		}
-		var receipt RecoveryCommitReceipt
-		status, e := c.recoveryExchange(ctx, path, token, wire, &receipt)
-		if !check() {
-			return zero, ErrRecoveryCommitUnconfirmed
-		}
-		if e == nil && valid(receipt) {
-			return receipt, nil
-		}
-		// Even a definitive rejection may follow an earlier uncertain attempt.
-		// Readback is exact historical storage; it never repairs local drift.
-		receipt = RecoveryCommitReceipt{}
-		verifyStatus, verifyErr := c.recoveryExchange(ctx, path+"/verify", token, wire, &receipt)
-		if !check() {
-			return zero, ErrRecoveryCommitUnconfirmed
-		}
-		if verifyErr == nil && valid(receipt) {
-			return receipt, nil
-		}
-		if (status >= 300 && status < 500 && status != 408 && status != 429) || (verifyStatus >= 300 && verifyStatus < 500 && verifyStatus != 409 && verifyStatus != 408 && verifyStatus != 429) {
-			return zero, ErrRecoveryCommitUnconfirmed
-		}
-		if attempt+1 < completeTaskMaxAttempts {
-			timer := time.NewTimer(completeTaskRetryBaseWait)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return zero, ErrRecoveryCommitUnconfirmed
-			case <-timer.C:
-			}
-		}
-	}
-	return zero, ErrRecoveryCommitUnconfirmed
+	return exchangePinnedRecoveryEvidence(ctx, c, token, path, wire, check, valid)
 }
