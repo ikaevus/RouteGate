@@ -1176,3 +1176,36 @@ No Runner/HTTP consumer activation, config apply/restart, file deletion, fence
 release or Manager reservation release is implemented here. Crash-safe final
 release/abort and operator credential-revocation workflow remain future work;
 schema stays000166 and #545 remains unfinished. No production/merge/deploy.
+
+### Manager final-consumption evidence (twenty-third slice)
+
+Authenticated bounded `POST /api/v1/agent/recovery-observations/{operation_id}/finalization`
+accepts the Agent's measured final-consumption proof. It reuses final-authorization
+delivery admission and server/preparation/Agent then role mappings and only the
+issuer user/session locks. Current credentials/generation, exact operation and
+Agent/server bindings, current fencing/observation/read capabilities, authenticated
+heartbeat, active human issuer authority/session and final lifetime are required.
+Observation must exactly match the retained authorization and fall within its
+window, never in Manager's future. Heartbeat remains transport readiness only.
+
+Schema 000167 retains one immutable typed proof per preparation, with unique
+final-consumption hash, exact authorization/proof hashes and measured/accepted
+timestamps. SQL guards repeat current admission and exact-binding checks; history
+cannot be updated/deleted or lost through a raced downgrade. Identical retries
+recheck current authority, keep original acceptance time and cannot replace proof.
+Receipts separately bind canonical typed proof and exact request bytes. Shared
+Manager/Agent golden pins final-proof field order/hash and nanosecond wire time;
+indexed timestamps use PostgreSQL's JSON parser consistently.
+
+`POST .../finalization/verify` reads only the exact retained proof under current
+Agent credentials/generation and Agent/server bindings. Historical readback can
+outlive issuer/session/heartbeat/authorization expiry; it never renews authority.
+Database/context uncertainty remains a sanitized failure, not definitive absence.
+No sensitive proof, nonce or credential is included in errors/logs.
+
+Recording/readback proves immutable Manager storage only, not continued Agent
+flock ownership or permission to release. No Agent final-submit consumer, Runner
+activation, file cleanup, configuration mutation, fence or reservation release
+is implemented here. Durable Agent confirmation, crash-safe release/abort and
+operator end-to-end credential revocation remain future work. #545 stays open.
+No production access/change, real-user revocation, merge or deploy.
