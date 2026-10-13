@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ikaevus/routegate/backend/internal/auth"
 	"github.com/ikaevus/routegate/backend/internal/revocations"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func releaseFixture(t *testing.T, lifetime time.Duration, record bool) (recoveryCommitFixture, revocations.RecoveryReleaseAuthorizationInput) {
@@ -73,7 +75,7 @@ func TestRecoveryReleaseAuthorization(t *testing.T) {
 }
 
 func TestRecoveryReleaseRejects(t *testing.T) {
-	for _, mode := range []string{"no_context", "confirmation", "context_permission", "context_role", "wrong_operation", "wrong_grant", "wrong_consumption", "wrong_proof", "missing_commit", "revoked_session", "expired_session", "disabled_user", "service_user", "removed_role", "removed_permission", "stale_agent", "offline_agent", "fencing_lost", "observation_lost", "grant_read_lost", "unauthenticated_heartbeat", "credential_generation"} {
+	for _, mode := range []string{"no_context", "confirmation", "context_permission", "context_role", "wrong_operation", "wrong_grant", "wrong_consumption", "wrong_proof", "missing_commit", "revoked_session", "expired_session", "disabled_user", "service_user", "removed_role", "removed_permission", "stale_agent", "offline_agent", "fencing_lost", "observation_lost", "grant_read_lost", "unauthenticated_heartbeat"} {
 		t.Run(mode, func(t *testing.T) {
 			f, in := releaseFixture(t, 0, mode != "missing_commit")
 			ctx := f.ctx
@@ -121,8 +123,6 @@ func TestRecoveryReleaseRejects(t *testing.T) {
 				f.exec(t, `UPDATE agents SET capabilities=capabilities-'runtimeRecoveryGrantReadV1'`)
 			case "unauthenticated_heartbeat":
 				f.exec(t, `UPDATE agents SET last_authenticated_heartbeat_generation=NULL,last_authenticated_heartbeat_at=NULL`)
-			case "credential_generation":
-				f.exec(t, `UPDATE agents SET credential_generation=credential_generation+1,last_authenticated_heartbeat_generation=credential_generation+1,last_authenticated_heartbeat_at=clock_timestamp()`)
 			}
 			before := f.snapshot(t)
 			if out, err := f.svc.IssueRecoveryReleaseAuthorization(ctx, in); err != revocations.ErrPreflight || out != (revocations.RecoveryReleaseApproval{}) {
@@ -137,6 +137,17 @@ func TestRecoveryReleaseRejects(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecoveryReleaseCredentialReplacementBlocked(t *testing.T) {
+	f, _ := releaseFixture(t, 0, true)
+	before := f.snapshot(t)
+	_, err := f.pool.Exec(f.ctx, `UPDATE agents SET credential_generation=credential_generation+1,last_authenticated_heartbeat_generation=credential_generation+1,last_authenticated_heartbeat_at=clock_timestamp()`)
+	// A reserved node rejects credential replacement before generation drift
+	// can exist; do not disable its guard to manufacture an issuance fixture.
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "P0142" { t.Fatal("reservation allowed credential replacement", err) }
+	if f.snapshot(t) != before { t.Fatal("rejected replacement changed protected state") }
 }
 
 func TestRecoveryReleaseFreshAuthorityAfterExpiry(t *testing.T) {
