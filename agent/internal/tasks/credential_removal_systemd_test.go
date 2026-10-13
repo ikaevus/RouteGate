@@ -242,6 +242,17 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if proof, err := final.Proof(ctx); err != nil || proof.Observation != observation || proof.FinalConsumptionHash == "" {
 		t.Fatal("real fresh final proof", err)
 	}
+	// Synthetic historical Manager receipt; this is a real-runtime regression,
+	// not Manager+Agent HTTP finalization E2E.
+	if err := final.WithSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryFinalizationGuard) error {
+		p, e := g.PinProof(ctx)
+		if e != nil {
+			return e
+		}
+		return g.RecordReceipt(ctx, receiptForFinalizationProof(p))
+	}); err != nil {
+		t.Fatal("real final confirmation persistence", err)
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -254,6 +265,11 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	final.Close()
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalConsumptionFile)) {
 		t.Fatal("real process drift discarded final consumption")
+	}
+	for _, name := range []string{runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile} {
+		if runtimeMarkerAbsent(filepath.Join(e.receiptDir, name)) {
+			t.Fatal("real drift discarded final confirmation", name)
+		}
 	}
 	if _, err := ObserveRuntimeRecovery(ctx, e.receiptDir, binding, task.ID, e.activePath, adapter); err == nil {
 		t.Fatal("new process accepted old recovery witness")

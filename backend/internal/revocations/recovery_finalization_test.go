@@ -48,4 +48,13 @@ func TestRuntimeMutationRecoveryFinalizationGolden(t *testing.T) {
 	if !receipt.Recorded || receipt.ProofHash != v.SHA256 || receipt.RequestHash == receipt.ProofHash {
 		t.Fatal("receipt lost exact request hash")
 	}
+	data, err = os.ReadFile("../../../testdata/recovery-final-acknowledgement-v1.json")
+	if err != nil || json.Unmarshal(data, &v) != nil {
+		t.Fatal("receipt fixture", err)
+	}
+	encoded, err := json.Marshal(recoveryFinalizationReceipt(p, wire, wire))
+	sum = sha256.Sum256(encoded)
+	if err != nil || string(encoded) != v.Wire || hex.EncodeToString(sum[:]) != v.SHA256 {
+		t.Fatal("Manager receipt wire/hash drift", err)
+	}
 }

@@ -262,7 +262,7 @@ func TestRuntimeMutationRecoveryCommitPoisonedOwner(t *testing.T) {
 }
 
 func TestRuntimeMutationRecoveryConsumptionAloneGuardsMutations(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile} {
+	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile} {
 		for _, contents := range []string{"{}", "", "malformed"} {
 			t.Run(name+contents, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)
@@ -356,6 +356,17 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 				os.Exit(7)
 			}
 			defer final.Close()
+			if mode := os.Getenv("RG_TEST_RECOVERY_FINAL_SUBMIT_CHILD"); mode != "" {
+				if final.WithSubmission(context.Background(), in.Binding, markerDigest(wire), func(g *RuntimeRecoveryFinalizationGuard) error {
+					p, e := g.PinProof(context.Background())
+					if e != nil || mode == "pin" {
+						return e
+					}
+					return g.RecordReceipt(context.Background(), receiptForFinalizationProof(p))
+				}) != nil {
+					os.Exit(8)
+				}
+			}
 		}
 		if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
 			if os.WriteFile(filepath.Join(in.Dir, "test-commit-ready"), []byte("ready"), 0600) != nil {

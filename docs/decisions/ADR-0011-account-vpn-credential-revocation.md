@@ -1214,3 +1214,39 @@ activation, file cleanup, configuration mutation, fence or reservation release
 is implemented here. Durable Agent confirmation, crash-safe release/abort and
 operator end-to-end credential revocation remain future work. #545 stays open.
 No production access/change, real-user revocation, merge or deploy.
+
+### Agent final-proof submission and durable confirmation (twenty-fourth slice)
+
+Dormant `Client.SubmitRecoveryFinalization` requires the concrete live final
+owner and independently delivered binding/authorization hash. The owner retains
+its mutex and existing admission flock throughout a synchronous submission
+guard, HTTP retries/readback and receipt persistence. Escaped/copied/zero guards
+cannot retain authority after the callback; Close waits for completion.
+
+Before HTTP, atomic write/fsync of private `recovery-final-submission.json` pins
+one exact measured proof. Every retry and `/finalization/verify` sends these same
+bytes, including original observedAt. Existing strict bounded no-redirect recovery
+exchange and shared commit retry policy are reused. Fresh locked observations
+before/after HTTP check original/final private state, exact runtime witness,
+binding, authorization lifetime, cancellation and backwards wall time. Readback
+proves exact historical storage only and cannot repair local drift or revive an
+expired owner. Bounded uncertain transport failure retains the pin for live-owner
+retry without changing proof; no new process can resume it.
+
+The verified seven-field receipt is independently matched to the pinned proof
+and atomically/fsync retained as `recovery-final-acknowledgement.json`, followed
+by fresh observation and byte checks. Shared Manager/Agent golden pins receipt
+field order/hash. Repeated acknowledgement preserves original bytes; tamper,
+publication uncertainty or runtime drift poisons the owner and retains fences.
+Standalone/malformed final pin or acknowledgement guards all normal mutation
+admission/completion/result replay/scoped removal and old historical delivery.
+Exit/SIGKILL after pin or acknowledgement retains durable history and fencing.
+
+Disposable systemd/Reality regression pins final proof and persists a synthetic
+historical receipt under the actual stable process; injected external restart
+rejects the old proof while retaining files. This is not Manager+Agent HTTP E2E.
+No Runner invocation, file deletion, Complete/Release/resume method, configuration
+mutation, fence or Manager reservation release is activated. Crash-safe release,
+read-only final crash reconciliation/abort and operator credential-revocation
+workflow remain future work. Schema remains000167 and #545 stays unfinished.
+No production access/change, real-user revocation, merge or deploy.
