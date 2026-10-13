@@ -73,7 +73,7 @@ func TestRecoveryReleaseAuthorization(t *testing.T) {
 }
 
 func TestRecoveryReleaseRejects(t *testing.T) {
-	for _, mode := range []string{"no_context", "confirmation", "context_permission", "context_role", "wrong_operation", "wrong_grant", "wrong_consumption", "wrong_proof", "missing_commit", "revoked_session", "expired_session", "disabled_user", "service_user", "removed_role", "removed_permission", "stale_agent", "offline_agent", "fencing_lost", "observation_lost", "grant_read_lost", "heartbeat_generation", "credential_generation"} {
+	for _, mode := range []string{"no_context", "confirmation", "context_permission", "context_role", "wrong_operation", "wrong_grant", "wrong_consumption", "wrong_proof", "missing_commit", "revoked_session", "expired_session", "disabled_user", "service_user", "removed_role", "removed_permission", "stale_agent", "offline_agent", "fencing_lost", "observation_lost", "grant_read_lost", "unauthenticated_heartbeat", "credential_generation"} {
 		t.Run(mode, func(t *testing.T) {
 			f, in := releaseFixture(t, 0, mode != "missing_commit")
 			ctx := f.ctx
@@ -119,10 +119,10 @@ func TestRecoveryReleaseRejects(t *testing.T) {
 				f.exec(t, `UPDATE agents SET capabilities=capabilities-'runtimeRecoveryObservationV1'`)
 			case "grant_read_lost":
 				f.exec(t, `UPDATE agents SET capabilities=capabilities-'runtimeRecoveryGrantReadV1'`)
-			case "heartbeat_generation":
-				f.exec(t, `UPDATE agents SET last_authenticated_heartbeat_generation=credential_generation+1`)
+			case "unauthenticated_heartbeat":
+				f.exec(t, `UPDATE agents SET last_authenticated_heartbeat_generation=NULL,last_authenticated_heartbeat_at=NULL`)
 			case "credential_generation":
-				f.exec(t, `UPDATE agents SET credential_generation=credential_generation+1`)
+				f.exec(t, `UPDATE agents SET credential_generation=credential_generation+1,last_authenticated_heartbeat_generation=credential_generation+1,last_authenticated_heartbeat_at=clock_timestamp()`)
 			}
 			before := f.snapshot(t)
 			if out, err := f.svc.IssueRecoveryReleaseAuthorization(ctx, in); err != revocations.ErrPreflight || out != (revocations.RecoveryReleaseApproval{}) {
