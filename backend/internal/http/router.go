@@ -223,6 +223,8 @@ func NewRouter(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) stdht
 	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/release-authorization", agentsHandler.RecoveryReleaseAuthorization)
 	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/commit", agentsHandler.RecoveryCommit)
 	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/commit/verify", agentsHandler.VerifyRecoveryCommit)
+	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/finalization", agentsHandler.RecoveryFinalization)
+	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/finalization/verify", agentsHandler.VerifyRecoveryFinalization)
 	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result", agentsHandler.CompleteTask)
 	mux.HandleFunc("POST /api/v1/agent/tasks/{job_id}/result/verify", agentsHandler.VerifyTaskResult)
 	mux.HandleFunc("POST /api/v1/agent/recovery-observations/{operation_id}/evidence", agentsHandler.RecoveryEvidence)

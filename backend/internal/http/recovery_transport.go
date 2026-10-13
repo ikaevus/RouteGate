@@ -11,6 +11,27 @@ import (
 
 type recoveryTransport struct{ service *revocations.Service }
 
+func (t recoveryTransport) AcceptRecoveryFinalization(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
+	result, err := t.service.AcceptRecoveryFinalization(ctx, token, operation, data)
+	if errors.Is(err, revocations.ErrPreflight) {
+		return nil, agents.ErrObservationRejected
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+func (t recoveryTransport) VerifyRecoveryFinalization(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
+	result, err := t.service.VerifyRecoveryFinalization(ctx, token, operation, data)
+	if errors.Is(err, revocations.ErrPreflight) {
+		return nil, agents.ErrObservationRejected
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+
 func (t recoveryTransport) AcceptRecoveryCommit(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
 	result, err := t.service.AcceptRecoveryCommit(ctx, token, operation, data)
 	if errors.Is(err, revocations.ErrPreflight) {

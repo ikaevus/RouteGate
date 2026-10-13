@@ -16,24 +16,53 @@ type recoveryCommitTransport interface {
 	VerifyRecoveryCommit(context.Context, string, string, []byte) (json.RawMessage, error)
 }
 
+type recoveryFinalizationTransport interface {
+	AcceptRecoveryFinalization(context.Context, string, string, []byte) (json.RawMessage, error)
+	VerifyRecoveryFinalization(context.Context, string, string, []byte) (json.RawMessage, error)
+}
+
 func (h *Handler) RecoveryCommit(w http.ResponseWriter, r *http.Request) {
-	h.recoveryCommit(w, r, false)
+	h.recoveryCommit(w, r, false, false)
 }
 func (h *Handler) VerifyRecoveryCommit(w http.ResponseWriter, r *http.Request) {
-	h.recoveryCommit(w, r, true)
+	h.recoveryCommit(w, r, true, false)
+}
+
+func (h *Handler) RecoveryFinalization(w http.ResponseWriter, r *http.Request) {
+	h.recoveryCommit(w, r, false, true)
+}
+func (h *Handler) VerifyRecoveryFinalization(w http.ResponseWriter, r *http.Request) {
+	h.recoveryCommit(w, r, true, true)
 }
 
 // Agent bearer authentication is shared with existing evidence/result routes.
 // Neither recording nor readback authorizes Agent mutation/fence release.
-func (h *Handler) recoveryCommit(w http.ResponseWriter, r *http.Request, verify bool) {
+func (h *Handler) recoveryCommit(w http.ResponseWriter, r *http.Request, verify, final bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	token, ok := agentBearerToken(r.Header.Get("Authorization"))
 	if !ok {
 		writeAgentUnauthorized(w)
 		return
 	}
-	t, ok := h.recovery.(recoveryCommitTransport)
-	if !ok {
+	var call func(context.Context, string, string, []byte) (json.RawMessage, error)
+	if final {
+		if t, supported := h.recovery.(recoveryFinalizationTransport); supported {
+			if verify {
+				call = t.VerifyRecoveryFinalization
+			} else {
+				call = t.AcceptRecoveryFinalization
+			}
+		}
+	} else {
+		if t, supported := h.recovery.(recoveryCommitTransport); supported {
+			if verify {
+				call = t.VerifyRecoveryCommit
+			} else {
+				call = t.AcceptRecoveryCommit
+			}
+		}
+	}
+	if call == nil {
 		httpx.WriteJSON(w, 501, httpx.Error("unsupported", "Commit evidence is unavailable."))
 		return
 	}
@@ -42,12 +71,7 @@ func (h *Handler) recoveryCommit(w http.ResponseWriter, r *http.Request, verify 
 		httpx.WriteJSON(w, 400, httpx.Error("invalid_request", "A bounded commit proof is required."))
 		return
 	}
-	var result json.RawMessage
-	if verify {
-		result, err = t.VerifyRecoveryCommit(r.Context(), HashToken(token), r.PathValue("operation_id"), data)
-	} else {
-		result, err = t.AcceptRecoveryCommit(r.Context(), HashToken(token), r.PathValue("operation_id"), data)
-	}
+	result, err := call(r.Context(), HashToken(token), r.PathValue("operation_id"), data)
 	if errors.Is(err, ErrObservationRejected) || errors.Is(err, pgx.ErrNoRows) {
 		httpx.WriteJSON(w, 409, httpx.Error("commit_evidence_rejected", "Commit evidence was not confirmed."))
 		return
