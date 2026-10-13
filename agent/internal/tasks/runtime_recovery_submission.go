@@ -11,10 +11,13 @@ import (
 const runtimeRecoverySubmissionFile = "recovery-submission.json"
 
 func runtimeRecoveryStateAbsent(dir string) bool {
-	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryConsumptionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoverySubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryAcknowledgementFile))
+	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryConsumptionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoverySubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalConsumptionFile))
 }
 
 func (m *RuntimeRecoveryCommit) submissionUnchanged() bool {
+	if !runtimeMarkerAbsent(filepath.Join(m.dir, runtimeRecoveryFinalConsumptionFile)) {
+		return false
+	}
 	if !m.acknowledgementUnchanged() {
 		return false
 	}

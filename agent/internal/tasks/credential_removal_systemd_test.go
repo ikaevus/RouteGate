@@ -224,17 +224,37 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}); err != nil {
 		t.Fatal("real process submission pin failed", err)
 	}
+	commit.Close()
+	bound := RuntimeRecoveryGrantBinding{RuntimeResultBinding: binding, AgentCredentialGeneration: 7}
+	assertHistoricalRecoveryAfterExit(t, e.receiptDir, bound)
+	pinnedData, err := os.ReadFile(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile))
+	var pinned RuntimeRecoveryCommitProof
+	if err != nil || json.Unmarshal(pinnedData, &pinned) != nil {
+		t.Fatal("real pinned proof", err)
+	}
+	authorization := finalAuthorizationForProof(pinned, 7)
+	authorizationData, _ := json.Marshal(authorization)
+	final, err := BeginRuntimeRecoveryFinalization(ctx, e.receiptDir, bound, authorizationData, e.activePath, adapter)
+	if err != nil {
+		t.Fatal("real final consumption failed", err)
+	}
+	defer final.Close()
+	if proof, err := final.Proof(ctx); err != nil || proof.Observation != observation || proof.FinalConsumptionHash == "" {
+		t.Fatal("real fresh final proof", err)
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := commit.Proof(ctx); err == nil {
-		t.Fatal("new process accepted old locked commit witness")
+	if _, err := final.Proof(ctx); err == nil {
+		t.Fatal("new process accepted old locked final witness")
 	}
-	commit.Close()
-	assertHistoricalRecoveryAfterExit(t, e.receiptDir, RuntimeRecoveryGrantBinding{RuntimeResultBinding: binding, AgentCredentialGeneration: 7})
+	final.Close()
+	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalConsumptionFile)) {
+		t.Fatal("real process drift discarded final consumption")
+	}
 	if _, err := ObserveRuntimeRecovery(ctx, e.receiptDir, binding, task.ID, e.activePath, adapter); err == nil {
 		t.Fatal("new process accepted old recovery witness")
 	}
