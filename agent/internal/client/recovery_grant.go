@@ -77,17 +77,11 @@ func recoveryReadHash(data []byte) string {
 // No Runner invokes this method or BeginRuntimeRecoveryCommit automatically.
 func (c *Client) FetchRecoveryGrant(ctx context.Context, token, agentID, serverID, operationID string) (VerifiedRecoveryGrant, error) {
 	zero := VerifiedRecoveryGrant{}
+	binding, err := c.verifyRecoveryIdentity(ctx, token, agentID, serverID)
+	if err != nil {
+		return zero, errRecoveryGrantRead
+	}
 	nonce, err := recoveryReadNonce()
-	if err != nil || token == "" {
-		return zero, errRecoveryGrantRead
-	}
-	identityData, _ := json.Marshal(credentialIdentityRequest{1, agentID, serverID, nonce})
-	var identity credentialIdentityReply
-	if c.recoveryRead(ctx, "/api/v1/agent/identity/verify", token, identityData, &identity) != nil || identity.SchemaVersion != 1 || !identity.Verified || identity.AgentID != agentID || identity.ServerID != serverID || identity.AgentCredentialGeneration < 1 || identity.RequestHash != recoveryReadHash(identityData) {
-		return zero, errRecoveryGrantRead
-	}
-	binding := tasks.RuntimeRecoveryGrantBinding{RuntimeResultBinding: tasks.RuntimeResultBinding{ManagerURL: c.managerURL, AgentID: agentID, ServerID: serverID}, AgentCredentialGeneration: identity.AgentCredentialGeneration}
-	nonce, err = recoveryReadNonce()
 	if err != nil {
 		return zero, errRecoveryGrantRead
 	}
@@ -105,6 +99,21 @@ func (c *Client) FetchRecoveryGrant(ctx context.Context, token, agentID, serverI
 		return zero, errRecoveryGrantRead
 	}
 	return VerifiedRecoveryGrant{binding, g, hash}, nil
+}
+
+func (c *Client) verifyRecoveryIdentity(ctx context.Context, token, agentID, serverID string) (tasks.RuntimeRecoveryGrantBinding, error) {
+	zero := tasks.RuntimeRecoveryGrantBinding{}
+	nonce, err := recoveryReadNonce()
+	if err != nil || token == "" {
+		return zero, errRecoveryGrantRead
+	}
+	identityData, _ := json.Marshal(credentialIdentityRequest{1, agentID, serverID, nonce})
+	var identity credentialIdentityReply
+	if c.recoveryRead(ctx, "/api/v1/agent/identity/verify", token, identityData, &identity) != nil || identity.SchemaVersion != 1 || !identity.Verified || identity.AgentID != agentID || identity.ServerID != serverID || identity.AgentCredentialGeneration < 1 || identity.RequestHash != recoveryReadHash(identityData) {
+		return zero, errRecoveryGrantRead
+	}
+	binding := tasks.RuntimeRecoveryGrantBinding{RuntimeResultBinding: tasks.RuntimeResultBinding{ManagerURL: c.managerURL, AgentID: agentID, ServerID: serverID}, AgentCredentialGeneration: identity.AgentCredentialGeneration}
+	return binding, nil
 }
 
 // Reuse configured transport/timeout but reject all redirects. Grant reads

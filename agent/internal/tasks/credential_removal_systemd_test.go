@@ -234,6 +234,7 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		t.Fatal("new process accepted old locked commit witness")
 	}
 	commit.Close()
+	assertHistoricalRecoveryAfterExit(t, e.receiptDir, RuntimeRecoveryGrantBinding{RuntimeResultBinding: binding, AgentCredentialGeneration: 7})
 	if _, err := ObserveRuntimeRecovery(ctx, e.receiptDir, binding, task.ID, e.activePath, adapter); err == nil {
 		t.Fatal("new process accepted old recovery witness")
 	}

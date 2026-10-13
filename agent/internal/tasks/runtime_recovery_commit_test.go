@@ -372,6 +372,7 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
 		t.Fatal("crash lost acknowledgement")
 	}
+	assertHistoricalRecoveryAfterExit(t, e.receiptDir, b)
 	if m, err := BeginRuntimeRecoveryCommit(context.Background(), e.receiptDir, b, wire, e.activePath, a); err == nil {
 		m.Close()
 		t.Fatal("crash allowed nonce reuse")
@@ -418,6 +419,7 @@ func TestRuntimeMutationRecoveryCommitProcessKill(t *testing.T) {
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
 		t.Fatal("SIGKILL lost acknowledgement")
 	}
+	assertHistoricalRecoveryAfterExit(t, e.receiptDir, b)
 	if m, err := BeginRuntimeRecoveryCommit(context.Background(), e.receiptDir, b, wire, e.activePath, a); err == nil {
 		m.Close()
 		t.Fatal("SIGKILL allowed nonce reuse")
