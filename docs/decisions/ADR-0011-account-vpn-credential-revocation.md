@@ -1113,3 +1113,31 @@ commit proof/acknowledgement cannot substitute for that fresh local observation.
 No delivery endpoint, Runner invocation, consumer, file cleanup or fence release
 is implemented/activated here. Operator workflow and end-to-end credential
 revocation remain unfinished; #545 stays open. No production/merge/deploy.
+
+### Read-only final authorization delivery (twenty-first slice)
+
+`POST /api/v1/agent/recovery-observations/{operation_id}/release-authorization`
+delivers only existing immutable conditional authority. It reuses bounded
+recovery HTTP handling and current bearer authentication. Exact operation,
+Agent/server/current generation, original grant/consumption/commit-proof hashes
+and a per-request nonce are required; response hashes bind exact request bytes.
+Server/preparation/Agent admission precedes role mapping and issuer user/session
+locks. Current fencing/observation/grant-read capabilities, authenticated
+heartbeat and issuing human authority/session are rechecked. The final wall-time
+check after lock waits rejects expiry, backwards time or shortened session
+deadline. Original grant expiry does not renew historical authority.
+
+Dormant `Client.FetchRecoveryReleaseAuthorization` independently negotiates
+generation through existing identity verification, then reads exact private
+historical state under flock throughout delivery. Existing strict bounded,
+no-redirect recovery transport rejects ambiguous fields/payloads; the Agent
+validates a separate final-authority contract against exact pinned proof bytes,
+generation, observation, hashes and lifetime. Shared golden pins unchanged
+Manager/Agent field order/hash. File changes or context/HTTP/parse uncertainty
+remain sanitized failures; no error/log contains sensitive payloads.
+
+No read issues/renews authority, consumes a nonce, resumes a mutation owner,
+writes acknowledgement, changes config or releases a fence. No Runner calls this
+method. Heartbeat is transport readiness only. Fresh local runtime observation,
+durable final nonce consumption, crash-safe release/abort and operator workflow
+remain future work. Schema stays000166 and #545 remains unfinished.
