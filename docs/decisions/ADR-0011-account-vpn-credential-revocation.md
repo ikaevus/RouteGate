@@ -1069,3 +1069,47 @@ blocked, including after exit/SIGKILL. Caller can retry this read independently.
 Fresh release authority, crash-safe fence release, operator workflow and
 end-to-end account credential revocation remain future work. Schema remains
 000165; #545 remains unfinished. No production activation/merge/deploy.
+
+### Fresh conditional final release authorization (twentieth slice)
+
+Internal `IssueRecoveryReleaseAuthorization` requires a new explicit
+`ConfirmFinalFenceRelease` command from an active human admin/super_admin with
+`configs:apply` and a current authenticated session, independently rechecked
+under database locks. The actor may be a different currently authorized human:
+this is a new authorization with its own immutable user/session attribution,
+not adoption or renewal of the original consumption grant. Repeats require the
+same issuing user/session and recheck current authority/readiness.
+
+The command supplies exact preparation, original grant, consumption and stored
+commit-proof hashes. Manager validates the retained typed proof/grant hashes,
+expected observation, historical timestamps and preparation bindings; expected
+is derived from authenticated immutable evidence, not caller-supplied runtime
+data. Current Agent credentials/generation, current fencing and observation/read
+capabilities and fresh authenticated heartbeat are rechecked. Heartbeat indicates
+transport readiness only, never VPN traffic or current measured runtime.
+
+Schema 000166 retains one immutable conditional final authorization per
+preparation, with a distinct purpose, random nonce and exact
+grant/consumption/commit-proof/Agent-generation/expected bindings. Lifetime is at
+most two minutes, capped by the issuing session's current expiry. Expired
+original authority can be referenced as history, but no original deadline,
+nonce, evidence or attribution is renewed. Identical repeats keep original
+bytes/hash/deadline; different actor/session cannot adopt them. An expired final
+authorization is never silently renewed; future explicit abort/reconciliation
+is still required for such a blocked reservation.
+
+Admission reuses existing server/preparation/Agent locking. Only after node
+admission are role mappings and the confirming user/session locked. SQL guards
+repeat current authority/readiness/exact-binding checks, reject update/delete
+and prevent bypass through direct inserts. Downgrade takes ACCESS EXCLUSIVE
+before checking retained history, so a raced insert cannot be discarded.
+Issuance changes no Agent, reservation, account, token, config or runtime job.
+
+This authorization is conditional on a future Agent consumer independently
+authenticating current generation, freshly re-observing exact durable state and
+config/process/listener while holding the shared admission lock, durably
+consuming the final nonce and using a crash-safe release protocol. Historical
+commit proof/acknowledgement cannot substitute for that fresh local observation.
+No delivery endpoint, Runner invocation, consumer, file cleanup or fence release
+is implemented/activated here. Operator workflow and end-to-end credential
+revocation remain unfinished; #545 stays open. No production/merge/deploy.

@@ -67,35 +67,9 @@ func (s *Service) NextRecoveryChallenge(ctx context.Context, tokenHash string) (
 // wall time. No auth tables, runtime job or network operation is touched.
 func lockRecoveryTransport(ctx context.Context, tx pgx.Tx, tokenHash, operation string) (RecoveryChallenge, string, time.Time, error) {
 	var c RecoveryChallenge
-	if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout='2s'`); err != nil {
-		return c, "", time.Time{}, err
-	}
-	var node string
-	if err := tx.QueryRow(ctx, `SELECT server_id::text FROM runtime_recovery_preparations WHERE id=$1::uuid`, operation).Scan(&node); err != nil {
-		return c, "", time.Time{}, err
-	}
-	if _, err := tx.Exec(ctx, `SELECT id FROM servers WHERE id=$1::uuid FOR UPDATE`, node); err != nil {
-		return c, "", time.Time{}, err
-	}
-	var agent, task, marker, receipt, envelope, state string
-	var generation int64
-	err := tx.QueryRow(ctx, `SELECT agent_id::text,task_id::text,marker_hash,receipt_hash,envelope_hash,state,agent_credential_generation
- FROM runtime_recovery_preparations WHERE id=$1::uuid FOR UPDATE`, operation).Scan(&agent, &task, &marker, &receipt, &envelope, &state, &generation)
+	p, err := lockRecoveryPreparation(ctx, tx, tokenHash, operation)
 	if err != nil {
 		return c, "", time.Time{}, err
-	}
-	var ready bool
-	err = tx.QueryRow(ctx, `SELECT COALESCE(status='online' AND credential_generation=$4 AND current_runtime_mutation_fencing
- AND capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb
- AND capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb
- AND last_authenticated_heartbeat_generation=credential_generation
- AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds',false)
- FROM agents WHERE id=$1::uuid AND server_id=$2::uuid AND token_hash=$3 FOR UPDATE`, agent, node, tokenHash, generation).Scan(&ready)
-	if err != nil {
-		return c, "", time.Time{}, err
-	}
-	if state != "prepared" || !ready {
-		return c, "", time.Time{}, ErrPreflight
 	}
 	var saved, hash string
 	var now time.Time
@@ -107,11 +81,56 @@ func lockRecoveryTransport(ctx context.Context, tx pgx.Tx, tokenHash, operation 
 	if json.Unmarshal([]byte(saved), &c) != nil || hash != hex.EncodeToString(sum[:]) || c.SchemaVersion != 1 || c.OperationID != operation || !validRemovalHash(c.Nonce) || now.Before(c.IssuedAt) || !now.Before(c.ExpiresAt) || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > 2*time.Minute {
 		return c, "", now, ErrPreflight
 	}
-	o := c.Expected
-	if o.AgentID != agent || o.ServerID != node || o.TaskID != task || o.MarkerHash != marker || o.ReceiptHash != receipt || o.EnvelopeHash != envelope {
+	if !p.matches(c.Expected) {
 		return c, "", now, ErrPreflight
 	}
 	return c, hash, now, nil
+}
+
+type recoveryPreparationBinding struct {
+	agent, node, task, marker, receipt, envelope string
+	generation                                   int64
+}
+
+func (p recoveryPreparationBinding) matches(o RecoveryObservation) bool {
+	return o.AgentID == p.agent && o.ServerID == p.node && o.TaskID == p.task && o.MarkerHash == p.marker && o.ReceiptHash == p.receipt && o.EnvelopeHash == p.envelope
+}
+
+// Shared current admission; historical authority deadlines are checked only by
+// the caller that uses them. Fresh final authorization must not renew old grants.
+func lockRecoveryPreparation(ctx context.Context, tx pgx.Tx, tokenHash, operation string) (recoveryPreparationBinding, error) {
+	var p recoveryPreparationBinding
+	if _, err := tx.Exec(ctx, `SET LOCAL lock_timeout='2s'`); err != nil {
+		return p, err
+	}
+	var node string
+	if err := tx.QueryRow(ctx, `SELECT server_id::text FROM runtime_recovery_preparations WHERE id=$1::uuid`, operation).Scan(&node); err != nil {
+		return p, err
+	}
+	if _, err := tx.Exec(ctx, `SELECT id FROM servers WHERE id=$1::uuid FOR UPDATE`, node); err != nil {
+		return p, err
+	}
+	var agent, task, marker, receipt, envelope, state string
+	var generation int64
+	err := tx.QueryRow(ctx, `SELECT agent_id::text,task_id::text,marker_hash,receipt_hash,envelope_hash,state,agent_credential_generation
+ FROM runtime_recovery_preparations WHERE id=$1::uuid FOR UPDATE`, operation).Scan(&agent, &task, &marker, &receipt, &envelope, &state, &generation)
+	if err != nil {
+		return p, err
+	}
+	var ready bool
+	err = tx.QueryRow(ctx, `SELECT COALESCE(status='online' AND credential_generation=$4 AND current_runtime_mutation_fencing
+ AND capabilities @> '{"runtimeMutationFencingV1":true}'::jsonb
+ AND capabilities @> '{"runtimeRecoveryObservationV1":true}'::jsonb
+ AND last_authenticated_heartbeat_generation=credential_generation
+ AND last_authenticated_heartbeat_at>clock_timestamp()-interval '90 seconds',false)
+ FROM agents WHERE id=$1::uuid AND server_id=$2::uuid AND token_hash=$3 FOR UPDATE`, agent, node, tokenHash, generation).Scan(&ready)
+	if err != nil {
+		return p, err
+	}
+	if state != "prepared" || !ready {
+		return p, ErrPreflight
+	}
+	return recoveryPreparationBinding{agent, node, task, marker, receipt, envelope, generation}, nil
 }
 
 func DecodeRecoveryChallengeResponse(data []byte) (RecoveryChallengeResponse, error) {
