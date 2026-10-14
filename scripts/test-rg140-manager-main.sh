@@ -15,8 +15,8 @@ deploy_workflow="$repo/.github/workflows/production-like-deploy.yml"
 [[ $# -le 1 ]] || { echo 'usage: test-rg140-manager-main.sh [pinned-commit]' >&2; exit 2; }
 commit=${1:-c4137cc43a2385ac38fe71e059f33405535b6618}
 case "$commit" in
-  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a|3e8d6c72984fa848551b59004029bc6cfcbd0b30) ;;
-  *) echo 'test candidate must be one of the three approved schema159 commits' >&2; exit 2 ;;
+  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a|3e8d6c72984fa848551b59004029bc6cfcbd0b30|ff377ec1eea5889f37e409d027fb40a2b6562951) ;;
+  *) echo 'test candidate must be one of the four approved schema159 commits' >&2; exit 2 ;;
 esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -124,7 +124,12 @@ root=$RG_UPDATE_ROOT
 case "$1" in
   is-active) echo active ;;
   show) unit=${*: -1}; if [[ -f "$S/unit.$unit" ]]; then cat "$S/unit.$unit"; else printf 'loaded\nactive\nrunning\n100\n5\n0\n'; fi ;;
-  stop) [[ "$2" != routegate-manager ]] || rm -f "$S/running" ;;
+  stop)
+    if [[ "$2" == routegate-manager ]]; then
+      rm -f "$S/running"
+      # Simulate the SSH session closing immediately after Manager stops.
+      [[ "${STUB_STOP_HUP:-0}" != 1 ]] || kill -HUP "$PPID"
+    fi ;;
   start)
     [[ "$2" == routegate-manager ]] || exit 0
     if [[ "$(cat "$root/usr/local/bin/routegate-manager")" == manager-new ]]; then
@@ -283,6 +288,10 @@ check 'active transfer refusal changes nothing' unchanged
 setup; STUB_TRANSFER_RACE=1 run_update "$work/bundle.tar.gz"
 check 'transfer racing drain aborts and restarts Manager unchanged' bash -c '[[ $1 -eq 1 ]] && grep -q "Manager restarted unchanged" <<<"$2"' _ "$rc" "$out"
 check 'raced transfer starts no mutation or backup' bash -c '[[ $(cat "$1/usr/local/bin/routegate-manager") == manager-old && ! -e "$1/root/routegate-backups" && -f "$2/running" ]]' _ "$root" "$S"
+setup; STUB_STOP_HUP=1 run_update "$work/bundle.tar.gz"
+check 'SIGHUP after Manager stop recovers unchanged service' bash -c '[[ "$1" -eq 1 && -f "$2/running" && "$(cat "$3/usr/local/bin/routegate-manager")" == manager-old ]] && grep -q "Manager restarted unchanged" <<<"$4"' _ "$rc" "$S" "$root" "$out"
+check 'SIGHUP recovery preserves Agent/VPN files' vpn_unchanged
+check 'SIGHUP recovery touches only Manager service' only_manager_touched
 setup_host "${H155[@]}"; run_update "$work/bundle.tar.gz"
 check 'old schema refused before stop' bash -c '[[ $1 -eq 3 ]]' _ "$rc"
 check 'old schema refusal changes nothing' unchanged
