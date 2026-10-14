@@ -208,6 +208,7 @@ jobs:
         run: |
           sudo bash scripts/test-rg140-manager-main.sh
           sudo bash scripts/test-rg140-manager-main.sh 567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a
+          sudo bash scripts/test-rg140-manager-main.sh 3e8d6c72984fa848551b59004029bc6cfcbd0b30
 
       - name: Test pinned RG140 release workflow safety
         run: bash scripts/test-rg140-preview-release-workflow.sh

@@ -1,7 +1,11 @@
-# RG-140 preliminary VLESS import — pinned US Manager-only release
+# RG-140: pinned US Manager-only publication (main 3e8d6c72)
 
-**Status: prepared, not executed.** The implementation is already on `main` at
-`567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a` ([PR #542](https://github.com/ikaevus/RouteGate/pull/542)).
+**Status: prepared, not executed.** The proposed Manager-only publication pins
+`3e8d6c72984fa848551b59004029bc6cfcbd0b30` on `main` ([PR #579](https://github.com/ikaevus/RouteGate/pull/579),
+including the Dashboard live status bar). The prior successful US Manager-only
+publication installed `567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a` on 2026-10-08; a fresh
+read-only diagnostic confirms schema159 but **does not expose the presently running binary's exact Git SHA**.
+Confirm the live Manager Git SHA independently before approving this deployment.
 The release workflow in `.github/workflows/rg140-vless-preview-manager-release.yml`
 is manual only; merging workflow changes is not deployment.
 
@@ -10,17 +14,19 @@ is manual only; merging workflow changes is not deployment.
 - **Target:** only the existing US Hybrid/Manager host; **FI** and **RU** stay
   in service. No Manager relocation, node reinstallation, Agent/VPN service
   restart, protocol apply, client subscription or token rotation.
-- **Exact candidate:** `567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a`.
+- **Exact candidate:** `3e8d6c72984fa848551b59004029bc6cfcbd0b30`.
   Two candidate **push** checks already completed successfully on `main`:
-  [RouteGate CI #37823646085](https://github.com/ikaevus/RouteGate/actions/runs/37823646085),
-  [Workspace integration #37823646080](https://github.com/ikaevus/RouteGate/actions/runs/37823646080).
+  [RouteGate CI #38513684330](https://github.com/ikaevus/RouteGate/actions/runs/38513684330),
+  [Workspace integration #38513684326](https://github.com/ikaevus/RouteGate/actions/runs/38513684326).
   The workflow verifies their SHA, event, branch, name and successful result
   before SSH; it also tests its backup/rollback runner with a fake host.
 - **Database:** existing schema
   `000159_staged_account_transfers` is a mandatory *runtime* precondition.
   The candidate does not add migrations beyond schema159. The runner refuses
-  any other schema before replacing files. This document does **not** claim the
-  current live US schema has been independently checked in this session.
+  any other schema before replacing files. Read-only US diagnostics on
+  2026-10-14 (Actions run #38514786748) confirmed `000159_staged_account_transfers`,
+  local Manager health=200 and public UI=200. The live Manager **commit** still
+  requires an independent read-only verification before deployment.
 - **Operator approval:** explicit production authorization is needed in addition
   to GitHub Actions environment protections. Launch only when the owner has
   authorized a short Manager availability interruption and a rollback window.
@@ -35,7 +41,7 @@ is manual only; merging workflow changes is not deployment.
 1. Confirm the exact candidate is still on `main`, both historical
    candidate push checks are green and no new migration is needed. Select
    **Actions → RG140 VLESS preview Manager release → Run workflow**, branch
-   `main`, and enter exactly `deploy-US-manager-only-567a1e15`.
+   `main`, and enter exactly `deploy-US-manager-only-3e8d6c72`.
    Do not use the old **RG140 Manager main update** workflow: it remains pinned
    to a different, older candidate.
 2. The workflow verifies the acknowledgement and exact candidate checks,
@@ -57,7 +63,7 @@ is manual only; merging workflow changes is not deployment.
    public UI index, preserved account/device/token/transfer identities,
    continued served-account identities and unchanged hashes/unit state of
    unrelated services. The exact logged outcome must be
-   `RESULT=updated commit=567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a schema=000159_staged_account_transfers`.
+   `RESULT=updated commit=3e8d6c72984fa848551b59004029bc6cfcbd0b30 schema=000159_staged_account_transfers`.
 6. If a check fails after mutation, the runner attempts an immediate
    backup restore and restarts the previous Manager. **Do not claim success**
    from a green SSH step alone: look for `RESULT=updated` and ensure there
@@ -74,6 +80,9 @@ expectation, **not** a zero-downtime guarantee or proof of end-user connectivity
 
 ## Post-release acceptance (no speculative apply)
 
+0. Confirm the Dashboard has the live status bar **above the cards**,
+   displaying «В реальном времени · обновлено N с назад» (or the localized
+   English equivalent), and that it actually refreshes.
 1. Open the public US UI, sign in and confirm the new Protocols workspace
    renders. Confirm the existing US subscription refresh still works with
    its original bearer token **without posting the token or link anywhere**.
