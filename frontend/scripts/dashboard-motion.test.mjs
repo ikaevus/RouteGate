@@ -32,14 +32,18 @@ test('continuous dashboard signals use calmer loops', () => {
   assert.ok(seconds('.dashboard-live-bar--live .dashboard-live-indicator i', 'rg-live-bar-dot') >= 3.4);
 });
 
-test('online dots animate their own opacity and size rather than shadow alone', () => {
-  const dot = rule('.dashboard-page .online-users-table .online-user-state--online i');
-  assert.match(dot, /animation-name:\s*rg-online-dot-breathe/);
-  assert.match(dot, /animation-duration:\s*5\.2s/);
-  const frames = stylesheet.slice(stylesheet.indexOf('@keyframes rg-online-dot-breathe'));
-  assert.match(frames, /50%\s*\{[^}]*opacity:\s*0\.62;[^}]*transform:\s*scale\(0\.82\)/s);
-  assert.doesNotMatch(dot, /opacity:\s*0\s*;/);
-  assert.doesNotMatch(stylesheet, /\.online-user-state--recent i\s*\{\s*animation-name:/);
+test('server and VPN online dots use one visible, unclipped animation', () => {
+  const both = rule('.dashboard-page .server-online-dot,\n.dashboard-page .online-users-table .online-user-state--online i');
+  assert.match(both, /animation:\s*rg-status-dot-breathe\s+5\.2s\s+ease-in-out\s+infinite/);
+  assert.match(both, /background-color:\s*var\(--rg-success\)/);
+  assert.match(both, /height:\s*9px/);
+  assert.match(both, /width:\s*9px/);
+  const onlineCell = rule('.dashboard-page .online-users-table .online-user-state--online');
+  assert.match(onlineCell, /overflow:\s*visible/);
+  assert.doesNotMatch(stylesheet, /\.dashboard-page \.dashboard-table-row:nth-child\(even\) \.server-online-dot/);
+  const frames = stylesheet.slice(stylesheet.indexOf('@keyframes rg-status-dot-breathe'));
+  assert.match(frames, /50%\s*\{[^}]*opacity:\s*0\.68;[^}]*transform:\s*scale\(0\.88\)/s);
+  assert.doesNotMatch(stylesheet, /\.online-user-state--recent i\s*\{\s*animation:/);
 });
 
 test('reduced-motion override still disables decorative animation', () => {
