@@ -3,7 +3,7 @@
 **Status: prepared, not executed.** The proposed Manager-only publication pins
 `3e8d6c72984fa848551b59004029bc6cfcbd0b30` on `main` ([PR #579](https://github.com/ikaevus/RouteGate/pull/579),
 including the Dashboard live status bar). The prior successful US Manager-only
-publication installed `3e8d6c72984fa848551b59004029bc6cfcbd0b30` on 2026-10-08; a fresh
+publication installed `567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a` on 2026-10-08; a fresh
 read-only diagnostic confirms schema159 but **does not expose the presently running binary's exact Git SHA**.
 Confirm the live Manager Git SHA independently before approving this deployment.
 The release workflow in `.github/workflows/rg140-vless-preview-manager-release.yml`
