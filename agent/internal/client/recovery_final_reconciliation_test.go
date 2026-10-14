@@ -215,7 +215,7 @@ func TestRuntimeMutationFinalRecoveryReconciliationTransport(t *testing.T) {
 					t.Fatal("archive intent")
 				}
 				remaining := files["mutation-result.json"]
-				files = map[string][]byte{"runtime.lock": {}, "recovery-retirement-intent.json": intent, "recovery-retirement-terminal.json": terminal}
+				files = map[string][]byte{"runtime.lock": {}, "mutation-inflight.json": marker, "recovery-retirement-intent.json": intent, "recovery-retirement-terminal.json": terminal}
 				if mode == "partial_terminal" {
 					files["mutation-result.json"] = remaining
 				}
