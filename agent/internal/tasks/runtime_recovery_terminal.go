@@ -107,6 +107,9 @@ func terminalRootSnapshot(dir string, intent runtimeRecoveryRetirementIntent) (f
 	for i, file := range intent.Files {
 		path := filepath.Join(dir, file.Name)
 		if runtimeMarkerAbsent(path) {
+			if file.Name == "mutation-inflight.json" {
+				return nil, ErrRuntimeMutationBlocked
+			}
 			continue
 		}
 		if !file.Present || retirementSourceLimit(file.Name) == 0 {

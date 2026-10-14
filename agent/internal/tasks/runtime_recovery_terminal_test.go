@@ -196,7 +196,7 @@ func TestRuntimeMutationTerminalRetirementRejects(t *testing.T) {
 }
 
 func TestRuntimeMutationTerminalHistoryRejects(t *testing.T) {
-	for _, mode := range []string{"schema", "purpose", "operation", "binding", "intent", "proof", "receipt", "time", "observation", "duplicate", "alias", "unknown", "archive_permissions", "archive_extra", "archive_symlink", "archive_tamper", "archive_hardlink", "root_leftover", "root_journal", "changed_during_read"} {
+	for _, mode := range []string{"schema", "purpose", "operation", "binding", "intent", "proof", "receipt", "time", "observation", "duplicate", "alias", "unknown", "archive_permissions", "archive_extra", "archive_symlink", "archive_tamper", "archive_hardlink", "root_leftover", "missing_legacy", "root_journal", "changed_during_read"} {
 		t.Run(mode, func(t *testing.T) {
 			_, _, b, auth, m := terminalFixture(t)
 			if _, err := m.RetirePrepared(context.Background()); err != nil {
@@ -239,6 +239,8 @@ func TestRuntimeMutationTerminalHistoryRejects(t *testing.T) {
 				os.Link(filepath.Join(m.archive, runtimeRecoveryFinalSubmissionFile), filepath.Join(m.dir, "extra-link"))
 			case "root_leftover":
 				os.WriteFile(filepath.Join(m.dir, "mutation-inflight.json"), []byte(`{}`), 0600)
+			case "missing_legacy":
+				os.Remove(filepath.Join(m.dir, "mutation-inflight.json"))
 			case "root_journal":
 				os.WriteFile(filepath.Join(m.dir, runtimeRecoveryRetirementFile), []byte(`{}`), 0600)
 			}
