@@ -17,6 +17,7 @@ on:
           - validate
           - validate-deploy-rollback-cycle
           - restart-control-plane
+          - start-manager-only
           - restart-sing-box
           - restart-wireguard
           - restart-hysteria2
@@ -86,6 +87,7 @@ jobs:
               'operation=validate') operation=validate ;;
               'operation=validate-deploy-rollback-cycle') operation=validate-deploy-rollback-cycle ;;
               'operation=restart-control-plane') operation=restart-control-plane ;;
+              'operation=start-manager-only') operation=start-manager-only ;;
               'operation=restart-sing-box') operation=restart-sing-box ;;
               'operation=restart-wireguard') operation=restart-wireguard ;;
               'operation=restart-hysteria2') operation=restart-hysteria2 ;;
@@ -101,13 +103,13 @@ jobs:
           fi
 
           case "$operation" in
-            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155|update-manager|publish-bootstrap) ;;
+            diagnose|diagnose-sing-box|diagnose-agent-task|validate|validate-deploy-rollback-cycle|restart-control-plane|start-manager-only|restart-sing-box|restart-wireguard|restart-hysteria2|restart-mtproto|reconcile-mtproto-port-conflict|renew-certificate|preflight-applied-client-settings-155|update-manager|publish-bootstrap) ;;
             *) exit 2 ;;
           esac
           # The database preflight and the Manager update run with
           # production-like secrets only from the trusted main workflow
           # definition, never a dispatch from another ref.
-          if [[ ( "$operation" == "preflight-applied-client-settings-155" || "$operation" == "update-manager" || "$operation" == "publish-bootstrap" ) && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+          if [[ ( "$operation" == "start-manager-only" || "$operation" == "preflight-applied-client-settings-155" || "$operation" == "update-manager" || "$operation" == "publish-bootstrap" ) && "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
             printf 'The %s operation can only be dispatched from main.\n' "$operation" >&2
             exit 2
           fi

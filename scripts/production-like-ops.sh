@@ -329,6 +329,31 @@ validate_platform() {
   schema_diagnostics
 }
 
+start_manager_only() {
+  # A strict, idempotent Manager-only recovery. No Agent, nginx or VPN restart.
+  # Production-like workflow already holds the host deployment flock.
+  local unit=routegate-manager.service load_state http_status
+  load_state=$(systemctl show --property=LoadState --value "$unit" 2>/dev/null || true)
+  [[ "$load_state" == loaded ]] || die "Manager unit is missing or not loaded"
+  if systemctl is-active --quiet "$unit"; then
+    log "manager-start=already-active"
+  else
+    log "manager-start=starting"
+    systemctl start "$unit" || die "Manager service start failed"
+  fi
+  for _ in $(seq 1 20); do
+    if systemctl is-active --quiet "$unit"; then
+      http_status=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/admin/health 2>/dev/null || true)
+      if [[ "$http_status" == 200 ]]; then
+        log "manager-start=passed active=true local-health=200"
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  die "Manager did not become active with local health=200"
+}
+
 restart_control_plane() {
   if [[ -x /usr/local/sbin/routegate-recovery ]]; then
     /usr/local/sbin/routegate-recovery restart-services
@@ -470,6 +495,9 @@ main() {
       ;;
     restart-control-plane)
       restart_control_plane
+      ;;
+    start-manager-only)
+      start_manager_only
       ;;
     restart-sing-box)
       restart_runtime sing-box sing-box.service
