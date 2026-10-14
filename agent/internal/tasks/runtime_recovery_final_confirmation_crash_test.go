@@ -11,7 +11,7 @@ import (
 )
 
 func TestRuntimeMutationFinalConfirmationCrash(t *testing.T) {
-	for _, mode := range []string{"pin", "ack"} {
+	for _, mode := range []string{"pin", "ack", "retire"} {
 		t.Run(mode, func(t *testing.T) {
 			for _, kill := range []bool{false, true} {
 				t.Run(map[bool]string{false: "exit", true: "SIGKILL"}[kill], func(t *testing.T) {
@@ -49,8 +49,11 @@ func TestRuntimeMutationFinalConfirmationCrash(t *testing.T) {
 							t.Fatal("crash lost state", name)
 						}
 					}
-					if mode == "ack" && runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalAcknowledgementFile)) {
+					if mode != "pin" && runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalAcknowledgementFile)) {
 						t.Fatal("crash lost final acknowledgement")
+					}
+					if mode == "retire" && runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryRetirementFile)) {
+						t.Fatal("crash lost retirement intent")
 					}
 					assertHistoricalFinalizationAfterExit(t, e.receiptDir, b)
 					if lease, err := BeginRuntimeMutation(e.receiptDir, g.Expected.TaskID, TaskKindVPNCoreService); err == nil {
