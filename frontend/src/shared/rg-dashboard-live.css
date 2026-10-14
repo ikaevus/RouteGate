@@ -67,7 +67,7 @@
 }
 
 .dashboard-live-bar--live .dashboard-live-indicator i {
-  animation: rg-live-bar-dot 1.8s ease-out infinite;
+  animation: rg-live-bar-dot 2.4s ease-out infinite;
   background: var(--rg-live-green);
 }
 
@@ -176,7 +176,7 @@
 
 .dashboard-page .kpi-widget-live .kpi-dot {
   background: var(--rg-live-green);
-  animation: rg-live-ping 2.4s ease-out infinite;
+  animation: rg-live-ping 3.2s ease-out infinite;
 }
 
 .dashboard-page .kpi-widget .kpi-icon {
@@ -209,12 +209,12 @@
 
 .dashboard-page .server-online-dot,
 .dashboard-page .online-user-state--online i {
-  animation: rg-live-ping 2.4s ease-out infinite;
+  animation: rg-live-ping 3.2s ease-out infinite;
 }
 
 .dashboard-page .dashboard-table-row:nth-child(even) .server-online-dot,
 .dashboard-page .dashboard-table-row:nth-child(even) .online-user-state--online i {
-  animation-delay: -1.2s;
+  animation-delay: -1.6s;
 }
 
 .dashboard-page .online-users-table .online-user-state--online { color: #4ade80; }
@@ -242,6 +242,7 @@
   border-top: 1px solid rgba(148, 163, 184, 0.1);
   height: 72px;
   margin-top: auto;
+  padding-inline: 10px;
   padding-top: 12px;
 }
 
@@ -274,19 +275,19 @@
 }
 
 .dashboard-page .health-pulse-line {
-  animation: rg-heartbeat 2.8s linear infinite;
+  animation: rg-heartbeat 3.8s linear infinite;
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--pulse-color) 80%, transparent));
   stroke: var(--pulse-color);
   stroke-dasharray: 34 66;
   stroke-width: 2;
 }
 
-.dashboard-page .health-pulse--warning .health-pulse-line { animation-duration: 1.6s; }
+.dashboard-page .health-pulse--warning .health-pulse-line { animation-duration: 2.2s; }
 
 /* ---- Node distribution: radar sweep, marker pings, growing bars ---- */
 
 .dashboard-page .node-distribution-map::after {
-  animation: rg-map-sweep 7s ease-in-out infinite;
+  animation: rg-map-sweep 9s ease-in-out infinite;
   background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.09) 45%, rgba(56, 189, 248, 0.16) 50%, transparent 55%);
   content: '';
   inset: 0 auto 0 0;
@@ -309,8 +310,8 @@
 }
 
 .dashboard-page .node-country-marker-ping {
-  animation: rg-marker-ping 2.6s ease-out infinite;
-  animation-delay: calc(var(--marker-index, 0) * 0.7s);
+  animation: rg-marker-ping 3.5s ease-out infinite;
+  animation-delay: calc(var(--marker-index, 0) * 0.9s);
   border: 1.5px solid rgba(56, 189, 248, 0.75);
   border-radius: inherit;
   inset: -1px;
@@ -327,7 +328,7 @@
 }
 
 .dashboard-page .node-distribution-track span::after {
-  animation: rg-shimmer 3.2s ease-in-out infinite;
+  animation: rg-shimmer 4.2s ease-in-out infinite;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
   content: '';
   inset: 0;
@@ -368,8 +369,8 @@
 }
 
 .dashboard-page .traffic-empty-wave span {
-  animation: rg-idle-wave 2.6s ease-in-out infinite;
-  animation-delay: calc(var(--bar-index, 0) * -0.16s);
+  animation: rg-idle-wave 3.6s ease-in-out infinite;
+  animation-delay: calc(var(--bar-index, 0) * -0.22s);
   background: linear-gradient(180deg, rgba(59, 130, 246, 0.32), rgba(59, 130, 246, 0.02));
   border-radius: 3px 3px 0 0;
   flex: 1;
