@@ -15,7 +15,7 @@ EXPECTED_COMMIT=$1 BUNDLE=$2 BUNDLE_SHA=$3 CORE=$4 ROLE_LIB=$5 DOWN_RUNNER=$6 PR
 # Only these previously-reviewed, exact schema159 Manager-only release candidates
 # are accepted. No arbitrary branch/tag or operator-provided SHA is trusted.
 case "$EXPECTED_COMMIT" in
-  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a|3e8d6c72984fa848551b59004029bc6cfcbd0b30|ff377ec1eea5889f37e409d027fb40a2b6562951|6054bf960da868ff0034492759573cafb0a4d4a7) ;;
+  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a|3e8d6c72984fa848551b59004029bc6cfcbd0b30|ff377ec1eea5889f37e409d027fb40a2b6562951|6054bf960da868ff0034492759573cafb0a4d4a7|f3089e1d684a2ae227ee18e559130620048cd59d) ;;
   *) printf 'invalid or unapproved Manager-only release commit\n' >&2; exit 2 ;;
 esac
 for file in "$BUNDLE" "$CORE" "$ROLE_LIB" "$DOWN_RUNNER" "$PREFLIGHT_SQL" "$POSTFLIGHT_SQL"; do
