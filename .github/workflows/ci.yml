@@ -378,6 +378,9 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Verify Dashboard animation in Chromium
+        run: node --test scripts/dashboard-motion.browser.test.mjs
+
       - name: Test Getting Started in the browser
         run: npm run test:getting-started-browser
 
