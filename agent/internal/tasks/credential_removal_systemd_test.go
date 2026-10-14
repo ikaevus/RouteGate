@@ -263,6 +263,9 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		t.Fatal("new process accepted old locked final witness")
 	}
 	final.Close()
+	// Historical storage read remains valid after injected runtime drift, without
+	// claiming a fresh runtime witness or reacquiring a mutation owner.
+	assertHistoricalFinalizationAfterExit(t, e.receiptDir, bound)
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalConsumptionFile)) {
 		t.Fatal("real process drift discarded final consumption")
 	}

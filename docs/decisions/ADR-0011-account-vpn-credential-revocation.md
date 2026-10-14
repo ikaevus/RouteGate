@@ -1250,3 +1250,38 @@ mutation, fence or Manager reservation release is activated. Crash-safe release,
 read-only final crash reconciliation/abort and operator credential-revocation
 workflow remain future work. Schema remains000167 and #545 stays unfinished.
 No production access/change, real-user revocation, merge or deploy.
+
+### Read-only final crash reconciliation (twenty-fifth slice)
+
+Dormant `Client.ReconcileRecoveryFinalization` independently authenticates current
+Agent credentials/generation through the existing identity endpoint, then reads
+exact private history under the existing admission flock. It calls only the
+existing `/finalization/verify` with unchanged pinned proof bytes; no new proof,
+authorization fetch, submission retry, receipt persistence or owner resume occurs.
+
+`WithHistoricalRecoveryFinalization` reuses the original locked historical
+intent/result/consumption/pinned-commit/optional-acknowledgement validator. It also
+checks exact typed final consumption, final authorization/hash and its historical
+binding to original commit, distinct nonce, measured timestamps/window, final
+proof/hash/observation and optional final receipt. Original and final files are
+checked before/after the synchronous callback; optional acknowledgements must
+remain absent or unchanged. The same flock excludes a live owner or another
+reader. Missing/unsafe/malformed private history never reaches HTTP and no
+directory/lock/history file is created to repair it.
+
+Final authorization is validated at its original issuedAt only for historical
+consistency, not at current time as renewed authority. Expiry or actual current
+runtime drift can coexist with exact historical Manager storage confirmation.
+No runtime adapter is invoked and no current VPN readiness/traffic is inferred.
+Absent Manager evidence, rotated credentials, malformed/foreign replies,
+redirects, context/transport uncertainty or file drift remain sanitized
+unconfirmed failures. A crash after consumption but before pin remains blocked;
+readback cannot synthesize missing proof or adopt a mutation owner.
+
+Exit/SIGKILL regressions now read exact final history after process death; real
+systemd/Reality regression reads historical final proof after injected restart
+while live proof is rejected. Both retain all files/fences. No Runner activation,
+cleanup, configuration mutation, fence/reservation release or operator workflow
+is implemented here. Coordinated explicit abort/crash-safe release and end-to-end
+credential revocation remain future work. Schema stays000167; #545 stays open.
+No production access/change, real-user revocation, merge or deploy.
