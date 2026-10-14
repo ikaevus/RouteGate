@@ -52,6 +52,7 @@ func TestRuntimeMutationFinalConfirmationCrash(t *testing.T) {
 					if mode == "ack" && runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalAcknowledgementFile)) {
 						t.Fatal("crash lost final acknowledgement")
 					}
+					assertHistoricalFinalizationAfterExit(t, e.receiptDir, b)
 					if lease, err := BeginRuntimeMutation(e.receiptDir, g.Expected.TaskID, TaskKindVPNCoreService); err == nil {
 						lease.Close()
 						t.Fatal("crash unlocked fence")
