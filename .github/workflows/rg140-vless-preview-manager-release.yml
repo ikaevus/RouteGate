@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       approval:
-        description: 'Type deploy-US-manager-only-3e8d6c72 to approve this exact US-only release'
+        description: 'Type deploy-US-manager-only-ff377ec1 to approve this exact US-only release'
         required: true
         type: string
 permissions:
@@ -21,7 +21,7 @@ jobs:
     environment: production-like
     timeout-minutes: 20
     env:
-      CANDIDATE: 3e8d6c72984fa848551b59004029bc6cfcbd0b30
+      CANDIDATE: ff377ec1eea5889f37e409d027fb40a2b6562951
     steps:
       - name: Checkout approved operations
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -31,11 +31,11 @@ jobs:
           RELEASE_APPROVAL: ${{ inputs.approval }}
         run: |
           set -euo pipefail
-          [[ "$RELEASE_APPROVAL" == 'deploy-US-manager-only-3e8d6c72' ]] || {
+          [[ "$RELEASE_APPROVAL" == 'deploy-US-manager-only-ff377ec1' ]] || {
             echo 'Explicit US Manager-only release acknowledgement missing' >&2
             exit 2
           }
-          for spec in '38513684330|RouteGate CI' '38513684326|Workspace integration'; do
+          for spec in '38606266284|RouteGate CI' '38606266865|Workspace integration'; do
             run="${spec%%|*}"
             expected_name="${spec#*|}"
             result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: 3e8d6c72984fa848551b59004029bc6cfcbd0b30
+          ref: ff377ec1eea5889f37e409d027fb40a2b6562951
           path: candidate
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
@@ -67,9 +67,9 @@ jobs:
         working-directory: candidate
         env:
           VERSION: rg140-main
-          COMMIT: 3e8d6c72984fa848551b59004029bc6cfcbd0b30
+          COMMIT: ff377ec1eea5889f37e409d027fb40a2b6562951
           ARCHITECTURES: amd64
-          AGENT_BUNDLE_BASE_URL: https://us.routegate.org/bootstrap/3e8d6c72984fa848551b59004029bc6cfcbd0b30
+          AGENT_BUNDLE_BASE_URL: https://us.routegate.org/bootstrap/ff377ec1eea5889f37e409d027fb40a2b6562951
           OUTPUT_DIR: ${{ runner.temp }}/manager-main-dist
         run: |
           set -euo pipefail

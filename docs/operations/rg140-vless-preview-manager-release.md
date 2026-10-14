@@ -1,11 +1,16 @@
-# RG-140: pinned US Manager-only publication (main 3e8d6c72)
+# RG-140: pinned US Manager-only publication (main ff377ec1)
 
-**Status: prepared, not executed.** The proposed Manager-only publication pins
-`3e8d6c72984fa848551b59004029bc6cfcbd0b30` on `main` ([PR #579](https://github.com/ikaevus/RouteGate/pull/579),
-including the Dashboard live status bar). The prior successful US Manager-only
-publication installed `567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a` on 2026-10-08; a fresh
-read-only diagnostic confirms schema159 but **does not expose the presently running binary's exact Git SHA**.
-Confirm the live Manager Git SHA independently before approving this deployment.
+**Status: prepared, not executed.** This US Manager-only release pins
+`ff377ec1eea5889f37e409d027fb40a2b6562951` on `main`
+([PR #582](https://github.com/ikaevus/RouteGate/pull/582), Dashboard animation polish).
+The last confirmed Manager-only publication installed
+`3e8d6c72984fa848551b59004029bc6cfcbd0b30` on 2026-10-14
+([run #38517038294](https://github.com/ikaevus/RouteGate/actions/runs/38517038294)).
+A duplicate cancelled release later stopped Manager, which was restarted by
+isolated Operations Bridge ([run #38602548441](https://github.com/ikaevus/RouteGate/actions/runs/38602548441)).
+Read-only diagnostics verify schema159 and health, but do not independently
+expose the running binary's exact Git SHA. Preserve the remote preflight,
+backup, rollback and postflight checks.
 The release workflow in `.github/workflows/rg140-vless-preview-manager-release.yml`
 is manual only; merging workflow changes is not deployment.
 
@@ -14,19 +19,19 @@ is manual only; merging workflow changes is not deployment.
 - **Target:** only the existing US Hybrid/Manager host; **FI** and **RU** stay
   in service. No Manager relocation, node reinstallation, Agent/VPN service
   restart, protocol apply, client subscription or token rotation.
-- **Exact candidate:** `3e8d6c72984fa848551b59004029bc6cfcbd0b30`.
+- **Exact candidate:** `ff377ec1eea5889f37e409d027fb40a2b6562951`.
   Two candidate **push** checks already completed successfully on `main`:
-  [RouteGate CI #38513684330](https://github.com/ikaevus/RouteGate/actions/runs/38513684330),
-  [Workspace integration #38513684326](https://github.com/ikaevus/RouteGate/actions/runs/38513684326).
+  [RouteGate CI #38606266284](https://github.com/ikaevus/RouteGate/actions/runs/38606266284),
+  [Workspace integration #38606266865](https://github.com/ikaevus/RouteGate/actions/runs/38606266865).
   The workflow verifies their SHA, event, branch, name and successful result
   before SSH; it also tests its backup/rollback runner with a fake host.
 - **Database:** existing schema
   `000159_staged_account_transfers` is a mandatory *runtime* precondition.
   The candidate does not add migrations beyond schema159. The runner refuses
   any other schema before replacing files. Read-only US diagnostics on
-  2026-10-14 (Actions run #38514786748) confirmed `000159_staged_account_transfers`,
-  local Manager health=200 and public UI=200. The live Manager **commit** still
-  requires an independent read-only verification before deployment.
+  2026-10-14 (Actions run #38606742861) confirmed `000159_staged_account_transfers`,
+  local Manager health=200 and public UI=200. The live Manager **commit** is not independently available from this
+  diagnostic. Do not infer a running binary SHA from the diagnostic workflow.
 - **Operator approval:** explicit production authorization is needed in addition
   to GitHub Actions environment protections. Launch only when the owner has
   authorized a short Manager availability interruption and a rollback window.
@@ -41,14 +46,16 @@ is manual only; merging workflow changes is not deployment.
 1. Confirm the exact candidate is still on `main`, both historical
    candidate push checks are green and no new migration is needed. Select
    **Actions → RG140 VLESS preview Manager release → Run workflow**, branch
-   `main`, and enter exactly `deploy-US-manager-only-3e8d6c72`.
+   `main`, and enter exactly `deploy-US-manager-only-ff377ec1`.
    Do not use the old **RG140 Manager main update** workflow: it remains pinned
    to a different, older candidate.
 2. The workflow verifies the acknowledgement and exact candidate checks,
    runs same-schema fault-injection tests, builds a pinned SHA-256 verified
    bundle, and holds the existing production-like deployment lock. SSH host
    key validation is mandatory. The remote runner requires root through a
-   constrained `sudo -n` invocation.
+   constrained `sudo -n` invocation. The update runner handles HUP/INT/TERM
+   for best-effort rollback or Manager restart. SSH transport loss and SIGKILL
+   are not guaranteed recoverable; never cancel or duplicate an active release.
 3. Before stopping Manager, the runner confirms the US Management role,
    schema159, a trustworthy applied snapshot baseline, absence of active
    transfers/reservations, and drained Agent/update jobs. It rechecks those
@@ -63,7 +70,7 @@ is manual only; merging workflow changes is not deployment.
    public UI index, preserved account/device/token/transfer identities,
    continued served-account identities and unchanged hashes/unit state of
    unrelated services. The exact logged outcome must be
-   `RESULT=updated commit=3e8d6c72984fa848551b59004029bc6cfcbd0b30 schema=000159_staged_account_transfers`.
+   `RESULT=updated commit=ff377ec1eea5889f37e409d027fb40a2b6562951 schema=000159_staged_account_transfers`.
 6. If a check fails after mutation, the runner attempts an immediate
    backup restore and restarts the previous Manager. **Do not claim success**
    from a green SSH step alone: look for `RESULT=updated` and ensure there
@@ -82,7 +89,9 @@ expectation, **not** a zero-downtime guarantee or proof of end-user connectivity
 
 0. Confirm the Dashboard has the live status bar **above the cards**,
    displaying «В реальном времени · обновлено N с назад» (or the localized
-   English equivalent), and that it actually refreshes.
+   English equivalent), and that it actually refreshes. Check that the
+   heartbeat stays inset from panel edges and continuous status, map and
+   traffic animations have slower, more readable timing.
 1. Open the public US UI, sign in and confirm the new Protocols workspace
    renders. Confirm the existing US subscription refresh still works with
    its original bearer token **without posting the token or link anywhere**.
