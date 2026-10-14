@@ -15,8 +15,8 @@ deploy_workflow="$repo/.github/workflows/production-like-deploy.yml"
 [[ $# -le 1 ]] || { echo 'usage: test-rg140-manager-main.sh [pinned-commit]' >&2; exit 2; }
 commit=${1:-c4137cc43a2385ac38fe71e059f33405535b6618}
 case "$commit" in
-  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a|3e8d6c72984fa848551b59004029bc6cfcbd0b30|ff377ec1eea5889f37e409d027fb40a2b6562951|6054bf960da868ff0034492759573cafb0a4d4a7) ;;
-  *) echo 'test candidate must be one of the five approved schema159 commits' >&2; exit 2 ;;
+  c4137cc43a2385ac38fe71e059f33405535b6618|567a1e154254eebb7f8ee95e46a97c5d0b3c8e4a|3e8d6c72984fa848551b59004029bc6cfcbd0b30|ff377ec1eea5889f37e409d027fb40a2b6562951|6054bf960da868ff0034492759573cafb0a4d4a7|f3089e1d684a2ae227ee18e559130620048cd59d) ;;
+  *) echo 'test candidate must be one of the six approved schema159 commits' >&2; exit 2 ;;
 esac
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
