@@ -14,7 +14,20 @@ import (
 
 func assertHistoricalFinalizationAfterExit(t *testing.T, dir string, b RuntimeRecoveryGrantBinding) {
 	t.Helper()
-	pinned, err := os.ReadFile(filepath.Join(dir, runtimeRecoveryFinalSubmissionFile))
+	source := dir
+	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) {
+		data, e := os.ReadFile(filepath.Join(dir, runtimeRecoveryTerminalFile))
+		var r runtimeRecoveryTerminalRecord
+		if e != nil || !exactHistoricalJSON(data, &r) {
+			t.Fatal("terminal record", e)
+		}
+		var err error
+		source, err = retirementArchivePath(dir, r.OperationID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	pinned, err := os.ReadFile(filepath.Join(source, runtimeRecoveryFinalSubmissionFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +119,7 @@ func TestRuntimeMutationHistoricalFinalRecoveryReadOnly(t *testing.T) {
 }
 
 func TestRuntimeMutationHistoricalFinalRecoveryRejects(t *testing.T) {
-	for _, mode := range []string{"generation", "manager", "agent", "server", "missing_pin", "missing_consumption", "marker", "receipt", "duplicate", "alias", "unknown", "missing_field", "ack", "symlink", "permissions", "inflight", "cancelled", "changed_during_read", "ack_created_during_read", "original_changed_during_read", "original_ack_created_during_read", "consumption_changed_during_read", "callback_error"} {
+	for _, mode := range []string{"generation", "manager", "agent", "server", "missing_pin", "missing_consumption", "marker", "receipt", "duplicate", "alias", "unknown", "missing_field", "ack", "symlink", "permissions", "inflight", "cancelled", "changed_during_read", "ack_created_during_read", "original_changed_during_read", "original_ack_created_during_read", "consumption_changed_during_read", "terminal_created_during_read", "callback_error"} {
 		t.Run(mode, func(t *testing.T) {
 			e, a, b, auth := finalizationFixture(t)
 			wire, _ := json.Marshal(auth)
@@ -178,6 +191,8 @@ func TestRuntimeMutationHistoricalFinalRecoveryRejects(t *testing.T) {
 					os.WriteFile(filepath.Join(m.dir, runtimeRecoveryAcknowledgementFile), []byte(`{}`), 0600)
 				case "consumption_changed_during_read":
 					os.WriteFile(filepath.Join(m.dir, runtimeRecoveryFinalConsumptionFile), []byte(`{}`), 0600)
+				case "terminal_created_during_read":
+					os.WriteFile(filepath.Join(m.dir, runtimeRecoveryTerminalFile), []byte(`{}`), 0600)
 				case "callback_error":
 					return errors.New("secret-network-payload")
 				}
@@ -186,7 +201,7 @@ func TestRuntimeMutationHistoricalFinalRecoveryRejects(t *testing.T) {
 			if err != ErrRuntimeMutationBlocked {
 				t.Fatal("rejection not sanitized", err)
 			}
-			if called && mode != "changed_during_read" && mode != "ack_created_during_read" && mode != "original_changed_during_read" && mode != "original_ack_created_during_read" && mode != "consumption_changed_during_read" && mode != "callback_error" {
+			if called && mode != "changed_during_read" && mode != "ack_created_during_read" && mode != "original_changed_during_read" && mode != "original_ack_created_during_read" && mode != "consumption_changed_during_read" && mode != "terminal_created_during_read" && mode != "callback_error" {
 				t.Fatal("invalid state reached callback")
 			}
 		})

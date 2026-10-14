@@ -46,6 +46,8 @@ type RuntimeRecoveryFinalization struct {
 	frozen            RuntimeRecoveryFinalizationProof
 	acknowledgement   []byte
 	retirement        []byte
+	terminal          []byte
+	archive           string
 	now               func() time.Time
 	lastChecked       time.Time
 	poisoned          bool
@@ -116,6 +118,9 @@ func (m *RuntimeRecoveryFinalization) Proof(ctx context.Context) (RuntimeRecover
 	return m.proofLocked(ctx)
 }
 func (m *RuntimeRecoveryFinalization) proofLocked(ctx context.Context) (RuntimeRecoveryFinalizationProof, error) {
+	if m.terminal != nil {
+		return RuntimeRecoveryFinalizationProof{}, ErrRuntimeMutationBlocked
+	}
 	deny := func() (RuntimeRecoveryFinalizationProof, error) {
 		m.poisoned = true
 		return RuntimeRecoveryFinalizationProof{}, ErrRuntimeMutationBlocked

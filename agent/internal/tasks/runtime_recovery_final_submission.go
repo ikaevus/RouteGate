@@ -96,13 +96,13 @@ const runtimeRecoveryFinalSubmissionFile = "recovery-final-submission.json"
 const runtimeRecoveryFinalAcknowledgementFile = "recovery-final-acknowledgement.json"
 
 func runtimeRecoveryFinalStateAbsent(dir string) bool {
-	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalConsumptionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetirementFile))
+	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalConsumptionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryFinalAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetirementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile))
 }
 func (m *RuntimeRecoveryFinalization) finalSubmissionUnchanged() bool {
 	for _, state := range []struct {
 		name string
 		data []byte
-	}{{runtimeRecoveryFinalSubmissionFile, m.submission}, {runtimeRecoveryFinalAcknowledgementFile, m.acknowledgement}, {runtimeRecoveryRetirementFile, m.retirement}} {
+	}{{runtimeRecoveryFinalSubmissionFile, m.submission}, {runtimeRecoveryFinalAcknowledgementFile, m.acknowledgement}, {runtimeRecoveryRetirementFile, m.retirement}, {runtimeRecoveryTerminalFile, m.terminal}} {
 		path := filepath.Join(m.dir, state.name)
 		if state.data == nil {
 			if !runtimeMarkerAbsent(path) {

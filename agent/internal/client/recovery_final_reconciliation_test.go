@@ -17,7 +17,7 @@ import (
 )
 
 func TestRuntimeMutationFinalRecoveryReconciliationTransport(t *testing.T) {
-	for _, mode := range []string{"expired", "with_ack", "rotated", "identity_hash", "identity_error", "unknown", "absent", "unauthorized", "wrong_operation", "wrong_grant", "wrong_consumption", "wrong_proof", "wrong_request", "not_recorded", "duplicate", "trailing", "oversize", "redirect", "changed_during_http", "cancelled"} {
+	for _, mode := range []string{"expired", "with_ack", "terminal", "partial_terminal", "rotated", "identity_hash", "identity_error", "unknown", "absent", "unauthorized", "wrong_operation", "wrong_grant", "wrong_consumption", "wrong_proof", "wrong_request", "not_recorded", "duplicate", "trailing", "oversize", "redirect", "changed_during_http", "cancelled"} {
 		t.Run(mode, func(t *testing.T) {
 			g := recoveryReadTestGrant(t)
 			// Historical timestamps deliberately expired: no release is attempted.
@@ -160,8 +160,65 @@ func TestRuntimeMutationFinalRecoveryReconciliationTransport(t *testing.T) {
 			pinned, _ = json.Marshal(fp)
 			files["recovery-final-consumption.json"] = finalRecord
 			files["recovery-final-submission.json"] = pinned
-			if mode == "with_ack" {
+			if mode == "with_ack" || mode == "terminal" || mode == "partial_terminal" {
 				files["recovery-final-acknowledgement.json"], _ = json.Marshal(RecoveryFinalizationReceipt{SchemaVersion: 1, Recorded: true, OperationID: fp.OperationID, AuthorizationHash: fp.AuthorizationHash, FinalConsumptionHash: fp.FinalConsumptionHash, ProofHash: recoveryReadHash(pinned), RequestHash: recoveryReadHash(pinned)})
+			}
+			if mode == "terminal" || mode == "partial_terminal" {
+				type source struct {
+					Name    string `json:"name"`
+					Present bool   `json:"present"`
+					Hash    string `json:"hash"`
+				}
+				manifest := []source{}
+				for _, name := range []string{"mutation-inflight.json", "mutation-result.json", "recovery-consumption.json", "recovery-submission.json", "recovery-acknowledgement.json", "recovery-final-consumption.json", "recovery-final-submission.json", "recovery-final-acknowledgement.json"} {
+					data, present := files[name]
+					hash := ""
+					if present {
+						hash = recoveryReadHash(data)
+					}
+					manifest = append(manifest, source{name, present, hash})
+				}
+				intent, _ := json.Marshal(struct {
+					SchemaVersion        int                               `json:"schemaVersion"`
+					Purpose              string                            `json:"purpose"`
+					OperationID          string                            `json:"operationId"`
+					Binding              tasks.RuntimeRecoveryGrantBinding `json:"binding"`
+					AuthorizationHash    string                            `json:"authorizationHash"`
+					FinalConsumptionHash string                            `json:"finalConsumptionHash"`
+					FinalProofHash       string                            `json:"finalProofHash"`
+					FinalReceiptHash     string                            `json:"finalReceiptHash"`
+					ObservedAt           time.Time                         `json:"observedAt"`
+					Observation          tasks.RuntimeRecoveryObservation  `json:"observation"`
+					Files                []source                          `json:"files"`
+				}{1, "runtime_mutation_fence_retirement_intent_v1", fp.OperationID, b, fp.AuthorizationHash, fp.FinalConsumptionHash, recoveryReadHash(pinned), recoveryReadHash(files["recovery-final-acknowledgement.json"]), auth.IssuedAt.Add(3 * time.Second), fp.Observation, manifest})
+				terminal, _ := json.Marshal(struct {
+					SchemaVersion    int                               `json:"schemaVersion"`
+					Purpose          string                            `json:"purpose"`
+					OperationID      string                            `json:"operationId"`
+					Binding          tasks.RuntimeRecoveryGrantBinding `json:"binding"`
+					IntentHash       string                            `json:"intentHash"`
+					FinalProofHash   string                            `json:"finalProofHash"`
+					FinalReceiptHash string                            `json:"finalReceiptHash"`
+					ObservedAt       time.Time                         `json:"observedAt"`
+					Observation      tasks.RuntimeRecoveryObservation  `json:"observation"`
+				}{1, "runtime_mutation_retirement_archive_v1", fp.OperationID, b, recoveryReadHash(intent), recoveryReadHash(pinned), recoveryReadHash(files["recovery-final-acknowledgement.json"]), auth.IssuedAt.Add(4 * time.Second), fp.Observation})
+				archive := filepath.Join(dir, "retired-"+fp.OperationID)
+				if os.Mkdir(archive, 0700) != nil {
+					t.Fatal("archive fixture")
+				}
+				for _, file := range manifest {
+					if file.Present && os.WriteFile(filepath.Join(archive, file.Name), files[file.Name], 0600) != nil {
+						t.Fatal("archive fixture file")
+					}
+				}
+				if os.WriteFile(filepath.Join(archive, "recovery-retirement-intent.json"), intent, 0600) != nil {
+					t.Fatal("archive intent")
+				}
+				remaining := files["mutation-result.json"]
+				files = map[string][]byte{"runtime.lock": {}, "recovery-retirement-intent.json": intent, "recovery-retirement-terminal.json": terminal}
+				if mode == "partial_terminal" {
+					files["mutation-result.json"] = remaining
+				}
 			}
 			for name, data := range files {
 				if os.WriteFile(filepath.Join(dir, name), data, 0600) != nil {
@@ -170,7 +227,7 @@ func TestRuntimeMutationFinalRecoveryReconciliationTransport(t *testing.T) {
 			}
 			c := New(s.URL)
 			r, err := c.ReconcileRecoveryFinalization(ctx, "isolated-token", b.AgentID, b.ServerID, dir)
-			valid := mode == "expired" || mode == "with_ack"
+			valid := mode == "expired" || mode == "with_ack" || mode == "terminal" || mode == "partial_terminal"
 			if valid {
 				if err != nil || !r.Recorded {
 					t.Fatal("historical read failed", err)
@@ -189,7 +246,11 @@ func TestRuntimeMutationFinalRecoveryReconciliationTransport(t *testing.T) {
 				t.Fatal("unexpected retries/new authority", calls, reads)
 			}
 			entries, _ := os.ReadDir(dir)
-			if len(entries) != len(files) {
+			expectedEntries := len(files)
+			if mode == "terminal" || mode == "partial_terminal" {
+				expectedEntries++
+			}
+			if len(entries) != expectedEntries {
 				t.Fatal("reconciliation created/deleted state")
 			}
 			for name, want := range files {

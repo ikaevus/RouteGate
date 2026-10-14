@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 )
 
@@ -20,6 +21,16 @@ func WithHistoricalRecoveryFinalization(ctx context.Context, dir string, binding
 		return ErrRuntimeMutationBlocked
 	}
 	defer lock.Close()
+	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) {
+		return withTerminalRecoveryHistoryLocked(ctx, dir, binding, lock, fn)
+	}
+	return withHistoricalFinalizationLocked(ctx, dir, binding, lock, fn)
+}
+
+func withHistoricalFinalizationLocked(ctx context.Context, dir string, binding RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryFinalizationProof) error) error {
+	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) {
+		return ErrRuntimeMutationBlocked
+	}
 	return withHistoricalRecoverySubmissionLocked(ctx, dir, binding, lock, func(original RuntimeRecoveryCommitProof, _ func() bool) error {
 		paths := []string{runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile}
 		limits := []int64{runtimeRecoveryConsumptionLimit, 8192, 4096, 8192}
@@ -79,7 +90,7 @@ func WithHistoricalRecoveryFinalization(ctx context.Context, dir string, binding
 				return ErrRuntimeMutationBlocked
 			}
 		}
-		if ctx.Err() != nil || !unchanged() || fn(proof) != nil || ctx.Err() != nil || !unchanged() {
+		if ctx.Err() != nil || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) || !unchanged() || fn(proof) != nil || ctx.Err() != nil || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) || !unchanged() {
 			return ErrRuntimeMutationBlocked
 		}
 		return nil
