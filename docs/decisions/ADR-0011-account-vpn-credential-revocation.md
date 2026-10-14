@@ -1321,3 +1321,53 @@ Runner invocation, Manager endpoint/schema change or operator workflow exists in
 this slice. Atomic terminal retirement and coordinated abort/crash-safe release
 remain future work. Schema stays000167; #545 remains unfinished.
 No production access/change, real-user revocation, merge or deploy.
+
+### Agent terminal archival retirement (twenty-seventh slice)
+
+Dormant `RuntimeRecoveryFinalization.RetirePrepared` may run only on the original
+still-live final owner after its submission callback returns. It retains the
+same mutex/flock and requires exact prepared intent, pinned proof/receipt,
+current conditional authority/window and fresh bracketed config/process/listener
+observation. No new owner or crashed process can resume the operation.
+
+Copy every fixed manifest source plus the prepared journal into a new private
+staging directory using atomic file write/fsync. Validate the complete typed
+historical chain, exact manifest and private ownership/mode/link counts; fsync
+and atomically rename the directory to `retired-{operationId}` under the stable
+admission root. The root directory and `runtime.lock` inode are never renamed or
+recreated. Unknown paths/files, existing archive or publication uncertainty fail
+closed without automatic overwrite or staging cleanup.
+
+Only after complete archive durability and another fresh observation is private
+`recovery-retirement-terminal.json` atomically/fsync retained. This is an archive
+record, not fence-release authority or Manager acceptance. Then redundant active
+source copies are individually hash-checked and removed with directory fsync,
+with current authority/time/context and fresh archived/runtime checks through
+cleanup. Original bytes remain recoverable in the complete private archive.
+Keep active `mutation-inflight.json` unchanged as a compatibility fence for older
+Agent binaries. Prepared journal and terminal record also remain sticky barriers,
+including when standalone/malformed or experimental dispatch is disabled.
+
+Failure at any copy/publish/cleanup boundary retains barriers and available
+history; owner poison prevents automatic continuation. Same live successful
+owner repeats recheck authority/runtime and preserve terminal bytes/time/hash.
+Ordinary final proof/submission methods cannot adopt terminal state. Close drops
+only flock; there is no actual Agent unlock or Manager reservation release.
+
+Historical final reconciliation selects a terminal archive only through its
+exact private record and current credential-generation binding. Validate archive
+chain, journal equality, terminal hashes/window/observation and any remaining
+active copies, retaining before/after snapshots under the original root flock.
+Read-only confirmation never completes interrupted cleanup or infers current
+VPN traffic/readiness. Root phase changes during an active-history read fail
+closed. Expired historical authority remains history only.
+
+Crash-cut regressions cover every copy/cleanup plus archive/terminal publication
+with SIGKILL and representative exit points; legacy/new fences survive. Real
+systemd/Reality performs terminal archival, then injected external restart rejects
+fresh terminal-owner checks while historical readback retains all archived state.
+This is not Manager+Agent release E2E. No Runner activation, config mutation,
+credential revocation, actual fence release, Manager terminal-evidence endpoint/
+ledger, reservation release or operator workflow is implemented here. Those and
+coordinated abort/release remain future work. Schema stays000167; #545 stays open.
+No production access/change, real-user revocation, merge or deploy.

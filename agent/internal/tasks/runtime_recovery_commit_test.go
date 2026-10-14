@@ -262,7 +262,7 @@ func TestRuntimeMutationRecoveryCommitPoisonedOwner(t *testing.T) {
 }
 
 func TestRuntimeMutationRecoveryConsumptionAloneGuardsMutations(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile} {
+	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile, runtimeRecoveryTerminalFile} {
 		for _, contents := range []string{"{}", "", "malformed"} {
 			t.Run(name+contents, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)
@@ -365,12 +365,32 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 					if e = g.RecordReceipt(context.Background(), receiptForFinalizationProof(p)); e != nil {
 						return e
 					}
-					if mode == "retire" {
+					if mode == "retire" || mode == "terminal" {
 						_, e = g.PrepareRetirement(context.Background())
 					}
 					return e
 				}) != nil {
 					os.Exit(8)
+				}
+				if mode == "terminal" {
+					_, err := final.retirePrepared(context.Background(), func(step string) error {
+						if step != os.Getenv("RG_TEST_RECOVERY_TERMINAL_CUT") {
+							return nil
+						}
+						if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
+							if os.WriteFile(filepath.Join(in.Dir, "test-commit-ready"), []byte("ready"), 0600) != nil {
+								os.Exit(10)
+							}
+							for {
+								time.Sleep(20 * time.Millisecond)
+							}
+						}
+						os.Exit(0)
+						return nil
+					})
+					if err != nil {
+						os.Exit(9)
+					}
 				}
 			}
 		}

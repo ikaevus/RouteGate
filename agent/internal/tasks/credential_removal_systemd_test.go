@@ -257,40 +257,46 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}); err != nil {
 		t.Fatal("real final confirmation persistence", err)
 	}
+	if hash, err := final.RetirePrepared(ctx); err != nil || hash == "" {
+		t.Fatal("real terminal archive", err)
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := final.Proof(ctx); err == nil {
-		t.Fatal("new process accepted old locked final witness")
+	if _, err := final.RetirePrepared(ctx); err == nil {
+		t.Fatal("new process accepted old archived terminal witness")
+	}
+	if _, err := observeRuntimeRecoveryLocked(ctx, final.archive, binding, task.ID, e.activePath, adapter, final.lock); err == nil {
+		t.Fatal("new process accepted archived witness")
 	}
 	final.Close()
 	// Historical storage read remains valid after injected runtime drift, without
 	// claiming a fresh runtime witness or reacquiring a mutation owner.
 	assertHistoricalFinalizationAfterExit(t, e.receiptDir, bound)
-	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalConsumptionFile)) {
+	if runtimeMarkerAbsent(filepath.Join(final.archive, runtimeRecoveryFinalConsumptionFile)) {
 		t.Fatal("real process drift discarded final consumption")
 	}
 	for _, name := range []string{runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile} {
-		if runtimeMarkerAbsent(filepath.Join(e.receiptDir, name)) {
+		if runtimeMarkerAbsent(filepath.Join(final.archive, name)) {
 			t.Fatal("real drift discarded final confirmation", name)
 		}
 	}
 	if _, err := ObserveRuntimeRecovery(ctx, e.receiptDir, binding, task.ID, e.activePath, adapter); err == nil {
 		t.Fatal("new process accepted old recovery witness")
 	}
-	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryConsumptionFile)) {
+	if runtimeMarkerAbsent(filepath.Join(final.archive, runtimeRecoveryConsumptionFile)) {
 		t.Fatal("real process drift discarded consumption")
 	}
-	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoverySubmissionFile)) {
+	if runtimeMarkerAbsent(filepath.Join(final.archive, runtimeRecoverySubmissionFile)) {
 		t.Fatal("real process drift discarded submission")
 	}
-	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryAcknowledgementFile)) {
+	if runtimeMarkerAbsent(filepath.Join(final.archive, runtimeRecoveryAcknowledgementFile)) {
 		t.Fatal("real process drift discarded acknowledgement")
 	}
-	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, "mutation-inflight.json")) {
+	if runtimeMarkerAbsent(filepath.Join(final.archive, "mutation-inflight.json")) {
 		t.Fatal("observation cleared fence")
 	}
 	t.Log("recovery observation matches real process, rejects subsequent restart and retains fence")
