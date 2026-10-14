@@ -23,6 +23,7 @@ Supported requests:
 - `operation=diagnose-sing-box`
 - `operation=validate`
 - `operation=restart-control-plane`
+- `operation=start-manager-only` (start Manager without restarting Agent, nginx or VPN services)
 - `operation=restart-sing-box`
 - `operation=restart-wireguard`
 - `operation=restart-hysteria2`
@@ -44,6 +45,17 @@ checks the same allow-list before doing anything.
 
 After every issue-triggered run the workflow posts a sanitized result to #268
 and closes the issue again, making the next reopen a distinct audited request.
+
+## Manager-only emergency recovery
+
+If a cancelled release leaves the Manager stopped, request `operation=start-manager-only`
+through issue #268. This fixed, argument-free operation is permitted only from
+trusted `main` and runs under the production-like host deployment lock.
+It checks the Manager systemd unit and calls `systemctl start routegate-manager.service`
+only if inactive, then requires local health HTTP 200. If the Manager is
+already running it does **not** restart it. No Agent, nginx or VPN service is
+restarted. After recovery, request `operation=diagnose` to confirm health,
+schema and data-plane service state.
 
 ## Applied-client-settings preflight
 
