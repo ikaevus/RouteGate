@@ -25,11 +25,21 @@ test('heartbeat has breathing room for rounded strokes and glow', () => {
 });
 
 test('continuous dashboard signals use calmer loops', () => {
-  assert.ok(seconds('.dashboard-page .health-pulse-line', 'rg-heartbeat') >= 3.5);
-  assert.ok(seconds('.dashboard-page .node-distribution-map::after', 'rg-map-sweep') >= 8.5);
-  assert.ok(seconds('.dashboard-page .node-country-marker-ping', 'rg-marker-ping') >= 3.2);
-  assert.ok(seconds('.dashboard-page .traffic-empty-wave span', 'rg-idle-wave') >= 3.3);
-  assert.ok(seconds('.dashboard-live-bar--live .dashboard-live-indicator i', 'rg-live-bar-dot') >= 2.2);
+  assert.ok(seconds('.dashboard-page .health-pulse-line', 'rg-heartbeat') >= 5.5);
+  assert.ok(seconds('.dashboard-page .node-distribution-map::after', 'rg-map-sweep') >= 13);
+  assert.ok(seconds('.dashboard-page .node-country-marker-ping', 'rg-marker-ping') >= 4.8);
+  assert.ok(seconds('.dashboard-page .traffic-empty-wave span', 'rg-idle-wave') >= 5.5);
+  assert.ok(seconds('.dashboard-live-bar--live .dashboard-live-indicator i', 'rg-live-bar-dot') >= 3.4);
+});
+
+test('online dots animate their own opacity and size rather than shadow alone', () => {
+  const dot = rule('.dashboard-page .online-users-table .online-user-state--online i');
+  assert.match(dot, /animation-name:\s*rg-online-dot-breathe/);
+  assert.match(dot, /animation-duration:\s*5\.2s/);
+  const frames = stylesheet.slice(stylesheet.indexOf('@keyframes rg-online-dot-breathe'));
+  assert.match(frames, /50%\s*\{[^}]*opacity:\s*0\.62;[^}]*transform:\s*scale\(0\.82\)/s);
+  assert.doesNotMatch(dot, /opacity:\s*0\s*;/);
+  assert.doesNotMatch(stylesheet, /\.online-user-state--recent i\s*\{\s*animation-name:/);
 });
 
 test('reduced-motion override still disables decorative animation', () => {
