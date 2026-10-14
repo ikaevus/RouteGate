@@ -91,8 +91,9 @@ expectation, **not** a zero-downtime guarantee or proof of end-user connectivity
    English equivalent), and that it actually refreshes. Check that the
    heartbeat stays inset from panel edges, that its 6s trace and 14s map sweep
    visibly run more slowly, and that the 6s traffic wave remains subtle. Confirm
-   online-user green dots gently change core brightness over 5.2s without
-   disappearing; recently-active entries must not indicate live activity.
+   server and VPN-user online dots are identically green, 9px in diameter,
+   have matching glow and 5.2s breathing cadence, and are not clipped by the
+   table. Offline/recent status indicators must not imitate live activity.
 1. Open the public US UI, sign in and confirm the new Protocols workspace
    renders. Confirm the existing US subscription refresh still works with
    its original bearer token **without posting the token or link anywhere**.
