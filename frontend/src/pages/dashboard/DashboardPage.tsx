@@ -22,6 +22,7 @@ import { t, translateStatus } from '../../shared/i18n/i18n';
 import { StatusBadge } from '../../shared/ui/StatusBadge';
 import { AnimatedValue } from './AnimatedValue';
 import { GettingStartedWidget } from './GettingStartedWidget';
+import { LiveStatusBar } from './LiveStatusBar';
 import './DashboardPage.css';
 
 function formatDate(value?: string | null): string {
@@ -536,8 +537,20 @@ export function DashboardPage() {
     };
   });
 
+  const liveUpdatedAt = Math.max(
+    managerHealthQuery.dataUpdatedAt,
+    serversQuery.dataUpdatedAt,
+    agentsQuery.dataUpdatedAt,
+    clientConnectionsQuery.dataUpdatedAt,
+  );
+
   return (
     <section className="page dashboard-page dashboard-reference-page dashboard-fidelity-page">
+      <LiveStatusBar
+        updatedAt={liveUpdatedAt}
+        serverTime={managerHealthQuery.data?.timestamp}
+        serverTimeReceivedAt={managerHealthQuery.dataUpdatedAt}
+      />
       <div className="dashboard-reference-grid">
         <GettingStartedWidget />
         <KpiWidget
