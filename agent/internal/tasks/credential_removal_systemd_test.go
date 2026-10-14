@@ -249,7 +249,11 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		if e != nil {
 			return e
 		}
-		return g.RecordReceipt(ctx, receiptForFinalizationProof(p))
+		if e = g.RecordReceipt(ctx, receiptForFinalizationProof(p)); e != nil {
+			return e
+		}
+		_, e = g.PrepareRetirement(ctx)
+		return e
 	}); err != nil {
 		t.Fatal("real final confirmation persistence", err)
 	}
@@ -269,7 +273,7 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if runtimeMarkerAbsent(filepath.Join(e.receiptDir, runtimeRecoveryFinalConsumptionFile)) {
 		t.Fatal("real process drift discarded final consumption")
 	}
-	for _, name := range []string{runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile} {
+	for _, name := range []string{runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile} {
 		if runtimeMarkerAbsent(filepath.Join(e.receiptDir, name)) {
 			t.Fatal("real drift discarded final confirmation", name)
 		}

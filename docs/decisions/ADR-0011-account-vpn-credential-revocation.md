@@ -1285,3 +1285,39 @@ cleanup, configuration mutation, fence/reservation release or operator workflow
 is implemented here. Coordinated explicit abort/crash-safe release and end-to-end
 credential revocation remain future work. Schema stays000167; #545 stays open.
 No production access/change, real-user revocation, merge or deploy.
+
+### Agent prepared retirement intent (twenty-sixth slice)
+
+Dormant `RuntimeRecoveryFinalizationGuard.PrepareRetirement` stages the durable
+barrier required before future multi-file retirement. Only a still-live final
+guard holding the original mutex/flock, unexpired conditional final authority,
+exact pinned proof and verified historical receipt can prepare it. Fresh locked
+config/process/listener and original/final byte checks occur before manifest
+capture, immediately before atomic publication/fsync and after publication.
+Receipt/readback alone cannot substitute for current final-owner observation.
+
+Private `recovery-retirement-intent.json` binds explicit prepared purpose,
+operation, independent identity/generation, final authorization/consumption/proof/
+receipt hashes, measured observation/time and ordered manifest of eight exact
+source files. Optional original acknowledgement records its exact absence; final
+acknowledgement is required. Filenames are a fixed internal list, never caller
+paths. The only returned value is the intent digest, not release authority or
+completion evidence. Repeats preserve original bytes/time/hash and recheck live
+authority/runtime; no nonce or deadline is renewed.
+
+Publication uncertainty, expiry, backwards wall time, source/runtime/file drift
+retain all state and prevent confirmed preparation. Owner poison is permanent.
+Standalone/malformed intent guards normal mutation admission, completion/result
+save/replay, scoped removal and old public historical delivery. New final owner
+cannot resume existing intent. Close releases only flock and deletes nothing.
+
+Read-only final crash reconciliation validates optional intent and its exact
+manifest/receipt/window against retained history and includes it in before/after
+snapshots. It can confirm final-proof storage only, never report completed
+retirement or current runtime readiness. Exit/SIGKILL after intent retain fences;
+real systemd/Reality restart invalidates live proof while exact prepared history
+remains readable. No Agent config mutation, deletion, fence/reservation release,
+Runner invocation, Manager endpoint/schema change or operator workflow exists in
+this slice. Atomic terminal retirement and coordinated abort/crash-safe release
+remain future work. Schema stays000167; #545 remains unfinished.
+No production access/change, real-user revocation, merge or deploy.

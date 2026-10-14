@@ -262,7 +262,7 @@ func TestRuntimeMutationRecoveryCommitPoisonedOwner(t *testing.T) {
 }
 
 func TestRuntimeMutationRecoveryConsumptionAloneGuardsMutations(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile} {
+	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile} {
 		for _, contents := range []string{"{}", "", "malformed"} {
 			t.Run(name+contents, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)
@@ -362,7 +362,13 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 					if e != nil || mode == "pin" {
 						return e
 					}
-					return g.RecordReceipt(context.Background(), receiptForFinalizationProof(p))
+					if e = g.RecordReceipt(context.Background(), receiptForFinalizationProof(p)); e != nil {
+						return e
+					}
+					if mode == "retire" {
+						_, e = g.PrepareRetirement(context.Background())
+					}
+					return e
 				}) != nil {
 					os.Exit(8)
 				}

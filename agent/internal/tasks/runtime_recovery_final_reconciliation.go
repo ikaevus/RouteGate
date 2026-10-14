@@ -21,12 +21,12 @@ func WithHistoricalRecoveryFinalization(ctx context.Context, dir string, binding
 	}
 	defer lock.Close()
 	return withHistoricalRecoverySubmissionLocked(ctx, dir, binding, lock, func(original RuntimeRecoveryCommitProof, _ func() bool) error {
-		paths := []string{runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile}
-		limits := []int64{runtimeRecoveryConsumptionLimit, 8192, 4096}
+		paths := []string{runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile}
+		limits := []int64{runtimeRecoveryConsumptionLimit, 8192, 4096, 8192}
 		data := make([][]byte, len(paths))
 		for i, name := range paths {
 			path := filepath.Join(dir, name)
-			if i == 2 && runtimeMarkerAbsent(path) {
+			if i >= 2 && runtimeMarkerAbsent(path) {
 				continue
 			}
 			var e error
@@ -71,6 +71,11 @@ func WithHistoricalRecoveryFinalization(ctx context.Context, dir string, binding
 		if data[2] != nil {
 			var receipt RuntimeRecoveryFinalizationReceipt
 			if !exactHistoricalJSON(data[2], &receipt) || receipt.SchemaVersion != 1 || !receipt.Recorded || receipt.OperationID != proof.OperationID || receipt.AuthorizationHash != proof.AuthorizationHash || receipt.FinalConsumptionHash != proof.FinalConsumptionHash || receipt.ProofHash != markerDigest(data[1]) || receipt.RequestHash != receipt.ProofHash {
+				return ErrRuntimeMutationBlocked
+			}
+		}
+		if data[3] != nil {
+			if _, e := validateRetirementIntent(data[3], dir, binding, a, proof, data[1], data[2]); e != nil {
 				return ErrRuntimeMutationBlocked
 			}
 		}

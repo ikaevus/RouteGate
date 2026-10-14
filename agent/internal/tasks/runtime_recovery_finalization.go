@@ -45,6 +45,7 @@ type RuntimeRecoveryFinalization struct {
 	submission        []byte
 	frozen            RuntimeRecoveryFinalizationProof
 	acknowledgement   []byte
+	retirement        []byte
 	now               func() time.Time
 	lastChecked       time.Time
 	poisoned          bool
