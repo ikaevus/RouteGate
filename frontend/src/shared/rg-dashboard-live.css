@@ -205,26 +205,23 @@
   text-shadow: 0 0 18px color-mix(in srgb, var(--kpi-tone) 60%, transparent);
 }
 
-/* ---- Live dots in tables ---- */
-
+/* ---- Unified online-status dots in both Dashboard tables ---- */
+/* Keep the servers and VPN-accounts indicators identical in color, size,
+   motion and cadence. Offline/recent states are deliberately not animated. */
 .dashboard-page .server-online-dot,
-.dashboard-page .online-user-state--online i {
-  animation: rg-live-ping 4.8s ease-out infinite;
-}
-
-.dashboard-page .dashboard-table-row:nth-child(even) .server-online-dot,
-.dashboard-page .dashboard-table-row:nth-child(even) .online-user-state--online i {
-  animation-delay: -2.4s;
-}
-
-/* Unlike a shadow-only ping (which can be clipped by table cells), the
-   status dot itself breathes gently; it never disappears or implies offline. */
 .dashboard-page .online-users-table .online-user-state--online i {
-  animation-name: rg-online-dot-breathe;
-  animation-duration: 5.2s;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
+  animation: rg-status-dot-breathe 5.2s ease-in-out infinite;
+  background-color: var(--rg-success);
+  border-radius: 999px;
+  height: 9px;
   transform-origin: center;
+  width: 9px;
+}
+
+/* Table text ellipsis must not crop the glow around the child online dot. */
+.dashboard-page .online-users-table .online-user-state--online {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .dashboard-page .online-users-table .online-user-state--online { color: #4ade80; }
@@ -497,16 +494,16 @@
   100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0), 0 0 12px rgba(34, 197, 94, 0.75); }
 }
 
-@keyframes rg-online-dot-breathe {
+@keyframes rg-status-dot-breathe {
   0%, 100% {
     opacity: 1;
     transform: scale(1);
-    box-shadow: 0 0 6px rgba(34, 197, 94, 0.45);
+    box-shadow: 0 0 11px rgba(34, 197, 94, 0.75);
   }
   50% {
-    opacity: 0.62;
-    transform: scale(0.82);
-    box-shadow: 0 0 2px rgba(34, 197, 94, 0.22);
+    opacity: 0.68;
+    transform: scale(0.88);
+    box-shadow: 0 0 5px rgba(34, 197, 94, 0.35);
   }
 }
 
