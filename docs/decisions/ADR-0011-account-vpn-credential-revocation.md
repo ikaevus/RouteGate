@@ -1388,6 +1388,8 @@ authenticated heartbeat, original grant/commit chain, issuer authority and the
 unexpired conditional window. Exact final proof must already be retained;
 final receipt digest must match the canonical Manager receipt for that proof.
 Terminal observation cannot predate final observation or exceed current time.
+SQL ordering compares complete wire instants, including nanoseconds that the
+PostgreSQL timestamp index cannot represent.
 Repeat deadline/session/heartbeat checks after bounded work and waits.
 
 Migration000168 retains one immutable canonical terminal proof per preparation.

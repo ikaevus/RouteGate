@@ -133,7 +133,7 @@ func TestRecoveryTerminalEvidence(t *testing.T) {
 }
 
 func TestRecoveryTerminalRejects(t *testing.T) {
-	for _, mode := range []string{"token", "path", "generation", "authorization", "consumption", "final_proof", "final_receipt", "before_final", "future", "expired", "agent", "server", "task", "observation", "offline", "stale", "heartbeat_generation", "fencing", "capability", "issuer", "role", "permission", "missing_final"} {
+	for _, mode := range []string{"token", "path", "generation", "authorization", "consumption", "final_proof", "final_receipt", "before_final", "before_final_nanosecond", "future", "expired", "agent", "server", "task", "observation", "offline", "stale", "heartbeat_generation", "fencing", "capability", "issuer", "role", "permission", "missing_final"} {
 		t.Run(mode, func(t *testing.T) {
 			f := recoveryTerminalFixtureWithFinal(t, 0, mode != "missing_final")
 			p := f.terminal
@@ -155,6 +155,8 @@ func TestRecoveryTerminalRejects(t *testing.T) {
 				p.FinalReceiptHash = strings.Repeat("d", 64)
 			case "before_final":
 				p.ObservedAt = f.proof.ObservedAt.Add(-time.Microsecond)
+			case "before_final_nanosecond":
+				p.ObservedAt = f.proof.ObservedAt.Add(-time.Nanosecond)
 			case "future":
 				p.ObservedAt = f.authorization.Authorization.ExpiresAt.Add(-time.Millisecond)
 			case "expired":
@@ -172,7 +174,11 @@ func TestRecoveryTerminalRejects(t *testing.T) {
 			case "stale":
 				f.exec(t, `UPDATE agents SET last_authenticated_heartbeat_at=clock_timestamp()-interval '10 minutes'`)
 			case "heartbeat_generation":
-				f.exec(t, `UPDATE agents SET last_authenticated_heartbeat_generation=credential_generation+1`)
+				// Existing schema already prevents forged cross-generation heartbeats.
+				if _, err := f.pool.Exec(f.ctx, `UPDATE agents SET last_authenticated_heartbeat_generation=credential_generation+1`); err == nil {
+					t.Fatal("cross-generation heartbeat admitted by schema")
+				}
+				f.exec(t, `UPDATE agents SET last_authenticated_heartbeat_at=NULL,last_authenticated_heartbeat_generation=NULL`)
 			case "fencing":
 				f.exec(t, `UPDATE agents SET current_runtime_mutation_fencing=false`)
 			case "capability":

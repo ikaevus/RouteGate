@@ -20,6 +20,13 @@ BEGIN
  END IF;
 END; $$;
 
+-- PostgreSQL timestamptz rounds to microseconds; retained Go wire carries
+-- nanoseconds. Compare complete instants, not just rounded index columns.
+CREATE FUNCTION routegate_recovery_terminal_instant(value text) RETURNS numeric LANGUAGE sql STABLE STRICT AS $$
+ SELECT extract(epoch FROM regexp_replace(value,'\.[0-9]+','')::timestamptz)
+ + ('0.'||COALESCE(substring(value FROM '\.([0-9]+)'),'0'))::numeric;
+$$;
+
 CREATE FUNCTION routegate_recovery_terminal_evidence_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE node uuid; prep runtime_recovery_preparations; authority runtime_recovery_release_authorizations; final runtime_recovery_finalization_evidence; data jsonb; ack text;
 BEGIN
@@ -59,6 +66,7 @@ BEGIN
  AND (data->>'observedAt')::timestamptz=NEW.observed_at
  AND data->>'observedAt' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{0,8}[1-9])?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$'
  AND data->>'observedAt' !~ '[+-]00:00$'
+ AND routegate_recovery_terminal_instant(data->>'observedAt')>=routegate_recovery_terminal_instant(final.proof::jsonb->>'observedAt')
  AND data->'observation'=(authority.authorization_payload::jsonb)->'expected'
  AND data->'observation'=final.proof::jsonb->'observation'
  AND data-ARRAY['schemaVersion','purpose','operationId','agentCredentialGeneration','authorizationHash','finalConsumptionHash','finalProofHash','finalReceiptHash','intentHash','terminalHash','observedAt','observation']='{}'::jsonb,false) THEN
