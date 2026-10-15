@@ -262,7 +262,7 @@ func TestRuntimeMutationRecoveryCommitPoisonedOwner(t *testing.T) {
 }
 
 func TestRuntimeMutationRecoveryConsumptionAloneGuardsMutations(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile, runtimeRecoveryTerminalFile} {
+	for _, name := range []string{runtimeRecoveryConsumptionFile, runtimeRecoverySubmissionFile, runtimeRecoveryAcknowledgementFile, runtimeRecoveryFinalConsumptionFile, runtimeRecoveryFinalSubmissionFile, runtimeRecoveryFinalAcknowledgementFile, runtimeRecoveryRetirementFile, runtimeRecoveryTerminalFile, runtimeRecoveryTerminalSubmissionFile, runtimeRecoveryTerminalAcknowledgementFile} {
 		for _, contents := range []string{"{}", "", "malformed"} {
 			t.Run(name+contents, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)
@@ -365,14 +365,14 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 					if e = g.RecordReceipt(context.Background(), receiptForFinalizationProof(p)); e != nil {
 						return e
 					}
-					if mode == "retire" || mode == "terminal" {
+					if mode == "retire" || mode == "terminal" || strings.HasPrefix(mode, "terminal_confirm_") {
 						_, e = g.PrepareRetirement(context.Background())
 					}
 					return e
 				}) != nil {
 					os.Exit(8)
 				}
-				if mode == "terminal" {
+				if mode == "terminal" || strings.HasPrefix(mode, "terminal_confirm_") {
 					_, err := final.retirePrepared(context.Background(), func(step string) error {
 						if step != os.Getenv("RG_TEST_RECOVERY_TERMINAL_CUT") {
 							return nil
@@ -390,6 +390,17 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 					})
 					if err != nil {
 						os.Exit(9)
+					}
+					if strings.HasPrefix(mode, "terminal_confirm_") {
+						if final.WithTerminalSubmission(context.Background(), in.Binding, markerDigest(wire), func(g *RuntimeRecoveryTerminalGuard) error {
+							p, e := g.PinProof(context.Background())
+							if e != nil || mode == "terminal_confirm_pin" {
+								return e
+							}
+							return g.RecordReceipt(context.Background(), receiptForTerminalProof(p))
+						}) != nil {
+							os.Exit(11)
+						}
 					}
 				}
 			}

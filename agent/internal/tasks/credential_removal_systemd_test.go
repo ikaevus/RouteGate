@@ -260,6 +260,15 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if hash, err := final.RetirePrepared(ctx); err != nil || hash == "" {
 		t.Fatal("real terminal archive", err)
 	}
+	if err := final.WithTerminalSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryTerminalGuard) error {
+		p, e := g.PinProof(ctx)
+		if e != nil {
+			return e
+		}
+		return g.RecordReceipt(ctx, receiptForTerminalProof(p))
+	}); err != nil {
+		t.Fatal("real terminal confirmation persistence", err)
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +277,9 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}
 	if _, err := final.RetirePrepared(ctx); err == nil {
 		t.Fatal("new process accepted old archived terminal witness")
+	}
+	if err := final.WithTerminalSubmission(ctx, bound, markerDigest(authorizationData), func(*RuntimeRecoveryTerminalGuard) error { return nil }); err == nil {
+		t.Fatal("new process accepted old terminal submission owner")
 	}
 	if _, err := observeRuntimeRecoveryLocked(ctx, final.archive, binding, task.ID, e.activePath, adapter, final.lock); err == nil {
 		t.Fatal("new process accepted archived witness")

@@ -32,25 +32,28 @@ type RuntimeRecoveryFinalizationProof struct {
 // Dormant exclusive owner. There is no Complete/Release/resume method. Close
 // drops only flock; all private history, final consumption and fences survive.
 type RuntimeRecoveryFinalization struct {
-	mu                sync.Mutex
-	lock              *os.File
-	dir, activePath   string
-	adapter           VPNCoreAdapter
-	binding           RuntimeRecoveryGrantBinding
-	authorization     RuntimeRecoveryReleaseAuthorization
-	authorizationHash string
-	pinned            RuntimeRecoveryCommitProof
-	unchanged         func() bool
-	record            []byte
-	submission        []byte
-	frozen            RuntimeRecoveryFinalizationProof
-	acknowledgement   []byte
-	retirement        []byte
-	terminal          []byte
-	archive           string
-	now               func() time.Time
-	lastChecked       time.Time
-	poisoned          bool
+	mu                      sync.Mutex
+	lock                    *os.File
+	dir, activePath         string
+	adapter                 VPNCoreAdapter
+	binding                 RuntimeRecoveryGrantBinding
+	authorization           RuntimeRecoveryReleaseAuthorization
+	authorizationHash       string
+	pinned                  RuntimeRecoveryCommitProof
+	unchanged               func() bool
+	record                  []byte
+	submission              []byte
+	frozen                  RuntimeRecoveryFinalizationProof
+	acknowledgement         []byte
+	retirement              []byte
+	terminal                []byte
+	archive                 string
+	terminalSubmission      []byte
+	terminalAcknowledgement []byte
+	terminalFrozen          RuntimeRecoveryTerminalProof
+	now                     func() time.Time
+	lastChecked             time.Time
+	poisoned                bool
 }
 
 // Binding and authorization must come from independently authenticated current
