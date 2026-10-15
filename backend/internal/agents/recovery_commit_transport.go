@@ -21,6 +21,29 @@ type recoveryFinalizationTransport interface {
 	VerifyRecoveryFinalization(context.Context, string, string, []byte) (json.RawMessage, error)
 }
 
+type recoveryTerminalTransport interface {
+	AcceptRecoveryTerminal(context.Context, string, string, []byte) (json.RawMessage, error)
+	VerifyRecoveryTerminal(context.Context, string, string, []byte) (json.RawMessage, error)
+}
+
+func (h *Handler) RecoveryTerminal(w http.ResponseWriter, r *http.Request) {
+	h.recoveryTerminal(w, r, false)
+}
+func (h *Handler) VerifyRecoveryTerminal(w http.ResponseWriter, r *http.Request) {
+	h.recoveryTerminal(w, r, true)
+}
+func (h *Handler) recoveryTerminal(w http.ResponseWriter, r *http.Request, verify bool) {
+	var call func(context.Context, string, string, []byte) (json.RawMessage, error)
+	if t, ok := h.recovery.(recoveryTerminalTransport); ok {
+		if verify {
+			call = t.VerifyRecoveryTerminal
+		} else {
+			call = t.AcceptRecoveryTerminal
+		}
+	}
+	h.recoveryEvidence(w, r, call)
+}
+
 func (h *Handler) RecoveryCommit(w http.ResponseWriter, r *http.Request) {
 	h.recoveryCommit(w, r, false, false)
 }
@@ -38,12 +61,6 @@ func (h *Handler) VerifyRecoveryFinalization(w http.ResponseWriter, r *http.Requ
 // Agent bearer authentication is shared with existing evidence/result routes.
 // Neither recording nor readback authorizes Agent mutation/fence release.
 func (h *Handler) recoveryCommit(w http.ResponseWriter, r *http.Request, verify, final bool) {
-	w.Header().Set("Cache-Control", "no-store")
-	token, ok := agentBearerToken(r.Header.Get("Authorization"))
-	if !ok {
-		writeAgentUnauthorized(w)
-		return
-	}
 	var call func(context.Context, string, string, []byte) (json.RawMessage, error)
 	if final {
 		if t, supported := h.recovery.(recoveryFinalizationTransport); supported {
@@ -61,6 +78,16 @@ func (h *Handler) recoveryCommit(w http.ResponseWriter, r *http.Request, verify,
 				call = t.AcceptRecoveryCommit
 			}
 		}
+	}
+	h.recoveryEvidence(w, r, call)
+}
+
+func (h *Handler) recoveryEvidence(w http.ResponseWriter, r *http.Request, call func(context.Context, string, string, []byte) (json.RawMessage, error)) {
+	w.Header().Set("Cache-Control", "no-store")
+	token, ok := agentBearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		writeAgentUnauthorized(w)
+		return
 	}
 	if call == nil {
 		httpx.WriteJSON(w, 501, httpx.Error("unsupported", "Commit evidence is unavailable."))
