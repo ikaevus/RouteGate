@@ -1371,3 +1371,38 @@ credential revocation, actual fence release, Manager terminal-evidence endpoint/
 ledger, reservation release or operator workflow is implemented here. Those and
 coordinated abort/release remain future work. Schema stays000167; #545 stays open.
 No production access/change, real-user revocation, merge or deploy.
+
+### Manager terminal archival evidence (twenty-eighth slice)
+
+Reuse Agent bearer-authenticated evidence transport at
+`POST /api/v1/agent/recovery-observations/{operation_id}/terminal` and
+`/terminal/verify`. Strict bounded typed proof has explicit archival-evidence
+purpose, preparation ID, credential generation, authorization/final consumption/
+final proof/final receipt hashes, private intent/terminal commitments, measured
+timestamp and exact observation. Golden fixture pins typed field order/hash.
+
+Acceptance serializes server, prepared reservation and current Agent rows before
+role mappings and only the issuing human/session rows. Reuse release-delivery
+admission to recheck current credentials/generation, readiness/capabilities,
+authenticated heartbeat, original grant/commit chain, issuer authority and the
+unexpired conditional window. Exact final proof must already be retained;
+final receipt digest must match the canonical Manager receipt for that proof.
+Terminal observation cannot predate final observation or exceed current time.
+Repeat deadline/session/heartbeat checks after bounded work and waits.
+
+Migration000168 retains one immutable canonical terminal proof per preparation.
+SQL guard independently enforces bindings, final proof/receipt, current Agent/
+issuer readiness and time window, rejecting duplicate raw keys/noncanonical
+wire before JSONB conversion. Same-proof retries preserve original acceptance
+time; conflicting evidence cannot replace it. Nonempty history blocks downgrade.
+Readback authenticates current Agent/server/generation and exact retained proof
+without renewing expired authority or requiring fresh heartbeat/admin rights.
+
+IntentHash and TerminalHash are opaque commitments declared by the Agent. The
+Manager does not inspect private disk, prove complete cleanup, continued flock
+ownership, runtime readiness or VPN traffic. The record is archival history,
+never release authorization. Acceptance/readback change no reservation, job,
+config, credentials, tokens or fence. Agent projection/pinning/submission and
+terminal acknowledgement remain a future slice; no Runner activation here.
+Actual coordinated crash-safe release/abort and credential revocation E2E remain
+unfinished; #545 stays open. No production access/change, merge or deploy.
