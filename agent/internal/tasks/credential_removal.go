@@ -303,6 +303,17 @@ func readRemovalFile(path string, limit int64, private bool) ([]byte, error) {
 // Like the existing platform-update receipt writer: fsync the private temp
 // file, rename atomically, then fsync its directory before reporting success.
 func writeRemovalFile(path string, data []byte) error {
+	return publishRemovalFile(path, data, true)
+}
+
+// Immutable metadata publication must fail if any process won the destination
+// race. A crash before the temporary link is removed retains both names; strict
+// single-link readers fail closed, and no published evidence is removed.
+func writeRemovalFileNoReplace(path string, data []byte) error {
+	return publishRemovalFile(path, data, false)
+}
+
+func publishRemovalFile(path string, data []byte, replace bool) error {
 	dir := filepath.Dir(path)
 	file, err := os.CreateTemp(dir, ".removal-*")
 	if err != nil {
@@ -323,8 +334,17 @@ func writeRemovalFile(path string, data []byte) error {
 	if err = file.Close(); err != nil {
 		return err
 	}
-	if err = os.Rename(tmp, path); err != nil {
-		return err
+	if replace {
+		if err = os.Rename(tmp, path); err != nil {
+			return err
+		}
+	} else {
+		if err = os.Link(tmp, path); err != nil {
+			return err
+		}
+		if err = os.Remove(tmp); err != nil {
+			return err
+		}
 	}
 	directory, err := os.Open(dir)
 	if err != nil {

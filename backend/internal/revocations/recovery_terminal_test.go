@@ -84,4 +84,13 @@ func TestRuntimeMutationRecoveryTerminalContract(t *testing.T) {
 	if !receipt.Recorded || receipt.TerminalHash != p.TerminalHash || receipt.ProofHash == receipt.RequestHash {
 		t.Fatal("request/canonical hash")
 	}
+	data, err = os.ReadFile("../../../testdata/recovery-terminal-acknowledgement-v1.json")
+	if err != nil || json.Unmarshal(data, &terminalGolden) != nil {
+		t.Fatal("terminal receipt golden", err)
+	}
+	ackWire, err := json.Marshal(recoveryTerminalReceipt(p, wire, wire))
+	sum = sha256.Sum256(ackWire)
+	if err != nil || string(ackWire) != terminalGolden.Wire || hex.EncodeToString(sum[:]) != terminalGolden.SHA256 {
+		t.Fatal("terminal receipt wire/hash drift", err)
+	}
 }

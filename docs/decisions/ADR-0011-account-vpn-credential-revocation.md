@@ -1408,3 +1408,53 @@ config, credentials, tokens or fence. Agent projection/pinning/submission and
 terminal acknowledgement remain a future slice; no Runner activation here.
 Actual coordinated crash-safe release/abort and credential revocation E2E remain
 unfinished; #545 stays open. No production access/change, merge or deploy.
+
+### Agent terminal submission and durable confirmation (twenty-ninth slice)
+
+Dormant `Client.SubmitRecoveryTerminal` requires independently delivered current
+release authorization and the original still-live final owner after successful
+terminal archival. `WithTerminalSubmission` holds the same owner mutex/root flock
+through synchronous transport, durable acknowledgement and fresh final runtime
+observation. Close waits; all escaped/zero/copied guards expire with the callback.
+No Runner invokes this API and no new/crashed owner can adopt terminal state.
+
+Project the exact private terminal record plus retained final chain into the
+Manager terminal wire. ObservedAt stays the original archival observation time;
+fresh checks do not renew its bytes, nonce or authority. Guard PinProof validates
+private archive/root barriers/runtime/context/window before and after atomic
+write/fsync of `recovery-terminal-submission.json`. Same-owner retries use the
+same pinned proof. Never overwrite/adopt preexisting unknown files. Receipt
+independently binds schema, recorded flag, operation, terminal digest and exact
+proof/request hashes, then atomic write/fsync retains
+`recovery-terminal-acknowledgement.json` with another fresh observation.
+
+Both publications use the existing durable metadata writer with atomic
+no-replace link publication, temporary-link removal and parent-directory fsync.
+Any raced destination, even byte-identical state, fails without replacement or
+owner adoption. Uncertainty poisons the owner and retains published evidence.
+A crash during the temporary two-link interval fails strict single-link reads;
+neither name becomes release authority and no automatic repair is attempted.
+
+Reuse strict bounded authenticated recovery exchange and exact-byte retry/
+readback policy at /terminal and /terminal/verify; redirects, duplicate/alias/
+unknown JSON and invalid receipts fail closed. Error/log payloads stay generic.
+Both new files are sticky admission barriers, including standalone/malformed
+state with experimental dispatch off. Private confirmation files require exact
+0600 owner metadata, single link, no symlink and stable inode across reads.
+Historical final readback validates optional new pin/receipt before and after
+its callback without adopting authority or completing cleanup.
+
+Tests cover immutable bytes, escaped guards, lost/uncertain HTTP acknowledgement,
+concurrent retries, Close serialization, malformed/foreign receipts and private
+file drift. Exit/SIGKILL after pin and after receipt preserve archive and all
+fences, never auto-resume. Disposable real systemd/Reality persists confirmation,
+then an external restart invalidates the live owner while historical bytes
+remain readable. Shared Manager/Agent proof and receipt golden vectors pin
+field order/hash. Schema remains000168; no Backend runtime change in this slice.
+
+Receipt is only Manager storage confirmation. No marker, archive or root lock
+is removed, no reservation/config/credentials/tokens change, and heartbeat is
+never VPN-traffic proof. Read-only reconciliation of terminal storage after a
+crash, coordinated abort/actual crash-safe release and credential revocation E2E
+remain future work; #545 stays unfinished. No production access/change,
+real-user revocation, merge/deploy, Manager relocation, FI diagnostics or logos.

@@ -179,10 +179,14 @@ func withTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b Runtim
 		if e != nil {
 			return ErrRuntimeMutationBlocked
 		}
+		confirmationUnchanged, e := terminalConfirmationSnapshot(dir, data, p, b)
+		if e != nil {
+			return ErrRuntimeMutationBlocked
+		}
 		fencesUnchanged := func() bool {
 			t, e := readRemovalFile(filepath.Join(dir, runtimeRecoveryTerminalFile), 8192, true)
 			j, e2 := readRemovalFile(filepath.Join(dir, runtimeRecoveryRetirementFile), 8192, true)
-			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && privateRetirementArchive(archive) == nil
+			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && confirmationUnchanged() && privateRetirementArchive(archive) == nil
 		}
 		if ctx.Err() != nil || !fencesUnchanged() || fn(p) != nil || ctx.Err() != nil || !fencesUnchanged() {
 			return ErrRuntimeMutationBlocked
