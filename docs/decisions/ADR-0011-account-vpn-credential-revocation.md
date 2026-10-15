@@ -1428,6 +1428,13 @@ independently binds schema, recorded flag, operation, terminal digest and exact
 proof/request hashes, then atomic write/fsync retains
 `recovery-terminal-acknowledgement.json` with another fresh observation.
 
+Both publications use the existing durable metadata writer with atomic
+no-replace link publication, temporary-link removal and parent-directory fsync.
+Any raced destination, even byte-identical state, fails without replacement or
+owner adoption. Uncertainty poisons the owner and retains published evidence.
+A crash during the temporary two-link interval fails strict single-link reads;
+neither name becomes release authority and no automatic repair is attempted.
+
 Reuse strict bounded authenticated recovery exchange and exact-byte retry/
 readback policy at /terminal and /terminal/verify; redirects, duplicate/alias/
 unknown JSON and invalid receipts fail closed. Error/log payloads stay generic.

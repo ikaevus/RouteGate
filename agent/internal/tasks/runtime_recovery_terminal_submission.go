@@ -196,7 +196,7 @@ func (g *RuntimeRecoveryTerminalGuard) PinProof(ctx context.Context) (RuntimeRec
 		return m.terminalFrozen, nil
 	}
 	data, e := json.Marshal(p)
-	if e != nil || len(data) > 8192 || !m.terminalAuthorityCurrent(ctx) || writeRemovalFile(filepath.Join(m.dir, runtimeRecoveryTerminalSubmissionFile), data) != nil {
+	if e != nil || len(data) > 8192 || !m.terminalAuthorityCurrent(ctx) || writeRemovalFileNoReplace(filepath.Join(m.dir, runtimeRecoveryTerminalSubmissionFile), data) != nil {
 		m.poisoned = true
 		return RuntimeRecoveryTerminalProof{}, ErrRuntimeMutationBlocked
 	}
@@ -233,7 +233,7 @@ func (g *RuntimeRecoveryTerminalGuard) RecordReceipt(ctx context.Context, r Runt
 		}
 		return nil
 	}
-	if !m.terminalAuthorityCurrent(ctx) || writeRemovalFile(filepath.Join(m.dir, runtimeRecoveryTerminalAcknowledgementFile), data) != nil {
+	if !m.terminalAuthorityCurrent(ctx) || writeRemovalFileNoReplace(filepath.Join(m.dir, runtimeRecoveryTerminalAcknowledgementFile), data) != nil {
 		m.poisoned = true
 		return ErrRuntimeMutationBlocked
 	}

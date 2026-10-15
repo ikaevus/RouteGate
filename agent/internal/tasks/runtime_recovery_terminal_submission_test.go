@@ -348,3 +348,78 @@ func TestRuntimeMutationTerminalConfirmationHistoryRejects(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeMutationTerminalPublicationRacePreservesEvidence(t *testing.T) {
+	for _, stage := range []string{"pin", "receipt"} {
+		for _, same := range []bool{false, true} {
+			t.Run(stage+map[bool]string{false: "/foreign", true: "/identical"}[same], func(t *testing.T) {
+				_, _, b, _, m := terminalSubmissionFixture(t)
+				defer m.Close()
+				var path string
+				var existing []byte
+				var reached bool
+				err := m.WithTerminalSubmission(context.Background(), b, m.authorizationHash, func(g *RuntimeRecoveryTerminalGuard) error {
+					var p RuntimeRecoveryTerminalProof
+					if stage == "receipt" {
+						var e error
+						p, e = g.PinProof(context.Background())
+						if e != nil {
+							return e
+						}
+					} else {
+						var e error
+						p, e = terminalProofProjection(m.terminal, m.frozen, m.binding)
+						if e != nil {
+							return e
+						}
+					}
+					receipt := receiptForTerminalProof(p)
+					name := runtimeRecoveryTerminalSubmissionFile
+					if stage == "receipt" {
+						name = runtimeRecoveryTerminalAcknowledgementFile
+					}
+					path = filepath.Join(m.dir, name)
+					existing = []byte("foreign-private-evidence")
+					if same {
+						if stage == "pin" {
+							existing, _ = json.Marshal(p)
+						} else {
+							existing, _ = json.Marshal(receipt)
+						}
+					}
+					calls := 0
+					m.now = func() time.Time {
+						calls++
+						// Proof's bracketed observation has completed (two clock reads). This
+						// final authority check is immediately before atomic publication.
+						if calls == 3 {
+							if e := os.WriteFile(path, existing, 0600); e != nil {
+								t.Fatal(e)
+							}
+							reached = true
+						}
+						return time.Now().UTC()
+					}
+					if stage == "pin" {
+						_, e := g.PinProof(context.Background())
+						return e
+					}
+					return g.RecordReceipt(context.Background(), receipt)
+				})
+				if !reached || err != ErrRuntimeMutationBlocked || !m.poisoned {
+					t.Fatal("raced evidence was replaced/adopted", reached, err)
+				}
+				got, e := os.ReadFile(path)
+				if e != nil || !bytes.Equal(got, existing) {
+					t.Fatal("raced evidence lost", e)
+				}
+				if err = m.WithTerminalSubmission(context.Background(), b, m.authorizationHash, func(*RuntimeRecoveryTerminalGuard) error { return nil }); err != ErrRuntimeMutationBlocked {
+					t.Fatal("poisoned owner resumed")
+				}
+				if runtimeMarkerAbsent(filepath.Join(m.dir, "mutation-inflight.json")) || runtimeMarkerAbsent(filepath.Join(m.dir, runtimeRecoveryTerminalFile)) {
+					t.Fatal("race cleared fence")
+				}
+			})
+		}
+	}
+}
