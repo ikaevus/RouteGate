@@ -50,6 +50,7 @@ type RuntimeRecoveryFinalization struct {
 	archive                 string
 	terminalSubmission      []byte
 	terminalAcknowledgement []byte
+	releaseIntent           []byte
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time
