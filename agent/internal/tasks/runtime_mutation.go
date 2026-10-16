@@ -59,7 +59,7 @@ func BeginRuntimeMutation(dir, taskID, kind string) (*RuntimeMutation, error) {
 		return nil, ErrRuntimeMutationBlocked
 	}
 	lease := &RuntimeMutation{lock: lock, path: filepath.Join(dir, "mutation-inflight.json")}
-	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseIntentFile)) {
+	if !preparedReleaseStateAbsent(dir) || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseIntentFile)) {
 		_ = lease.Close()
 		return nil, ErrRuntimeMutationBlocked
 	}

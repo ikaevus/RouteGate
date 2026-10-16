@@ -46,7 +46,7 @@ func releaseIntentForPlan(p RuntimeRecoveryFenceReleasePlan, prepared time.Time)
 func releaseIntentMatchesSnapshot(dir string, owned []byte) bool {
 	path := filepath.Join(dir, runtimeRecoveryReleaseIntentFile)
 	if owned == nil {
-		return runtimeMarkerAbsent(path)
+		return preparedReleaseStateAbsent(dir) && runtimeMarkerAbsent(path)
 	}
 	data, e := readTerminalConfirmationFile(path, 8192)
 	return e == nil && bytes.Equal(data, owned)

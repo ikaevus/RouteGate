@@ -106,6 +106,9 @@ jobs:
       - name: Test experimental mutation dispatch and strict acknowledgements
         run: go test -race ./internal/config ./internal/client ./internal/heartbeat ./internal/tasks -run '(FencedDispatch|RuntimeMutation|CompleteTask|CredentialRemoval)' -count=1 -timeout=120s -v
 
+      - name: Test prepared release evidence submission and durable receipts
+        run: go test -race ./internal/tasks ./internal/client -run '^TestPreparedRelease' -count=1 -timeout=120s -v
+
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"

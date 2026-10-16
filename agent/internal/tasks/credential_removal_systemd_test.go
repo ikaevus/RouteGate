@@ -34,14 +34,14 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("isolated systemd test requires root")
 	}
-	for _, prepared := range []bool{false, true} {
-		t.Run(map[bool]string{false: "terminal_history", true: "prepared_release_intent"}[prepared], func(t *testing.T) {
-			testCredentialRemovalSystemdRealityTraffic(t, binary, prepared)
+	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission"} {
+		t.Run(phase, func(t *testing.T) {
+			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission")
 		})
 	}
 }
 
-func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared bool) {
+func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -305,12 +305,33 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			}
 		}
 	}
+	if submitted {
+		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
+			p, e := g.PinProof(ctx)
+			if e != nil {
+				return e
+			}
+			return g.RecordReceipt(ctx, receiptForPreparedProof(p))
+		}); err != nil {
+			t.Fatal("real prepared evidence persistence", err)
+		}
+	}
+
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
 	}
+	if submitted {
+		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(*RuntimeRecoveryPreparedReleaseGuard) error {
+			t.Error("restarted runtime reached submission")
+			return nil
+		}); err != ErrRuntimeMutationBlocked {
+			t.Fatal("new process accepted prepared proof", err)
+		}
+	}
+
 	if prepared {
 		if hash, err := final.PrepareFenceRelease(ctx, bound, markerDigest(authorizationData)); err != ErrRuntimeMutationBlocked || hash != "" {
 			t.Fatal("new process accepted prepared intent", err)
@@ -329,6 +350,32 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		t.Fatal("new process accepted archived witness")
 	}
 	final.Close()
+	if submitted {
+		before := terminalHistoryTree(t, e.receiptDir)
+		pin, e2 := readTerminalConfirmationFile(filepath.Join(e.receiptDir, runtimeRecoveryPreparedSubmissionFile), 8192)
+		var p RuntimeRecoveryPreparedReleaseProof
+		ack, e3 := readTerminalConfirmationFile(filepath.Join(e.receiptDir, runtimeRecoveryPreparedAcknowledgementFile), 4096)
+		var receipt RuntimeRecoveryPreparedReleaseReceipt
+		if e2 != nil || e3 != nil || !exactHistoricalJSON(pin, &p) || !exactHistoricalJSON(ack, &receipt) || !preparedReleaseReceiptMatches(receipt, p, pin) {
+			t.Fatal("real restart lost confirmation")
+		}
+		if l, err := BeginRuntimeMutation(e.receiptDir, resultTaskID, TaskKindVPNCoreService); err != ErrRuntimeMutationBlocked {
+			if l != nil {
+				l.Close()
+			}
+			t.Fatal("restart released prepared fence")
+		}
+		if err := WithHistoricalRecoveryPreparedRelease(ctx, e.receiptDir, bound, func(RuntimeRecoveryPreparedReleaseHistory) error {
+			t.Error("historical owner adopted submission")
+			return nil
+		}); err != ErrRuntimeMutationBlocked {
+			t.Fatal(err)
+		}
+		assertTerminalHistoryTree(t, e.receiptDir, before)
+		assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)
+		return
+	}
+
 	if prepared {
 		assertReleaseIntentFenced(t, e.receiptDir, bound)
 		assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)

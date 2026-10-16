@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -59,7 +60,7 @@ func (m *RuntimeRecoveryFinalization) planFenceReleaseLocked(ctx context.Context
 	if e != nil || archive != m.archive {
 		return deny()
 	}
-	inventory := fenceReleaseInventory(m.dir, archive, m.lock, m.releaseIntent)
+	inventory := fenceReleaseInventory(m.dir, archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement)
 	before, root, arch, e := inventory()
 	if e != nil {
 		return deny()
@@ -77,7 +78,7 @@ func (m *RuntimeRecoveryFinalization) planFenceReleaseLocked(ctx context.Context
 		TerminalProofHash: markerDigest(m.terminalSubmission), TerminalReceiptHash: markerDigest(m.terminalAcknowledgement),
 		Binding: m.binding, ExpiresAt: m.authorization.ExpiresAt, ArchiveName: filepath.Base(archive)}
 	for i := range before {
-		if i == 5 && m.releaseIntent == nil {
+		if before[i].info == nil && after[i].info == nil {
 			continue
 		}
 		if before[i].file != after[i].file || !os.SameFile(before[i].info, after[i].info) {
@@ -93,14 +94,14 @@ func (m *RuntimeRecoveryFinalization) planFenceReleaseLocked(ctx context.Context
 	return p, nil
 }
 
-func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []byte) func() ([6]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []byte, confirmations ...[]byte) func() ([8]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
 	names := [5]string{runtimeRecoveryRetirementFile, runtimeRecoveryTerminalFile, runtimeRecoveryTerminalSubmissionFile, runtimeRecoveryTerminalAcknowledgementFile, "mutation-inflight.json"}
 	limits := [5]int64{8192, 8192, 8192, 4096, 16384}
 	// Unlike historical readback, readiness requires the exact final root set:
 	// no redundant active receipt, partial cleanup, temp file or foreign archive.
-	return func() ([6]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
-		var files [6]releasePlanFileSnapshot
-		fail := func() ([6]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+	return func() ([8]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+		var files [8]releasePlanFileSnapshot
+		fail := func() ([8]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
 			return files, nil, nil, ErrRuntimeMutationBlocked
 		}
 		entries, e := os.ReadDir(dir)
@@ -108,12 +109,31 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 		if releaseIntent != nil {
 			expectedCount++
 		}
+		if len(confirmations) != 0 && len(confirmations) != 2 {
+			return fail()
+		}
+		for _, data := range confirmations {
+			if data != nil {
+				expectedCount++
+			}
+		}
+		if len(confirmations) == 2 && confirmations[1] != nil && confirmations[0] == nil {
+			return fail()
+		}
+		if len(confirmations) == 2 && confirmations[0] != nil && releaseIntent == nil {
+			return fail()
+		}
 		if e != nil || len(entries) != expectedCount {
 			return fail()
 		}
 		allowed := map[string]bool{"runtime.lock": true, filepath.Base(archive): true}
 		if releaseIntent != nil {
 			allowed[runtimeRecoveryReleaseIntentFile] = true
+		}
+		for i, data := range confirmations {
+			if data != nil {
+				allowed[[]string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile}[i]] = true
+			}
 		}
 		for _, name := range names {
 			allowed[name] = true
@@ -168,6 +188,20 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 				return fail()
 			}
 			files[5] = releasePlanFileSnapshot{info, RuntimeRecoveryFenceReleaseFile{runtimeRecoveryReleaseIntentFile, markerDigest(releaseIntent)}}
+		}
+		for i, pinned := range confirmations {
+			if pinned == nil {
+				continue
+			}
+			name := []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile}[i]
+			path := filepath.Join(dir, name)
+			info, e := os.Lstat(path)
+			data, readErr := readTerminalConfirmationFile(path, 8192)
+			after, afterErr := os.Lstat(path)
+			if e != nil || readErr != nil || afterErr != nil || !os.SameFile(info, after) || !bytes.Equal(data, pinned) {
+				return fail()
+			}
+			files[6+i] = releasePlanFileSnapshot{info, RuntimeRecoveryFenceReleaseFile{name, markerDigest(data)}}
 		}
 		return files, root, arch, nil
 	}

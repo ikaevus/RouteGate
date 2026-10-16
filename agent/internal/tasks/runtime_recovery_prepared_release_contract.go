@@ -2,7 +2,7 @@ package tasks
 
 import "time"
 
-// Wire contract only. No producer, submission, receipt persistence or release.
+// Shared Manager/Agent wire contract. A receipt acknowledges storage only.
 const RuntimeRecoveryPreparedReleasePurpose = "runtime_mutation_fence_release_preparation_evidence_v1"
 
 // An authenticated Agent commitment to its prepared release intent, not proof
