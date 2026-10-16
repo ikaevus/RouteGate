@@ -407,7 +407,7 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 									return nil
 								}
 								if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
-									if os.WriteFile(filepath.Join(in.Dir, "test-commit-ready"), []byte("ready"), 0600) != nil {
+									if os.WriteFile(filepath.Join(filepath.Dir(in.Dir), "test-release-intent-ready"), []byte("ready"), 0600) != nil {
 										os.Exit(12)
 									}
 									for {
@@ -425,7 +425,11 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 			}
 		}
 		if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
-			if os.WriteFile(filepath.Join(in.Dir, "test-commit-ready"), []byte("ready"), 0600) != nil {
+			ready := filepath.Join(in.Dir, "test-commit-ready")
+			if strings.HasPrefix(os.Getenv("RG_TEST_RECOVERY_FINAL_SUBMIT_CHILD"), "terminal_confirm_release_intent") {
+				ready = filepath.Join(filepath.Dir(in.Dir), "test-release-intent-ready")
+			}
+			if os.WriteFile(ready, []byte("ready"), 0600) != nil {
 				os.Exit(4)
 			}
 			for {
