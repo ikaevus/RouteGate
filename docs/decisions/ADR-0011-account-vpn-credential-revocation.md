@@ -1643,3 +1643,51 @@ Coordinated durable deletion/commit, explicit prepared recovery/abort authority,
 credential revocation E2E and operator workflow remain future stages; #545 stays
 open. No production access/change, real-user revocation, merge/deploy, FI work
 or logo changes.
+
+### Thirty-fourth slice: Manager prepared release evidence
+
+Manager can now accept an authenticated commitment to the Agent's prepared
+fence-release intent. This closes the storage/transport boundary missing after
+the local preparation and historical reconciliation slices. The Agent producer,
+guarded submission and durable receipt are still future work; no Runner caller
+or automatic submission is enabled in this slice.
+
+Use existing bounded Agent bearer transport with POST
+`/api/v1/agent/recovery-observations/{operation_id}/prepared-release` and its
+`/verify` readback. Proof purpose is
+`runtime_mutation_fence_release_preparation_evidence_v1`; exact typed field order
+is schemaVersion, purpose, operationId, agentCredentialGeneration,
+authorizationHash, terminalProofHash, terminalReceiptHash, releaseIntentHash,
+preparedAt, observedAt, observation. Shared golden fixtures freeze proof and
+receipt wire/hash on Manager and Agent. No private intent manifest is sent.
+
+Admission reuses the existing node-first transaction and original conditional
+release authority: prepared reservation, exact current Agent/server/generation,
+capabilities and authenticated heartbeat, current issuing human admin permission
+and session, and original authorization expiry. Require the exact immutable
+terminal proof hash and hash of its canonical Manager receipt; arbitrary request
+formatting cannot replace the Agent's pinned terminal receipt. Require exact
+expected observation, terminal observation <= preparedAt <= observedAt <=
+Manager current time, with observedAt strictly before original expiry. SQL uses
+the existing full-nanosecond instant helper for wire ordering; rounded timestamp
+columns cannot erase a backwards nanosecond. Readiness is admission context,
+never evidence of live VPN traffic.
+
+Migration000169 adds append-only runtime_recovery_prepared_release_evidence
+referencing retained terminal evidence. Its direct-SQL guard checks canonical
+wire/duplicate keys, all bindings, times, readiness and issuer permissions using
+the same node-first lock order, without globally locking users/sessions. Accepted
+wire, hash and acceptance time never change. Same-proof retries serialize and
+return hashes of the canonical proof and exact request independently; different
+proofs conflict. Downgrade refuses retained evidence. Schema metadata advances
+to000169 without changing earlier migrations.
+
+Exact historical readback requires current Agent credentials/generation and
+stored proof/terminal bindings, but can succeed after original authority expires
+or readiness/issuer session is lost. It cannot create evidence or renew authority.
+releaseIntentHash remains an opaque Agent statement: Manager does not attest
+filesystem durability, current ownership, cleanup or current runtime. Receipt
+recorded=true acknowledges storage only. No fence/archive deletion, reservation
+completion, credential removal, grant issuance, config apply or operator UI is
+introduced. Coordinated release and credential revocation E2E remain unfinished;
+#545 stays open. Production, merge/deploy, FI and logos remain outside scope.
