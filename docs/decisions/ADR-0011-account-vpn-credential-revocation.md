@@ -1497,3 +1497,49 @@ Schema remains000168; no Manager runtime/HTTP/schema or Runner activation.
 Coordinated abort, actual crash-safe release and credential revocation E2E/
 operator workflow remain future work; #545 stays unfinished. No production
 access/change, real-user revocation, merge/deploy, FI diagnostics or logo changes.
+
+### Agent read-only fence release plan (thirty-first slice)
+
+Terminal storage confirmation does not establish completed active-file cleanup:
+historical terminal validation deliberately accepts matching redundant copies
+after a crash. It also says nothing about current process/config/listener state.
+Before implementing any deletion protocol, `PlanFenceRelease` distinguishes this
+historical state from live local readiness under the original finalization owner.
+
+The dormant API requires the independently authenticated binding/authorization
+hash, original still-held mutex/flock and original durable terminal pin and
+acknowledgement. It reuses the complete terminal/archive chain checks and fresh
+locked runtime observation twice. No historical reader, reopened owner or copied
+plan can acquire authority; no Runner or HTTP transport invokes the API.
+
+Readiness requires exactly seven root entries: the unchanged admission lock,
+the operation's retained archive, legacy mutation marker, retirement intent,
+terminal record, terminal submission and terminal acknowledgement. Matching
+redundant active receipts, temporary files, foreign archives and unknown entries
+are refused rather than cleaned. Root and archive identities must remain stable;
+root permissions/ownership, private single-link regular files and original lock
+inode/permissions/ownership/link count are checked. Two inventories around the
+second runtime observation compare every root file's digest and inode, rejecting
+same-byte replacement too. Expiry, cancellation and backward clock checks retain
+the existing authorization window; uncertainty poisons the original owner.
+
+The result is a local value containing operation/binding, original expiry,
+authorization/terminal proof/receipt digests, retained archive basename and five
+fixed root file names/digests. It is not a wire contract, durable intent, cleanup
+order, deletion capability, Manager completion or VPN-traffic proof. Repeats
+revalidate readiness and return the same inventory without renewing authority.
+No method consumes this value as permission. All file bytes, markers, archive,
+reservation and lock survive, including after Close.
+
+Tests cover read-only repeats/value isolation, incomplete/foreign/unsafe state,
+expired/changed identity or runtime, context/clock failures, same-byte inode
+replacement and concurrent Close/flock admission. Disposable systemd/Reality
+checks readiness before an external process restart and refusal afterwards.
+It uses a separate recovery fence directory, preserving the earlier executor's
+scoped-removal receipts unchanged; mixed or older unrelated root history is
+intentionally unsupported by this initial strict plan, not silently deleted.
+The Manager receipt in that runtime regression remains synthetic; it is not
+Manager+Agent end-to-end release. Schema stays000168; no new persistence or
+network infrastructure. Coordinated abort, a durable crash-safe deletion/commit
+protocol and Manager reservation completion remain future stages; #545 stays
+open. No production access, actual fence release, merge or deploy.

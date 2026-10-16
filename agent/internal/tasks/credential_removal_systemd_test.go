@@ -164,6 +164,12 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	t.Log("last-account removal retains listener and rejects both cached UUIDs")
 	// A historical result must not become unlock permission after a restart.
 	// Reuse only this disposable unit to exercise the production observer.
+	// Keep completed scoped-removal receipts intact in their original directory.
+	// The recovery readiness regression uses a separate private fence root;
+	// unrelated receipts in that root must fail closed, never be discarded.
+	removalReceipts := e.receiptDir
+	beforeRemovalReceipts := terminalHistoryTree(t, removalReceipts)
+	e.receiptDir = filepath.Join(t.TempDir(), "runtime-mutations")
 	lease, err := BeginRuntimeMutation(e.receiptDir, task.ID, TaskKindVPNCoreService)
 	if err != nil {
 		t.Fatal(err)
@@ -270,11 +276,20 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}); err != nil {
 		t.Fatal("real terminal confirmation persistence", err)
 	}
+	beforeReleasePlan := terminalHistoryTree(t, e.receiptDir)
+	if plan, err := final.PlanFenceRelease(ctx, bound, markerDigest(authorizationData)); err != nil || plan.OperationID != authorization.OperationID {
+		t.Fatal("real runtime release readiness", err)
+	}
+	assertTerminalHistoryTree(t, e.receiptDir, beforeReleasePlan)
+	assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := final.PlanFenceRelease(ctx, bound, markerDigest(authorizationData)); err != ErrRuntimeMutationBlocked {
+		t.Fatal("new process accepted old release readiness", err)
 	}
 	if _, err := final.RetirePrepared(ctx); err == nil {
 		t.Fatal("new process accepted old archived terminal witness")
