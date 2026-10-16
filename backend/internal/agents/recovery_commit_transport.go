@@ -21,6 +21,29 @@ type recoveryFinalizationTransport interface {
 	VerifyRecoveryFinalization(context.Context, string, string, []byte) (json.RawMessage, error)
 }
 
+type recoveryPreparedReleaseTransport interface {
+	AcceptRecoveryPreparedRelease(context.Context, string, string, []byte) (json.RawMessage, error)
+	VerifyRecoveryPreparedRelease(context.Context, string, string, []byte) (json.RawMessage, error)
+}
+
+func (h *Handler) RecoveryPreparedRelease(w http.ResponseWriter, r *http.Request) {
+	h.recoveryPreparedRelease(w, r, false)
+}
+func (h *Handler) VerifyRecoveryPreparedRelease(w http.ResponseWriter, r *http.Request) {
+	h.recoveryPreparedRelease(w, r, true)
+}
+func (h *Handler) recoveryPreparedRelease(w http.ResponseWriter, r *http.Request, verify bool) {
+	var call func(context.Context, string, string, []byte) (json.RawMessage, error)
+	if t, ok := h.recovery.(recoveryPreparedReleaseTransport); ok {
+		if verify {
+			call = t.VerifyRecoveryPreparedRelease
+		} else {
+			call = t.AcceptRecoveryPreparedRelease
+		}
+	}
+	h.recoveryEvidence(w, r, call)
+}
+
 type recoveryTerminalTransport interface {
 	AcceptRecoveryTerminal(context.Context, string, string, []byte) (json.RawMessage, error)
 	VerifyRecoveryTerminal(context.Context, string, string, []byte) (json.RawMessage, error)
