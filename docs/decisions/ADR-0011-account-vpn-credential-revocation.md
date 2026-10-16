@@ -1535,6 +1535,9 @@ Tests cover read-only repeats/value isolation, incomplete/foreign/unsafe state,
 expired/changed identity or runtime, context/clock failures, same-byte inode
 replacement and concurrent Close/flock admission. Disposable systemd/Reality
 checks readiness before an external process restart and refusal afterwards.
+It uses a separate recovery fence directory, preserving the earlier executor's
+scoped-removal receipts unchanged; mixed or older unrelated root history is
+intentionally unsupported by this initial strict plan, not silently deleted.
 The Manager receipt in that runtime regression remains synthetic; it is not
 Manager+Agent end-to-end release. Schema stays000168; no new persistence or
 network infrastructure. Coordinated abort, a durable crash-safe deletion/commit
