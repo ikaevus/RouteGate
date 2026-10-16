@@ -1543,3 +1543,53 @@ Manager+Agent end-to-end release. Schema stays000168; no new persistence or
 network infrastructure. Coordinated abort, a durable crash-safe deletion/commit
 protocol and Manager reservation completion remain future stages; #545 stays
 open. No production access, actual fence release, merge or deploy.
+
+### Agent durable prepared fence release intent (thirty-second slice)
+
+`PrepareFenceRelease` derives its own fresh locked plan from the original live
+finalization owner. A returned/caller-modified plan is never accepted as input.
+The independently authenticated binding/authorization, complete archival cleanup,
+durable terminal pin/acknowledgement, exact private root inventory and current
+process/config/listener are revalidated using the existing plan implementation.
+
+Before any future deletion, publish private `recovery-fence-release-intent.json`
+with the existing atomic no-replace/fsync writer. Its versioned private record
+binds operation, Manager/Agent/server/generation, original authorization and
+terminal proof/receipt digests, original expiry, fixed archive basename and five
+root file names/hashes. PreparedAt comes from the latest locked observation;
+it is never a new authorization window. This is local prepared history only,
+not Manager evidence, a grant, cleanup order or proof of release/VPN traffic.
+No wire contract between Manager and Agent changes.
+
+Same-owner retries revalidate live state and preserve original bytes, inode,
+PreparedAt, expiry and digest. They cannot adopt pre-existing disk metadata,
+including identical bytes that win the publication race. Publication is checked
+again against the full plan and runtime; post-write failure poisons the owner
+and retains the durable intent and every existing fence/history file. Close
+serializes through the same mutex and only drops the original flock.
+
+The new marker alone, even empty or malformed and with experimental fencing
+disabled, blocks ordinary mutation admission/completion, result save/replay,
+scoped removal and new recovery owners. Older terminal submission/archival APIs
+cannot reenter the prepared phase. Historical final/terminal reconciliation
+refuses a release intent rather than ignoring this newer phase or adopting its
+authority; a dedicated read-only prepared-phase reader remains future work.
+Only the still-live original owner may revalidate its exact owned intent bytes
+under its held lock. The plan then expects precisely one additional root entry.
+
+Tests exercise concurrent immutable retries, binding/window/runtime failures,
+no-replace races with foreign/identical destinations, unsafe/tampered/missing
+prepared state and post-publication uncertainty. Real subprocess exit/SIGKILL
+cuts cover durable publication before owner adoption and after final validation;
+all barriers, exact root commitments and archive survive without auto-resume.
+Standalone marker tests cover admission, completion and result persistence.
+Disposable systemd/Reality runs separate terminal-history and prepared-intent
+scenarios: old historical readback still works in the former; preparation and
+then external process drift leave the latter fenced and block live retries.
+Synthetic Manager receipts in that regression are not release E2E.
+
+Schema stays000168. No Runner, HTTP route, config/runtime mutation, file deletion,
+Agent fence release or Manager reservation completion is added. Coordinated
+crash-safe deletion/commit, prepared-phase crash reconciliation/abort and
+credential revocation E2E/operator workflow remain unfinished under #545.
+No production access/change, real-user revocation, merge/deploy, FI work or logos.

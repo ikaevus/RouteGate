@@ -34,6 +34,14 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("isolated systemd test requires root")
 	}
+	for _, prepared := range []bool{false, true} {
+		t.Run(map[bool]string{false: "terminal_history", true: "prepared_release_intent"}[prepared], func(t *testing.T) {
+			testCredentialRemovalSystemdRealityTraffic(t, binary, prepared)
+		})
+	}
+}
+
+func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -282,11 +290,31 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}
 	assertTerminalHistoryTree(t, e.receiptDir, beforeReleasePlan)
 	assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)
+	if prepared {
+		if hash, err := final.PrepareFenceRelease(ctx, bound, markerDigest(authorizationData)); err != nil || hash == "" {
+			t.Fatal("real prepared release intent", err)
+		}
+		current := terminalHistoryTree(t, e.receiptDir)
+		delete(current, runtimeRecoveryReleaseIntentFile)
+		if len(current) != len(beforeReleasePlan) {
+			t.Fatal("preparation changed root set")
+		}
+		for path, data := range beforeReleasePlan {
+			if !bytes.Equal(current[path], data) {
+				t.Fatal("preparation changed history", path)
+			}
+		}
+	}
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
+	}
+	if prepared {
+		if hash, err := final.PrepareFenceRelease(ctx, bound, markerDigest(authorizationData)); err != ErrRuntimeMutationBlocked || hash != "" {
+			t.Fatal("new process accepted prepared intent", err)
+		}
 	}
 	if _, err := final.PlanFenceRelease(ctx, bound, markerDigest(authorizationData)); err != ErrRuntimeMutationBlocked {
 		t.Fatal("new process accepted old release readiness", err)
@@ -301,6 +329,11 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		t.Fatal("new process accepted archived witness")
 	}
 	final.Close()
+	if prepared {
+		assertReleaseIntentFenced(t, e.receiptDir, bound)
+		assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)
+		return
+	}
 	beforeTerminalRead := terminalHistoryTree(t, e.receiptDir)
 	if err := WithHistoricalRecoveryTerminal(ctx, e.receiptDir, bound, func(p RuntimeRecoveryTerminalProof) error {
 		data, e := os.ReadFile(filepath.Join(e.receiptDir, runtimeRecoveryTerminalSubmissionFile))

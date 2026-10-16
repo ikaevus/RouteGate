@@ -150,6 +150,15 @@ func withTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b Runtim
 }
 
 func withTerminalRecoveryHistoryAndConfirmationLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
+	return withOwnedTerminalRecoveryHistoryLocked(ctx, dir, b, lock, nil, fn)
+}
+
+// Only a live owner's original private bytes may cross the prepared release
+// phase. Historical callers pass nil and cannot adopt or ignore a release intent.
+func withOwnedTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, releaseIntent []byte, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
+	if !releaseIntentMatchesOwner(dir, releaseIntent) {
+		return ErrRuntimeMutationBlocked
+	}
 	data, e := readRemovalFile(filepath.Join(dir, runtimeRecoveryTerminalFile), 8192, true)
 	var terminal runtimeRecoveryTerminalRecord
 	if e != nil || !exactHistoricalJSON(data, &terminal) || terminal.SchemaVersion != 1 || terminal.Purpose != runtimeRecoveryTerminalPurpose || terminal.Binding != b {
@@ -190,7 +199,7 @@ func withTerminalRecoveryHistoryAndConfirmationLocked(ctx context.Context, dir s
 		fencesUnchanged := func() bool {
 			t, e := readRemovalFile(filepath.Join(dir, runtimeRecoveryTerminalFile), 8192, true)
 			j, e2 := readRemovalFile(filepath.Join(dir, runtimeRecoveryRetirementFile), 8192, true)
-			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && confirmationUnchanged() && privateRetirementArchive(archive) == nil
+			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && confirmationUnchanged() && privateRetirementArchive(archive) == nil && releaseIntentMatchesOwner(dir, releaseIntent)
 		}
 		if ctx.Err() != nil || !fencesUnchanged() || fn(p, confirmed) != nil || ctx.Err() != nil || !fencesUnchanged() {
 			return ErrRuntimeMutationBlocked
@@ -212,6 +221,9 @@ func (m *RuntimeRecoveryFinalization) retirePrepared(ctx context.Context, checkp
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.releaseIntent != nil {
+		return "", ErrRuntimeMutationBlocked
+	}
 	deny := func() (string, error) { m.poisoned = true; return "", ErrRuntimeMutationBlocked }
 	step := func(name string) error {
 		if checkpoint != nil && checkpoint(name) != nil {
@@ -334,7 +346,7 @@ func (m *RuntimeRecoveryFinalization) terminalObservation(ctx context.Context) (
 		return deny()
 	}
 	check := func() error {
-		return withTerminalRecoveryHistoryLocked(ctx, m.dir, m.binding, m.lock, func(p RuntimeRecoveryFinalizationProof) error {
+		return withOwnedTerminalRecoveryHistoryLocked(ctx, m.dir, m.binding, m.lock, m.releaseIntent, func(p RuntimeRecoveryFinalizationProof, _ *RuntimeRecoveryTerminalProof) error {
 			terminal, e := readRemovalFile(filepath.Join(m.dir, runtimeRecoveryTerminalFile), 8192, true)
 			intent, e2 := readRemovalFile(filepath.Join(m.dir, runtimeRecoveryRetirementFile), 8192, true)
 			if e != nil || e2 != nil || p != m.frozen || !bytes.Equal(terminal, m.terminal) || !bytes.Equal(intent, m.retirement) {

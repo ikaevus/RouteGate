@@ -401,6 +401,25 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 						}) != nil {
 							os.Exit(11)
 						}
+						if strings.HasPrefix(mode, "terminal_confirm_release_intent") {
+							if _, e := final.prepareFenceRelease(context.Background(), in.Binding, markerDigest(wire), func() error {
+								if mode != "terminal_confirm_release_intent_cut" {
+									return nil
+								}
+								if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
+									if os.WriteFile(filepath.Join(in.Dir, "test-commit-ready"), []byte("ready"), 0600) != nil {
+										os.Exit(12)
+									}
+									for {
+										time.Sleep(20 * time.Millisecond)
+									}
+								}
+								os.Exit(0)
+								return nil
+							}); e != nil {
+								os.Exit(13)
+							}
+						}
 					}
 				}
 			}

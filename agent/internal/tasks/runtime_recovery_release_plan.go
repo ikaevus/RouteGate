@@ -40,6 +40,11 @@ func (m *RuntimeRecoveryFinalization) PlanFenceRelease(ctx context.Context, b Ru
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.planFenceReleaseLocked(ctx, b, authorizationHash)
+}
+
+func (m *RuntimeRecoveryFinalization) planFenceReleaseLocked(ctx context.Context, b RuntimeRecoveryGrantBinding, authorizationHash string) (RuntimeRecoveryFenceReleasePlan, error) {
+	var zero RuntimeRecoveryFenceReleasePlan
 	if m.binding != b || m.authorizationHash != authorizationHash || m.terminalSubmission == nil || m.terminalAcknowledgement == nil {
 		return zero, ErrRuntimeMutationBlocked
 	}
@@ -58,16 +63,23 @@ func (m *RuntimeRecoveryFinalization) PlanFenceRelease(ctx context.Context, b Ru
 	limits := [5]int64{8192, 8192, 8192, 4096, 16384}
 	// Unlike historical readback, readiness requires the exact final root set:
 	// no redundant active receipt, partial cleanup, temp file or foreign archive.
-	inventory := func() ([5]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
-		var files [5]releasePlanFileSnapshot
-		fail := func() ([5]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+	inventory := func() ([6]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+		var files [6]releasePlanFileSnapshot
+		fail := func() ([6]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
 			return files, nil, nil, ErrRuntimeMutationBlocked
 		}
 		entries, e := os.ReadDir(m.dir)
-		if e != nil || len(entries) != len(names)+2 {
+		expectedCount := len(names) + 2
+		if m.releaseIntent != nil {
+			expectedCount++
+		}
+		if e != nil || len(entries) != expectedCount {
 			return fail()
 		}
 		allowed := map[string]bool{"runtime.lock": true, filepath.Base(archive): true}
+		if m.releaseIntent != nil {
+			allowed[runtimeRecoveryReleaseIntentFile] = true
+		}
 		for _, name := range names {
 			allowed[name] = true
 		}
@@ -110,6 +122,18 @@ func (m *RuntimeRecoveryFinalization) PlanFenceRelease(ctx context.Context, b Ru
 			}
 			files[i] = releasePlanFileSnapshot{info, RuntimeRecoveryFenceReleaseFile{name, markerDigest(data)}}
 		}
+		if m.releaseIntent != nil {
+			path := filepath.Join(m.dir, runtimeRecoveryReleaseIntentFile)
+			info, e := os.Lstat(path)
+			if e != nil || !releaseIntentMatchesOwner(m.dir, m.releaseIntent) {
+				return fail()
+			}
+			after, e := os.Lstat(path)
+			if e != nil || !os.SameFile(info, after) {
+				return fail()
+			}
+			files[5] = releasePlanFileSnapshot{info, RuntimeRecoveryFenceReleaseFile{runtimeRecoveryReleaseIntentFile, markerDigest(m.releaseIntent)}}
+		}
 		return files, root, arch, nil
 	}
 	before, root, arch, e := inventory()
@@ -129,10 +153,15 @@ func (m *RuntimeRecoveryFinalization) PlanFenceRelease(ctx context.Context, b Ru
 		TerminalProofHash: markerDigest(m.terminalSubmission), TerminalReceiptHash: markerDigest(m.terminalAcknowledgement),
 		Binding: m.binding, ExpiresAt: m.authorization.ExpiresAt, ArchiveName: filepath.Base(archive)}
 	for i := range before {
+		if i == 5 && m.releaseIntent == nil {
+			continue
+		}
 		if before[i].file != after[i].file || !os.SameFile(before[i].info, after[i].info) {
 			return deny()
 		}
-		p.Files[i] = before[i].file
+		if i < len(p.Files) {
+			p.Files[i] = before[i].file
+		}
 	}
 	if !m.terminalAuthorityCurrent(ctx) {
 		return deny()

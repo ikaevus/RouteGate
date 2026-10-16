@@ -254,7 +254,7 @@ func (m *RuntimeRecoveryFinalization) WithTerminalSubmission(ctx context.Context
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.binding != b || m.authorizationHash != authorizationHash || m.terminal == nil {
+	if m.binding != b || m.authorizationHash != authorizationHash || m.terminal == nil || m.releaseIntent != nil {
 		return ErrRuntimeMutationBlocked
 	}
 	g := &RuntimeRecoveryTerminalGuard{state: &runtimeRecoveryTerminalGuardState{owner: m}}
