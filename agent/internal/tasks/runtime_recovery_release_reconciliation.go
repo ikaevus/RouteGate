@@ -70,6 +70,9 @@ func WithHistoricalRecoveryPreparedRelease(ctx context.Context, dir string, b Ru
 			return ErrRuntimeMutationBlocked
 		}
 		for i := range before {
+			if before[i].info == nil && after[i].info == nil {
+				continue
+			}
 			if before[i].file != after[i].file || !os.SameFile(before[i].info, after[i].info) {
 				return ErrRuntimeMutationBlocked
 			}
