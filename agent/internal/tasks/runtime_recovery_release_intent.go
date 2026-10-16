@@ -41,9 +41,9 @@ func releaseIntentForPlan(p RuntimeRecoveryFenceReleasePlan, prepared time.Time)
 	return r
 }
 
-// nil requires absence, never adoption of disk history. Only original live
-// owner bytes permit read-only validation after this new phase was published.
-func releaseIntentMatchesOwner(dir string, owned []byte) bool {
+// nil requires absence. Non-nil bytes are a pinned snapshot from the original
+// live owner or the dedicated validated historical reader; no owner is adopted.
+func releaseIntentMatchesSnapshot(dir string, owned []byte) bool {
 	path := filepath.Join(dir, runtimeRecoveryReleaseIntentFile)
 	if owned == nil {
 		return runtimeMarkerAbsent(path)

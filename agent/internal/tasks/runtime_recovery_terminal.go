@@ -157,7 +157,7 @@ func withTerminalRecoveryHistoryAndConfirmationLocked(ctx context.Context, dir s
 // read-only prepared reader, which additionally validates its full record and
 // root inventory. Old historical entry points require absence. No owner is made.
 func withPinnedTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, releaseIntent []byte, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
-	if !releaseIntentMatchesOwner(dir, releaseIntent) {
+	if !releaseIntentMatchesSnapshot(dir, releaseIntent) {
 		return ErrRuntimeMutationBlocked
 	}
 	data, e := readRemovalFile(filepath.Join(dir, runtimeRecoveryTerminalFile), 8192, true)
@@ -200,7 +200,7 @@ func withPinnedTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b 
 		fencesUnchanged := func() bool {
 			t, e := readRemovalFile(filepath.Join(dir, runtimeRecoveryTerminalFile), 8192, true)
 			j, e2 := readRemovalFile(filepath.Join(dir, runtimeRecoveryRetirementFile), 8192, true)
-			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && confirmationUnchanged() && privateRetirementArchive(archive) == nil && releaseIntentMatchesOwner(dir, releaseIntent)
+			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && confirmationUnchanged() && privateRetirementArchive(archive) == nil && releaseIntentMatchesSnapshot(dir, releaseIntent)
 		}
 		if ctx.Err() != nil || !fencesUnchanged() || fn(p, confirmed) != nil || ctx.Err() != nil || !fencesUnchanged() {
 			return ErrRuntimeMutationBlocked

@@ -160,7 +160,7 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 		if releaseIntent != nil {
 			path := filepath.Join(dir, runtimeRecoveryReleaseIntentFile)
 			info, e := os.Lstat(path)
-			if e != nil || !releaseIntentMatchesOwner(dir, releaseIntent) {
+			if e != nil || !releaseIntentMatchesSnapshot(dir, releaseIntent) {
 				return fail()
 			}
 			after, e := os.Lstat(path)
