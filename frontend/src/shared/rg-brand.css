@@ -1,0 +1,85 @@
+/* Match the public website Brand lockup (website/src/styles.css).
+ * Both applications already use the exact same transparent SVG; the old
+ * dashboard gradient tile, crop and shadow changed its appearance. */
+.brand,
+.portal-brand {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.brand-mark,
+:root[data-theme='light'] .brand-mark {
+  align-self: flex-start;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  filter: none;
+  height: 32px;
+  overflow: visible;
+  width: 38px;
+}
+
+.brand-mark img {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.brand-title,
+.routegate-brand .brand-title,
+:root[data-theme='light'] .portal-app-shell .brand-title {
+  color: #f8fafc;
+  font-size: 21px;
+  font-synthesis: none;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 32px;
+  text-rendering: optimizeLegibility;
+  white-space: nowrap;
+}
+
+/* The website's white mark stays unchanged on light surfaces too. Provide
+ * contrast behind the complete brand, never a coloured tile behind its symbol. */
+:root[data-theme='light'] .brand,
+:root[data-theme='light'] .portal-brand {
+  background: #06101e;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+:root[data-theme='light'] .brand-subtitle {
+  color: #94a3b8;
+}
+
+@media (max-width: 560px) {
+  .brand-mark,
+  :root[data-theme='light'] .brand-mark {
+    width: 33px;
+  }
+
+  .brand-title,
+  .routegate-brand .brand-title,
+  :root[data-theme='light'] .portal-app-shell .brand-title {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 430px) {
+  .brand,
+  .portal-brand {
+    gap: 7px;
+  }
+
+  .brand-mark,
+  :root[data-theme='light'] .brand-mark {
+    height: 26px;
+    width: 30px;
+  }
+
+  .brand-title,
+  .routegate-brand .brand-title,
+  :root[data-theme='light'] .portal-app-shell .brand-title {
+    font-size: 17px;
+    line-height: 26px;
+  }
+}
