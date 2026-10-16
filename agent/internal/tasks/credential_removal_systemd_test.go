@@ -270,11 +270,19 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	}); err != nil {
 		t.Fatal("real terminal confirmation persistence", err)
 	}
+	beforeReleasePlan := terminalHistoryTree(t, e.receiptDir)
+	if plan, err := final.PlanFenceRelease(ctx, bound, markerDigest(authorizationData)); err != nil || plan.OperationID != authorization.OperationID {
+		t.Fatal("real runtime release readiness", err)
+	}
+	assertTerminalHistoryTree(t, e.receiptDir, beforeReleasePlan)
 	if _, err := adapter.Restart(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := final.PlanFenceRelease(ctx, bound, markerDigest(authorizationData)); err != ErrRuntimeMutationBlocked {
+		t.Fatal("new process accepted old release readiness", err)
 	}
 	if _, err := final.RetirePrepared(ctx); err == nil {
 		t.Fatal("new process accepted old archived terminal witness")
