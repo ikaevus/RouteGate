@@ -1593,3 +1593,53 @@ Agent fence release or Manager reservation completion is added. Coordinated
 crash-safe deletion/commit, prepared-phase crash reconciliation/abort and
 credential revocation E2E/operator workflow remain unfinished under #545.
 No production access/change, real-user revocation, merge/deploy, FI work or logos.
+
+### Agent prepared-release historical reconciliation (thirty-third slice)
+
+`WithHistoricalRecoveryPreparedRelease` reads a crashed prepared release under
+the existing root admission flock. It requires the original canonical private
+intent, exact current independently authenticated Manager/Agent/server/generation
+binding, complete terminal/archive chain, original terminal pin and durable
+acknowledgement. It compares all intent fields with a plan reconstructed from
+the actual fixed root files and archived authorization. PreparedAt must be at
+or after the original terminal observation and before the original authorization
+expiry; expiry must match that exact archived authorization. Neither timestamp
+is renewed. Expired authorization and changed/missing live runtime remain
+readable history, without becoming current readiness or release authority.
+
+The existing plan inventory is extracted into a shared filesystem-only helper,
+preserving the live owner's fresh-observation and authority checks. Historical
+prepared reads require exactly eight root entries and retain the original lock
+through callback/HTTP. Two inventories compare every root file digest/inode,
+root/archive identities and private ownership/permissions/link counts, including
+same-byte replacement. Existing complete historical chain validation also spans
+the callback. Unknown files, partial active cleanup, missing acknowledgements,
+ambiguous JSON, rebound operations, changed expiry or contradictory intent
+manifests fail closed. Old final/terminal readers still reject prepared state;
+the dedicated entry point cannot create or resume a finalization owner.
+
+Dormant `Client.ReconcileRecoveryPreparedRelease` independently authenticates the
+current credentials/generation and uses the existing strict read-only
+`/terminal/verify` transport. Its body is the exact previously pinned terminal
+proof, never the release intent or a new observation. The terminal receipt
+validator is shared with ordinary historical terminal reconciliation. Expose
+separate local intent hash/original timestamps and Manager terminal receipt:
+the Manager has not stored or attested the local release intent. Any transport,
+context or post-HTTP filesystem failure returns a zero result and generic error.
+No new HTTP route, retry infrastructure, schema, evidence submission, receipt
+write, runtime capture or Runner caller is introduced.
+
+Tests cover real expiry with missing runtime,30 local refusal cases,29 transport
+modes, strict replies/current identity and changes during HTTP, exclusive flock
+and nested readers, unchanged bytes/tree and refusal to resume an owner. Existing
+four exit/SIGKILL cuts now read the prepared history without changing state;
+their harness-only readiness sentinel lives outside the fence root so production
+unknown-entry checks remain strict. The disposable systemd/Reality prepared
+scenario reads exact prepared history after external restart; its Manager
+receipt remains synthetic and does not establish full release E2E.
+
+Schema stays000168. Agent/Manager fences and reservations remain retained.
+Coordinated durable deletion/commit, explicit prepared recovery/abort authority,
+credential revocation E2E and operator workflow remain future stages; #545 stays
+open. No production access/change, real-user revocation, merge/deploy, FI work
+or logo changes.

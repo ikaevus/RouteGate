@@ -150,12 +150,13 @@ func withTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b Runtim
 }
 
 func withTerminalRecoveryHistoryAndConfirmationLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
-	return withOwnedTerminalRecoveryHistoryLocked(ctx, dir, b, lock, nil, fn)
+	return withPinnedTerminalRecoveryHistoryLocked(ctx, dir, b, lock, nil, fn)
 }
 
-// Only a live owner's original private bytes may cross the prepared release
-// phase. Historical callers pass nil and cannot adopt or ignore a release intent.
-func withOwnedTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, releaseIntent []byte, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
+// A non-nil intent is an exact snapshot from the live owner or the dedicated
+// read-only prepared reader, which additionally validates its full record and
+// root inventory. Old historical entry points require absence. No owner is made.
+func withPinnedTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, releaseIntent []byte, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
 	if !releaseIntentMatchesOwner(dir, releaseIntent) {
 		return ErrRuntimeMutationBlocked
 	}
@@ -346,7 +347,7 @@ func (m *RuntimeRecoveryFinalization) terminalObservation(ctx context.Context) (
 		return deny()
 	}
 	check := func() error {
-		return withOwnedTerminalRecoveryHistoryLocked(ctx, m.dir, m.binding, m.lock, m.releaseIntent, func(p RuntimeRecoveryFinalizationProof, _ *RuntimeRecoveryTerminalProof) error {
+		return withPinnedTerminalRecoveryHistoryLocked(ctx, m.dir, m.binding, m.lock, m.releaseIntent, func(p RuntimeRecoveryFinalizationProof, _ *RuntimeRecoveryTerminalProof) error {
 			terminal, e := readRemovalFile(filepath.Join(m.dir, runtimeRecoveryTerminalFile), 8192, true)
 			intent, e2 := readRemovalFile(filepath.Join(m.dir, runtimeRecoveryRetirementFile), 8192, true)
 			if e != nil || e2 != nil || p != m.frozen || !bytes.Equal(terminal, m.terminal) || !bytes.Equal(intent, m.retirement) {

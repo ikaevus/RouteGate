@@ -58,6 +58,18 @@ func assertReleaseIntentFenced(t *testing.T, dir string, b RuntimeRecoveryGrantB
 	}); e != ErrRuntimeMutationBlocked {
 		t.Fatal(e)
 	}
+	if e := WithHistoricalRecoveryPreparedRelease(context.Background(), dir, b, func(h RuntimeRecoveryPreparedReleaseHistory) error {
+		if h.ReleaseIntentHash != markerDigest(data) || !h.PreparedAt.Equal(r.PreparedAt) || !h.AuthorizationExpiresAt.Equal(r.ExpiresAt) || h.TerminalProof.OperationID != r.OperationID {
+			t.Error("prepared history projection changed")
+		}
+		if l, e := lockRuntimeMutation(dir); e == nil {
+			l.Close()
+			t.Error("prepared reader dropped original flock")
+		}
+		return nil
+	}); e != nil {
+		t.Fatal("prepared history unreadable", e)
+	}
 	assertTerminalHistoryTree(t, dir, before)
 }
 

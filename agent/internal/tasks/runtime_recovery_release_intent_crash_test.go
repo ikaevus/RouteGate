@@ -30,7 +30,7 @@ func TestRuntimeMutationFenceReleaseIntentCrash(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer func() { cmd.Process.Kill(); cmd.Wait() }()
-					for runtimeMarkerAbsent(filepath.Join(e.receiptDir, "test-commit-ready")) {
+					for runtimeMarkerAbsent(filepath.Join(filepath.Dir(e.receiptDir), "test-release-intent-ready")) {
 						if ctx.Err() != nil {
 							t.Fatal("child missed release intent cut")
 						}
