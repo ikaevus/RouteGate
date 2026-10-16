@@ -1458,3 +1458,42 @@ never VPN-traffic proof. Read-only reconciliation of terminal storage after a
 crash, coordinated abort/actual crash-safe release and credential revocation E2E
 remain future work; #545 stays unfinished. No production access/change,
 real-user revocation, merge/deploy, Manager relocation, FI diagnostics or logos.
+
+### Agent terminal crash reconciliation (thirtieth slice)
+
+Dormant `Client.ReconcileRecoveryTerminal` first verifies current Agent
+credentials/server/credential generation through existing identity transport,
+then retains the original admission flock through historical /terminal/verify.
+It sends only the exact previously pinned terminal proof, never a new proof,
+grant request or /terminal submission. Strict existing bounded/no-redirect
+transport validates schema, recorded flag, operation, terminal/proof/request
+digests. All uncertainty returns an empty unconfirmed result, including evidence
+absence, credential rotation and any local history change during HTTP.
+
+`WithHistoricalRecoveryTerminal` shares the complete existing terminal archive,
+binding, final chain, legacy fence, journal and optional acknowledgement
+validation. The immutable snapshot exposes its validated terminal projection
+only when a private durable pin was present. It never reconstructs an absent
+pin into submit-capable evidence or rereads an unrelated record for the callback.
+Before/after snapshots remain under the same root flock, including optional
+receipt presence. Concurrent live owner/readers reject; root/runtime.lock inode
+and every history byte remain in place.
+
+Expired original authority is checked as history at its original issue time,
+not renewed. A missing terminal acknowledgement is valid uncertain-storage
+history; an existing malformed or mismatched acknowledgement still rejects.
+Readback does not capture runtime, assert cleanup completion, create a receipt,
+resume a live owner, remove any file, release a reservation or infer VPN traffic.
+Even successful readback leaves a missing acknowledgement absent.
+
+Tests reuse final-history fixtures for expired full/partial terminal state and
+optional acknowledgement; exact identity+verify requests, strict receipt and
+local history corruption, snapshot changes during HTTP, and no file writes.
+Real expiry/runtime drift, nil/missing/foreign state, callback/context failures,
+concurrent flock and nested readers are covered. Existing exit/SIGKILL cuts now
+read terminal history without changing the file tree. Disposable systemd/Reality
+reads exact pinned terminal history after an externally injected process restart.
+Schema remains000168; no Manager runtime/HTTP/schema or Runner activation.
+Coordinated abort, actual crash-safe release and credential revocation E2E/
+operator workflow remain future work; #545 stays unfinished. No production
+access/change, real-user revocation, merge/deploy, FI diagnostics or logo changes.

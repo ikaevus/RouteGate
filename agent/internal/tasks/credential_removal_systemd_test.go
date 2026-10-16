@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
@@ -285,6 +286,18 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 		t.Fatal("new process accepted archived witness")
 	}
 	final.Close()
+	beforeTerminalRead := terminalHistoryTree(t, e.receiptDir)
+	if err := WithHistoricalRecoveryTerminal(ctx, e.receiptDir, bound, func(p RuntimeRecoveryTerminalProof) error {
+		data, e := os.ReadFile(filepath.Join(e.receiptDir, runtimeRecoveryTerminalSubmissionFile))
+		wire, _ := json.Marshal(p)
+		if e != nil || !bytes.Equal(wire, data) {
+			t.Error("real historical terminal proof drift", e)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal("real terminal read after process drift", err)
+	}
+	assertTerminalHistoryTree(t, e.receiptDir, beforeTerminalRead)
 	// Historical storage read remains valid after injected runtime drift, without
 	// claiming a fresh runtime witness or reacquiring a mutation owner.
 	assertHistoricalFinalizationAfterExit(t, e.receiptDir, bound)

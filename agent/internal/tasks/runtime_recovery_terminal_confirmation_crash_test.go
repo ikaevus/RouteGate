@@ -57,6 +57,16 @@ func TestRuntimeMutationTerminalConfirmationCrash(t *testing.T) {
 					t.Fatal("unconfirmed pin manufactured receipt")
 				}
 				assertTerminalArchive(t, e.receiptDir, b)
+				before := terminalHistoryTree(t, e.receiptDir)
+				if err := WithHistoricalRecoveryTerminal(ctx, e.receiptDir, b, func(got RuntimeRecoveryTerminalProof) error {
+					if got != p {
+						t.Error("post-crash terminal bytes changed")
+					}
+					return nil
+				}); err != nil {
+					t.Fatal("post-crash terminal read", err)
+				}
+				assertTerminalHistoryTree(t, e.receiptDir, before)
 				if _, err := BeginRuntimeRecoveryCommit(ctx, e.receiptDir, b, grantWire, e.activePath, a); err != ErrRuntimeMutationBlocked {
 					t.Fatal("crashed terminal adopted fresh commit", err)
 				}
