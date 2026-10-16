@@ -28,12 +28,15 @@
 .brand-title,
 .routegate-brand .brand-title,
 :root[data-theme='light'] .portal-app-shell .brand-title {
+  align-items: center;
   color: #f8fafc;
+  display: flex;
   font-size: 21px;
   font-synthesis: none;
   font-weight: 800;
+  height: 32px;
   letter-spacing: -0.04em;
-  line-height: 32px;
+  line-height: normal;
   text-rendering: optimizeLegibility;
   white-space: nowrap;
 }
@@ -80,6 +83,6 @@
   .routegate-brand .brand-title,
   :root[data-theme='light'] .portal-app-shell .brand-title {
     font-size: 17px;
-    line-height: 26px;
+    height: 26px;
   }
 }
