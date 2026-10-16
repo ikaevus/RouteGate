@@ -146,6 +146,10 @@ func terminalRootSnapshot(dir string, intent runtimeRecoveryRetirementIntent) (f
 // Leftover active files may be present after a crash, but must match the exact
 // archived manifest. Historical confirmation never finishes their cleanup.
 func withTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryFinalizationProof) error) error {
+	return withTerminalRecoveryHistoryAndConfirmationLocked(ctx, dir, b, lock, func(p RuntimeRecoveryFinalizationProof, _ *RuntimeRecoveryTerminalProof) error { return fn(p) })
+}
+
+func withTerminalRecoveryHistoryAndConfirmationLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryFinalizationProof, *RuntimeRecoveryTerminalProof) error) error {
 	data, e := readRemovalFile(filepath.Join(dir, runtimeRecoveryTerminalFile), 8192, true)
 	var terminal runtimeRecoveryTerminalRecord
 	if e != nil || !exactHistoricalJSON(data, &terminal) || terminal.SchemaVersion != 1 || terminal.Purpose != runtimeRecoveryTerminalPurpose || terminal.Binding != b {
@@ -179,7 +183,7 @@ func withTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b Runtim
 		if e != nil {
 			return ErrRuntimeMutationBlocked
 		}
-		confirmationUnchanged, e := terminalConfirmationSnapshot(dir, data, p, b)
+		confirmationUnchanged, confirmed, e := terminalConfirmationSnapshot(dir, data, p, b)
 		if e != nil {
 			return ErrRuntimeMutationBlocked
 		}
@@ -188,7 +192,7 @@ func withTerminalRecoveryHistoryLocked(ctx context.Context, dir string, b Runtim
 			j, e2 := readRemovalFile(filepath.Join(dir, runtimeRecoveryRetirementFile), 8192, true)
 			return e == nil && e2 == nil && bytes.Equal(t, data) && bytes.Equal(j, rootIntent) && unchanged() && confirmationUnchanged() && privateRetirementArchive(archive) == nil
 		}
-		if ctx.Err() != nil || !fencesUnchanged() || fn(p) != nil || ctx.Err() != nil || !fencesUnchanged() {
+		if ctx.Err() != nil || !fencesUnchanged() || fn(p, confirmed) != nil || ctx.Err() != nil || !fencesUnchanged() {
 			return ErrRuntimeMutationBlocked
 		}
 		return nil

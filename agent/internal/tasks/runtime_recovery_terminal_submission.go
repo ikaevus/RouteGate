@@ -72,31 +72,31 @@ func readTerminalConfirmationFile(path string, limit int64) ([]byte, error) {
 
 // Validate optional new-phase files as exact retained history. A historical
 // reader never writes/adopts them or gets fresh live authority from their bytes.
-func terminalConfirmationSnapshot(dir string, terminal []byte, p RuntimeRecoveryFinalizationProof, b RuntimeRecoveryGrantBinding) (func() bool, error) {
+func terminalConfirmationSnapshot(dir string, terminal []byte, p RuntimeRecoveryFinalizationProof, b RuntimeRecoveryGrantBinding) (func() bool, *RuntimeRecoveryTerminalProof, error) {
 	proof, e := terminalProofProjection(terminal, p, b)
 	if e != nil {
-		return nil, e
+		return nil, nil, e
 	}
 	wire, e := json.Marshal(proof)
 	if e != nil {
-		return nil, ErrRuntimeMutationBlocked
+		return nil, nil, ErrRuntimeMutationBlocked
 	}
 	pinPath, ackPath := filepath.Join(dir, runtimeRecoveryTerminalSubmissionFile), filepath.Join(dir, runtimeRecoveryTerminalAcknowledgementFile)
 	var pin, ack []byte
 	if !runtimeMarkerAbsent(pinPath) {
 		pin, e = readTerminalConfirmationFile(pinPath, 8192)
 		if e != nil || !bytes.Equal(pin, wire) {
-			return nil, ErrRuntimeMutationBlocked
+			return nil, nil, ErrRuntimeMutationBlocked
 		}
 	}
 	if !runtimeMarkerAbsent(ackPath) {
 		if pin == nil {
-			return nil, ErrRuntimeMutationBlocked
+			return nil, nil, ErrRuntimeMutationBlocked
 		}
 		ack, e = readTerminalConfirmationFile(ackPath, 4096)
 		var r RuntimeRecoveryTerminalReceipt
 		if e != nil || !exactHistoricalJSON(ack, &r) || !terminalReceiptMatches(r, proof, pin) {
-			return nil, ErrRuntimeMutationBlocked
+			return nil, nil, ErrRuntimeMutationBlocked
 		}
 	}
 	unchanged := func() bool {
@@ -117,7 +117,10 @@ func terminalConfirmationSnapshot(dir string, terminal []byte, p RuntimeRecovery
 		}
 		return true
 	}
-	return unchanged, nil
+	if pin == nil {
+		return unchanged, nil, nil
+	}
+	return unchanged, &proof, nil
 }
 func (m *RuntimeRecoveryFinalization) terminalSubmissionUnchanged() bool {
 	for _, state := range []struct {
