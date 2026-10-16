@@ -51,6 +51,11 @@ type RuntimeRecoveryFinalization struct {
 	terminalSubmission      []byte
 	terminalAcknowledgement []byte
 	releaseIntent           []byte
+	preparedSubmission      []byte
+	preparedAcknowledgement []byte
+	preparedFrozen          RuntimeRecoveryPreparedReleaseProof
+	preparedUnchanged       func() bool
+	preparedInventory       *runtimeRecoveryPreparedInventory
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time

@@ -420,6 +420,44 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 								os.Exit(13)
 							}
 						}
+						if strings.HasPrefix(mode, "terminal_confirm_release_intent_submit_") {
+							if final.WithPreparedReleaseSubmission(context.Background(), in.Binding, markerDigest(wire), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
+								cut := func() error {
+									if os.Getenv("RG_TEST_RECOVERY_COMMIT_KILL") == "1" {
+										if os.WriteFile(filepath.Join(filepath.Dir(in.Dir), "test-release-intent-ready"), []byte("ready"), 0600) != nil {
+											os.Exit(14)
+										}
+										for {
+											time.Sleep(20 * time.Millisecond)
+										}
+									}
+									os.Exit(0)
+									return nil
+								}
+								checkpoint := func() error {
+									if strings.HasSuffix(mode, "pin_cut") {
+										return cut()
+									}
+									return nil
+								}
+								p, e := g.pinProof(context.Background(), checkpoint)
+								if e != nil {
+									return e
+								}
+								if strings.HasSuffix(mode, "pin") {
+									return nil
+								}
+								return g.recordReceipt(context.Background(), receiptForPreparedProof(p), func() error {
+									if strings.HasSuffix(mode, "ack_cut") {
+										return cut()
+									}
+									return nil
+								})
+							}) != nil {
+								os.Exit(15)
+							}
+						}
+
 					}
 				}
 			}

@@ -1691,3 +1691,68 @@ recorded=true acknowledges storage only. No fence/archive deletion, reservation
 completion, credential removal, grant issuance, config apply or operator UI is
 introduced. Coordinated release and credential revocation E2E remain unfinished;
 #545 stays open. Production, merge/deploy, FI and logos remain outside scope.
+
+### Thirty-fifth slice: live Agent prepared evidence submission
+
+The original live RuntimeRecoveryFinalization owner can now submit its prepared
+release commitment to the Manager endpoint from the previous slice. No Runner
+caller, operator route or UI is enabled. The client takes the existing verified
+conditional release authorization and current bearer; Manager admission still
+independently checks current credentials/generation and original authority.
+
+WithPreparedReleaseSubmission holds the existing owner mutex and root flock
+through its synchronous callback, durable proof pin, HTTP/retries/readback,
+durable receipt and final fresh runtime validation. Guard copies share a scope
+state and expire together. Proof derives from the owner's exact private intent,
+original terminal pin/receipt and a fresh locked runtime observation/inventory;
+caller-supplied evidence cannot be adopted. Require exact reconstructed intent
+fields and original expiry, terminal observedAt <= preparedAt <= observedAt.
+Frozen observedAt and proof bytes never change after pinning, even on retries.
+Each refresh still checks live process/config/listener, retained history,
+context, original window and backwards wall clock. Heartbeat is not substituted
+for runtime observation or traffic evidence.
+
+Publish private0600 single-link canonical recovery-prepared-release-submission
+and recovery-prepared-release-acknowledgement JSON files using the existing
+no-replace/fsync writer. The receipt must match schema, recorded, operation,
+release-intent hash and hashes of the exact canonical request. Acceptance only
+acknowledges storage, never cleanup/release. No existing file is overwritten.
+An uncertain write or post-write validation failure retains barriers and poisons
+the owner. Network uncertainty can retry the same pinned proof while original
+live authority remains valid; no nonce, intent, proof time or expiry is renewed.
+
+Extend the shared strict root inventory only for the live owner's exact pin/ack:
+eight root entries before pin, nine after pin, ten after acknowledgement. Compare
+root/archive identities and every retained root file digest/inode across callback,
+HTTP and legitimate snapshot advancement after publication. Existing files cannot
+be silently adopted through same-byte replacement. Foreign, ambiguous, unsafe,
+partial or extra files fail closed. New confirmation files independently block
+legacy mutation, completion/result save/replay, scoped removal and new recovery
+owners even if the release intent is missing. Older historical readers reject
+this new phase; this slice provides no crash resume or historical adoption.
+
+Client.SubmitRecoveryPreparedRelease reuses exchangePinnedRecoveryEvidence and
+the existing strict bounded no-redirect transport. Every attempt and historical
+readback sends the exact pinned proof to prepared-release or prepared-release/
+verify with the original deadline. Revalidate the live guard before/after HTTP,
+before durable receipt and before returning success. Any failed validation returns
+a zero receipt and generic error, even if Manager storage or local receipt write
+has already happened. No sensitive payload is included in errors or logs.
+
+Tests cover receipt bindings, current scope/binding, durable retries/concurrency,
+Close serialization, shared guard expiry, refusal modes, changes during callback,
+same-byte inode replacement, orphan confirmation barriers and strict HTTP replies,
+lost acknowledgement/connection, exact readback/retries, redirects and drift.
+Eight exit/SIGKILL cuts cover proof and receipt fsync before memory adoption and
+after successful final validation. Their harness sentinel stays outside the
+protected root. Add a dedicated focused race CI step without changing existing
+security windows or watchdogs. A third disposable systemd/Reality scenario pins
+and acknowledges prepared evidence, then rejects the live guard after a real
+external restart while preserving all barriers/history. Its Manager receipts
+are synthetic; this is not full HTTP Manager+Agent release or revocation E2E.
+
+Schema stays000169. No fence/archive deletion, reservation completion, new grant,
+configuration apply, actual credential revocation, production access/change,
+real-user revocation, merge/deploy, FI work or logo change. Historical prepared
+submission reconciliation and coordinated durable release remain future work;
+#545 stays open.

@@ -28,7 +28,7 @@ func WithHistoricalRecoveryFinalization(ctx context.Context, dir string, binding
 }
 
 func withHistoricalFinalizationLocked(ctx context.Context, dir string, binding RuntimeRecoveryGrantBinding, lock *os.File, fn func(RuntimeRecoveryFinalizationProof) error) error {
-	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseIntentFile)) {
+	if !preparedReleaseStateAbsent(dir) || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryTerminalFile)) || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseIntentFile)) {
 		return ErrRuntimeMutationBlocked
 	}
 	return withHistoricalRecoverySubmissionLocked(ctx, dir, binding, lock, func(original RuntimeRecoveryCommitProof, _ func() bool) error {
@@ -47,7 +47,7 @@ func withHistoricalFinalizationLocked(ctx context.Context, dir string, binding R
 			}
 		}
 		unchanged := func() bool {
-			if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseIntentFile)) {
+			if !preparedReleaseStateAbsent(dir) || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseIntentFile)) {
 				return false
 			}
 			for i, name := range paths {
