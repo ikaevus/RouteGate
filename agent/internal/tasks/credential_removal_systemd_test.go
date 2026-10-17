@@ -337,6 +337,9 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			if err != nil || g.RecordRetentionReceipt(ctx, receiptForRetentionProof(p)) != nil {
 				t.Fatal("real retention evidence durability", err)
 			}
+			if hash, err := g.ArchiveRetainedHistory(ctx); err != nil || len(hash) != 64 {
+				t.Fatal("real independent history durability", err)
+			}
 			if err := restartRuntime(); err != nil {
 				t.Fatal(err)
 			}
@@ -409,6 +412,14 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			return nil
 		}); err != nil {
 			t.Fatal("real retention history unavailable after restart", err)
+		}
+		if err := WithArchivedRecoveryRetention(ctx, e.receiptDir, p.OperationID, bound, func(h RuntimeRecoveryArchivedHistory) error {
+			if h.History.Proof.Observation != observation || !h.History.LocalReceipt.Recorded || len(h.ManifestHash) != 64 {
+				t.Error("real independent history drift")
+			}
+			return nil
+		}); err != nil {
+			t.Fatal("real independent history unavailable after restart", err)
 		}
 		if l, err := BeginRuntimeMutation(e.receiptDir, resultTaskID, TaskKindVPNCoreService); err != ErrRuntimeMutationBlocked {
 			if l != nil {

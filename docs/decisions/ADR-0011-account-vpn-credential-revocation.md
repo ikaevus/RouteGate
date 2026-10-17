@@ -2019,3 +2019,55 @@ Schema stays000170. No source/archive/fence deletion, reservation completion,
 runtime apply, actual revocation, operator routes/UI, production access/change,
 real-user operation, FI diagnostics, logos, merge or deploy. #545 remains open;
 coordinated Manager+Agent release/revocation E2E is unfinished.
+
+### Forty-first slice: independent complete recovery history archive
+
+Before any future cleanup, preserve the complete retained predecessor chain plus
+the later retention proof and acknowledgement in an independently validated
+private copy. The original retained package stays immutable. This dormant Agent
+API copies only; it removes no source, barrier or admission lock and completes no
+reservation. The archive digest proves local storage, never release authority.
+
+Reuse the original live owner mutex/flock, current identity, prepared storage,
+original authorization readiness and original deadline. Require this owner's
+exact durable retention proof/acknowledgement and exact Manager retention/verify
+readback before copying. Reobserve runtime and pin every source identity across
+publication. No new endpoint, polling, dispatch, grant or operator caller.
+
+Derive a fixed sibling path from the absolute clean state directory and canonical
+operation ID. Require an owned non-writable-by-group/others parent; create the
+private archive with exclusive mkdir. Reject even identical existing/partial
+directories rather than adopt, overwrite or repair them. Write all fixed
+whitelisted root and retired files with private single-link no-replace writes
+and file/parent fsync. Bound total copied data to4MiB and manifest to16KiB.
+Manifest names are never interpreted as paths. Publish the canonical manifest
+last, after complete chain validation through the existing historical reader.
+Keep partial copies and all original barriers on any uncertainty; poison the
+live owner. Live retries work only through the same original owner and exact
+in-memory commitment, with unchanged source/copy identities and current runtime.
+
+The original stable runtime.lock stays in place and is never copied or replaced.
+The mirror contains a separate fixed read-lock stub, which only serializes
+archive reads and grants no admission authority. Pin original lock, parent,
+container, manifest and copied file identities across callbacks. The manifest
+binds operation/current credential binding, package/proof/receipt hashes and the
+ordered complete file inventory. Reuse all existing strict historical chain,
+wire, hash and time-order validators rather than inventing parallel validation.
+
+Historical reconciliation authenticates current Agent/server/credential generation
+first, holds the original existing admission flock, validates the entire copy,
+then performs exact retention/verify. It needs no original evidence files or
+current runtime, but still requires the original private state directory/stable
+lock and correct binding. It never creates, repairs, resumes or renews authority.
+Future cleanup must separately preserve admission barriers and any later audit
+records; this slice does not implement or authorize that protocol.
+
+Tests cover independent readback after test-only source removal, strict manifest
+and source refusal, same-byte inode substitutions, scoped live ownership, actual
+flock ownership across Client HTTP, concurrent idempotency, cancellation and
+runtime/authority drift. Exit/SIGKILL cuts exercise partial copy versus manifest
+publication. The disposable systemd/Reality test archives before external restart
+and reads the independent history afterward; Manager receipts there are synthetic.
+Schema stays000170; #545 remains open and coordinated release/revocation E2E is
+unfinished. No source/fence deletion, configuration apply, real-user revocation,
+production access, FI diagnostics, logo change, merge or deploy.
