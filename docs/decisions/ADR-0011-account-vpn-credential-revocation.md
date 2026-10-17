@@ -1956,3 +1956,66 @@ future work. No Runner/operator/UI caller, barrier/archive deletion, reservation
 completion, runtime apply, actual credential revocation, production access,
 FI diagnostics, logos, merge or deploy. #545 remains open; coordinated
 release/revocation E2E is unfinished.
+
+### Fortieth slice: original-owner retention submission and crash readback
+
+Connect the dormant Agent Client to slice39's retention/retention-verify routes.
+Require the complete package already published by this original live owner;
+neither existing disk bytes nor historical readback may create/resume ownership.
+Reuse the same callback-scoped prepared guard, owner mutex/flock, original
+authorization deadline and current identity/prepared-storage/authorization
+readiness reads. Pin sources before HTTP and reobserve exact runtime/inventory
+around exchanges. No new polling, task dispatch, grant or Runner/UI caller.
+
+Pin canonical RuntimeRecoveryRetentionProof to private0600 single-link
+recovery-retention-submission.json with no-replace publication and file/parent
+fsync before HTTP. Bind the package digest/capture time, canonical prepared
+proof/receipt, original authorization and current observation/generation. Capture
+observedAt only after the retained package has already been published and freshly
+validated. Once pinned, bytes and observedAt remain frozen on every retry;
+subsequent runtime observations cannot renew the commitment or old authority.
+The package remains private: only the bounded public proof crosses HTTP.
+
+Use the existing strict evidence exchange and bounded exact-byte retry/readback
+policy. An uncertain reply can use only the exact retention/verify request; a
+storage receipt binds schema, operation, package digest, proof and exact request
+hash. Persist it to recovery-retention-acknowledgement.json with the same private
+no-replace/fsync primitive, then revalidate the live owner. An acknowledgement
+means storage only, including when readback confirms a previously stored proof
+after a later rejection. Future release still needs its own current authority
+checks. Post-write uncertainty poisons the original owner and preserves every
+file/barrier. No existing even-identical file can be adopted.
+
+Extend the strict inventory from11 to13 root entries only for this owner's exact
+proof/receipt; require retained package before proof and proof before receipt.
+Pin all root identities and retained sources across HTTP and callbacks. Both new
+files independently fence legacy mutation/completion/result replay and new
+recovery owners, even when orphaned/empty/malformed. Preserve paired absent
+slots for older phases. Older historical readers continue to reject newer files.
+The package from slice38 stays immutable and does not recursively include its
+own later submission/receipt; future cleanup must preserve these additional
+audit records too. No cleanup is introduced here.
+
+ReconcileRecoveryRetention first authenticates current Agent/server/generation,
+then reads exact proof, optional receipt and the complete retained predecessor
+chain under the original admission flock. Verify all package/source bytes and
+identities across exact Manager readback, including nanosecond capture/observation
+ordering before original expiry. Expired history remains readable without a
+current runtime. This path never POSTs new evidence, repairs an absent receipt,
+captures runtime, resumes ownership, renews authority or removes any barrier.
+
+Tests exercise original live filesystem ownership over real Client HTTP, direct
+flock checks at every exchange, concurrent idempotent calls, exact durable pin
+before POST, uncertain delivery/readback, strict malformed/foreign replies,
+source substitution, denial, cancellation, expiry/backwards time, publication
+uncertainty and read-only historical refusal. Those HTTP Manager and runtime
+observer fixtures are test doubles. Extend the existing exit/SIGKILL matrix to20
+cuts, including eight new cuts around proof/receipt fsync and memory adoption.
+In the disposable real systemd/Reality scenario, pin and acknowledge retention
+before an external restart; fresh proof then fails while exact historical
+readback remains valid. Manager receipts in that scenario remain synthetic.
+
+Schema stays000170. No source/archive/fence deletion, reservation completion,
+runtime apply, actual revocation, operator routes/UI, production access/change,
+real-user operation, FI diagnostics, logos, merge or deploy. #545 remains open;
+coordinated Manager+Agent release/revocation E2E is unfinished.

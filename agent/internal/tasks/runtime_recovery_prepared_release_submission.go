@@ -13,7 +13,7 @@ const runtimeRecoveryPreparedSubmissionFile = "recovery-prepared-release-submiss
 const runtimeRecoveryPreparedAcknowledgementFile = "recovery-prepared-release-acknowledgement.json"
 
 func preparedReleaseStateAbsent(dir string) bool {
-	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseRetentionFile))
+	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseRetentionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionAcknowledgementFile))
 }
 func preparedReleaseReceiptMatches(r RuntimeRecoveryPreparedReleaseReceipt, p RuntimeRecoveryPreparedReleaseProof, wire []byte) bool {
 	return r.SchemaVersion == 1 && r.Recorded && r.OperationID == p.OperationID && r.ReleaseIntentHash == p.ReleaseIntentHash && r.ProofHash == markerDigest(wire) && r.RequestHash == r.ProofHash
@@ -69,14 +69,14 @@ func (m *RuntimeRecoveryFinalization) preparedReleaseProofLocked(ctx context.Con
 }
 
 type runtimeRecoveryPreparedInventory struct {
-	files         [9]releasePlanFileSnapshot
+	files         [11]releasePlanFileSnapshot
 	root, archive os.FileInfo
 }
 
 // Snapshot all owned files/inodes, including confirmation files, across HTTP.
 // Only successful no-replace publication may advance this private snapshot.
 func (m *RuntimeRecoveryFinalization) pinPreparedInventory() error {
-	inventory := fenceReleaseInventory(m.dir, m.archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement, m.releaseHistoryRetention)
+	inventory := fenceReleaseInventory(m.dir, m.archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement, m.releaseHistoryRetention, m.retentionSubmission, m.retentionReceipt)
 	before, root, arch, e := inventory()
 	if e != nil {
 		return ErrRuntimeMutationBlocked

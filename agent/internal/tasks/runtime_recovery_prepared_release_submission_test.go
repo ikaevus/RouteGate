@@ -24,7 +24,7 @@ func preparedSubmissionFixture(t *testing.T) (CredentialRemovalExecutor, *remova
 }
 
 func TestPreparedReleaseOrphanLegacyGuards(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile, runtimeRecoveryReleaseRetentionFile} {
+	for _, name := range []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile, runtimeRecoveryReleaseRetentionFile, runtimeRecoveryRetentionSubmissionFile, runtimeRecoveryRetentionAcknowledgementFile} {
 		for _, data := range []string{"", "{}", "malformed"} {
 			t.Run(data, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)
@@ -327,7 +327,7 @@ func TestPreparedReleaseConcurrentRetryAndClose(t *testing.T) {
 }
 
 func TestPreparedReleaseOrphanConfirmationBlocks(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile} {
+	for _, name := range []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile, runtimeRecoveryRetentionSubmissionFile, runtimeRecoveryRetentionAcknowledgementFile} {
 		for _, data := range []string{"", "{}"} {
 			t.Run(name+data, func(t *testing.T) {
 				e, a, b, g, wire := recoveryCommitFixture(t)

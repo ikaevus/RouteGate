@@ -58,6 +58,9 @@ type RuntimeRecoveryFinalization struct {
 	preparedInventory       *runtimeRecoveryPreparedInventory
 	releaseHistoryRetention []byte
 	retentionUnchanged      func() bool
+	retentionSubmission     []byte
+	retentionReceipt        []byte
+	retentionFrozen         RuntimeRecoveryRetentionProof
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time

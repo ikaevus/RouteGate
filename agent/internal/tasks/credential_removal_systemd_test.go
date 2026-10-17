@@ -333,8 +333,15 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			if hash, err := g.RetainHistory(ctx); err != nil || hash == "" {
 				t.Fatal("real full history retention", err)
 			}
+			p, err := g.PinRetentionProof(ctx)
+			if err != nil || g.RecordRetentionReceipt(ctx, receiptForRetentionProof(p)) != nil {
+				t.Fatal("real retention evidence durability", err)
+			}
 			if err := restartRuntime(); err != nil {
 				t.Fatal(err)
+			}
+			if p, err := g.RetentionProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryRetentionProof{}) {
+				t.Fatal("retention evidence accepted restarted process", err)
 			}
 			if p, err := g.AcknowledgedProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryPreparedReleaseProof{}) {
 				t.Fatal("acknowledged readiness accepted restarted process", err)
@@ -348,6 +355,13 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			t.Fatal(err)
 		}
 		before[runtimeRecoveryReleaseRetentionFile] = retained
+		for _, name := range []string{runtimeRecoveryRetentionSubmissionFile, runtimeRecoveryRetentionAcknowledgementFile} {
+			data, err := os.ReadFile(filepath.Join(e.receiptDir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			before[name] = data
+		}
 		assertTerminalHistoryTree(t, e.receiptDir, before)
 	} else if err := restartRuntime(); err != nil {
 		t.Fatal(err)
@@ -387,6 +401,14 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		var receipt RuntimeRecoveryPreparedReleaseReceipt
 		if e2 != nil || e3 != nil || !exactHistoricalJSON(pin, &p) || !exactHistoricalJSON(ack, &receipt) || !preparedReleaseReceiptMatches(receipt, p, pin) {
 			t.Fatal("real restart lost confirmation")
+		}
+		if err := WithHistoricalRecoveryRetention(ctx, e.receiptDir, bound, func(h RuntimeRecoveryRetentionHistory) error {
+			if h.Proof.Observation != observation || !h.LocalReceipt.Recorded {
+				t.Error("real retention history drift")
+			}
+			return nil
+		}); err != nil {
+			t.Fatal("real retention history unavailable after restart", err)
 		}
 		if l, err := BeginRuntimeMutation(e.receiptDir, resultTaskID, TaskKindVPNCoreService); err != ErrRuntimeMutationBlocked {
 			if l != nil {

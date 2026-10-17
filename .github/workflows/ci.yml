@@ -121,6 +121,9 @@ jobs:
       - name: Test immutable full release history retention and readback
         run: go test -race ./internal/tasks ./internal/client -run '^TestReleaseRetention' -count=1 -timeout=120s -v
 
+      - name: Test durable retention evidence submission and crash readback
+        run: go test -race ./internal/tasks ./internal/client -run '^TestRetentionSubmission' -count=1 -timeout=120s -v
+
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"
