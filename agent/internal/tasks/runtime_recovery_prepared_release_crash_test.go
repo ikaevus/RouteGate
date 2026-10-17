@@ -12,7 +12,7 @@ import (
 )
 
 func TestPreparedReleaseCrash(t *testing.T) {
-	for _, mode := range []string{"terminal_confirm_release_intent_submit_pin_cut", "terminal_confirm_release_intent_submit_pin", "terminal_confirm_release_intent_submit_ack_cut", "terminal_confirm_release_intent_submit_ack"} {
+	for _, mode := range []string{"terminal_confirm_release_intent_submit_pin_cut", "terminal_confirm_release_intent_submit_pin", "terminal_confirm_release_intent_submit_ack_cut", "terminal_confirm_release_intent_submit_ack", "terminal_confirm_release_intent_submit_ack_retention_cut", "terminal_confirm_release_intent_submit_ack_retention"} {
 		for _, kill := range []bool{false, true} {
 			t.Run(mode+map[bool]string{false: "/exit", true: "/SIGKILL"}[kill], func(t *testing.T) {
 				e, a, b, g, grantWire := recoveryCommitFixture(t)
@@ -73,6 +73,9 @@ func TestPreparedReleaseCrash(t *testing.T) {
 				if err := WithHistoricalRecoveryPreparedSubmission(ctx, e.receiptDir, b, func(h RuntimeRecoveryPreparedSubmissionHistory) error {
 					if h.Proof != proof || (h.LocalReceipt.SchemaVersion != 0) != strings.Contains(mode, "ack") {
 						t.Error("crash history changed proof or acknowledgement phase")
+					}
+					if (h.RetentionHash != "") != strings.Contains(mode, "retention") {
+						t.Error("crash changed retention phase")
 					}
 					return nil
 				}); err != nil {

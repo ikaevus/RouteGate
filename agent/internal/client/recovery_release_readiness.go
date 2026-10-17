@@ -25,6 +25,26 @@ type RecoveryFenceReleaseReadiness struct {
 // while the original mutex/flock and durable snapshots span every exchange.
 // No receipt write, nonce consumption, owner resume, configuration or release.
 func (c *Client) CheckRecoveryFenceReleaseReadiness(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization) (RecoveryFenceReleaseReadiness, error) {
+	return c.withRecoveryFenceReleaseReadiness(ctx, token, v, owner, nil)
+}
+
+// RetainRecoveryFenceReleaseHistory performs the same fresh authenticated reads
+// while holding the original owner, then retains its full private audit bundle.
+// The returned digest certifies retention only, never deletion or fence release.
+func (c *Client) RetainRecoveryFenceReleaseHistory(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization) (string, error) {
+	var hash string
+	_, e := c.withRecoveryFenceReleaseReadiness(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+		var err error
+		hash, err = g.RetainHistory(bounded)
+		return err
+	})
+	if e != nil {
+		return "", ErrRecoveryReleaseNotReady
+	}
+	return hash, nil
+}
+
+func (c *Client) withRecoveryFenceReleaseReadiness(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization, retained func(context.Context, *tasks.RuntimeRecoveryPreparedReleaseGuard) error) (RecoveryFenceReleaseReadiness, error) {
 	var zero, result RecoveryFenceReleaseReadiness
 	started := time.Now().UTC()
 	wire, e := json.Marshal(v.Authorization)
@@ -39,6 +59,9 @@ func (c *Client) CheckRecoveryFenceReleaseReadiness(ctx context.Context, token s
 			return ErrRecoveryReleaseNotReady
 		}
 		result, e = c.checkRecoveryFenceReleaseReadiness(bounded, token, v, p, g.AcknowledgedProof)
+		if e == nil && retained != nil {
+			e = retained(bounded, g)
+		}
 		return e
 	})
 	finished := time.Now().UTC()
