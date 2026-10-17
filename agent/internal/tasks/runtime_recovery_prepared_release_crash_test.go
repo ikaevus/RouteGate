@@ -70,6 +70,15 @@ func TestPreparedReleaseCrash(t *testing.T) {
 				}
 
 				before := terminalHistoryTree(t, e.receiptDir)
+				if err := WithHistoricalRecoveryPreparedSubmission(ctx, e.receiptDir, b, func(h RuntimeRecoveryPreparedSubmissionHistory) error {
+					if h.Proof != proof || (h.LocalReceipt.SchemaVersion != 0) != strings.Contains(mode, "ack") {
+						t.Error("crash history changed proof or acknowledgement phase")
+					}
+					return nil
+				}); err != nil {
+					t.Fatal("crash history unreadable", err)
+				}
+				assertTerminalHistoryTree(t, e.receiptDir, before)
 				if m, err := BeginRuntimeRecoveryCommit(ctx, e.receiptDir, b, grantWire, e.activePath, a); err != ErrRuntimeMutationBlocked {
 					if m != nil {
 						m.Close()

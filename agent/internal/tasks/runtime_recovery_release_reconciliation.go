@@ -29,6 +29,12 @@ func WithHistoricalRecoveryPreparedRelease(ctx context.Context, dir string, b Ru
 		return ErrRuntimeMutationBlocked
 	}
 	defer lock.Close()
+	return withHistoricalRecoveryPreparedReleaseLocked(ctx, dir, b, lock, nil, fn)
+}
+
+// Only the dedicated submission reader supplies exact confirmation snapshots.
+// Old entry points retain their exact pre-submission inventory requirements.
+func withHistoricalRecoveryPreparedReleaseLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, confirmations [][]byte, fn func(RuntimeRecoveryPreparedReleaseHistory) error) error {
 	data, err := readTerminalConfirmationFile(filepath.Join(dir, runtimeRecoveryReleaseIntentFile), 8192)
 	var r runtimeRecoveryReleaseIntent
 	if err != nil || !exactHistoricalJSON(data, &r) || r.SchemaVersion != 1 || r.Purpose != runtimeRecoveryReleaseIntentPurpose || r.Binding != b || !canonicalTaskIDPattern.MatchString(r.OperationID) || r.PreparedAt.IsZero() {
@@ -38,7 +44,7 @@ func WithHistoricalRecoveryPreparedRelease(ctx context.Context, dir string, b Ru
 	if err != nil {
 		return ErrRuntimeMutationBlocked
 	}
-	inventory := fenceReleaseInventory(dir, archive, lock, data)
+	inventory := fenceReleaseInventory(dir, archive, lock, data, confirmations...)
 	before, root, arch, err := inventory()
 	if err != nil {
 		return ErrRuntimeMutationBlocked
