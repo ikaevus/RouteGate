@@ -26,6 +26,29 @@ type recoveryPreparedReleaseTransport interface {
 	VerifyRecoveryPreparedRelease(context.Context, string, string, []byte) (json.RawMessage, error)
 }
 
+type recoveryRetentionTransport interface {
+	AcceptRecoveryRetention(context.Context, string, string, []byte) (json.RawMessage, error)
+	VerifyRecoveryRetention(context.Context, string, string, []byte) (json.RawMessage, error)
+}
+
+func (h *Handler) RecoveryRetention(w http.ResponseWriter, r *http.Request) {
+	h.recoveryRetention(w, r, false)
+}
+func (h *Handler) VerifyRecoveryRetention(w http.ResponseWriter, r *http.Request) {
+	h.recoveryRetention(w, r, true)
+}
+func (h *Handler) recoveryRetention(w http.ResponseWriter, r *http.Request, verify bool) {
+	var call func(context.Context, string, string, []byte) (json.RawMessage, error)
+	if t, ok := h.recovery.(recoveryRetentionTransport); ok {
+		if verify {
+			call = t.VerifyRecoveryRetention
+		} else {
+			call = t.AcceptRecoveryRetention
+		}
+	}
+	h.recoveryEvidence(w, r, call)
+}
+
 func (h *Handler) RecoveryPreparedRelease(w http.ResponseWriter, r *http.Request) {
 	h.recoveryPreparedRelease(w, r, false)
 }

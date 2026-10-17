@@ -1897,3 +1897,62 @@ is unfinished. No new route, migration, Runner/operator/UI caller, reservation
 completion, runtime apply, actual fence release, production access/change,
 real-user revocation, FI diagnostics, logos, merge or deploy. Schema stays000169;
 #545 remains open.
+
+### Thirty-ninth slice: authenticated immutable retention commitments
+
+The complete private package from slice38 is local backup, not Manager evidence
+or authority to remove any barrier. Before a future release protocol can refer
+to that retained history, Manager must record an exact authenticated Agent
+statement about its digest. Add POST retention and retention/verify beneath the
+existing /api/v1/agent/recovery-observations/{operation_id} transport. Reuse the
+bounded8192-byte evidence handler, current Agent bearer hashing, no-store,
+generic errors and existing reservation/authority lock order. No new polling
+channel or task infrastructure is introduced.
+
+RecoveryRetentionProof v1 has purpose
+runtime_mutation_fence_release_retention_evidence_v1. Bind operation, current
+credential generation, original authorization hash, exact prepared proof hash,
+canonical prepared receipt hash, retention package SHA256, retainedAt,
+observedAt and the exact original observation. Field order is frozen by shared
+Manager/Agent golden fixtures. Require prepared observedAt <= retainedAt <=
+observedAt < original expiry and observedAt <= Manager clock. retainedAt remains
+the package's capture time; observedAt is a subsequent Agent observation, not a
+claim that the capture timestamp proves when fsync completed. Manager never
+receives private package bytes. An authenticated digest statement does not
+independently prove contents, filesystem durability, traffic or deletion.
+
+Acceptance requires the stored prepared proof and exact original authorization,
+prepared reservation, current token/generation and current Agent capability,
+authenticated heartbeat, active human admin and live issuing session with
+configs:apply. Heartbeat remains admission context, not VPN traffic evidence.
+Reuse server -> preparation -> Agent -> roles/permissions -> issuing user/session
+locks; do not take global auth locks while waiting for a node. Recheck time,
+session and heartbeat after bounded work before commit. Serial retries require
+identical typed proof bytes and preserve accepted_at; a conflicting digest or
+observation cannot replace history. The receipt binds both the canonical proof
+hash and exact request-body hash, including whitespace in a retry request.
+
+Migration000170 adds a foreign-key dependent immutable ledger. Its SQL guard
+independently checks exact canonical wire (including duplicate/nested keys and
+nanosecond time ordering), prepared proof/receipt hashes, reservation, current
+Agent readiness and issuing human authority. Reject UPDATE/DELETE and refuse
+downgrade with retained data under an exclusive table lock. Existing schema
+expectations and reverse empty-ledger downgrade tests advance to000170.
+
+Historical verify is read-only and requires exact stored wire/hash, prepared
+predecessor and current token/Agent/server/generation bindings. It may read an
+expired record after issuer authority/readiness changes; it cannot grant a new
+live owner, renew the old authorization, finish cleanup or cancel the
+reservation. Independent denial after a successful accept still rejects a new
+accept retry; historical storage verification remains available.
+
+Tests cover concurrent/idempotent accept, immutable receipt/hash/time,
+conflicting proofs, prerequisite/authority/readiness failures, direct SQL bypass,
+nanosecond ordering, historical readback, cancellation, expiry during node-lock
+wait without globally blocking roles, and downgrade/insertion concurrency.
+Only Agent wire types and golden fixtures are added here: Agent construction,
+durable submission/acknowledgement and crash readback of retention evidence are
+future work. No Runner/operator/UI caller, barrier/archive deletion, reservation
+completion, runtime apply, actual credential revocation, production access,
+FI diagnostics, logos, merge or deploy. #545 remains open; coordinated
+release/revocation E2E is unfinished.
