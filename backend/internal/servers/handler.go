@@ -150,6 +150,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		writeInvalidRequest(w, err.Error())
 		return
 	}
+	// This Manager is already the deployment's control plane. Creating another
+	// Management or Hybrid inventory entry would falsely imply multi-Manager
+	// onboarding, which RouteGate does not support.
+	if deploymentRole.HostsManagementPlane() {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error(
+			"management_plane_already_exists",
+			"An existing Manager can only add VPN Nodes. Additional Management or Hybrid Nodes are not supported.",
+		))
+		return
+	}
 
 	input := CreateServerInput{
 		Name:           strings.TrimSpace(request.Name),
