@@ -131,6 +131,37 @@ func validateReleaseHistoryRetention(data []byte, dir, archive string, b Runtime
 func (g *RuntimeRecoveryPreparedReleaseGuard) RetainHistory(ctx context.Context) (string, error) {
 	return g.retainHistory(ctx, nil)
 }
+
+// PinRetentionSources freezes source identities before the client's current
+// Manager reads. It writes nothing and cannot adopt a historical owner.
+func (g *RuntimeRecoveryPreparedReleaseGuard) PinRetentionSources(ctx context.Context) error {
+	if g == nil || g.state == nil {
+		return ErrRuntimeMutationBlocked
+	}
+	g.state.mu.Lock()
+	defer g.state.mu.Unlock()
+	m := g.state.owner
+	if m == nil || m.preparedSubmission == nil || m.preparedAcknowledgement == nil {
+		return ErrRuntimeMutationBlocked
+	}
+	p, e := m.preparedReleaseProofLocked(ctx)
+	if e != nil {
+		return ErrRuntimeMutationBlocked
+	}
+	if m.retentionUnchanged != nil {
+		return nil
+	}
+	_, unchanged, e := buildReleaseHistoryRetention(m.dir, m.archive, m.binding, p, m.lastChecked)
+	if e != nil {
+		m.poisoned = true
+		return ErrRuntimeMutationBlocked
+	}
+	m.retentionUnchanged = unchanged
+	if _, e = m.preparedReleaseProofLocked(ctx); e != nil {
+		return ErrRuntimeMutationBlocked
+	}
+	return nil
+}
 func (g *RuntimeRecoveryPreparedReleaseGuard) retainHistory(ctx context.Context, checkpoint func() error) (string, error) {
 	if g == nil || g.state == nil {
 		return "", ErrRuntimeMutationBlocked

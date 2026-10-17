@@ -129,7 +129,7 @@ func retentionClientOwner(t *testing.T, manager string) (string, *tasks.RuntimeR
 }
 
 func TestReleaseRetentionClientHeldOwner(t *testing.T) {
-	for _, mode := range []string{"retained", "denied", "drift", "cancelled"} {
+	for _, mode := range []string{"retained", "denied", "drift", "cancelled", "source_replaced"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -182,6 +182,26 @@ func TestReleaseRetentionClientHeldOwner(t *testing.T) {
 					a.mu.Lock()
 					a.generation.PID++
 					a.mu.Unlock()
+				}
+				if mode == "source_replaced" {
+					path := filepath.Join(dir, "retired-"+p.OperationID, "recovery-final-submission.json")
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Error(err)
+						w.WriteHeader(500)
+						return
+					}
+					tmp := filepath.Join(filepath.Dir(path), ".replacement")
+					if err := os.WriteFile(tmp, data, 0600); err != nil {
+						t.Error(err)
+						w.WriteHeader(500)
+						return
+					}
+					if err := os.Rename(tmp, path); err != nil {
+						t.Error(err)
+						w.WriteHeader(500)
+						return
+					}
 				}
 				if mode == "cancelled" {
 					cancel()

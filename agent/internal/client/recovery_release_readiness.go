@@ -54,6 +54,9 @@ func (c *Client) withRecoveryFenceReleaseReadiness(ctx context.Context, token st
 	bounded, cancel := context.WithDeadline(ctx, v.Authorization.ExpiresAt)
 	defer cancel()
 	e = owner.WithPreparedReleaseSubmission(bounded, v.Binding, v.AuthorizationHash, func(g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+		if retained != nil && g.PinRetentionSources(bounded) != nil {
+			return ErrRecoveryReleaseNotReady
+		}
 		p, e := g.AcknowledgedProof(bounded)
 		if e != nil {
 			return ErrRecoveryReleaseNotReady

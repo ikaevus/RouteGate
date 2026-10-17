@@ -1854,8 +1854,10 @@ new grant or permission to delete anything.
 
 RetainRecoveryFenceReleaseHistory reuses the previous slice's authenticated
 identity, prepared storage and original authorization reads. Under that same
-original owner mutex/flock and deadline, its scoped guard derives the package
-from exact local state, reobserves runtime, verifies source file identities and
+original owner mutex/flock and deadline, its scoped guard pins every source
+identity before the first authenticated HTTP read. After the fresh reads it
+derives the package from exact local state, reobserves runtime, verifies source
+file identities and
 bytes, then uses the existing no-replace/fsync writer. Existing files cannot be
 adopted, even with identical bytes. Idempotent retries retain original retainedAt
 and package bytes while repeating current Manager/local readiness checks. An
