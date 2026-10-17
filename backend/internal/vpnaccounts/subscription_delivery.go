@@ -37,6 +37,20 @@ type subscriptionDeliveryPayload struct {
 // faithful connection representation for the selected/detected client.
 // RG-115B additionally exposes explicit native routing artifacts through the
 // same token boundary; Routing Profiles remain the only routing-policy source.
+// subscriptionDeliveryFailureCode classifies a public subscription failure
+// without exposing client credentials, token material or infrastructure details.
+// The public response stays generic; operators can use the reason_code field
+// in Manager logs to identify the next safe recovery action.
+func subscriptionDeliveryFailureCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	if status, _, known := clientConnectionStatus(err); known {
+		return status
+	}
+	return "internal_error"
+}
+
 func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) {
 	setSubscriptionDeliverySecurityHeaders(w)
 
@@ -86,7 +100,7 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		h.logger.Warn("render client subscription failed", "vpn_account_id", token.VPNAccountID, "error", err)
+		h.logger.Warn("render client subscription failed", "vpn_account_id", token.VPNAccountID, "reason_code", subscriptionDeliveryFailureCode(err), "error", err)
 		http.Error(w, "Subscription configuration is temporarily unavailable.", http.StatusServiceUnavailable)
 		return
 	}
@@ -115,14 +129,14 @@ func (h *Handler) GetClientSubscription(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err != nil {
-		h.logger.Warn("render client subscription payload failed", "vpn_account_id", token.VPNAccountID, "client_type", clientType, "delivery_format", selectedFormat, "error", err)
+		h.logger.Warn("render client subscription payload failed", "vpn_account_id", token.VPNAccountID, "client_type", clientType, "delivery_format", selectedFormat, "reason_code", "payload_render_failed", "error", err)
 		http.Error(w, "Subscription configuration is temporarily unavailable.", http.StatusServiceUnavailable)
 		return
 	}
 
 	clientHeaders, err := clientSubscriptionHeaders(clientType, connection.Protocol, profile)
 	if err != nil {
-		h.logger.Warn("render client subscription headers failed", "vpn_account_id", token.VPNAccountID, "client_type", clientType, "error", err)
+		h.logger.Warn("render client subscription headers failed", "vpn_account_id", token.VPNAccountID, "client_type", clientType, "reason_code", "headers_render_failed", "error", err)
 		http.Error(w, "Subscription configuration is temporarily unavailable.", http.StatusServiceUnavailable)
 		return
 	}

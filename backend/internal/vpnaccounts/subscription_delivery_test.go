@@ -2,10 +2,37 @@ package vpnaccounts
 
 import (
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// The public endpoint intentionally returns a generic 503. Manager logs must
+// distinguish incomplete deployment from unexpected failures without leaking
+// access material or turning an unapplied account into a ready subscription.
+func TestSubscriptionDeliveryFailureCode(t *testing.T) {
+	testCases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"none", nil, ""},
+		{"unassigned", ErrVPNAccountUnassigned, ClientConnectionStatusUnassigned},
+		{"first apply", fmt.Errorf("%w: %w", ErrClientConnectionUnavailable, ErrNodeConfigNotApplied), ClientConnectionStatusAwaitingFirstApply},
+		{"account protocol pending", fmt.Errorf("%w: %w", ErrClientConnectionUnavailable, accountProtocolNotDeployedError{protocol: ClientProtocolVLESS}), ClientConnectionStatusAwaitingApply},
+		{"other connection failure", fmt.Errorf("%w: missing public key", ErrClientConnectionUnavailable), ClientConnectionStatusUnavailable},
+		{"internal failure", errors.New("database unavailable"), "internal_error"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := subscriptionDeliveryFailureCode(tc.err); got != tc.want {
+				t.Fatalf("reason code = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestRenderSubscriptionDeliveryAutoUsesBase64ShareLinkSubscription(t *testing.T) {
 	connection := ClientConnectionResponse{
