@@ -104,8 +104,102 @@ explicitly refuse unsupported modes, rather than overclaim isolation.
 
 ## Rollout boundaries
 
-All of this ADR is **design**, not an executable revocation endpoint.
+The runtime operation in this ADR remains **design**, not an executable revocation endpoint.
+Internal candidate preparation does not authorize an apply.
 No production migrations, Agent restarts, token rotations, FI tests or
 Manager updates are approved by this document. The first PR improves
 only the warnings/status UX; follow-on backend work requires review
 and isolated end-to-end validation.
+
+## Code audit and first implementation slice — 2026-10-09
+
+The first slice is an **internal, side-effect-free candidate planner** in
+`backend/internal/configs/credential_removal.go`. It is not exposed by an HTTP
+route, does not persist a version/job, and cannot change account status, links,
+or a running node. The complete operation remains a design gate.
+
+### Confirmed existing contracts
+
+- `configs.Service.render` resolves desired account protocols and reads current
+  saved server/accounts/routing before creating a version. It must not be used
+  as the revocation baseline: unrelated pending edits could be deployed. Even
+  transfer `checkBaseline` calls this mutating render and can seed WireGuard
+  credentials via `ResolveServerAccountProtocols`.
+- `configs.Service.Apply` checks the stored envelope hash/validation and queues
+  a job; it does not establish that an arbitrary old version is the currently
+  running node baseline. The dedicated operation must pin and reserve it.
+- `agents.Repository.CompleteConfigTask` authenticates the job's assigned Agent
+  and accepts completion only while `in_progress`. Successful completion drives
+  the applied-version/client-settings triggers (migrations 000155/000157).
+  Their `applied` status alone is not a verified revocation result: the existing
+  Agent also reports success when service control is disabled.
+- `agent/internal/heartbeat/multi_config_apply.go` stages and validates selected
+  runtimes, replaces their files, restarts services, and checks active/enabled
+  state and listeners. Its success report carries component/listener evidence
+  but no measured active-file digest or process-generation evidence. The stager
+  copies `task.ConfigHash` into its result; this is not a measured file hash.
+- The adapter selects **all configured runtimes**, so a generic apply may
+  restart Hysteria/WireGuard/MTProto too. VLESS and Shadowsocks share sing-box.
+  An unchanged authenticator does not imply an uninterrupted existing session:
+  restarting their common process can disconnect unrelated users as well.
+- Current rollback can restore the previous runtime files and restart them.
+  This can restore the revoked UUID; a failed revocation must never become
+  `confirmed` and must retain the account's blocked subscription lifecycle.
+- Active transfer reservations already guard node jobs, account/setting edits,
+  Manager updates, and protected proof (migration 000159). New revocation
+  reservations must compose with these guards. Terminal config-job cleanup
+  currently deletes successful jobs: durable revocation proof needs explicit
+  retention/protection beyond transient job history.
+
+### Candidate planner contract
+
+`PrepareVLESSRemoval` takes a baseline and an operation-resolved target:
+server ID, account ID, expected version ID/hash and UUID. It requires an applied
+timestamp, a matching envelope hash and server identity, an explicit VPN/Hybrid
+role, an Agent identity, and a supported Reality listener. It checks a bijection
+between account metadata and the actual VLESS `users` list; duplicate/shared
+UUIDs (including case variants), unknown users, missing users, or mismatched
+stable names fail closed. It rejects a multi-protocol target, shared MTProto,
+custom/multiple VLESS listeners, and unrepresentable envelope fields.
+
+It copies the baseline, removing exactly the selected account metadata and
+authenticator. All other listener options, identities, ports, routing, protocol
+payloads, Agent/server identity and render timestamp are preserved. No saved
+settings are read. `ValidateVLESSRemovalDelta` rejects any additional change.
+The candidate is excluded from JSON serialization and errors contain no secrets.
+
+Last-user preparation keeps the same Reality listener with an empty `users`
+list, without borrowing `transferEmptyUsers` authorization. The ordinary apply
+safety gate still rejects that candidate. Supporting an authorized deny-all
+operation requires its own durable authority and verification in the next slice.
+
+These checks prove **only the intended configuration delta**. They do not prove
+Agent freshness, current on-node state, absence of pending edits, exclusive
+operation ownership, applied membership, or existing-session termination.
+
+### Remaining execution gates
+
+1. Persist actor/target, expected active version, exact candidate and job, safe
+   error codes and state transitions. Block conflicts (transfer, activation,
+   deletion, assignment, config/service/update/maintenance operations) using
+   database reservations before status changes or any Agent job. Revalidate
+   current baseline and account identity inside the reserving transaction.
+2. Check unrelated saved edits with a read-only comparison, including disabled
+   accounts and protocol/routing preferences; a status-only change to the target
+   must not make revocation of an already suspended account impossible.
+3. Add an Agent contract for a **scoped sing-box apply** with expected baseline
+   digest, candidate digest, measured active-file digest, job/version binding,
+   process/restart and listener results. Do not restart independent runtimes.
+   Explicitly state and acknowledge any shared-process session interruption.
+4. Verify the exact applied delta and measured evidence; keep pending/failed/
+   recovery-required states on missing or inconsistent proof. Define bounded
+   rollback, idempotent lost-ack recovery, restart persistence and proof
+   retention before offering a confirmation badge.
+5. Exercise isolated Manager/PostgreSQL/Agent failures, concurrent operations,
+   restart/lost acknowledgment, stale/wrong versions and already-open sessions.
+   Add operator confirmation and truthful UI only around that proven lifecycle.
+
+The standalone sing-box test for this slice exercises cached UUIDs against
+locally prepared baseline/removal/zero-user JSON using only loopback services.
+It models a whole-process restart explicitly. It is not a Manager/Agent
+operation test and does not establish selective session termination.
