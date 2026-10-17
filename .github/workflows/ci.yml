@@ -112,6 +112,9 @@ jobs:
       - name: Test read-only prepared submission crash reconciliation
         run: go test -race ./internal/tasks ./internal/client -run '^TestPreparedSubmissionHistory' -count=1 -timeout=120s -v
 
+      - name: Test original live owner release readiness revalidation
+        run: go test -race ./internal/tasks ./internal/client -run '^TestReleaseReadiness' -count=1 -timeout=120s -v
+
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"

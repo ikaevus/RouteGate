@@ -317,10 +317,31 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		}
 	}
 
-	if _, err := adapter.Restart(ctx); err != nil {
-		t.Fatal(err)
+	restartRuntime := func() error {
+		if _, err := adapter.Restart(ctx); err != nil {
+			return err
+		}
+		_, err := adapter.CheckHealth(ctx, e.activePath)
+		return err
 	}
-	if _, err := adapter.CheckHealth(ctx, e.activePath); err != nil {
+	if submitted {
+		before := terminalHistoryTree(t, e.receiptDir)
+		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
+			if _, err := g.AcknowledgedProof(ctx); err != nil {
+				t.Fatal("real acknowledged readiness", err)
+			}
+			if err := restartRuntime(); err != nil {
+				t.Fatal(err)
+			}
+			if p, err := g.AcknowledgedProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryPreparedReleaseProof{}) {
+				t.Fatal("acknowledged readiness accepted restarted process", err)
+			}
+			return ErrRuntimeMutationBlocked
+		}); err != ErrRuntimeMutationBlocked {
+			t.Fatal("restart readiness did not fail closed", err)
+		}
+		assertTerminalHistoryTree(t, e.receiptDir, before)
+	} else if err := restartRuntime(); err != nil {
 		t.Fatal(err)
 	}
 	if submitted {
