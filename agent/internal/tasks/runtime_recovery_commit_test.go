@@ -447,12 +447,24 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 								if strings.HasSuffix(mode, "pin") {
 									return nil
 								}
-								return g.recordReceipt(context.Background(), receiptForPreparedProof(p), func() error {
+								if e := g.recordReceipt(context.Background(), receiptForPreparedProof(p), func() error {
 									if strings.HasSuffix(mode, "ack_cut") {
 										return cut()
 									}
 									return nil
-								})
+								}); e != nil {
+									return e
+								}
+								if strings.Contains(mode, "retention") {
+									_, e = g.retainHistory(context.Background(), func() error {
+										if strings.HasSuffix(mode, "retention_cut") {
+											return cut()
+										}
+										return nil
+									})
+									return e
+								}
+								return nil
 							}) != nil {
 								os.Exit(15)
 							}

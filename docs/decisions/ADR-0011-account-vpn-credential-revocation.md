@@ -1839,3 +1839,61 @@ transport, including fresh read nonces with unchanged authority, denial after
 storage confirmation, malformed replies, changed authority and runtime drift
 or cancellation at each HTTP boundary. Production, real users, FI diagnostics,
 logos, merge/deploy are outside this slice; #545 remains open and E2E unfinished.
+
+### Thirty-eighth slice: immutable full release history retention
+
+Before any future barrier deletion, retain the complete audit chain: eight
+current root files (including terminal/prepared pins, receipts and release
+intent) plus every file of the validated retired archive. Do not copy or move
+the stable runtime.lock. Retain canonical metadata, exact original bytes and
+SHA256 digests with fixed root/archive scopes and ordered safe names in one
+private recovery-fence-release-retention.json, bounded at2MiB. The package can
+contain sensitive private receipt data and must never be sent over HTTP or
+included in errors/logs. It is a retained backup, not a release/cleanup record,
+new grant or permission to delete anything.
+
+RetainRecoveryFenceReleaseHistory reuses the previous slice's authenticated
+identity, prepared storage and original authorization reads. Under that same
+original owner mutex/flock and deadline, its scoped guard pins every source
+identity before the first authenticated HTTP read. After the fresh reads it
+derives the package from exact local state, reobserves runtime, verifies source
+file identities and
+bytes, then uses the existing no-replace/fsync writer. Existing files cannot be
+adopted, even with identical bytes. Idempotent retries retain original retainedAt
+and package bytes while repeating current Manager/local readiness checks. An
+uncertain publication or local post-write validation failure returns zero, poisons the live owner and
+leaves the package and all original barriers/files in place.
+retainedAt is the pre-publication capture time, not an attestation of when fsync
+finished or evidence that release authority survived a stalled write.
+
+Only this owner's exact published retention bytes extend the strict inventory
+from10 to11 root entries. Require both prepared pin and acknowledgement before
+allowing that additional entry. Snapshot the package inode/hash and all prior
+root files; retain source inode/byte checks across later live reads, including
+archived files. Paired absent inventory slots stay absent, preserving old
+historical phases. The retention file independently blocks legacy mutation,
+completion/result save/replay and new recovery owners even when orphaned,
+empty or malformed. Nothing removes the old legacy marker.
+
+The dedicated prepared-submission historical reader optionally validates the
+entire canonical package against the complete retained chain and exact current
+binding, with prepared observedAt <= retainedAt < original authority expiry.
+Hold all source identities/bytes and the original admission flock across exact
+Manager storage readback. Missing current runtime/expired original authority
+does not create a new owner or renew authority. Malformed, unsafe, incomplete,
+reordered or replaced history fails closed. There is no partial-cleanup resume,
+file restoration, receipt repair or deletion in this slice.
+
+Tests cover private complete retention, unchanged repeated bytes/time, source
+and package substitution, publication uncertainty, orphan barriers, historical
+refusals and original readers. A real Client+live filesystem-owner fixture checks
+HTTP/flock boundaries and no package on denial/runtime drift/cancellation; its
+Manager and runtime observer are test doubles. Extend existing exit/SIGKILL
+cuts to cover fsync before memory adoption and successful publication. In the
+disposable systemd/Reality scenario, retain full history before an external
+restart, then reject fresh acknowledged readiness and preserve the package.
+Those Manager receipts remain synthetic; coordinated release/revocation E2E
+is unfinished. No new route, migration, Runner/operator/UI caller, reservation
+completion, runtime apply, actual fence release, production access/change,
+real-user revocation, FI diagnostics, logos, merge or deploy. Schema stays000169;
+#545 remains open.

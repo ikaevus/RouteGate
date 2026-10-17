@@ -13,7 +13,7 @@ const runtimeRecoveryPreparedSubmissionFile = "recovery-prepared-release-submiss
 const runtimeRecoveryPreparedAcknowledgementFile = "recovery-prepared-release-acknowledgement.json"
 
 func preparedReleaseStateAbsent(dir string) bool {
-	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile))
+	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseRetentionFile))
 }
 func preparedReleaseReceiptMatches(r RuntimeRecoveryPreparedReleaseReceipt, p RuntimeRecoveryPreparedReleaseProof, wire []byte) bool {
 	return r.SchemaVersion == 1 && r.Recorded && r.OperationID == p.OperationID && r.ReleaseIntentHash == p.ReleaseIntentHash && r.ProofHash == markerDigest(wire) && r.RequestHash == r.ProofHash
@@ -30,6 +30,9 @@ func (m *RuntimeRecoveryFinalization) preparedReleaseProofLocked(ctx context.Con
 		return RuntimeRecoveryPreparedReleaseProof{}, ErrRuntimeMutationBlocked
 	}
 	if m.preparedUnchanged != nil && !m.preparedUnchanged() {
+		return deny()
+	}
+	if m.retentionUnchanged != nil && !m.retentionUnchanged() {
 		return deny()
 	}
 	p, e := m.planFenceReleaseLocked(ctx, m.binding, m.authorizationHash)
@@ -51,18 +54,29 @@ func (m *RuntimeRecoveryFinalization) preparedReleaseProofLocked(ctx context.Con
 	if m.preparedUnchanged != nil && !m.preparedUnchanged() {
 		return deny()
 	}
+	if m.releaseHistoryRetention != nil {
+		if _, e := validateReleaseHistoryRetention(m.releaseHistoryRetention, m.dir, m.archive, m.binding, proof, m.authorization.ExpiresAt); e != nil {
+			return deny()
+		}
+	}
+	if m.retentionUnchanged != nil && !m.retentionUnchanged() {
+		return deny()
+	}
+	if m.releaseHistoryRetention != nil && !m.terminalAuthorityCurrent(ctx) {
+		return deny()
+	}
 	return proof, nil
 }
 
 type runtimeRecoveryPreparedInventory struct {
-	files         [8]releasePlanFileSnapshot
+	files         [9]releasePlanFileSnapshot
 	root, archive os.FileInfo
 }
 
 // Snapshot all owned files/inodes, including confirmation files, across HTTP.
 // Only successful no-replace publication may advance this private snapshot.
 func (m *RuntimeRecoveryFinalization) pinPreparedInventory() error {
-	inventory := fenceReleaseInventory(m.dir, m.archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement)
+	inventory := fenceReleaseInventory(m.dir, m.archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement, m.releaseHistoryRetention)
 	before, root, arch, e := inventory()
 	if e != nil {
 		return ErrRuntimeMutationBlocked

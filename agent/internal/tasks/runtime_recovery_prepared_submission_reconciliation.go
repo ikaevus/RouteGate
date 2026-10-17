@@ -10,8 +10,9 @@ import (
 // acknowledgement file; a Manager readback never repairs that file or resumes
 // the original owner. This value grants no runtime mutation authority.
 type RuntimeRecoveryPreparedSubmissionHistory struct {
-	Proof        RuntimeRecoveryPreparedReleaseProof
-	LocalReceipt RuntimeRecoveryPreparedReleaseReceipt
+	Proof         RuntimeRecoveryPreparedReleaseProof
+	LocalReceipt  RuntimeRecoveryPreparedReleaseReceipt
+	RetentionHash string
 }
 
 // Read the exact pin, optional acknowledgement and complete retained history
@@ -40,7 +41,17 @@ func WithHistoricalRecoveryPreparedSubmission(ctx context.Context, dir string, b
 			return ErrRuntimeMutationBlocked
 		}
 	}
-	return withHistoricalRecoveryPreparedReleaseLocked(ctx, dir, b, lock, [][]byte{pin, ack}, func(h RuntimeRecoveryPreparedReleaseHistory) error {
+	confirmations := [][]byte{pin, ack}
+	var retention []byte
+	retentionPath := filepath.Join(dir, runtimeRecoveryReleaseRetentionFile)
+	if !runtimeMarkerAbsent(retentionPath) {
+		retention, e = readTerminalConfirmationFile(retentionPath, runtimeRecoveryReleaseRetentionLimit)
+		if e != nil || ack == nil {
+			return ErrRuntimeMutationBlocked
+		}
+		confirmations = append(confirmations, retention)
+	}
+	return withHistoricalRecoveryPreparedReleaseLocked(ctx, dir, b, lock, confirmations, func(h RuntimeRecoveryPreparedReleaseHistory) error {
 		terminalWire, e := json.Marshal(h.TerminalProof)
 		if e != nil {
 			return ErrRuntimeMutationBlocked
@@ -55,6 +66,22 @@ func WithHistoricalRecoveryPreparedSubmission(ctx context.Context, dir string, b
 		if e != nil || proof != expected || proof.ObservedAt.IsZero() || proof.ObservedAt.Before(h.PreparedAt) || !proof.ObservedAt.Before(h.AuthorizationExpiresAt) {
 			return ErrRuntimeMutationBlocked
 		}
-		return fn(RuntimeRecoveryPreparedSubmissionHistory{proof, receipt})
+		out := RuntimeRecoveryPreparedSubmissionHistory{Proof: proof, LocalReceipt: receipt}
+		var unchanged func() bool
+		if retention != nil {
+			archive, e := retirementArchivePath(dir, proof.OperationID)
+			if e != nil {
+				return ErrRuntimeMutationBlocked
+			}
+			unchanged, e = validateReleaseHistoryRetention(retention, dir, archive, b, proof, h.AuthorizationExpiresAt)
+			if e != nil {
+				return ErrRuntimeMutationBlocked
+			}
+			out.RetentionHash = markerDigest(retention)
+		}
+		if fn(out) != nil || (unchanged != nil && !unchanged()) {
+			return ErrRuntimeMutationBlocked
+		}
+		return nil
 	})
 }

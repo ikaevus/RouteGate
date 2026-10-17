@@ -330,6 +330,9 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
 				t.Fatal("real acknowledged readiness", err)
 			}
+			if hash, err := g.RetainHistory(ctx); err != nil || hash == "" {
+				t.Fatal("real full history retention", err)
+			}
 			if err := restartRuntime(); err != nil {
 				t.Fatal(err)
 			}
@@ -340,6 +343,11 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		}); err != ErrRuntimeMutationBlocked {
 			t.Fatal("restart readiness did not fail closed", err)
 		}
+		retained, err := os.ReadFile(filepath.Join(e.receiptDir, runtimeRecoveryReleaseRetentionFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[runtimeRecoveryReleaseRetentionFile] = retained
 		assertTerminalHistoryTree(t, e.receiptDir, before)
 	} else if err := restartRuntime(); err != nil {
 		t.Fatal(err)

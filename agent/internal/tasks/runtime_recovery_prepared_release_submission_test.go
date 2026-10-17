@@ -24,7 +24,7 @@ func preparedSubmissionFixture(t *testing.T) (CredentialRemovalExecutor, *remova
 }
 
 func TestPreparedReleaseOrphanLegacyGuards(t *testing.T) {
-	for _, name := range []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile} {
+	for _, name := range []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile, runtimeRecoveryReleaseRetentionFile} {
 		for _, data := range []string{"", "{}", "malformed"} {
 			t.Run(data, func(t *testing.T) {
 				e, task, a, _ := removalExecutorFixture(t)

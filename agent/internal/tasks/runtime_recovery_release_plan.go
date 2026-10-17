@@ -60,7 +60,7 @@ func (m *RuntimeRecoveryFinalization) planFenceReleaseLocked(ctx context.Context
 	if e != nil || archive != m.archive {
 		return deny()
 	}
-	inventory := fenceReleaseInventory(m.dir, archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement)
+	inventory := fenceReleaseInventory(m.dir, archive, m.lock, m.releaseIntent, m.preparedSubmission, m.preparedAcknowledgement, m.releaseHistoryRetention)
 	before, root, arch, e := inventory()
 	if e != nil {
 		return deny()
@@ -94,14 +94,14 @@ func (m *RuntimeRecoveryFinalization) planFenceReleaseLocked(ctx context.Context
 	return p, nil
 }
 
-func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []byte, confirmations ...[]byte) func() ([8]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []byte, confirmations ...[]byte) func() ([9]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
 	names := [5]string{runtimeRecoveryRetirementFile, runtimeRecoveryTerminalFile, runtimeRecoveryTerminalSubmissionFile, runtimeRecoveryTerminalAcknowledgementFile, "mutation-inflight.json"}
 	limits := [5]int64{8192, 8192, 8192, 4096, 16384}
 	// Unlike historical readback, readiness requires the exact final root set:
 	// no redundant active receipt, partial cleanup, temp file or foreign archive.
-	return func() ([8]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
-		var files [8]releasePlanFileSnapshot
-		fail := func() ([8]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+	return func() ([9]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
+		var files [9]releasePlanFileSnapshot
+		fail := func() ([9]releasePlanFileSnapshot, os.FileInfo, os.FileInfo, error) {
 			return files, nil, nil, ErrRuntimeMutationBlocked
 		}
 		entries, e := os.ReadDir(dir)
@@ -109,7 +109,9 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 		if releaseIntent != nil {
 			expectedCount++
 		}
-		if len(confirmations) != 0 && len(confirmations) != 2 {
+		// Third slot is only the caller's exact owned retention snapshot. Older
+		// entry points omit it and still reject any additional root file.
+		if len(confirmations) != 0 && len(confirmations) != 2 && len(confirmations) != 3 {
 			return fail()
 		}
 		for _, data := range confirmations {
@@ -117,10 +119,13 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 				expectedCount++
 			}
 		}
-		if len(confirmations) == 2 && confirmations[1] != nil && confirmations[0] == nil {
+		if len(confirmations) >= 2 && confirmations[1] != nil && confirmations[0] == nil {
 			return fail()
 		}
-		if len(confirmations) == 2 && confirmations[0] != nil && releaseIntent == nil {
+		if len(confirmations) >= 2 && confirmations[0] != nil && releaseIntent == nil {
+			return fail()
+		}
+		if len(confirmations) == 3 && confirmations[2] != nil && (confirmations[0] == nil || confirmations[1] == nil) {
 			return fail()
 		}
 		if e != nil || len(entries) != expectedCount {
@@ -132,7 +137,7 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 		}
 		for i, data := range confirmations {
 			if data != nil {
-				allowed[[]string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile}[i]] = true
+				allowed[[]string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile, runtimeRecoveryReleaseRetentionFile}[i]] = true
 			}
 		}
 		for _, name := range names {
@@ -193,10 +198,14 @@ func fenceReleaseInventory(dir, archive string, lock *os.File, releaseIntent []b
 			if pinned == nil {
 				continue
 			}
-			name := []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile}[i]
+			name := []string{runtimeRecoveryPreparedSubmissionFile, runtimeRecoveryPreparedAcknowledgementFile, runtimeRecoveryReleaseRetentionFile}[i]
 			path := filepath.Join(dir, name)
 			info, e := os.Lstat(path)
-			data, readErr := readTerminalConfirmationFile(path, 8192)
+			limit := int64(8192)
+			if i == 2 {
+				limit = runtimeRecoveryReleaseRetentionLimit
+			}
+			data, readErr := readTerminalConfirmationFile(path, limit)
 			after, afterErr := os.Lstat(path)
 			if e != nil || readErr != nil || afterErr != nil || !os.SameFile(info, after) || !bytes.Equal(data, pinned) {
 				return fail()
