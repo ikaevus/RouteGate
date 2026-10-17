@@ -64,6 +64,9 @@ jobs:
       - name: Verify prepared fence release commitments and historical readback
         run: go test ./internal/db -run '^TestRecoveryPreparedRelease' -count=1 -timeout=120s -v
 
+      - name: Verify immutable recovery retention commitments and historical readback
+        run: go test ./internal/db -run '^TestRecoveryRetention' -count=1 -timeout=120s -v
+
       - name: Run tests
         run: go test ./...
 
