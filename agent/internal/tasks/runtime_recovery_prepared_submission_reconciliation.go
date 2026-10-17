@@ -3,7 +3,9 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"time"
 )
 
 // Historical commitments only. A zero LocalReceipt means the crash left no
@@ -27,6 +29,15 @@ func WithHistoricalRecoveryPreparedSubmission(ctx context.Context, dir string, b
 		return ErrRuntimeMutationBlocked
 	}
 	defer lock.Close()
+	return withHistoricalRecoveryPreparedSubmissionLocked(ctx, dir, b, lock, nil, func(h RuntimeRecoveryPreparedSubmissionHistory, _, _ time.Time) error { return fn(h) })
+}
+
+// Only the dedicated retention reader supplies the final proof/receipt pair.
+// Older public readers keep their exact pre-retention-submission inventory.
+func withHistoricalRecoveryPreparedSubmissionLocked(ctx context.Context, dir string, b RuntimeRecoveryGrantBinding, lock *os.File, extra [][]byte, fn func(RuntimeRecoveryPreparedSubmissionHistory, time.Time, time.Time) error) error {
+	if len(extra) != 0 && len(extra) != 2 {
+		return ErrRuntimeMutationBlocked
+	}
 	pin, e := readTerminalConfirmationFile(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile), 8192)
 	var proof RuntimeRecoveryPreparedReleaseProof
 	if e != nil || !exactHistoricalJSON(pin, &proof) {
@@ -51,6 +62,12 @@ func WithHistoricalRecoveryPreparedSubmission(ctx context.Context, dir string, b
 		}
 		confirmations = append(confirmations, retention)
 	}
+	if len(extra) != 0 {
+		if retention == nil || extra[0] == nil {
+			return ErrRuntimeMutationBlocked
+		}
+		confirmations = append(confirmations, extra...)
+	}
 	return withHistoricalRecoveryPreparedReleaseLocked(ctx, dir, b, lock, confirmations, func(h RuntimeRecoveryPreparedReleaseHistory) error {
 		terminalWire, e := json.Marshal(h.TerminalProof)
 		if e != nil {
@@ -68,6 +85,7 @@ func WithHistoricalRecoveryPreparedSubmission(ctx context.Context, dir string, b
 		}
 		out := RuntimeRecoveryPreparedSubmissionHistory{Proof: proof, LocalReceipt: receipt}
 		var unchanged func() bool
+		var captured time.Time
 		if retention != nil {
 			archive, e := retirementArchivePath(dir, proof.OperationID)
 			if e != nil {
@@ -78,8 +96,13 @@ func WithHistoricalRecoveryPreparedSubmission(ctx context.Context, dir string, b
 				return ErrRuntimeMutationBlocked
 			}
 			out.RetentionHash = markerDigest(retention)
+			var retained runtimeRecoveryReleaseRetention
+			if !exactHistoricalJSON(retention, &retained) {
+				return ErrRuntimeMutationBlocked
+			}
+			captured = retained.RetainedAt
 		}
-		if fn(out) != nil || (unchanged != nil && !unchanged()) {
+		if fn(out, captured, h.AuthorizationExpiresAt) != nil || (unchanged != nil && !unchanged()) {
 			return ErrRuntimeMutationBlocked
 		}
 		return nil

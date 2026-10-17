@@ -435,7 +435,7 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 									return nil
 								}
 								checkpoint := func() error {
-									if strings.HasSuffix(mode, "pin_cut") {
+									if mode == "terminal_confirm_release_intent_submit_pin_cut" {
 										return cut()
 									}
 									return nil
@@ -444,11 +444,11 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 								if e != nil {
 									return e
 								}
-								if strings.HasSuffix(mode, "pin") {
+								if mode == "terminal_confirm_release_intent_submit_pin" {
 									return nil
 								}
 								if e := g.recordReceipt(context.Background(), receiptForPreparedProof(p), func() error {
-									if strings.HasSuffix(mode, "ack_cut") {
+									if mode == "terminal_confirm_release_intent_submit_ack_cut" {
 										return cut()
 									}
 									return nil
@@ -462,7 +462,24 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 										}
 										return nil
 									})
-									return e
+									if e != nil || !strings.Contains(mode, "retention_submit") {
+										return e
+									}
+									proof, e := g.pinRetentionProof(context.Background(), func() error {
+										if strings.HasSuffix(mode, "retention_submit_pin_cut") {
+											return cut()
+										}
+										return nil
+									})
+									if e != nil || strings.HasSuffix(mode, "retention_submit_pin") {
+										return e
+									}
+									return g.recordRetentionReceipt(context.Background(), receiptForRetentionProof(proof), func() error {
+										if strings.HasSuffix(mode, "retention_submit_ack_cut") {
+											return cut()
+										}
+										return nil
+									})
 								}
 								return nil
 							}) != nil {

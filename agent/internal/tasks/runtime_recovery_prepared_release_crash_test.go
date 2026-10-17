@@ -12,7 +12,7 @@ import (
 )
 
 func TestPreparedReleaseCrash(t *testing.T) {
-	for _, mode := range []string{"terminal_confirm_release_intent_submit_pin_cut", "terminal_confirm_release_intent_submit_pin", "terminal_confirm_release_intent_submit_ack_cut", "terminal_confirm_release_intent_submit_ack", "terminal_confirm_release_intent_submit_ack_retention_cut", "terminal_confirm_release_intent_submit_ack_retention"} {
+	for _, mode := range []string{"terminal_confirm_release_intent_submit_pin_cut", "terminal_confirm_release_intent_submit_pin", "terminal_confirm_release_intent_submit_ack_cut", "terminal_confirm_release_intent_submit_ack", "terminal_confirm_release_intent_submit_ack_retention_cut", "terminal_confirm_release_intent_submit_ack_retention", "terminal_confirm_release_intent_submit_ack_retention_submit_pin_cut", "terminal_confirm_release_intent_submit_ack_retention_submit_pin", "terminal_confirm_release_intent_submit_ack_retention_submit_ack_cut", "terminal_confirm_release_intent_submit_ack_retention_submit_ack"} {
 		for _, kill := range []bool{false, true} {
 			t.Run(mode+map[bool]string{false: "/exit", true: "/SIGKILL"}[kill], func(t *testing.T) {
 				e, a, b, g, grantWire := recoveryCommitFixture(t)
@@ -70,7 +70,22 @@ func TestPreparedReleaseCrash(t *testing.T) {
 				}
 
 				before := terminalHistoryTree(t, e.receiptDir)
-				if err := WithHistoricalRecoveryPreparedSubmission(ctx, e.receiptDir, b, func(h RuntimeRecoveryPreparedSubmissionHistory) error {
+				if strings.Contains(mode, "retention_submit") {
+					pin, err := readTerminalConfirmationFile(filepath.Join(e.receiptDir, runtimeRecoveryRetentionSubmissionFile), 8192)
+					var p RuntimeRecoveryRetentionProof
+					if err != nil || !exactHistoricalJSON(pin, &p) {
+						t.Fatal("lost retention submission", err)
+					}
+					if err := WithHistoricalRecoveryRetention(ctx, e.receiptDir, b, func(h RuntimeRecoveryRetentionHistory) error {
+						if h.Proof != p || (h.LocalReceipt.SchemaVersion != 0) != strings.Contains(mode, "retention_submit_ack") {
+							t.Error("crash changed retention phase")
+						}
+						return nil
+					}); err != nil {
+						t.Fatal("retention crash history unavailable", err)
+					}
+				}
+				err := WithHistoricalRecoveryPreparedSubmission(ctx, e.receiptDir, b, func(h RuntimeRecoveryPreparedSubmissionHistory) error {
 					if h.Proof != proof || (h.LocalReceipt.SchemaVersion != 0) != strings.Contains(mode, "ack") {
 						t.Error("crash history changed proof or acknowledgement phase")
 					}
@@ -78,7 +93,12 @@ func TestPreparedReleaseCrash(t *testing.T) {
 						t.Error("crash changed retention phase")
 					}
 					return nil
-				}); err != nil {
+				})
+				if strings.Contains(mode, "retention_submit") {
+					if err != ErrRuntimeMutationBlocked {
+						t.Fatal("old reader adopted retention submission", err)
+					}
+				} else if err != nil {
 					t.Fatal("crash history unreadable", err)
 				}
 				assertTerminalHistoryTree(t, e.receiptDir, before)
