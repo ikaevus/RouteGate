@@ -61,6 +61,8 @@ type RuntimeRecoveryFinalization struct {
 	retentionSubmission     []byte
 	retentionReceipt        []byte
 	retentionFrozen         RuntimeRecoveryRetentionProof
+	historyArchive          []byte
+	historyArchiveUnchanged func() bool
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time

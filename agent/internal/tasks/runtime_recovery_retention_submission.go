@@ -75,6 +75,20 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) RetentionProof(ctx context.Context
 	return g.state.owner.retentionProofLocked(ctx)
 }
 
+// A storage acknowledgement owned by this original live owner, never a grant.
+func (g *RuntimeRecoveryPreparedReleaseGuard) AcknowledgedRetentionProof(ctx context.Context) (RuntimeRecoveryRetentionProof, error) {
+	if g == nil || g.state == nil {
+		return RuntimeRecoveryRetentionProof{}, ErrRuntimeMutationBlocked
+	}
+	g.state.mu.Lock()
+	defer g.state.mu.Unlock()
+	m := g.state.owner
+	if m == nil || m.retentionSubmission == nil || m.retentionReceipt == nil {
+		return RuntimeRecoveryRetentionProof{}, ErrRuntimeMutationBlocked
+	}
+	return m.retentionProofLocked(ctx)
+}
+
 func (g *RuntimeRecoveryPreparedReleaseGuard) PinRetentionProof(ctx context.Context) (RuntimeRecoveryRetentionProof, error) {
 	return g.pinRetentionProof(ctx, nil)
 }

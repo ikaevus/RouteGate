@@ -29,6 +29,9 @@ func (m *RuntimeRecoveryFinalization) preparedReleaseProofLocked(ctx context.Con
 	if m.releaseIntent == nil {
 		return RuntimeRecoveryPreparedReleaseProof{}, ErrRuntimeMutationBlocked
 	}
+	if m.historyArchiveUnchanged != nil && !m.historyArchiveUnchanged() {
+		return deny()
+	}
 	if m.preparedUnchanged != nil && !m.preparedUnchanged() {
 		return deny()
 	}
@@ -63,6 +66,9 @@ func (m *RuntimeRecoveryFinalization) preparedReleaseProofLocked(ctx context.Con
 		return deny()
 	}
 	if m.releaseHistoryRetention != nil && !m.terminalAuthorityCurrent(ctx) {
+		return deny()
+	}
+	if m.historyArchiveUnchanged != nil && !m.historyArchiveUnchanged() {
 		return deny()
 	}
 	return proof, nil

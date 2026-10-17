@@ -124,6 +124,12 @@ jobs:
       - name: Test durable retention evidence submission and crash readback
         run: go test -race ./internal/tasks ./internal/client -run '^TestRetentionSubmission' -count=1 -timeout=120s -v
 
+      - name: Test independent recovery history archive
+        run: go test -race ./internal/tasks ./internal/client -run '^TestRecoveryHistoryArchive(Independent|PublicationFailures|ReadRefusals|Authority|ClientOwner)$' -count=1 -timeout=120s -v
+
+      - name: Test independent recovery history crash publication
+        run: go test -race ./internal/tasks -run '^TestRecoveryHistoryArchiveCrash$' -count=1 -timeout=120s -v
+
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"
