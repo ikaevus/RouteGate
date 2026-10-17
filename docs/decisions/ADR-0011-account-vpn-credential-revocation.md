@@ -1756,3 +1756,46 @@ configuration apply, actual credential revocation, production access/change,
 real-user revocation, merge/deploy, FI work or logo change. Historical prepared
 submission reconciliation and coordinated durable release remain future work;
 #545 stays open.
+
+### Thirty-sixth slice: read-only prepared submission crash reconciliation
+
+The dedicated historical reader can inspect the prepared proof pin and optional
+durable acknowledgement left by the live submission slice. The older prepared
+reader retains its exact pre-submission inventory and rejects this new phase.
+Both readers reuse the same full-chain validation under the original admission
+flock; no owner or runtime mutation authority is reconstructed.
+
+WithHistoricalRecoveryPreparedSubmission requires the exact private canonical
+proof, prepared intent, terminal pin/receipt and complete archived finalization
+chain with the authenticated current Manager/Agent/server/credential-generation
+binding. Reconstruct every proof field from retained history except its frozen
+observedAt; require preparedAt <= observedAt < original authorization expiry.
+If a local acknowledgement exists, it must be canonical and match all proof,
+intent and request hashes. A malformed, unsafe, orphan or foreign file fails
+closed. Snapshot exact root entry set, root/archive identity and retained root
+file inodes/digests through the callback, including presence/absence of the ack.
+Existing archived history validation spans that callback as well. No partial
+cleanup, same-byte replacement or extra file is silently adopted.
+
+Client.ReconcileRecoveryPreparedSubmission independently authenticates current
+credentials/generation first, then uses the existing strict bounded no-redirect
+read transport for the exact pinned proof at prepared-release/verify. Require
+schema/recorded/operation/intent/proof/request bindings and the exact local
+receipt when present. Return a zero result and generic error on uncertainty or
+post-HTTP snapshot/context failure. No automatic submission, retry of mutation,
+receipt repair, new receipt file, proof/time renewal or authority issuance.
+
+An expired authorization or missing current runtime does not invalidate a
+historical storage readback. Manager still verifies current credentials and
+its immutable stored evidence; no heartbeat is treated as runtime or traffic
+evidence. Readback cannot certify current runtime, deletion, ownership or fence
+release. APIs remain dormant with no Runner/operator/UI caller. Schema remains
+000169. Coordinated durable release, reservation completion and credential
+revocation E2E remain unfinished; #545 stays open. No production, real users,
+merge/deploy, FI diagnostic or logo work belongs to this slice.
+
+Validation covers exact pin-only and acknowledged history, expired authenticated
+HTTP readback without local writes, full proof/receipt binding refusals, malformed
+or replaced files, lock retention/live-owner exclusion, context cancellation,
+strict transport failures and all eight existing exit/SIGKILL prepared-submission
+cuts. Crash readback preserves all barriers/history, including missing ack files.
