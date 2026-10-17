@@ -1,4 +1,4 @@
-name: RG140 Manager UI update
+name: Dashboard website logo publication
 on:
   workflow_dispatch:
 permissions:
@@ -14,16 +14,21 @@ jobs:
     environment: production-like
     timeout-minutes: 10
     env:
-      CANDIDATE: 6db6e4bcf9f5c547a440d1ea2586a2ebae3665ea
+      CANDIDATE: f6bc123c6c408f44922271cdd278e273c379f717
     steps:
       - name: Checkout publication helper
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: main
+          fetch-depth: 0
       - name: Verify exact candidate CI
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          for run in 37343290621 37343290620; do
+          git merge-base --is-ancestor aa49a5753b3b64ae70e0d934545881815f5ccd61 HEAD
+          [[ "$(git rev-parse aa49a5753b3b64ae70e0d934545881815f5ccd61^{tree})" == "$(git rev-parse "$CANDIDATE^{tree}")" ]]
+          for run in 38972041216 38972042276; do
             result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
             [[ "$result" == "$CANDIDATE|completed|success" ]]
           done
@@ -32,7 +37,7 @@ jobs:
       - name: Checkout pinned frontend
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: 6db6e4bcf9f5c547a440d1ea2586a2ebae3665ea
+          ref: f6bc123c6c408f44922271cdd278e273c379f717
           path: candidate
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
