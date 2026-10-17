@@ -1799,3 +1799,43 @@ HTTP readback without local writes, full proof/receipt binding refusals, malform
 or replaced files, lock retention/live-owner exclusion, context cancellation,
 strict transport failures and all eight existing exit/SIGKILL prepared-submission
 cuts. Crash readback preserves all barriers/history, including missing ack files.
+
+### Thirty-seventh slice: original live owner release readiness revalidation
+
+Historical prepared readback is not current conditional release authority. Add
+a dormant read-only CheckRecoveryFenceReleaseReadiness for the original live
+finalization owner after its prepared proof and acknowledgement are durable.
+AcknowledgedProof accepts only files already published by that live owner; no
+historical receipt or successful readback can be adopted into its memory. The
+callback-scoped guard and its copies expire together, and every refresh uses
+existing fresh process/config/listener validation and exact private inventory.
+
+Keep the original owner mutex/flock and snapshots across three existing bounded
+authenticated transports: current identity/generation verification, exact pinned
+prepared-release/verify, then original release-authorization read. The Manager's
+last read independently checks its current prepared reservation, token/generation,
+capabilities, authenticated heartbeat and issuing human/session authority. A
+heartbeat remains admission context, never runtime or VPN traffic evidence.
+Bind every reply to the exact operation/Agent/server/generation/request hash;
+require the exact prepared proof/intent hashes and byte-identical original
+authorization, including nonce and expiry. Only the read request gets a fresh
+nonce; no grant or authority is renewed. Reject redirects, ambiguous/malformed
+responses, denial, drift, cancellation, backwards time or original expiry. No
+mutation retry or new evidence submission is attempted by this check.
+
+Reobserve through the original live guard around exchanges and before returning;
+the outer owner callback also validates its final inventory/runtime. Return zero
+and a generic error on any uncertainty. The returned receipt/hash pair is only
+a readiness snapshot, not a durable grant, release token or permission to delete
+barriers. Remote authority can change after a read: this slice does not make
+Manager and Agent atomic or solve crash-safe deletion. A future coordinated
+consumer must establish its own locked commit/retained-history protocol.
+
+No new routes, migrations, polling loops, Runner/operator/UI callers, receipt
+writes, owner resume, barrier/archive deletion, reservation completion, grant
+issuance or runtime apply. Schema stays000169. Test live acknowledged-owner
+scope, private snapshot/runtime refusal and strict authenticated multi-stage
+transport, including fresh read nonces with unchanged authority, denial after
+storage confirmation, malformed replies, changed authority and runtime drift
+or cancellation at each HTTP boundary. Production, real users, FI diagnostics,
+logos, merge/deploy are outside this slice; #545 remains open and E2E unfinished.
