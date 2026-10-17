@@ -246,13 +246,8 @@
 }
 
 /* Portal chrome also needs crisp foregrounds on the neutral surface. */
-:root[data-theme='light'] .portal-app-shell .brand-title,
 :root[data-theme='light'] .portal-app-shell .portal-topnav a {
   color: var(--rg-light-text-strong) !important;
-}
-
-:root[data-theme='light'] .portal-app-shell .brand-subtitle {
-  color: var(--rg-light-text-muted) !important;
 }
 
 :root[data-theme='light'] .portal-app-shell .portal-topnav a {
