@@ -2162,6 +2162,15 @@ context, expiry and wall-clock monotonicity. Any uncertainty poisons the owner,
 retains the archive/barriers and performs no automatic rollback or further
 deletion. A failure after unlink but before fsync is not treated as success.
 
+For each source, open with no-follow/nonblocking flags and bind the descriptor's
+private single-link regular inode and exact bytes to the validated snapshot.
+Retain that descriptor through unlink, then require its original inode to have
+zero links and unchanged bytes before parent fsync and prefix advancement.
+Missing pathname alone is insufficient: a same-user rename/replacement between
+validation and unlink, a new hardlink or changed bytes must fail closed. The
+deterministic regression injects those changes after descriptor pinning and
+before unlink, including moving the original outside the inspected state tree.
+
 The completed source-cleanup phase remains attached only to the same original
 live owner. Its dedicated scoped proof getters validate the retained copy,
 remaining root set and actual current runtime; they preserve frozen public proof

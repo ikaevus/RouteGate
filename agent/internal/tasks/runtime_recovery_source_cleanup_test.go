@@ -188,3 +188,66 @@ func TestArchivedSourceCleanupHistoryRefusals(t *testing.T) {
 		})
 	}
 }
+
+func TestArchivedSourceCleanupPinnedUnlink(t *testing.T) {
+	for _, mode := range []string{"renamed_replaced", "linked", "contents"} {
+		t.Run(mode, func(t *testing.T) {
+			_, _, b, m, path := sourceCleanupFixture(t)
+			backup := terminalHistoryTree(t, path)
+			source := filepath.Join(m.dir, runtimeRecoveryRetirementFile)
+			data, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			escaped := filepath.Join(filepath.Dir(m.dir), "escaped-source")
+			var result RuntimeRecoverySourceCleanupStatus
+			err = m.WithSourceCleanupSubmission(context.Background(), b, m.authorizationHash, func(g *RuntimeRecoveryPreparedReleaseGuard) error {
+				var err error
+				result, err = g.cleanupArchivedSources(context.Background(), func(step string) error {
+					if step != "pinned-1" {
+						return nil
+					}
+					switch mode {
+					case "renamed_replaced":
+						if err := os.Rename(source, escaped); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.WriteFile(source, data, 0600); err != nil {
+							t.Fatal(err)
+						}
+					case "linked":
+						if err := os.Link(source, escaped); err != nil {
+							t.Fatal(err)
+						}
+					case "contents":
+						if err := os.WriteFile(source, []byte("private changed source"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					return nil
+				})
+				return err
+			})
+			if err != ErrRuntimeMutationBlocked || result != (RuntimeRecoverySourceCleanupStatus{}) {
+				t.Fatal("unpinned unlink reported success", err)
+			}
+			if m.sourceCleanup.removed != 0 || runtimeMarkerAbsent(filepath.Join(m.dir, runtimeRecoveryTerminalFile)) {
+				t.Fatal("continued after substituted unlink")
+			}
+			if mode != "contents" {
+				actual, e := os.ReadFile(escaped)
+				if e != nil || !reflect.DeepEqual(data, actual) {
+					t.Fatal("missing escaped original")
+				}
+			}
+			m.Close()
+			if l, err := BeginRuntimeMutation(m.dir, m.authorization.OperationID, TaskKindVPNCoreService); err != ErrRuntimeMutationBlocked {
+				if l != nil {
+					l.Close()
+				}
+				t.Fatal("substitution released fence")
+			}
+			assertTerminalHistoryTree(t, path, backup)
+		})
+	}
+}

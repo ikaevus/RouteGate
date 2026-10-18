@@ -3,6 +3,7 @@ package tasks
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -150,6 +151,46 @@ func (s *recoverySourceCleanupState) status() RuntimeRecoverySourceCleanupStatus
 	return RuntimeRecoverySourceCleanupStatus{s.operation, s.hash, s.removed, len(s.sources), s.archiveRemoved && s.removed == len(s.sources)}
 }
 
+// Pin the validated inode across the pathname unlink. Checking only the missing
+// path afterward cannot distinguish removal of a same-byte replacement while
+// the original was renamed away. The open original must have no links left.
+func unlinkRecoverySource(source releaseRetentionSource, checkpoint func(string) error) error {
+	fd, err := syscall.Open(source.path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return ErrRuntimeMutationBlocked
+	}
+	file := os.NewFile(uintptr(fd), source.path)
+	defer file.Close()
+	check := func(links uint64) bool {
+		private := func(info os.FileInfo) bool {
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			return ok && info.Mode().IsRegular() && info.Mode().Perm() == 0600 && stat.Uid == uint32(os.Geteuid()) && uint64(stat.Nlink) == links && os.SameFile(source.info, info)
+		}
+		before, e := file.Stat()
+		if e != nil || !private(before) {
+			return false
+		}
+		data, e := io.ReadAll(io.NewSectionReader(file, 0, int64(len(source.data))+1))
+		after, e2 := file.Stat()
+		return e == nil && e2 == nil && private(after) && bytes.Equal(data, source.data)
+	}
+	if !check(1) {
+		return ErrRuntimeMutationBlocked
+	}
+	if checkpoint != nil && checkpoint("pinned") != nil {
+		return ErrRuntimeMutationBlocked
+	}
+	return removeRemovalFileCheckpoint(source.path, func() error {
+		if !check(0) {
+			return ErrRuntimeMutationBlocked
+		}
+		if checkpoint != nil {
+			return checkpoint("unlinked")
+		}
+		return nil
+	})
+}
+
 func (m *RuntimeRecoveryFinalization) sourceCleanupCurrent(ctx context.Context) bool {
 	s := m.sourceCleanup
 	if m.self != m || s == nil || !m.terminalAuthorityCurrent(ctx) || m.historyArchiveUnchanged == nil || !m.historyArchiveUnchanged() || !s.unchanged() {
@@ -293,8 +334,8 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) cleanupArchivedSources(ctx context
 			return deny()
 		}
 		v := &s.sources[i]
-		if removeRemovalFileCheckpoint(v.path, func() error {
-			if !cut("unlinked-" + strconv.Itoa(i+1)) {
+		if unlinkRecoverySource(*v, func(step string) error {
+			if !cut(step + "-" + strconv.Itoa(i+1)) {
 				return ErrRuntimeMutationBlocked
 			}
 			return nil
