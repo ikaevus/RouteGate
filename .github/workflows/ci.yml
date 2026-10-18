@@ -82,8 +82,8 @@ jobs:
           ROUTEGATE_TEST_SING_BOX="$test_dir/sing-box-1.12.8-linux-amd64/sing-box" \
             go test ./internal/configs -run '^TestVLESSRemovalSingBox' -count=1 -timeout=60s -v
 
-  agent:
-    name: Agent tests
+  agent-unit:
+    name: Agent full suite and Reality
     runs-on: ubuntu-latest
 
     defaults:
@@ -106,42 +106,6 @@ jobs:
       - name: Run tests
         run: go test ./...
 
-      - name: Test experimental mutation dispatch and strict acknowledgements
-        run: go test -race ./internal/config ./internal/client ./internal/heartbeat ./internal/tasks -run '(FencedDispatch|RuntimeMutation|CompleteTask|CredentialRemoval)' -count=1 -timeout=120s -v
-
-      - name: Test prepared release evidence submission and durable receipts
-        run: go test -race ./internal/tasks ./internal/client -run '^TestPreparedRelease' -count=1 -timeout=120s -v
-
-      - name: Test read-only prepared submission crash reconciliation
-        run: go test -race ./internal/tasks ./internal/client -run '^TestPreparedSubmissionHistory' -count=1 -timeout=120s -v
-
-      - name: Test original live owner release readiness revalidation
-        run: go test -race ./internal/tasks ./internal/client -run '^TestReleaseReadiness' -count=1 -timeout=120s -v
-
-      - name: Test immutable full release history retention and readback
-        run: go test -race ./internal/tasks ./internal/client -run '^TestReleaseRetention' -count=1 -timeout=120s -v
-
-      - name: Test durable retention evidence submission and crash readback
-        run: go test -race ./internal/tasks ./internal/client -run '^TestRetentionSubmission' -count=1 -timeout=120s -v
-
-      - name: Test independent recovery history archive
-        run: go test -race ./internal/tasks ./internal/client -run '^TestRecoveryHistoryArchive(Independent|PublicationFailures|ReadRefusals|Authority|ClientOwner)$' -count=1 -timeout=120s -v
-
-      - name: Test independent recovery history crash publication
-        run: go test -race ./internal/tasks -run '^TestRecoveryHistoryArchiveCrash$' -count=1 -timeout=120s -v
-
-      - name: Test read-only archived source cleanup planning
-        run: go test -race ./internal/tasks ./internal/client -run '^TestArchivedSourcePlan' -count=1 -timeout=120s -v
-
-      - name: Test original-owner archived source cleanup and historical readback
-        run: go test -race ./internal/tasks ./internal/client -run '^TestArchivedSourceCleanup' -count=1 -timeout=120s -v
-
-      - name: Test source cleanup root crash cuts
-        run: go test -race ./internal/tasks -run '^TestSourceCleanupCrashRoot$' -count=1 -timeout=120s -v
-
-      - name: Test source cleanup retired archive crash cuts
-        run: go test -race ./internal/tasks -run '^TestSourceCleanupCrashRetired$' -count=1 -timeout=120s -v
-
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"
@@ -154,6 +118,77 @@ jobs:
           sudo env ROUTEGATE_TEST_SING_BOX="$test_dir/sing-box-1.12.8-linux-amd64/sing-box" \
             ROUTEGATE_TEST_REMOVAL_SYSTEMD=1 "$(command -v go)" test ./internal/tasks \
             -run '^TestCredentialRemovalSystemdRealityTraffic$' -count=1 -timeout=75s -v
+
+  agent-race:
+    name: Agent race (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - suite: dispatch
+            packages: ./internal/config ./internal/client ./internal/heartbeat ./internal/tasks
+            pattern: (FencedDispatch|RuntimeMutation|CompleteTask|CredentialRemoval)
+          - suite: prepared-release
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestPreparedRelease
+          - suite: prepared-history
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestPreparedSubmissionHistory
+          - suite: readiness
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestReleaseReadiness
+          - suite: retention
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestReleaseRetention
+          - suite: retention-submission
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestRetentionSubmission
+          - suite: independent-archive
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestRecoveryHistoryArchive(Independent|PublicationFailures|ReadRefusals|Authority|ClientOwner)$
+          - suite: archive-crash
+            packages: ./internal/tasks
+            pattern: ^TestRecoveryHistoryArchiveCrash$
+          - suite: source-plan
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestArchivedSourcePlan
+          - suite: source-cleanup
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestArchivedSourceCleanup
+          - suite: cleanup-root-crash
+            packages: ./internal/tasks
+            pattern: ^TestSourceCleanupCrashRoot$
+          - suite: cleanup-retired-crash
+            packages: ./internal/tasks
+            pattern: ^TestSourceCleanupCrashRetired$
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26"
+          cache-dependency-path: agent/go.sum
+      - name: Download dependencies
+        run: go mod download
+      - name: Run unchanged focused race checks
+        run: go test -race ${{ matrix.packages }} -run '${{ matrix.pattern }}' -count=1 -timeout=120s -v
+
+  agent:
+    name: Agent tests
+    needs: [agent-unit, agent-race]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Agent suite
+        run: |
+          test "${{ needs.agent-unit.result }}" = success
+          test "${{ needs.agent-race.result }}" = success
 
   installer:
     name: Clean VPS installer checks
