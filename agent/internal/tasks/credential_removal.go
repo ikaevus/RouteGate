@@ -355,8 +355,17 @@ func publishRemovalFile(path string, data []byte, replace bool) error {
 }
 
 func removeRemovalFile(path string) error {
+	return removeRemovalFileCheckpoint(path, nil)
+}
+
+func removeRemovalFileCheckpoint(path string, checkpoint func() error) error {
 	if err := os.Remove(path); err != nil {
 		return err
+	}
+	if checkpoint != nil {
+		if err := checkpoint(); err != nil {
+			return err
+		}
 	}
 	directory, err := os.Open(filepath.Dir(path))
 	if err != nil {

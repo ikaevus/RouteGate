@@ -34,14 +34,7 @@ func (c *Client) withAcknowledgedRecoveryRetention(ctx context.Context, token st
 		if e != nil {
 			return ErrRecoveryHistoryArchiveUnconfirmed
 		}
-		wire, e := json.Marshal(p)
-		if e != nil {
-			return ErrRecoveryHistoryArchiveUnconfirmed
-		}
-		proofHash := recoveryReadHash(wire)
-		path := "/api/v1/agent/recovery-observations/" + url.PathEscape(p.OperationID) + "/retention/verify"
-		var receipt RecoveryRetentionReceipt
-		if c.recoveryRead(bounded, path, token, wire, &receipt) != nil || !archiveRetentionReceiptMatches(receipt, p, proofHash) {
+		if _, e := c.readRecoveryRetentionReceipt(bounded, token, p); e != nil {
 			return ErrRecoveryHistoryArchiveUnconfirmed
 		}
 		fresh, e := g.AcknowledgedRetentionProof(bounded)
@@ -51,6 +44,19 @@ func (c *Client) withAcknowledgedRecoveryRetention(ctx context.Context, token st
 		return fn(bounded, g)
 	})
 	return e
+}
+
+func (c *Client) readRecoveryRetentionReceipt(ctx context.Context, token string, p tasks.RuntimeRecoveryRetentionProof) (RecoveryRetentionReceipt, error) {
+	var receipt RecoveryRetentionReceipt
+	wire, e := json.Marshal(p)
+	if e != nil {
+		return receipt, ErrRecoveryHistoryArchiveUnconfirmed
+	}
+	path := "/api/v1/agent/recovery-observations/" + url.PathEscape(p.OperationID) + "/retention/verify"
+	if c.recoveryRead(ctx, path, token, wire, &receipt) != nil || !archiveRetentionReceiptMatches(receipt, p, recoveryReadHash(wire)) {
+		return RecoveryRetentionReceipt{}, ErrRecoveryHistoryArchiveUnconfirmed
+	}
+	return receipt, nil
 }
 
 func archiveRetentionReceiptMatches(r RecoveryRetentionReceipt, p tasks.RuntimeRecoveryRetentionProof, hash string) bool {

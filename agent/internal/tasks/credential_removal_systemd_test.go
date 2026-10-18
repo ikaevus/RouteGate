@@ -34,14 +34,14 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("isolated systemd test requires root")
 	}
-	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission"} {
+	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission", "cleaned_sources"} {
 		t.Run(phase, func(t *testing.T) {
-			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission")
+			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission" || phase == "cleaned_sources", phase == "cleaned_sources")
 		})
 	}
 }
 
-func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted bool) {
+func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted, cleanup bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -326,6 +326,8 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 	}
 	if submitted {
 		before := terminalHistoryTree(t, e.receiptDir)
+		var cleanupBackup map[string][]byte
+		copyPath, _ := recoveryHistoryArchivePath(e.receiptDir, authorization.OperationID)
 		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
 				t.Fatal("real acknowledged readiness", err)
@@ -347,6 +349,19 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			if plan, err := g.PlanArchivedSourceCleanup(ctx); err != nil || len(plan.Candidates) != 9+len(archiveEntries) || plan.AdmissionLockName != "runtime.lock" {
 				t.Fatal("real archived source plan", err)
 			}
+			if cleanup {
+				cleanupBackup = terminalHistoryTree(t, copyPath)
+				if s, err := g.CleanupArchivedSources(ctx); err != nil || !s.SourcesRemoved {
+					t.Fatal("real duplicate cleanup", err)
+				}
+				if err := restartRuntime(); err != nil {
+					t.Fatal(err)
+				}
+				if p, err := g.CleanupPreparedProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryPreparedReleaseProof{}) {
+					t.Fatal("cleaned owner accepted changed runtime", err)
+				}
+				return ErrRuntimeMutationBlocked
+			}
 			if err := restartRuntime(); err != nil {
 				t.Fatal(err)
 			}
@@ -362,6 +377,35 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			return ErrRuntimeMutationBlocked
 		}); err != ErrRuntimeMutationBlocked {
 			t.Fatal("restart readiness did not fail closed", err)
+		}
+		if cleanup {
+			final.Close()
+			if err := WithRecoverySourceCleanupHistory(ctx, e.receiptDir, authorization.OperationID, bound, func(s RuntimeRecoverySourceCleanupStatus, h RuntimeRecoveryRetentionHistory) error {
+				if !s.SourcesRemoved || !h.LocalReceipt.Recorded {
+					t.Error("real cleanup history")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			remaining := terminalHistoryTree(t, e.receiptDir)
+			if len(remaining) != 4 {
+				t.Fatal("real cleanup remaining tree")
+			}
+			for _, name := range []string{"runtime.lock", "mutation-inflight.json", runtimeRecoveryReleaseIntentFile} {
+				if !bytes.Equal(before[name], remaining[name]) {
+					t.Fatal("real cleanup changed barrier")
+				}
+			}
+			if l, err := BeginRuntimeMutation(e.receiptDir, resultTaskID, TaskKindVPNCoreService); err != ErrRuntimeMutationBlocked {
+				if l != nil {
+					l.Close()
+				}
+				t.Fatal("real cleanup released fence")
+			}
+			assertTerminalHistoryTree(t, copyPath, cleanupBackup)
+			assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)
+			return
 		}
 		retained, err := os.ReadFile(filepath.Join(e.receiptDir, runtimeRecoveryReleaseRetentionFile))
 		if err != nil {

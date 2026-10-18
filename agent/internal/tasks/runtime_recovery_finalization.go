@@ -32,6 +32,7 @@ type RuntimeRecoveryFinalizationProof struct {
 // Dormant exclusive owner. There is no Complete/Release/resume method. Close
 // drops only flock; all private history, final consumption and fences survive.
 type RuntimeRecoveryFinalization struct {
+	self                    *RuntimeRecoveryFinalization
 	mu                      sync.Mutex
 	lock                    *os.File
 	dir, activePath         string
@@ -63,6 +64,7 @@ type RuntimeRecoveryFinalization struct {
 	retentionFrozen         RuntimeRecoveryRetentionProof
 	historyArchive          []byte
 	historyArchiveUnchanged func() bool
+	sourceCleanup           *recoverySourceCleanupState
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time
@@ -85,6 +87,7 @@ func beginRuntimeRecoveryFinalization(ctx context.Context, dir string, binding R
 		return nil, ErrRuntimeMutationBlocked
 	}
 	m := &RuntimeRecoveryFinalization{lock: lock, dir: dir, activePath: activePath, adapter: adapter, binding: binding, now: now, lastChecked: started}
+	m.self = m
 	fail := func() (*RuntimeRecoveryFinalization, error) { m.Close(); return nil, ErrRuntimeMutationBlocked }
 	if !runtimeRecoveryFinalStateAbsent(dir) {
 		return fail()

@@ -2126,3 +2126,87 @@ actual user revocation, FI diagnostics, logos, merge or deploy. #545 stays open;
 a crash-safe source removal/commit protocol and coordinated E2E remain future
 work. A future executor must derive and validate its own live state rather than
 consume this snapshot as permission.
+
+### Forty-third slice: fenced duplicate-source cleanup and crash readback
+
+Implement the source-cleanup phase as one connected slice: original-owner
+execution, current authenticated Client delivery, same-owner completed retries,
+historical prefix classification, crash tests and real runtime regression.
+This removes only redundant ORIGINAL files already preserved in the independently
+validated archive. It does not remove either root admission barrier, move/replace
+runtime.lock, release the Agent fence or complete the Manager reservation.
+
+CleanupArchivedSources derives its own fresh locked plan; no caller-supplied
+candidate list or returned snapshot is authority. Require the original constructed
+owner identity, complete owned archive, immutable retention pin/ack, current
+process/config/listener and exact original inventory. Copying an owner value,
+reopening history or finding identical disk bytes cannot acquire this phase.
+WithSourceCleanupSubmission retains the original mutex/flock and original
+authorization deadline across current identity, prepared storage, exact original
+authorization and retention/verify reads. Reuse existing transport/readiness
+validators; no new endpoint, polling, wire format or database migration.
+
+Remove the nine fixed root duplicates, then the eight/nine validated retired
+files in deterministic inventory order, then the empty original retired
+directory. Use the existing unlink+parent-fsync primitive. Keep both root
+mutation-inflight.json and recovery-fence-release-intent.json unchanged, as well
+as the stable original lock and the entire independent archive. Archived marker
+basenames are distinct scoped duplicates. Never follow a manifest path, delete
+an unknown/foreign file, overwrite/repair a source or touch the active config.
+
+Pin root/retired/lock/source identities and exact bytes. After every deletion,
+accept only the precise owned missing prefix, unchanged remaining files and
+preserved barriers. Reobserve current runtime against the independent archive
+before/after each step under the same admission flock; recheck immutable copy,
+context, expiry and wall-clock monotonicity. Any uncertainty poisons the owner,
+retains the archive/barriers and performs no automatic rollback or further
+deletion. A failure after unlink but before fsync is not treated as success.
+
+For each source, open with no-follow/nonblocking flags and bind the descriptor's
+private single-link regular inode and exact bytes to the validated snapshot.
+Retain that descriptor through unlink, then require its original inode to have
+zero links and unchanged bytes before parent fsync and prefix advancement.
+Missing pathname alone is insufficient: a same-user rename/replacement between
+validation and unlink, a new hardlink or changed bytes must fail closed. The
+deterministic regression injects those changes after descriptor pinning and
+before unlink, including moving the original outside the inspected state tree.
+
+The completed source-cleanup phase remains attached only to the same original
+live owner. Its dedicated scoped proof getters validate the retained copy,
+remaining root set and actual current runtime; they preserve frozen public proof
+bytes/times rather than renew authority. Client retries reauthenticate and reread
+current authority/storage. Old prepared-phase APIs refuse reentry. The existing
+prepared callback may finish a successful one-way transition into this phase,
+but its postcondition now validates the cleaned state rather than missing old
+sources. Close still drops only the lock and grants no resume/release.
+
+No mutable progress file or new success marker is needed: the fsynced original
+release intent predates deletion and survives every cut; the immutable complete
+copy supplies expected bytes. WithRecoverySourceCleanupHistory authenticates via
+its caller and holds the original existing lock while validating the complete
+independent chain and exact original prefix/remaining tree. It reports local
+removed counts and whether the original retired directory is absent. A missing
+directory observed after an interrupted parent fsync does not prove that fsync
+completed. Historical status is filesystem observation only, never proof of an
+authorized commit, completed durability, current runtime or permission to resume.
+ReconcileRecoverySourceCleanup verifies current credentials and exact Manager
+retention storage without deletion, repair, runtime capture or authority renewal.
+Holes, altered/missing barriers, substituted/foreign files and changes during
+readback fail closed. Expired or restarted history can still be read.
+
+Tests cover actual removal of17/18 redundant files, unchanged archive and all
+three preserved root files, same-owner/concurrent authenticated retries, scoped
+guard expiry, refusal of old phases, current authority/runtime/storage denial,
+publication uncertainty and read-only complete/partial history. Exit/SIGKILL
+tests cover every per-file fsynced prefix plus representative unlink-before-fsync
+cuts for root/retired files and directory unlink before parent fsync. Add a fourth
+disposable systemd/sing-box/Reality phase: clean sources, externally restart,
+refuse the old live witness and read historical state while admission stays
+blocked. Manager receipts in that runtime scenario remain synthetic; this does
+not establish coordinated Manager+Agent credential-revocation E2E.
+
+Schema stays000170. No fence release, reservation completion, runtime/config
+apply, Runner/operator/UI caller, real-user revocation, production access/change,
+FI diagnostics, logos, merge or deploy. #545 remains open. A future coordinated
+commit must separately revalidate current authority and preserve retained audit
+history before changing either admission barrier.
