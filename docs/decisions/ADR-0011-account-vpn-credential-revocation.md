@@ -2071,3 +2071,58 @@ and reads the independent history afterward; Manager receipts there are syntheti
 Schema stays000170; #545 remains open and coordinated release/revocation E2E is
 unfinished. No source/fence deletion, configuration apply, real-user revocation,
 production access, FI diagnostics, logo change, merge or deploy.
+
+### Forty-second slice: read-only archived source cleanup plan
+
+The independent archive is a backup, not an executable cleanup specification.
+Before implementing source removal, derive a read-only local partition of the
+current original files: independently retained duplicate candidates versus the
+two root admission barriers that must survive source cleanup. Always preserve
+the original stable runtime.lock too. Names in this returned value are never
+accepted by an executor or interpreted as authority or an execution order.
+
+PlanArchivedSourceCleanup requires the original callback-scoped live owner,
+its exact retention pin/acknowledgement and its own already published archive.
+An identical external archive or historical readback cannot establish ownership.
+Reuse complete current runtime/source validation, then validate the independent
+copy with the existing full historical chain and compare its manifest against
+the complete current original inventory. Reobserve runtime between pinned
+inventories; check source/copy/container/manifest/lock identities and original
+authorization expiry/context/wall-clock around the computation. Uncertainty
+returns a zero plan and preserves all files/barriers; no partial candidate list
+escapes. Never create or repair a missing archive while planning.
+
+Bind operation, Manager/Agent/server/credential generation, original expiry and
+authorization, manifest, retention proof/receipt hashes, and both fixed archive
+basenames. Return candidate scope/name/hash plus hashes of the two preserved
+root barriers: mutation-inflight.json and recovery-fence-release-intent.json.
+The archived older mutation marker is a separate scoped duplicate; its basename
+must not confuse it with the root admission barrier. There are nine root
+candidates and eight or nine validated retired files (17/18 total): the older
+commit acknowledgement remains optional under the established chain contract.
+Do not invent a missing acknowledgement or silently skip an unexpected file.
+
+Client PlanRecoverySourceCleanup reuses the same current identity, prepared
+storage, exact original authorization and retention/verify exchange used for
+archive publication under the original owner mutex/flock/deadline. Extract the
+common helper rather than add transport or endpoints. Only bounded public proof
+crosses HTTP; the private archive, manifest and candidate inventory stay local.
+A copied or caller-edited plan grants nothing, changes no owned state, and is
+not durable evidence, a new grant, a release result or Manager completion.
+
+Tests cover stable read-only repeats, exact scope/hash/barrier partition, caller
+value isolation, escaped/copied guards, missing/unowned/partial/substituted
+sources and archive, runtime drift, cancellation, expiry/backward time and
+changes between observations. Reuse the actual Client/live filesystem-owner
+HTTP fixture to check current authority, actual original flock, concurrent
+requests, zero results on failure, and no writes to original or copied history.
+The disposable systemd/Reality test checks the plan before an external restart
+and refusal afterward. HTTP/runtime mocks and synthetic Manager receipts are
+not complete coordinated release/revocation E2E.
+
+Schema stays000170. No new persistence, cleanup, fence release, reservation
+completion, polling/Runner/operator/UI caller, runtime apply, production access,
+actual user revocation, FI diagnostics, logos, merge or deploy. #545 stays open;
+a crash-safe source removal/commit protocol and coordinated E2E remain future
+work. A future executor must derive and validate its own live state rather than
+consume this snapshot as permission.

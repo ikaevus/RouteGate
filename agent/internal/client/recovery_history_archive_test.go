@@ -18,6 +18,14 @@ import (
 )
 
 func TestRecoveryHistoryArchiveClientOwner(t *testing.T) {
+	testRecoveryHistoryClientOwner(t, false)
+}
+
+func TestArchivedSourcePlanClientOwner(t *testing.T) {
+	testRecoveryHistoryClientOwner(t, true)
+}
+
+func testRecoveryHistoryClientOwner(t *testing.T, planning bool) {
 	for _, mode := range []string{"accepted", "concurrent", "denied", "receipt", "runtime", "source", "cancelled", "historical_identity", "historical_receipt", "historical_copy"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -135,6 +143,35 @@ func TestRecoveryHistoryArchiveClientOwner(t *testing.T) {
 			}
 			before := preparedHistoryTree(t, dir)
 			c := New(s.URL)
+			if planning {
+				if err := owner.WithPreparedReleaseSubmission(ctx, v.Binding, v.AuthorizationHash, func(g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+					_, err := g.ArchiveRetainedHistory(ctx)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var archivedBefore map[string][]byte
+			if planning {
+				archivedBefore = preparedHistoryTree(t, dir+"-history-"+proof.OperationID)
+			}
+			run := func() (string, error) {
+				if !planning {
+					return c.ArchiveRecoveryRetentionHistory(ctx, "isolated-token", v, owner)
+				}
+				p, err := c.PlanRecoverySourceCleanup(ctx, "isolated-token", v, owner)
+				if err != nil {
+					if !reflect.DeepEqual(p, tasks.RuntimeRecoverySourceCleanupPlan{}) {
+						t.Error("error returned a partial plan")
+					}
+					return "", err
+				}
+				wire, _ := json.Marshal(proof)
+				if len(p.Candidates) != 18 || p.AdmissionLockName != "runtime.lock" || p.OperationID != proof.OperationID || p.Binding != v.Binding || p.RetentionProofHash != recoveryReadHash(wire) || p.ExpiresAt != v.Authorization.ExpiresAt {
+					t.Error("unbound HTTP cleanup plan")
+				}
+				return p.ManifestHash, nil
+			}
 			var hash string
 			var err error
 			if mode == "concurrent" {
@@ -144,7 +181,7 @@ func TestRecoveryHistoryArchiveClientOwner(t *testing.T) {
 				}
 				ch := make(chan result, 2)
 				for range 2 {
-					go func() { h, e := c.ArchiveRecoveryRetentionHistory(ctx, "isolated-token", v, owner); ch <- result{h, e} }()
+					go func() { h, e := run(); ch <- result{h, e} }()
 				}
 				first, second := <-ch, <-ch
 				if first.err != nil || second.err != nil || first.hash != second.hash {
@@ -152,14 +189,21 @@ func TestRecoveryHistoryArchiveClientOwner(t *testing.T) {
 				}
 				hash = first.hash
 			} else {
-				hash, err = c.ArchiveRecoveryRetentionHistory(ctx, "isolated-token", v, owner)
+				hash, err = run()
 			}
 			good := mode == "accepted" || mode == "concurrent" || len(mode) > 10 && mode[:11] == "historical_"
+			if planning && (!reflect.DeepEqual(before, preparedHistoryTree(t, dir)) || !reflect.DeepEqual(archivedBefore, preparedHistoryTree(t, dir+"-history-"+proof.OperationID))) {
+				t.Fatal("read-only plan altered evidence")
+			}
 			if !good {
-				if err != ErrRecoveryHistoryArchiveUnconfirmed || hash != "" {
+				wantErr := ErrRecoveryHistoryArchiveUnconfirmed
+				if planning {
+					wantErr = ErrRecoverySourcePlanUnconfirmed
+				}
+				if err != wantErr || hash != "" {
 					t.Fatal("unsafe live archive result", err)
 				}
-				if _, e := os.Lstat(dir + "-history-" + proof.OperationID); !os.IsNotExist(e) {
+				if _, e := os.Lstat(dir + "-history-" + proof.OperationID); !planning && !os.IsNotExist(e) {
 					t.Fatal("denial still copied history")
 				}
 			} else {

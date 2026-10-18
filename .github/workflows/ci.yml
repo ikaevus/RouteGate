@@ -130,6 +130,9 @@ jobs:
       - name: Test independent recovery history crash publication
         run: go test -race ./internal/tasks -run '^TestRecoveryHistoryArchiveCrash$' -count=1 -timeout=120s -v
 
+      - name: Test read-only archived source cleanup planning
+        run: go test -race ./internal/tasks ./internal/client -run '^TestArchivedSourcePlan' -count=1 -timeout=120s -v
+
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"
