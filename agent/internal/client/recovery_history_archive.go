@@ -15,6 +15,20 @@ var ErrRecoveryHistoryArchiveUnconfirmed = errors.New("independent recovery hist
 // span the same original live owner/lock. The private history never crosses HTTP.
 func (c *Client) ArchiveRecoveryRetentionHistory(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization) (string, error) {
 	var hash string
+	e := c.withAcknowledgedRecoveryRetention(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+		var err error
+		hash, err = g.ArchiveRetainedHistory(bounded)
+		return err
+	})
+	if e != nil {
+		return "", ErrRecoveryHistoryArchiveUnconfirmed
+	}
+	return hash, nil
+}
+
+// Reuse the same current authority/storage checks under the original owner for
+// archive publication and read-only source planning. No parallel transport.
+func (c *Client) withAcknowledgedRecoveryRetention(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization, fn func(context.Context, *tasks.RuntimeRecoveryPreparedReleaseGuard) error) error {
 	_, e := c.withRecoveryFenceReleaseReadiness(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
 		p, e := g.AcknowledgedRetentionProof(bounded)
 		if e != nil {
@@ -34,13 +48,9 @@ func (c *Client) ArchiveRecoveryRetentionHistory(ctx context.Context, token stri
 		if e != nil || fresh != p {
 			return ErrRecoveryHistoryArchiveUnconfirmed
 		}
-		hash, e = g.ArchiveRetainedHistory(bounded)
-		return e
+		return fn(bounded, g)
 	})
-	if e != nil {
-		return "", ErrRecoveryHistoryArchiveUnconfirmed
-	}
-	return hash, nil
+	return e
 }
 
 func archiveRetentionReceiptMatches(r RecoveryRetentionReceipt, p tasks.RuntimeRecoveryRetentionProof, hash string) bool {

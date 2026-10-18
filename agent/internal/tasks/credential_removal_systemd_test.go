@@ -340,8 +340,18 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			if hash, err := g.ArchiveRetainedHistory(ctx); err != nil || len(hash) != 64 {
 				t.Fatal("real independent history durability", err)
 			}
+			archiveEntries, err := os.ReadDir(final.archive)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan, err := g.PlanArchivedSourceCleanup(ctx); err != nil || len(plan.Candidates) != 9+len(archiveEntries) || plan.AdmissionLockName != "runtime.lock" {
+				t.Fatal("real archived source plan", err)
+			}
 			if err := restartRuntime(); err != nil {
 				t.Fatal(err)
+			}
+			if plan, err := g.PlanArchivedSourceCleanup(ctx); err != ErrRuntimeMutationBlocked || plan.ManifestHash != "" || len(plan.Candidates) != 0 {
+				t.Fatal("source plan accepted restarted process", err)
 			}
 			if p, err := g.RetentionProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryRetentionProof{}) {
 				t.Fatal("retention evidence accepted restarted process", err)
