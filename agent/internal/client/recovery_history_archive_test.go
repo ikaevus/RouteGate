@@ -18,15 +18,23 @@ import (
 )
 
 func TestRecoveryHistoryArchiveClientOwner(t *testing.T) {
-	testRecoveryHistoryClientOwner(t, false)
+	testRecoveryHistoryClientOwner(t, false, false)
 }
 
 func TestArchivedSourcePlanClientOwner(t *testing.T) {
-	testRecoveryHistoryClientOwner(t, true)
+	testRecoveryHistoryClientOwner(t, true, false)
 }
 
-func testRecoveryHistoryClientOwner(t *testing.T, planning bool) {
-	for _, mode := range []string{"accepted", "concurrent", "denied", "receipt", "runtime", "source", "cancelled", "historical_identity", "historical_receipt", "historical_copy"} {
+func TestArchivedSourceCleanupClientOwner(t *testing.T) {
+	testRecoveryHistoryClientOwner(t, false, true)
+}
+
+func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
+	modes := []string{"accepted", "concurrent", "denied", "receipt", "runtime", "source", "cancelled", "historical_identity", "historical_receipt", "historical_copy"}
+	if cleaning {
+		modes = append(modes, "partial_history")
+	}
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -143,7 +151,7 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning bool) {
 			}
 			before := preparedHistoryTree(t, dir)
 			c := New(s.URL)
-			if planning {
+			if planning || cleaning {
 				if err := owner.WithPreparedReleaseSubmission(ctx, v.Binding, v.AuthorizationHash, func(g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
 					_, err := g.ArchiveRetainedHistory(ctx)
 					return err
@@ -152,10 +160,39 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning bool) {
 				}
 			}
 			var archivedBefore map[string][]byte
-			if planning {
+			if planning || cleaning {
 				archivedBefore = preparedHistoryTree(t, dir+"-history-"+proof.OperationID)
 			}
+			if mode == "partial_history" {
+				owner.Close()
+				historical.Store(true)
+				if err := os.Remove(filepath.Join(dir, "recovery-retirement-intent.json")); err != nil {
+					t.Fatal(err)
+				}
+				original := preparedHistoryTree(t, dir)
+				r, err := c.ReconcileRecoverySourceCleanup(ctx, "isolated-token", v.Binding.AgentID, v.Binding.ServerID, dir, proof.OperationID)
+				if err != nil || r.Status.RemovedFiles != 1 || r.Status.SourcesRemoved || !r.Receipt.Recorded {
+					t.Fatal("partial cleanup readback", err)
+				}
+				if !reflect.DeepEqual(original, preparedHistoryTree(t, dir)) || !reflect.DeepEqual(archivedBefore, preparedHistoryTree(t, dir+"-history-"+proof.OperationID)) {
+					t.Fatal("partial readback changed history")
+				}
+				return
+			}
 			run := func() (string, error) {
+				if cleaning {
+					s, err := c.CleanupRecoverySources(ctx, "isolated-token", v, owner)
+					if err != nil {
+						if s != (tasks.RuntimeRecoverySourceCleanupStatus{}) {
+							t.Error("partial cleanup result")
+						}
+						return "", err
+					}
+					if !s.SourcesRemoved || s.RemovedFiles != s.TotalFiles || s.TotalFiles != 18 || s.OperationID != proof.OperationID {
+						t.Error("unbound cleanup status")
+					}
+					return s.ManifestHash, nil
+				}
 				if !planning {
 					return c.ArchiveRecoveryRetentionHistory(ctx, "isolated-token", v, owner)
 				}
@@ -200,21 +237,42 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning bool) {
 				if planning {
 					wantErr = ErrRecoverySourcePlanUnconfirmed
 				}
+				if cleaning {
+					wantErr = ErrRecoverySourceCleanupUnconfirmed
+				}
 				if err != wantErr || hash != "" {
 					t.Fatal("unsafe live archive result", err)
 				}
-				if _, e := os.Lstat(dir + "-history-" + proof.OperationID); !planning && !os.IsNotExist(e) {
+				if _, e := os.Lstat(dir + "-history-" + proof.OperationID); !planning && !cleaning && !os.IsNotExist(e) {
 					t.Fatal("denial still copied history")
 				}
 			} else {
 				if err != nil || len(hash) != 64 {
 					t.Fatal("archive unavailable", err)
 				}
+				if cleaning {
+					again, e := c.CleanupRecoverySources(ctx, "isolated-token", v, owner)
+					if e != nil || again.ManifestHash != hash || !again.SourcesRemoved {
+						t.Fatal("cleanup retry", e)
+					}
+					for _, name := range []string{"runtime.lock", "mutation-inflight.json", "recovery-fence-release-intent.json"} {
+						data, e := os.ReadFile(filepath.Join(dir, name))
+						if e != nil || !bytes.Equal(before[name], data) {
+							t.Fatal("cleanup changed barrier")
+						}
+					}
+					if !reflect.DeepEqual(archivedBefore, preparedHistoryTree(t, dir+"-history-"+proof.OperationID)) {
+						t.Fatal("cleanup changed independent archive")
+					}
+				}
 				owner.Close()
 				historical.Store(true)
 				// Simulate future cleanup in tests only; keep original lock/fence.
 				entries, _ := os.ReadDir(dir)
 				for _, entry := range entries {
+					if cleaning {
+						break
+					}
 					if entry.Name() != "runtime.lock" && entry.Name() != "mutation-inflight.json" {
 						if e := os.RemoveAll(filepath.Join(dir, entry.Name())); e != nil {
 							t.Fatal(e)
@@ -222,6 +280,20 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning bool) {
 					}
 				}
 				remaining := preparedHistoryTree(t, dir)
+				if cleaning {
+					result, e := c.ReconcileRecoverySourceCleanup(ctx, "isolated-token", v.Binding.AgentID, v.Binding.ServerID, dir, proof.OperationID)
+					if mode == "accepted" || mode == "concurrent" {
+						if e != nil || result.Status.ManifestHash != hash || !result.Status.SourcesRemoved || !result.Receipt.Recorded {
+							t.Fatal("cleanup history", e)
+						}
+					} else if e != ErrRecoverySourceCleanupUnconfirmed || result != (RecoverySourceCleanupHistory{}) {
+						t.Fatal("unsafe cleanup history", e)
+					}
+					if !reflect.DeepEqual(remaining, preparedHistoryTree(t, dir)) {
+						t.Fatal("historical cleanup wrote original state")
+					}
+					return
+				}
 				result, e := c.ReconcileArchivedRecoveryRetention(ctx, "isolated-token", v.Binding.AgentID, v.Binding.ServerID, dir, proof.OperationID)
 				if mode == "accepted" || mode == "concurrent" {
 					if e != nil || result.ManifestHash != hash || !result.Receipt.Recorded {

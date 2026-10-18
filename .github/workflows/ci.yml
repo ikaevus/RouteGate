@@ -133,6 +133,15 @@ jobs:
       - name: Test read-only archived source cleanup planning
         run: go test -race ./internal/tasks ./internal/client -run '^TestArchivedSourcePlan' -count=1 -timeout=120s -v
 
+      - name: Test original-owner archived source cleanup and historical readback
+        run: go test -race ./internal/tasks ./internal/client -run '^TestArchivedSourceCleanup' -count=1 -timeout=120s -v
+
+      - name: Test source cleanup root crash cuts
+        run: go test -race ./internal/tasks -run '^TestSourceCleanupCrashRoot$' -count=1 -timeout=120s -v
+
+      - name: Test source cleanup retired archive crash cuts
+        run: go test -race ./internal/tasks -run '^TestSourceCleanupCrashRetired$' -count=1 -timeout=120s -v
+
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
           test_dir="$(mktemp -d)"

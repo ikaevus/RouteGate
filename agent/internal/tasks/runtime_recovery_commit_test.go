@@ -489,6 +489,14 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 										}
 										return nil
 									})
+									if err == nil && strings.Contains(mode, "_cleanup_") {
+										_, err = g.cleanupArchivedSources(context.Background(), func(step string) error {
+											if strings.HasSuffix(mode, "_cleanup_"+step) {
+												return cut()
+											}
+											return nil
+										})
+									}
 									return err
 								}
 								return nil

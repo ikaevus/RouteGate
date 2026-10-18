@@ -22,6 +22,9 @@ func preparedReleaseReceiptMatches(r RuntimeRecoveryPreparedReleaseReceipt, p Ru
 // Rechecks the original live authority, complete inventory and real runtime.
 // Once pinned, ObservedAt stays frozen; reobservation never renews that proof.
 func (m *RuntimeRecoveryFinalization) preparedReleaseProofLocked(ctx context.Context) (RuntimeRecoveryPreparedReleaseProof, error) {
+	if m.sourceCleanup != nil {
+		return RuntimeRecoveryPreparedReleaseProof{}, ErrRuntimeMutationBlocked
+	}
 	deny := func() (RuntimeRecoveryPreparedReleaseProof, error) {
 		m.poisoned = true
 		return RuntimeRecoveryPreparedReleaseProof{}, ErrRuntimeMutationBlocked
@@ -245,7 +248,18 @@ func (m *RuntimeRecoveryFinalization) WithPreparedReleaseSubmission(ctx context.
 		return ErrRuntimeMutationBlocked
 	}
 	e := fn(g)
-	if _, final := g.Proof(ctx); final != nil {
+	g.state.mu.Lock()
+	var final error
+	if m.sourceCleanup != nil {
+		if !m.sourceCleanup.status().SourcesRemoved || !m.sourceCleanupCurrent(ctx) {
+			m.poisoned = true
+			final = ErrRuntimeMutationBlocked
+		}
+	} else {
+		_, final = m.preparedReleaseProofLocked(ctx)
+	}
+	g.state.mu.Unlock()
+	if final != nil {
 		return final
 	}
 	if e != nil {

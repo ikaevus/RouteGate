@@ -42,6 +42,14 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) planArchivedSourceCleanup(ctx cont
 	if m == nil {
 		return zero, ErrRuntimeMutationBlocked
 	}
+	return m.planArchivedSourceCleanupLocked(ctx, checkpoint)
+}
+
+func (m *RuntimeRecoveryFinalization) planArchivedSourceCleanupLocked(ctx context.Context, checkpoint func() error) (RuntimeRecoverySourceCleanupPlan, error) {
+	var zero RuntimeRecoverySourceCleanupPlan
+	if m.sourceCleanup != nil {
+		return zero, ErrRuntimeMutationBlocked
+	}
 	deny := func() (RuntimeRecoverySourceCleanupPlan, error) {
 		m.poisoned = true
 		return zero, ErrRuntimeMutationBlocked
