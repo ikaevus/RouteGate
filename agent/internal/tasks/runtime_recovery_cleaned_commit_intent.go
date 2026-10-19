@@ -104,12 +104,11 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) prepareCleanedCommit(ctx context.C
 	}()
 	publishCut := func(step string, file *os.File) error {
 		if step == "file" {
-			fd, err := syscall.Dup(int(file.Fd()))
-			if err != nil {
+			fd, _, errno := syscall.Syscall(syscall.SYS_FCNTL, file.Fd(), syscall.F_DUPFD_CLOEXEC, 0)
+			if errno != 0 {
 				return ErrRuntimeMutationBlocked
 			}
-			syscall.CloseOnExec(fd)
-			published = os.NewFile(uintptr(fd), runtimeRecoveryCleanedCommitIntentFile)
+			published = os.NewFile(fd, runtimeRecoveryCleanedCommitIntentFile)
 		}
 		if !cut(step) {
 			return ErrRuntimeMutationBlocked

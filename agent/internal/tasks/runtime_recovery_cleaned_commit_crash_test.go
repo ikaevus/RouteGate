@@ -70,7 +70,16 @@ func TestCleanedCommitCrash(t *testing.T) {
 					}
 					t.Fatal("crash released fence")
 				}
-				if owner, err := BeginRuntimeRecoveryFinalization(ctx, e.receiptDir, b, nil, e.activePath, a); err != ErrRuntimeMutationBlocked {
+				consumptionData, err := readTerminalConfirmationFile(filepath.Join(copyPath, "history", "retired-"+grant.OperationID, runtimeRecoveryFinalConsumptionFile), runtimeRecoveryConsumptionLimit)
+				var consumption runtimeRecoveryFinalConsumption
+				if err != nil || !exactHistoricalJSON(consumptionData, &consumption) {
+					t.Fatal("missing original authorization", err)
+				}
+				authorization, err := json.Marshal(consumption.Authorization)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if owner, err := BeginRuntimeRecoveryFinalization(ctx, e.receiptDir, b, authorization, e.activePath, a); err != ErrRuntimeMutationBlocked {
 					if owner != nil {
 						owner.Close()
 					}
