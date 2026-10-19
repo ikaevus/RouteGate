@@ -251,6 +251,14 @@ func TestRuntimeMutationFenceReleaseIntentRefusals(t *testing.T) {
 }
 
 func TestRuntimeMutationFenceReleaseIntentAloneGuards(t *testing.T) {
+	testRecoveryIntentAloneGuards(t, runtimeRecoveryReleaseIntentFile)
+}
+
+func TestCleanedCommitIntentAloneGuards(t *testing.T) {
+	testRecoveryIntentAloneGuards(t, runtimeRecoveryCleanedCommitIntentFile)
+}
+
+func testRecoveryIntentAloneGuards(t *testing.T, name string) {
 	for _, data := range []string{"", "{}", "malformed"} {
 		t.Run(data, func(t *testing.T) {
 			e, task, a, _ := removalExecutorFixture(t)
@@ -258,7 +266,7 @@ func TestRuntimeMutationFenceReleaseIntentAloneGuards(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if e := os.WriteFile(filepath.Join(e.receiptDir, runtimeRecoveryReleaseIntentFile), []byte(data), 0600); e != nil {
+			if e := os.WriteFile(filepath.Join(e.receiptDir, name), []byte(data), 0600); e != nil {
 				t.Fatal(e)
 			}
 			if lease.Complete() != ErrRuntimeMutationBlocked {

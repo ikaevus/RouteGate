@@ -15,10 +15,22 @@ var ErrRecoverySourceCleanupUnconfirmed = errors.New("recovery source cleanup wa
 // authority and retention readback across the same owner lock and deadline.
 func (c *Client) CleanupRecoverySources(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization) (tasks.RuntimeRecoverySourceCleanupStatus, error) {
 	var zero, result tasks.RuntimeRecoverySourceCleanupStatus
+	e := c.withRecoverySourceCleanupReadiness(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+		var err error
+		result, err = g.CleanupArchivedSources(bounded)
+		return err
+	})
+	if e != nil {
+		return zero, ErrRecoverySourceCleanupUnconfirmed
+	}
+	return result, nil
+}
+
+func (c *Client) withRecoverySourceCleanupReadiness(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization, fn func(context.Context, *tasks.RuntimeRecoveryPreparedReleaseGuard) error) error {
 	started := time.Now().UTC()
 	wire, e := json.Marshal(v.Authorization)
 	if e != nil || token == "" || v.Binding.ManagerURL != c.managerURL || recoveryReadHash(wire) != v.AuthorizationHash {
-		return zero, ErrRecoverySourceCleanupUnconfirmed
+		return ErrRecoverySourceCleanupUnconfirmed
 	}
 	bounded, cancel := context.WithDeadline(ctx, v.Authorization.ExpiresAt)
 	defer cancel()
@@ -41,14 +53,13 @@ func (c *Client) CleanupRecoverySources(ctx context.Context, token string, v Ver
 		if e != nil || fresh != r {
 			return ErrRecoverySourceCleanupUnconfirmed
 		}
-		result, e = g.CleanupArchivedSources(bounded)
-		return e
+		return fn(bounded, g)
 	})
 	finished := time.Now().UTC()
 	if e != nil || bounded.Err() != nil || finished.Before(started) || finished.Before(v.Authorization.IssuedAt) || !finished.Before(v.Authorization.ExpiresAt) {
-		return zero, ErrRecoverySourceCleanupUnconfirmed
+		return ErrRecoverySourceCleanupUnconfirmed
 	}
-	return result, nil
+	return nil
 }
 
 type RecoverySourceCleanupHistory struct {

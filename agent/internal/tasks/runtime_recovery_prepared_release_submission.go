@@ -13,7 +13,7 @@ const runtimeRecoveryPreparedSubmissionFile = "recovery-prepared-release-submiss
 const runtimeRecoveryPreparedAcknowledgementFile = "recovery-prepared-release-acknowledgement.json"
 
 func preparedReleaseStateAbsent(dir string) bool {
-	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseRetentionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionAcknowledgementFile))
+	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryCleanedCommitIntentFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseRetentionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionAcknowledgementFile))
 }
 func preparedReleaseReceiptMatches(r RuntimeRecoveryPreparedReleaseReceipt, p RuntimeRecoveryPreparedReleaseProof, wire []byte) bool {
 	return r.SchemaVersion == 1 && r.Recorded && r.OperationID == p.OperationID && r.ReleaseIntentHash == p.ReleaseIntentHash && r.ProofHash == markerDigest(wire) && r.RequestHash == r.ProofHash

@@ -26,6 +26,7 @@ type recoverySourceCleanupState struct {
 	sources, barriers       []releaseRetentionSource
 	removed                 int
 	archiveRemoved          bool
+	commitIntent            *releaseRetentionSource
 }
 
 // Only validated fixed paths from the complete independent archive enter here.
@@ -106,6 +107,25 @@ func readRecoverySourceCleanup(dir, operation string, lock *os.File, files []rec
 	if len(s.barriers) != 2 || (s.archiveRemoved && s.removed != len(s.sources)) {
 		return deny()
 	}
+	intentPath := filepath.Join(dir, runtimeRecoveryCleanedCommitIntentFile)
+	if !runtimeMarkerAbsent(intentPath) {
+		if !s.status().SourcesRemoved {
+			return deny()
+		}
+		before, err := os.Lstat(intentPath)
+		data, e := readTerminalConfirmationFile(intentPath, 8192)
+		after, e2 := os.Lstat(intentPath)
+		var intent RuntimeRecoveryCleanedCommitIntent
+		if err != nil || e != nil || e2 != nil || !os.SameFile(before, after) || !exactHistoricalJSON(data, &intent) {
+			return deny()
+		}
+		expected, e := s.cleanedCommitIntent(intent.ObservedAt)
+		if e != nil || intent != expected {
+			return deny()
+		}
+		s.commitIntent = &releaseRetentionSource{intentPath, 8192, before, data}
+		rootNames[runtimeRecoveryCleanedCommitIntentFile] = true
+	}
 	exact := func(path string, names map[string]bool) bool {
 		entries, e := os.ReadDir(path)
 		if e != nil || len(entries) != len(names) {
@@ -133,6 +153,9 @@ func sameCleanupInfo(a, b os.FileInfo) bool {
 func (s *recoverySourceCleanupState) unchanged() bool {
 	n, e := readRecoverySourceCleanup(s.dir, s.operation, s.lock, s.files, s.hash)
 	if e != nil || n.removed != s.removed || n.archiveRemoved != s.archiveRemoved || !sameCleanupInfo(s.root, n.root) || !sameCleanupInfo(s.archive, n.archive) || !sameCleanupInfo(s.lockInfo, n.lockInfo) || len(s.sources) != len(n.sources) || len(s.barriers) != len(n.barriers) {
+		return false
+	}
+	if (s.commitIntent == nil) != (n.commitIntent == nil) || s.commitIntent != nil && (!os.SameFile(s.commitIntent.info, n.commitIntent.info) || !bytes.Equal(s.commitIntent.data, n.commitIntent.data)) {
 		return false
 	}
 	for i, v := range s.sources {
@@ -193,7 +216,7 @@ func unlinkRecoverySource(source releaseRetentionSource, checkpoint func(string)
 
 func (m *RuntimeRecoveryFinalization) sourceCleanupCurrent(ctx context.Context) bool {
 	s := m.sourceCleanup
-	if m.self != m || s == nil || !m.terminalAuthorityCurrent(ctx) || m.historyArchiveUnchanged == nil || !m.historyArchiveUnchanged() || !s.unchanged() {
+	if m.self != m || s == nil || (s.commitIntent == nil) != (m.cleanedCommitIntent == nil) || s.commitIntent != nil && !bytes.Equal(s.commitIntent.data, m.cleanedCommitIntent) || !m.terminalAuthorityCurrent(ctx) || m.historyArchiveUnchanged == nil || !m.historyArchiveUnchanged() || !s.unchanged() {
 		return false
 	}
 	started := m.now().UTC()
@@ -363,6 +386,15 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) cleanupArchivedSources(ctx context
 // Read-only classification under the ORIGINAL admission lock. Partial prefix
 // states remain fenced and cannot resume. No runtime or authority is inferred.
 func WithRecoverySourceCleanupHistory(ctx context.Context, dir, operation string, b RuntimeRecoveryGrantBinding, fn func(RuntimeRecoverySourceCleanupStatus, RuntimeRecoveryRetentionHistory) error) error {
+	if fn == nil {
+		return ErrRuntimeMutationBlocked
+	}
+	return withRecoverySourceCleanupHistory(ctx, dir, operation, b, func(s *recoverySourceCleanupState, h RuntimeRecoveryRetentionHistory) error {
+		return fn(s.status(), h)
+	})
+}
+
+func withRecoverySourceCleanupHistory(ctx context.Context, dir, operation string, b RuntimeRecoveryGrantBinding, fn func(*recoverySourceCleanupState, RuntimeRecoveryRetentionHistory) error) error {
 	if ctx.Err() != nil || fn == nil {
 		return ErrRuntimeMutationBlocked
 	}
@@ -392,7 +424,7 @@ func WithRecoverySourceCleanupHistory(ctx context.Context, dir, operation string
 		if e != nil || ctx.Err() != nil {
 			return ErrRuntimeMutationBlocked
 		}
-		if !parentCurrent() || fn(s.status(), h) != nil || !parentCurrent() || !s.unchanged() || !stable() || ctx.Err() != nil {
+		if !parentCurrent() || fn(s, h) != nil || !parentCurrent() || !s.unchanged() || !stable() || ctx.Err() != nil {
 			return ErrRuntimeMutationBlocked
 		}
 		return nil

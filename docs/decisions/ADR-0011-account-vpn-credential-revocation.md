@@ -2210,3 +2210,70 @@ apply, Runner/operator/UI caller, real-user revocation, production access/change
 FI diagnostics, logos, merge or deploy. #545 remains open. A future coordinated
 commit must separately revalidate current authority and preserve retained audit
 history before changing either admission barrier.
+
+### Forty-fourth slice: durable cleaned-state commit intent, still fenced
+
+After complete duplicate-source cleanup, persist one private immutable
+recovery-cleaned-commit-intent.json under the ORIGINAL admission mutex/flock.
+This is a local post-cleanup commitment, not permission to remove a barrier,
+proof of Manager completion, a renewed grant or a claim of working VPN traffic.
+Both root admission barriers, the stable runtime.lock and the independent full
+archive remain untouched. No coordinated release or automatic resume exists.
+
+PrepareCleanedCommit derives every field from its own fully validated retained
+inventory and original live owner. Bind operation, Manager/Agent/server/current
+credential generation, exact original authorization and expiry, independent
+manifest, retention proof/receipt hashes, both root barrier hashes and the
+measured process/config/listener observation. Require complete source cleanup;
+partial cleanup, caller-edited snapshots, owner/guard copies and reopened
+history cannot acquire this phase. Reobserve actual runtime and check all pinned
+source/copy/lock/barrier identities, context, expiry and backward wall-clock
+movement before and after publication. Same-owner retries freeze bytes/time,
+but still require current authority/runtime. Never replace even identical
+preexisting bytes or adopt an identical post-publication inode substitution.
+
+Reuse the existing atomic no-replace temp-file/fsync/link/unlink-temp/parent-fsync
+publication primitive. Pin the inode from the writer's own file descriptor and
+compare it with the accepted durable name. The primitive's ordinary nil-hook
+callers retain their existing behavior. Any uncertainty returns a zero value,
+poisons the owner, preserves the intent if published and never removes either
+admission barrier, repairs files or continues a release. Treat the new intent
+itself, including malformed/empty bytes, as an admission blocker through the
+existing recovery-state checks even when other barriers are missing.
+
+Client PrepareRecoveryCleanedCommit reuses current authenticated identity,
+prepared storage, exact original conditional authorization and retention/verify
+readback under that same original owner and deadline. Extract the existing
+cleanup readiness helper; add no Manager endpoint, HTTP payload, polling,
+dispatch or operator caller. The full local intent stays on Agent. Only the
+existing bounded public prepared/retention proofs cross HTTP.
+
+WithRecoveryCleanedCommitHistory validates the complete independent historical
+chain plus the exact cleaned original tree and intent under the original stable
+admission lock. ReconcileRecoveryCleanedCommit authenticates CURRENT credentials
+and verifies the exact Manager retention storage. It can read expired/restarted
+history without capturing runtime, changing files, renewing authority or
+reconstructing an owner. Readback reports retained bytes only: a surviving name
+after interrupted parent fsync cannot prove fsync completion or an authorized
+release. Missing intent, surviving temporary links, malformed/inconsistent
+bindings/times/hashes, unsafe modes/links, foreign files and changes during the
+callback fail closed. Existing cleanup-prefix history remains compatible.
+
+Tests cover original-owner publication/retries, concurrency and actual Client
+HTTP while the original flock is held; absent cleanup/current credentials,
+authorization/storage denial, drift, expiry/cancellation/backward time,
+preexisting identical files, publication races and same-byte inode substitution.
+Exit/SIGKILL cuts cover before publication, fsynced temporary file, two-link
+window, removed temporary name before parent fsync, durable publication and
+post-validation. All cuts retain admission barriers and reject automatic owner
+reconstruction. A fifth disposable systemd/sing-box/Reality phase publishes the
+intent, externally restarts runtime, rejects its old live witness and reads
+historical intent while admission stays blocked. Manager receipts in this
+runtime scenario are synthetic, not coordinated Manager+Agent release E2E.
+
+Schema stays000170 and existing Manager/Agent wire fixtures are unchanged.
+No fence release, Manager reservation completion, config/runtime apply,
+Runner/operator/UI caller, real-user revocation, production access/change,
+FI diagnostics, logos, merge or deploy. #545 remains open. The next coordinated
+commit must independently validate current authority and durably preserve this
+new audit record before changing either older admission barrier.
