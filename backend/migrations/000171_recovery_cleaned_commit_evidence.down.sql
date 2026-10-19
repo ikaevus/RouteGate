@@ -4,5 +4,6 @@ DO $$ BEGIN
  RAISE EXCEPTION 'recovery_cleaned_commit_evidence_retained'; END IF;
  DROP TABLE runtime_recovery_cleaned_commit_evidence;
  DROP FUNCTION routegate_recovery_cleaned_commit_evidence_guard();
+ DROP FUNCTION routegate_recovery_cleaned_commit_observed_in_window(text,timestamptz,timestamptz);
  DROP FUNCTION routegate_recovery_cleaned_commit_wire(json);
 END; $$;

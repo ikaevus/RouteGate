@@ -420,3 +420,24 @@ func TestRecoveryCleanedCommitWaitExpiry(t *testing.T) {
 		t.Fatal("expired partial evidence", err)
 	}
 }
+
+func TestRecoveryCleanedCommitNanosecondBounds(t *testing.T) {
+	f := newRecoveryCleanedCommitFixture(t, 0)
+	a := f.authorization.Authorization
+	// Test the exact predicate used by the trigger deterministically. This does
+	// not pretend to submit live evidence between two microsecond clock ticks:
+	// current authority and future-observation checks remain independent.
+	for _, at := range []time.Time{a.IssuedAt.Add(-time.Nanosecond), a.IssuedAt, a.IssuedAt.Add(time.Nanosecond), a.ExpiresAt.Add(-time.Nanosecond), a.ExpiresAt, a.ExpiresAt.Add(time.Nanosecond)} {
+		var got bool
+		if err := f.pool.QueryRow(f.ctx, `SELECT routegate_recovery_cleaned_commit_observed_in_window($1,$2,$3)`, at.Format(time.RFC3339Nano), a.IssuedAt, a.ExpiresAt).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if want := !at.Before(a.IssuedAt) && at.Before(a.ExpiresAt); got != want {
+			t.Fatal("SQL/Go nanosecond window mismatch", at, got, want)
+		}
+	}
+	var roundsToDeadline bool
+	if err := f.pool.QueryRow(f.ctx, `SELECT $1::timestamptz=$2::timestamptz`, a.ExpiresAt.Add(-time.Nanosecond).Format(time.RFC3339Nano), a.ExpiresAt).Scan(&roundsToDeadline); err != nil || !roundsToDeadline {
+		t.Fatal("regression did not exercise timestamp rounding", err)
+	}
+}

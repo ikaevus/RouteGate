@@ -2314,6 +2314,12 @@ rejection and immutable update/delete prevention. Root and nested markerHash
 use their respective typed JSON order rather than a shared ambiguous ordering.
 The downgrade locks the ledger before checking emptiness and refuses to erase
 any statement, including one committed while downgrade waits.
+The rounded timestamptz observed_at column is indexing/binding metadata only:
+authorization-window and future-observation comparisons use exact textual
+nanoseconds against numeric epoch bounds. A deterministic SQL/Go regression
+checks issue/expiry minus1ns, equality and plus1ns, including a value that rounds
+up to the stored expiry. Current authority clock checks remain independent;
+this is not a claim of live submission between microsecond clock ticks.
 
 Readback verifies exact canonical stored bytes/hash, the complete prepared/
 retention predecessor chain and CURRENT Agent credentials/server/generation.

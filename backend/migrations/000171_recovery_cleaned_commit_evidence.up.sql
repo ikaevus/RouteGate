@@ -21,6 +21,13 @@ BEGIN
  END IF;
 END; $$;
 
+-- Preserve the wire's nanoseconds. observed_at is a rounded indexing column,
+-- never authority for the original half-open authorization interval.
+CREATE FUNCTION routegate_recovery_cleaned_commit_observed_in_window(value text, issued timestamptz, expires timestamptz) RETURNS boolean LANGUAGE sql STABLE STRICT AS $$
+ SELECT routegate_recovery_terminal_instant(value)>=extract(epoch FROM issued)
+ AND routegate_recovery_terminal_instant(value)<extract(epoch FROM expires);
+$$;
+
 CREATE FUNCTION routegate_recovery_cleaned_commit_evidence_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE node uuid; prep runtime_recovery_preparations; authority runtime_recovery_release_authorizations; prepared runtime_recovery_prepared_release_evidence; retained runtime_recovery_retention_evidence; data jsonb; ack text;
 BEGIN
@@ -44,8 +51,8 @@ BEGIN
  ',"proofHash":'||to_json(retained.proof_hash)::text||',"requestHash":'||to_json(retained.proof_hash)::text||'}';
  IF prep.id IS NULL OR prep.state<>'prepared' OR authority.preparation_id IS NULL OR prepared.preparation_id IS NULL OR retained.preparation_id IS NULL
  OR clock_timestamp()<authority.issued_at OR clock_timestamp()>=authority.expires_at
- OR NEW.observed_at<authority.issued_at OR NEW.observed_at<retained.observed_at
- OR NEW.observed_at>=authority.expires_at OR NEW.observed_at>clock_timestamp()
+ OR NOT routegate_recovery_cleaned_commit_observed_in_window(data->>'observedAt',authority.issued_at,authority.expires_at)
+ OR routegate_recovery_terminal_instant(data->>'observedAt')>extract(epoch FROM clock_timestamp())
  OR NEW.proof_hash<>encode(digest(NEW.proof,'sha256'),'hex')
  OR NOT COALESCE(jsonb_typeof(data)='object' AND data->'schemaVersion'='1'::jsonb
  AND data->>'purpose'='runtime_mutation_cleaned_commit_evidence_v1'
