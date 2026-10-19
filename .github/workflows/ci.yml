@@ -66,6 +66,8 @@ jobs:
 
       - name: Verify immutable recovery retention commitments and historical readback
         run: go test ./internal/db -run '^TestRecoveryRetention' -count=1 -timeout=120s -v
+      - name: Verify immutable cleaned commit statements and historical readback
+        run: go test ./internal/db -run '^TestRecoveryCleanedCommit' -count=1 -timeout=120s -v
 
       - name: Run tests
         run: go test ./...
@@ -166,6 +168,9 @@ jobs:
           - suite: cleaned-commit-intent
             packages: ./internal/tasks ./internal/client
             pattern: ^TestCleanedCommitIntent
+          - suite: cleaned-commit-history
+            packages: ./internal/tasks
+            pattern: ^TestCleanedCommitIntentHistoryRefusals$
           - suite: cleaned-commit-crash
             packages: ./internal/tasks
             pattern: ^TestCleanedCommitCrash$
@@ -183,7 +188,13 @@ jobs:
       - name: Download dependencies
         run: go mod download
       - name: Run unchanged focused race checks
-        run: go test -race ${{ matrix.packages }} -run '${{ matrix.pattern }}' -count=1 -timeout=120s -v
+        run: |
+          if [[ '${{ matrix.suite }}' == 'cleaned-commit-intent' ]]; then
+            # History runs in its own required shard with the same watchdog.
+            go test -race ${{ matrix.packages }} -run '${{ matrix.pattern }}' -skip '^TestCleanedCommitIntentHistoryRefusals$' -count=1 -timeout=120s -v
+          else
+            go test -race ${{ matrix.packages }} -run '${{ matrix.pattern }}' -count=1 -timeout=120s -v
+          fi
 
   agent:
     name: Agent tests
