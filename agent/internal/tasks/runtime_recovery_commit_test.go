@@ -497,6 +497,14 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 											return nil
 										})
 									}
+									if err == nil && strings.Contains(mode, "_commit_intent_") {
+										_, err = g.prepareCleanedCommit(context.Background(), func(step string) error {
+											if strings.HasSuffix(mode, "_commit_intent_"+step) {
+												return cut()
+											}
+											return nil
+										})
+									}
 									return err
 								}
 								return nil

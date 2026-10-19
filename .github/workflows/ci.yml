@@ -163,6 +163,12 @@ jobs:
           - suite: cleanup-retired-crash
             packages: ./internal/tasks
             pattern: ^TestSourceCleanupCrashRetired$
+          - suite: cleaned-commit-intent
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestCleanedCommitIntent
+          - suite: cleaned-commit-crash
+            packages: ./internal/tasks
+            pattern: ^TestCleanedCommitCrash$
     defaults:
       run:
         working-directory: agent

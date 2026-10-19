@@ -18,21 +18,28 @@ import (
 )
 
 func TestRecoveryHistoryArchiveClientOwner(t *testing.T) {
-	testRecoveryHistoryClientOwner(t, false, false)
+	testRecoveryHistoryClientOwner(t, false, false, false)
 }
 
 func TestArchivedSourcePlanClientOwner(t *testing.T) {
-	testRecoveryHistoryClientOwner(t, true, false)
+	testRecoveryHistoryClientOwner(t, true, false, false)
 }
 
 func TestArchivedSourceCleanupClientOwner(t *testing.T) {
-	testRecoveryHistoryClientOwner(t, false, true)
+	testRecoveryHistoryClientOwner(t, false, true, false)
 }
 
-func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
+func TestCleanedCommitIntentClientOwner(t *testing.T) {
+	testRecoveryHistoryClientOwner(t, false, true, true)
+}
+
+func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning, committing bool) {
 	modes := []string{"accepted", "concurrent", "denied", "receipt", "runtime", "source", "cancelled", "historical_identity", "historical_receipt", "historical_copy"}
-	if cleaning {
+	if cleaning && !committing {
 		modes = append(modes, "partial_history")
+	}
+	if committing {
+		modes = append(modes, "not_cleaned", "credential", "authorization", "prepared_receipt")
 	}
 	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
@@ -76,6 +83,9 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 					if historical.Load() && mode == "historical_identity" {
 						generation++
 					}
+					if committing && mode == "credential" {
+						generation++
+					}
 					json.NewEncoder(w).Encode(credentialIdentityReply{1, true, q.AgentID, q.ServerID, generation, recoveryReadHash(data)})
 					return
 				}
@@ -87,13 +97,20 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 						t.Error("changed prepared proof")
 					}
 					h := recoveryReadHash(wire)
+					if committing && mode == "prepared_receipt" {
+						h = "invalid"
+					}
 					json.NewEncoder(w).Encode(RecoveryPreparedReleaseReceipt{SchemaVersion: 1, Recorded: true, OperationID: prepared.OperationID, ReleaseIntentHash: prepared.ReleaseIntentHash, ProofHash: h, RequestHash: h})
 				case base + "/release-authorization":
 					if mode == "denied" {
 						w.WriteHeader(409)
 						return
 					}
-					json.NewEncoder(w).Encode(recoveryReleaseReply{1, prepared.OperationID, v.Binding.AgentID, v.Binding.ServerID, v.Binding.AgentCredentialGeneration, recoveryReadHash(data), v.AuthorizationHash, v.Authorization})
+					authorization := v.Authorization
+					if committing && mode == "authorization" {
+						authorization.AgentCredentialGeneration++
+					}
+					json.NewEncoder(w).Encode(recoveryReleaseReply{1, prepared.OperationID, v.Binding.AgentID, v.Binding.ServerID, v.Binding.AgentCredentialGeneration, recoveryReadHash(data), v.AuthorizationHash, authorization})
 				case base + "/retention/verify":
 					wire, _ := json.Marshal(proof)
 					if !bytes.Equal(data, wire) || bytes.Contains(data, []byte(`"files":`)) {
@@ -107,6 +124,9 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 							a.mu.Unlock()
 						case "source":
 							p := filepath.Join(dir, "recovery-retention-submission.json")
+							if committing {
+								p = filepath.Join(dir, "mutation-inflight.json")
+							}
 							d, _ := os.ReadFile(p)
 							os.WriteFile(p+".new", d, 0600)
 							os.Rename(p+".new", p)
@@ -163,6 +183,15 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 			if planning || cleaning {
 				archivedBefore = preparedHistoryTree(t, dir+"-history-"+proof.OperationID)
 			}
+			if committing && mode != "not_cleaned" {
+				if err := owner.WithSourceCleanupSubmission(ctx, v.Binding, v.AuthorizationHash, func(g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+					_, err := g.CleanupArchivedSources(ctx)
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+				before = preparedHistoryTree(t, dir)
+			}
 			if mode == "partial_history" {
 				owner.Close()
 				historical.Store(true)
@@ -180,6 +209,19 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 				return
 			}
 			run := func() (string, error) {
+				if committing {
+					p, err := c.PrepareRecoveryCleanedCommit(ctx, "isolated-token", v, owner)
+					if err != nil {
+						if p != (tasks.RuntimeRecoveryCleanedCommitIntent{}) {
+							t.Error("partial intent result")
+						}
+						return "", err
+					}
+					if p.Binding != v.Binding || p.OperationID != proof.OperationID || p.AuthorizationHash != v.AuthorizationHash || p.RetentionProofHash != recoveryReadHash(mustRecoveryJSON(t, proof)) || p.Observation != v.Authorization.Expected {
+						t.Error("unbound cleaned commit intent")
+					}
+					return p.ManifestHash, nil
+				}
 				if cleaning {
 					s, err := c.CleanupRecoverySources(ctx, "isolated-token", v, owner)
 					if err != nil {
@@ -240,6 +282,9 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 				if cleaning {
 					wantErr = ErrRecoverySourceCleanupUnconfirmed
 				}
+				if committing {
+					wantErr = ErrRecoveryCleanedCommitUnconfirmed
+				}
 				if err != wantErr || hash != "" {
 					t.Fatal("unsafe live archive result", err)
 				}
@@ -251,6 +296,16 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 					t.Fatal("archive unavailable", err)
 				}
 				if cleaning {
+					if committing {
+						original, e := os.ReadFile(filepath.Join(dir, "recovery-cleaned-commit-intent.json"))
+						if e != nil {
+							t.Fatal(e)
+						}
+						p, e := c.PrepareRecoveryCleanedCommit(ctx, "isolated-token", v, owner)
+						if e != nil || !bytes.Equal(original, mustRecoveryJSON(t, p)) {
+							t.Fatal("intent retry renewed bytes", e)
+						}
+					}
 					again, e := c.CleanupRecoverySources(ctx, "isolated-token", v, owner)
 					if e != nil || again.ManifestHash != hash || !again.SourcesRemoved {
 						t.Fatal("cleanup retry", e)
@@ -281,6 +336,20 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 				}
 				remaining := preparedHistoryTree(t, dir)
 				if cleaning {
+					if committing {
+						result, e := c.ReconcileRecoveryCleanedCommit(ctx, "isolated-token", v.Binding.AgentID, v.Binding.ServerID, dir, proof.OperationID)
+						if mode == "accepted" || mode == "concurrent" {
+							if e != nil || result.Intent.ManifestHash != hash || !result.Receipt.Recorded {
+								t.Fatal("intent history", e)
+							}
+						} else if e != ErrRecoveryCleanedCommitUnconfirmed || result != (RecoveryCleanedCommitHistory{}) {
+							t.Fatal("unsafe intent history", e)
+						}
+						if !reflect.DeepEqual(remaining, preparedHistoryTree(t, dir)) {
+							t.Fatal("intent history changed state")
+						}
+						return
+					}
 					result, e := c.ReconcileRecoverySourceCleanup(ctx, "isolated-token", v.Binding.AgentID, v.Binding.ServerID, dir, proof.OperationID)
 					if mode == "accepted" || mode == "concurrent" {
 						if e != nil || result.Status.ManifestHash != hash || !result.Status.SourcesRemoved || !result.Receipt.Recorded {
@@ -307,9 +376,21 @@ func testRecoveryHistoryClientOwner(t *testing.T, planning, cleaning bool) {
 				}
 				return
 			}
+			if committing && mode == "source" {
+				return
+			} // Test-only inode substitution above.
 			if !reflect.DeepEqual(before, preparedHistoryTree(t, dir)) {
 				t.Fatal("archive altered source bytes")
 			}
 		})
 	}
+}
+
+func mustRecoveryJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

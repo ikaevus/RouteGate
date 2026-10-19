@@ -314,6 +314,16 @@ func writeRemovalFileNoReplace(path string, data []byte) error {
 }
 
 func publishRemovalFile(path string, data []byte, replace bool) error {
+	return publishRemovalFileCheckpoint(path, data, replace, nil)
+}
+
+func publishRemovalFileCheckpoint(path string, data []byte, replace bool, checkpoint func(string, *os.File) error) error {
+	cut := func(step string) error {
+		if checkpoint != nil {
+			return checkpoint(step, nil)
+		}
+		return nil
+	}
 	dir := filepath.Dir(path)
 	file, err := os.CreateTemp(dir, ".removal-*")
 	if err != nil {
@@ -331,6 +341,11 @@ func publishRemovalFile(path string, data []byte, replace bool) error {
 	if err = file.Sync(); err != nil {
 		return err
 	}
+	if checkpoint != nil {
+		if err = checkpoint("file", file); err != nil {
+			return err
+		}
+	}
 	if err = file.Close(); err != nil {
 		return err
 	}
@@ -342,16 +357,25 @@ func publishRemovalFile(path string, data []byte, replace bool) error {
 		if err = os.Link(tmp, path); err != nil {
 			return err
 		}
+		if err = cut("linked"); err != nil {
+			return err
+		}
 		if err = os.Remove(tmp); err != nil {
 			return err
 		}
+	}
+	if err = cut("unlinked-temp"); err != nil {
+		return err
 	}
 	directory, err := os.Open(dir)
 	if err != nil {
 		return err
 	}
 	defer directory.Close()
-	return directory.Sync()
+	if err = directory.Sync(); err != nil {
+		return err
+	}
+	return cut("durable")
 }
 
 func removeRemovalFile(path string) error {

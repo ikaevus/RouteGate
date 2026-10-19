@@ -34,14 +34,14 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("isolated systemd test requires root")
 	}
-	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission", "cleaned_sources"} {
+	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission", "cleaned_sources", "cleaned_commit_intent"} {
 		t.Run(phase, func(t *testing.T) {
-			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission" || phase == "cleaned_sources", phase == "cleaned_sources")
+			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission" || phase == "cleaned_sources" || phase == "cleaned_commit_intent", phase == "cleaned_sources" || phase == "cleaned_commit_intent", phase == "cleaned_commit_intent")
 		})
 	}
 }
 
-func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted, cleanup bool) {
+func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted, cleanup, commitIntent bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -327,6 +327,7 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 	if submitted {
 		before := terminalHistoryTree(t, e.receiptDir)
 		var cleanupBackup map[string][]byte
+		var cleanedIntent RuntimeRecoveryCleanedCommitIntent
 		copyPath, _ := recoveryHistoryArchivePath(e.receiptDir, authorization.OperationID)
 		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
@@ -354,11 +355,22 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 				if s, err := g.CleanupArchivedSources(ctx); err != nil || !s.SourcesRemoved {
 					t.Fatal("real duplicate cleanup", err)
 				}
+				if commitIntent {
+					cleanedIntent, err = g.PrepareCleanedCommit(ctx)
+					if err != nil || cleanedIntent.Observation != authorization.Expected {
+						t.Fatal("real cleaned commit intent", err)
+					}
+				}
 				if err := restartRuntime(); err != nil {
 					t.Fatal(err)
 				}
 				if p, err := g.CleanupPreparedProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryPreparedReleaseProof{}) {
 					t.Fatal("cleaned owner accepted changed runtime", err)
+				}
+				if commitIntent {
+					if p, err := g.PrepareCleanedCommit(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryCleanedCommitIntent{}) {
+						t.Fatal("intent accepted restarted runtime", err)
+					}
 				}
 				return ErrRuntimeMutationBlocked
 			}
@@ -389,7 +401,19 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 				t.Fatal(err)
 			}
 			remaining := terminalHistoryTree(t, e.receiptDir)
-			if len(remaining) != 4 {
+			wantFiles := 4
+			if commitIntent {
+				wantFiles++
+				if err := WithRecoveryCleanedCommitHistory(ctx, e.receiptDir, authorization.OperationID, bound, func(p RuntimeRecoveryCleanedCommitIntent, h RuntimeRecoveryRetentionHistory) error {
+					if p != cleanedIntent || !h.LocalReceipt.Recorded {
+						t.Error("real cleaned intent history")
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(remaining) != wantFiles {
 				t.Fatal("real cleanup remaining tree")
 			}
 			for _, name := range []string{"runtime.lock", "mutation-inflight.json", runtimeRecoveryReleaseIntentFile} {
