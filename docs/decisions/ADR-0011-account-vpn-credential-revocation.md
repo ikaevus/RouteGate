@@ -2277,3 +2277,65 @@ Runner/operator/UI caller, real-user revocation, production access/change,
 FI diagnostics, logos, merge or deploy. #545 remains open. The next coordinated
 commit must independently validate current authority and durably preserve this
 new audit record before changing either older admission barrier.
+
+### Forty-fifth slice: Manager cleaned-commit statement ledger, no release
+
+Add bounded authenticated Agent evidence for a local cleaned commit intent.
+The private intent, archive, inventories, credentials and nonce never cross
+HTTP. The public statement binds operation, Agent/server/task observation and
+credential generation, original authorization, exact canonical retention proof
+and receipt, original prepared release-intent hash, opaque local intent,
+independent manifest and root marker hashes, intent time and observed time.
+The root marker digest is distinct from the archived original task marker in
+the observation. Opaque local hashes are Agent assertions, not independent
+proof of file contents, cleanup, filesystem durability or working VPN traffic.
+
+Use POST /api/v1/agent/recovery-observations/{operation_id}/cleaned-commit and
+the corresponding /verify route through the existing bounded, no-store Agent
+evidence transport. Accept at most8192 bytes and strictly validate typed JSON,
+unknown/duplicate/case-altered fields, hashes, nested observation and times.
+Reuse current token/generation and exact server -> preparation -> Agent -> role
+maps -> confirming human/session lock order. Require prepared reservation,
+current fencing/capabilities/authenticated heartbeat and active human admin or
+super_admin with configs:apply and its original live session. Heartbeat is
+readiness only. Recheck original expiry/session/heartbeat after bounded work
+and lock waits using clock_timestamp(), never transaction-start now().
+
+Migration000171 creates runtime_recovery_cleaned_commit_evidence with one
+immutable canonical statement per preparation and a retention-evidence foreign
+key. Canonical proof hash differs from exact HTTP request hash for formatted
+retries. Concurrent identical submissions serialize, preserve accepted_at and
+return the same storage commitment; conflicting retries never replace bytes.
+Every accept retry revalidates CURRENT authority. Nanosecond-exact intent time
+must follow retained observation; observed time must follow intent and remain
+within the original authorization and current wall clock. SQL independently
+enforces bindings/time/current authority, canonical nested wire, duplicate-key
+rejection and immutable update/delete prevention. Root and nested markerHash
+use their respective typed JSON order rather than a shared ambiguous ordering.
+The downgrade locks the ledger before checking emptiness and refuses to erase
+any statement, including one committed while downgrade waits.
+
+Readback verifies exact canonical stored bytes/hash, the complete prepared/
+retention predecessor chain and CURRENT Agent credentials/server/generation.
+Expired history and revoked administrator authority remain readable, but this
+does not renew authority, finish reservation, consume a new nonce, trigger a
+mutation or prove a successful release. Recorded=true means only storage of an
+authenticated statement. No Agent receipt write or adoption is implemented.
+
+Manager and Agent share new proof/acknowledgement golden wire/hash fixtures;
+all existing wire fixtures remain unchanged. Agent gets contract types only,
+not a producer, automated submission, polling/Runner/operator/UI caller or a
+new filesystem transition. Manager acceptance is therefore dormant until a
+future original-owner Agent submission protocol pins and delivers its own
+fresh proof safely. These HTTP/unit/golden tests are not coordinated release
+or credential-revocation E2E.
+
+PostgreSQL tests exercise concurrent/idempotent acceptance, conflicts, immutable
+audit and downgrade races, strict raw SQL, exact hashes and nanosecond ordering,
+current token/generation, missing retention, authority/capability/heartbeat
+loss, cancellation and expiry while waiting without global auth locks. Schema
+baseline is171 for the isolated build; no installed database is migrated.
+No fence release, Manager reservation completion, runtime/config apply,
+real-user revocation, production access/change, FI diagnostics, logos, merge or
+deploy. #545 stays open; durable Agent submission and coordinated commit remain
+future work.

@@ -66,6 +66,8 @@ jobs:
 
       - name: Verify immutable recovery retention commitments and historical readback
         run: go test ./internal/db -run '^TestRecoveryRetention' -count=1 -timeout=120s -v
+      - name: Verify immutable cleaned commit statements and historical readback
+        run: go test ./internal/db -run '^TestRecoveryCleanedCommit' -count=1 -timeout=120s -v
 
       - name: Run tests
         run: go test ./...
