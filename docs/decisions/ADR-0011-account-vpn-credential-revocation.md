@@ -2345,3 +2345,12 @@ No fence release, Manager reservation completion, runtime/config apply,
 real-user revocation, production access/change, FI diagnostics, logos, merge or
 deploy. #545 stays open; durable Agent submission and coordinated commit remain
 future work.
+
+CI keeps the existing120s race watchdog and all tests. The older cleaned-intent
+group exceeded its package-wide budget on a slower runner while preparing the
+last historical fixture, without an assertion failure or blocked lock in its
+stack. Split only its historical-refusal top-level test into a separate required
+matrix job; the live shard retains the original prefix selector and skips that
+one exact test. Their union preserves present and future matching tests. All
+other race commands and the fail-closed aggregate gate remain unchanged; no
+safety/runtime/expiry check or assertion is removed or relaxed.
