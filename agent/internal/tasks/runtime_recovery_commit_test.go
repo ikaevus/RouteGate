@@ -484,7 +484,7 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 										return err
 									}
 									_, err = g.archiveRetainedHistory(context.Background(), func(step string) error {
-										if strings.HasSuffix(mode, "_archive_"+step) {
+										if !strings.Contains(mode, "_cleaned_archive_") && strings.HasSuffix(mode, "_archive_"+step) {
 											return cut()
 										}
 										return nil
@@ -523,6 +523,14 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 												return nil
 											})
 										}
+									}
+									if err == nil && strings.Contains(mode, "_cleaned_archive_") {
+										_, err = g.archiveCleanedCommitHistory(context.Background(), func(step string) error {
+											if strings.HasSuffix(mode, "_cleaned_archive_"+step) {
+												return cut()
+											}
+											return nil
+										})
 									}
 									return err
 								}

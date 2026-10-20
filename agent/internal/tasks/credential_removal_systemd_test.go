@@ -330,6 +330,7 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		var cleanedIntent RuntimeRecoveryCleanedCommitIntent
 		var cleanedProof RuntimeRecoveryCleanedCommitProof
 		var cleanedReceipt RuntimeRecoveryCleanedCommitReceipt
+		var cleanedArchiveHash string
 		copyPath, _ := recoveryHistoryArchivePath(e.receiptDir, authorization.OperationID)
 		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
@@ -381,6 +382,11 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 						if file.Hash != markerDigest(beforePlan[file.Name]) || file.Name == "runtime.lock" {
 							t.Fatal("real plan inventory")
 						}
+					}
+					assertTerminalHistoryTree(t, e.receiptDir, beforePlan)
+					cleanedArchiveHash, err = g.ArchiveCleanedCommitHistory(ctx)
+					if err != nil || len(cleanedArchiveHash) != 64 {
+						t.Fatal("real cleaned history archive", err)
 					}
 					assertTerminalHistoryTree(t, e.receiptDir, beforePlan)
 				}
@@ -435,6 +441,14 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			wantFiles := 4
 			if commitIntent {
 				wantFiles += 3
+				if err := WithArchivedRecoveryCleanedCommit(ctx, e.receiptDir, authorization.OperationID, bound, func(h RuntimeRecoveryCleanedCommitArchivedHistory) error {
+					if h.ManifestHash != cleanedArchiveHash || h.Proof != cleanedProof || h.Receipt != cleanedReceipt {
+						t.Error("real archived cleaned chain")
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
 				if err := WithRecoveryCleanedCommitEvidenceHistory(ctx, e.receiptDir, authorization.OperationID, bound, func(p RuntimeRecoveryCleanedCommitProof, r RuntimeRecoveryCleanedCommitReceipt) error {
 					if p != cleanedProof || r != cleanedReceipt {
 						t.Error("real cleaned evidence history")

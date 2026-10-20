@@ -19,7 +19,16 @@ import (
 )
 
 func TestCleanedCommitReadinessClient(t *testing.T) {
-	for _, mode := range []string{"ok", "concurrent", "unacknowledged", "credential", "prepared", "retention", "cleaned_missing", "wrong_ack", "duplicate_ack", "redirect", "denied_before", "denied_after", "credential_after", "prepared_after", "authorization_after", "runtime", "proof_inode", "ack_inode", "archive_inode", "cancelled", "missing_local_ack", "binding"} {
+	testCleanedCommitReadinessClient(t, "plan")
+}
+func TestCleanedArchiveClient(t *testing.T)        { testCleanedCommitReadinessClient(t, "archive") }
+func TestCleanedArchiveClientHistory(t *testing.T) { testCleanedCommitReadinessClient(t, "history") }
+func testCleanedCommitReadinessClient(t *testing.T, phase string) {
+	modes := []string{"ok", "concurrent", "unacknowledged", "credential", "prepared", "retention", "cleaned_missing", "wrong_ack", "duplicate_ack", "redirect", "denied_before", "denied_after", "credential_after", "prepared_after", "authorization_after", "runtime", "proof_inode", "ack_inode", "archive_inode", "cancelled", "missing_local_ack", "binding"}
+	if phase == "history" {
+		modes = []string{"historical_missing_sources", "historical_identity", "historical_ack", "historical_copy"}
+	}
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -31,6 +40,7 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 			var ack RecoveryCleanedCommitReceipt
 			var adapter *retentionTestAdapter
 			var identities, preparedReads, authorities, cleanedReads atomic.Int32
+			var historical atomic.Bool
 			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				data, _ := io.ReadAll(r.Body)
 				if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer isolated-token" || r.Header.Get("Cache-Control") != "no-store" {
@@ -47,7 +57,7 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 				if e == nil {
 					syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 				}
-				if e != syscall.EWOULDBLOCK && e != syscall.EAGAIN {
+				if !(historical.Load() && strings.HasSuffix(r.URL.Path, "/identity/verify")) && e != syscall.EWOULDBLOCK && e != syscall.EAGAIN {
 					t.Error("readiness HTTP escaped flock", e)
 				}
 				w.Header().Set("Cache-Control", "no-store")
@@ -56,7 +66,7 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 					var q credentialIdentityRequest
 					json.Unmarshal(data, &q)
 					gen := v.Binding.AgentCredentialGeneration
-					if mode == "credential" || mode == "credential_after" && n > 1 {
+					if mode == "credential" || mode == "credential_after" && n > 1 || historical.Load() && mode == "historical_identity" {
 						gen++
 					}
 					json.NewEncoder(w).Encode(credentialIdentityReply{1, true, q.AgentID, q.ServerID, gen, recoveryReadHash(data)})
@@ -130,6 +140,12 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 						cancel()
 					}
 					reply := ack
+					if historical.Load() && mode == "historical_ack" {
+						reply.ProofHash = "wrong"
+					}
+					if historical.Load() && mode == "historical_copy" {
+						replace(filepath.Join(dir+"-cleaned-history-"+proof.OperationID, "manifest.json"))
+					}
 					if mode == "wrong_ack" {
 						reply.RequestHash = "wrong"
 					}
@@ -201,10 +217,19 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 			}
 			results := make(chan tasks.RuntimeRecoveryCleanedCommitPlan, 2)
 			errs := make(chan error, 2)
+			hashes := make(chan string, 2)
 			call := func() {
-				p, e := c.PlanRecoveryCleanedCommit(ctx, "isolated-token", input, owner)
+				var p tasks.RuntimeRecoveryCleanedCommitPlan
+				var hash string
+				var e error
+				if phase == "plan" {
+					p, e = c.PlanRecoveryCleanedCommit(ctx, "isolated-token", input, owner)
+				} else {
+					hash, e = c.ArchiveRecoveryCleanedCommitHistory(ctx, "isolated-token", input, owner)
+				}
 				results <- p
 				errs <- e
+				hashes <- hash
 			}
 			calls := 1
 			if mode == "concurrent" {
@@ -214,9 +239,18 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 			} else {
 				call()
 			}
+			var archiveHash string
 			for range calls {
 				p, e := <-results, <-errs
-				if mode == "ok" || mode == "concurrent" {
+				hash := <-hashes
+				if mode == "ok" || mode == "concurrent" || phase == "history" {
+					if phase != "plan" {
+						if e != nil || len(hash) != 64 || archiveHash != "" && hash != archiveHash {
+							t.Fatal("archive result", e)
+						}
+						archiveHash = hash
+						continue
+					}
 					if e != nil || p.ProofHash != ack.ProofHash || p.ReceiptHash == "" || p.Binding != v.Binding || p.AuthorizationHash != v.AuthorizationHash || p.ExpiresAt != v.Authorization.ExpiresAt || p.ObservedAt.Before(proof.ObservedAt) {
 						t.Fatal("unbound readiness", e)
 					}
@@ -225,7 +259,7 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 							t.Fatal("unsafe planned file")
 						}
 					}
-				} else if e != ErrRecoveryCleanedCommitUnconfirmed || p != (tasks.RuntimeRecoveryCleanedCommitPlan{}) {
+				} else if e != ErrRecoveryCleanedCommitUnconfirmed || p != (tasks.RuntimeRecoveryCleanedCommitPlan{}) || hash != "" {
 					t.Fatal("accepted unsafe readiness", e)
 				}
 			}
@@ -237,6 +271,36 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 			}
 			if !reflect.DeepEqual(before, preparedHistoryTree(t, dir)) || !reflect.DeepEqual(backup, preparedHistoryTree(t, archive)) {
 				t.Fatal("readiness changed audit/files")
+			}
+			if phase == "archive" && mode != "ok" && mode != "concurrent" {
+				if _, e := os.Lstat(dir + "-cleaned-history-" + proof.OperationID); !os.IsNotExist(e) {
+					t.Fatal("archive written before confirmed readiness", e)
+				}
+			}
+			if phase == "history" {
+				owner.Close()
+				historical.Store(true)
+				if mode == "historical_missing_sources" {
+					for _, name := range []string{"recovery-cleaned-commit-intent.json", "recovery-cleaned-commit-submission.json", "recovery-cleaned-commit-acknowledgement.json"} {
+						if e := os.Remove(filepath.Join(dir, name)); e != nil {
+							t.Fatal(e)
+						}
+					}
+				}
+				before = preparedHistoryTree(t, dir)
+				path := dir + "-cleaned-history-" + proof.OperationID
+				copyBefore := preparedHistoryTree(t, path)
+				hash, e := c.ReconcileArchivedRecoveryCleanedCommit(ctx, "isolated-token", v.Binding.AgentID, v.Binding.ServerID, dir, proof.OperationID)
+				if mode == "historical_missing_sources" {
+					if e != nil || hash != archiveHash {
+						t.Fatal("archived reconciliation", e)
+					}
+				} else if e != ErrRecoveryCleanedCommitUnconfirmed || hash != "" {
+					t.Fatal("unsafe archived reconciliation", e)
+				}
+				if !reflect.DeepEqual(before, preparedHistoryTree(t, dir)) || !reflect.DeepEqual(copyBefore, preparedHistoryTree(t, path)) || !reflect.DeepEqual(backup, preparedHistoryTree(t, archive)) {
+					t.Fatal("historical reconciliation changed files")
+				}
 			}
 		})
 	}

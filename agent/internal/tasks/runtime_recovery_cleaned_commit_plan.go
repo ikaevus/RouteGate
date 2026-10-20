@@ -60,6 +60,11 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) PlanCleanedCommit(ctx context.Cont
 	if m == nil {
 		return zero, ErrRuntimeMutationBlocked
 	}
+	return m.planCleanedCommitLocked(ctx)
+}
+
+func (m *RuntimeRecoveryFinalization) planCleanedCommitLocked(ctx context.Context) (RuntimeRecoveryCleanedCommitPlan, error) {
+	var zero RuntimeRecoveryCleanedCommitPlan
 	p, r, e := m.acknowledgedCleanedCommitLocked(ctx)
 	if e != nil {
 		return zero, e

@@ -254,6 +254,9 @@ func unlinkRecoverySource(source releaseRetentionSource, checkpoint func(string)
 
 func (m *RuntimeRecoveryFinalization) sourceCleanupCurrent(ctx context.Context) bool {
 	s := m.sourceCleanup
+	if m.cleanedCommitArchive != nil && (m.cleanedArchiveUnchanged == nil || !m.cleanedArchiveUnchanged()) {
+		return false
+	}
 	if s != nil && (!ownedCleanupRecord(s.commitSubmission, m.cleanedCommitSubmission) || !ownedCleanupRecord(s.commitReceipt, m.cleanedCommitReceipt)) {
 		return false
 	}
