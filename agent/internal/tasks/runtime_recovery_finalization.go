@@ -29,8 +29,8 @@ type RuntimeRecoveryFinalizationProof struct {
 	Observation          RuntimeRecoveryObservation `json:"observation"`
 }
 
-// Dormant exclusive owner. There is no Complete/Release/resume method. Close
-// drops only flock; all private history, final consumption and fences survive.
+// Dormant exclusive owner. Close drops only flock. Admission release requires
+// the scoped cleaned-commit protocol; historical records never resume an owner.
 type RuntimeRecoveryFinalization struct {
 	self                    *RuntimeRecoveryFinalization
 	mu                      sync.Mutex
@@ -71,6 +71,7 @@ type RuntimeRecoveryFinalization struct {
 	cleanedCommitFrozen     RuntimeRecoveryCleanedCommitProof
 	cleanedCommitArchive    []byte
 	cleanedArchiveUnchanged func() bool
+	admissionRelease        *runtimeRecoveryAdmissionRelease
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time

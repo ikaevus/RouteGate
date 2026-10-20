@@ -23,8 +23,20 @@ func TestCleanedCommitReadinessClient(t *testing.T) {
 }
 func TestCleanedArchiveClient(t *testing.T)        { testCleanedCommitReadinessClient(t, "archive") }
 func TestCleanedArchiveClientHistory(t *testing.T) { testCleanedCommitReadinessClient(t, "history") }
+func TestAdmissionReleaseClientReadiness(t *testing.T) {
+	testCleanedCommitReadinessClient(t, "release-readiness")
+}
+func TestAdmissionReleaseClientAuthority(t *testing.T) {
+	testCleanedCommitReadinessClient(t, "release-authority")
+}
 func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 	modes := []string{"ok", "concurrent", "unacknowledged", "credential", "prepared", "retention", "cleaned_missing", "wrong_ack", "duplicate_ack", "redirect", "denied_before", "denied_after", "credential_after", "prepared_after", "authorization_after", "runtime", "proof_inode", "ack_inode", "archive_inode", "cancelled", "missing_local_ack", "binding"}
+	if phase == "release-readiness" {
+		modes = modes[:11]
+	}
+	if phase == "release-authority" {
+		modes = append(modes[11:], "after_final_cancelled")
+	}
 	if phase == "history" {
 		modes = []string{"historical_missing_sources", "historical_identity", "historical_ack", "historical_copy"}
 	}
@@ -204,6 +216,14 @@ func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 			}); e != nil {
 				t.Fatal(e)
 			}
+			if strings.HasPrefix(phase, "release-") && mode != "unacknowledged" {
+				if e := owner.WithSourceCleanupSubmission(ctx, v.Binding, v.AuthorizationHash, func(g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+					_, e := g.ArchiveCleanedCommitHistory(ctx)
+					return e
+				}); e != nil {
+					t.Fatal(e)
+				}
+			}
 			if mode == "missing_local_ack" {
 				os.Remove(filepath.Join(dir, "recovery-cleaned-commit-acknowledgement.json"))
 			}
@@ -214,6 +234,96 @@ func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 			input := v
 			if mode == "binding" {
 				input.Binding.AgentCredentialGeneration++
+			}
+			if strings.HasPrefix(phase, "release-") {
+				if mode == "after_final_cancelled" {
+					adapter.mu.Lock()
+					adapter.onObserve = func() {
+						if _, e := os.Lstat(filepath.Join(dir, "mutation-inflight.json")); os.IsNotExist(e) {
+							cancel()
+						}
+					}
+					adapter.mu.Unlock()
+				}
+				copyPath := dir + "-cleaned-history-" + proof.OperationID
+				var copyBefore map[string][]byte
+				if mode != "unacknowledged" {
+					copyBefore = preparedHistoryTree(t, copyPath)
+				}
+				type reply struct {
+					result tasks.RuntimeRecoveryAdmissionReleaseResult
+					err    error
+				}
+				replies := make(chan reply, 2)
+				call := func() {
+					r, e := c.ReleaseRecoveryAdmission(ctx, "isolated-token", input, owner)
+					replies <- reply{r, e}
+				}
+				calls := 1
+				if mode == "concurrent" {
+					calls = 2
+					go call()
+					go call()
+				} else {
+					call()
+				}
+				successes := 0
+				for range calls {
+					r := <-replies
+					if r.err == nil {
+						successes++
+						if r.result.Outcome != tasks.RuntimeRecoveryAdmissionDurable || r.result.RemovedFiles != 5 || r.result.OperationID != proof.OperationID || len(r.result.ArchiveHash) != 64 {
+							t.Fatal("release result", r)
+						}
+					} else if mode == "after_final_cancelled" {
+						if r.err != ErrRecoveryCleanedCommitUnconfirmed || r.result.Outcome != tasks.RuntimeRecoveryAdmissionUncertain || r.result.RemovedFiles != 5 {
+							t.Fatal("lost final unlink uncertainty", r)
+						}
+					} else if r.err != ErrRecoveryCleanedCommitUnconfirmed || r.result.Outcome != tasks.RuntimeRecoveryAdmissionNotCommitted {
+						t.Fatal("unsafe release result", r)
+					}
+				}
+				if mode == "ok" || mode == "concurrent" {
+					if successes != 1 {
+						t.Fatal("release was not one-shot", successes)
+					}
+					if authorities.Load() != 2 || identities.Load() != 2 || cleanedReads.Load() != 1 {
+						t.Fatal("current authority missing after historical storage")
+					}
+					entries, e := os.ReadDir(dir)
+					if e != nil || len(entries) != 1 || entries[0].Name() != "runtime.lock" {
+						t.Fatal("root records not released", e)
+					}
+					if lease, e := tasks.BeginRuntimeMutation(dir, proof.Observation.TaskID, tasks.TaskKindVPNCoreService); e != tasks.ErrRuntimeMutationBlocked {
+						if lease != nil {
+							lease.Close()
+						}
+						t.Fatal("flock dropped before Close")
+					}
+					owner.Close()
+					lease, e := tasks.BeginRuntimeMutation(dir, proof.Observation.TaskID, tasks.TaskKindVPNCoreService)
+					if e != nil {
+						t.Fatal("durable release blocked", e)
+					}
+					lease.Complete()
+					lease.Close()
+				} else if mode == "after_final_cancelled" {
+					if successes != 0 {
+						t.Fatal("uncertain release reported success")
+					}
+					if _, e := os.Lstat(filepath.Join(dir, "mutation-inflight.json")); !os.IsNotExist(e) {
+						t.Fatal("fixture missed last unlink")
+					}
+				} else if successes != 0 || !reflect.DeepEqual(before, preparedHistoryTree(t, dir)) {
+					t.Fatal("failed readiness removed sources")
+				}
+				if !reflect.DeepEqual(backup, preparedHistoryTree(t, archive)) {
+					t.Fatal("changed predecessor archive")
+				}
+				if copyBefore != nil && !reflect.DeepEqual(copyBefore, preparedHistoryTree(t, copyPath)) {
+					t.Fatal("changed cleaned archive")
+				}
+				return
 			}
 			results := make(chan tasks.RuntimeRecoveryCleanedCommitPlan, 2)
 			errs := make(chan error, 2)

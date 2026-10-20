@@ -34,14 +34,14 @@ func TestCredentialRemovalSystemdRealityTraffic(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("isolated systemd test requires root")
 	}
-	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission", "cleaned_sources", "cleaned_commit_intent"} {
+	for _, phase := range []string{"terminal_history", "prepared_release_intent", "prepared_release_submission", "cleaned_sources", "cleaned_commit_intent", "admission_release"} {
 		t.Run(phase, func(t *testing.T) {
-			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission" || phase == "cleaned_sources" || phase == "cleaned_commit_intent", phase == "cleaned_sources" || phase == "cleaned_commit_intent", phase == "cleaned_commit_intent")
+			testCredentialRemovalSystemdRealityTraffic(t, binary, phase != "terminal_history", phase == "prepared_release_submission" || phase == "cleaned_sources" || phase == "cleaned_commit_intent" || phase == "admission_release", phase == "cleaned_sources" || phase == "cleaned_commit_intent" || phase == "admission_release", phase == "cleaned_commit_intent" || phase == "admission_release", phase == "admission_release")
 		})
 	}
 }
 
-func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted, cleanup, commitIntent bool) {
+func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, prepared, submitted, cleanup, commitIntent, release bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -331,6 +331,7 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		var cleanedProof RuntimeRecoveryCleanedCommitProof
 		var cleanedReceipt RuntimeRecoveryCleanedCommitReceipt
 		var cleanedArchiveHash string
+		var released RuntimeRecoveryAdmissionReleaseResult
 		copyPath, _ := recoveryHistoryArchivePath(e.receiptDir, authorization.OperationID)
 		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
@@ -390,6 +391,11 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 					}
 					assertTerminalHistoryTree(t, e.receiptDir, beforePlan)
 				}
+				if release {
+					var err error
+					released, err = g.ReleaseAdmission(ctx)
+					return err
+				}
 				if err := restartRuntime(); err != nil {
 					t.Fatal(err)
 				}
@@ -424,8 +430,42 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 				t.Fatal("acknowledged readiness accepted restarted process", err)
 			}
 			return ErrRuntimeMutationBlocked
-		}); err != ErrRuntimeMutationBlocked {
-			t.Fatal("restart readiness did not fail closed", err)
+		}); release && err != nil || !release && err != ErrRuntimeMutationBlocked {
+			t.Fatal("runtime finalization result", err)
+		}
+		if release {
+			if released.Outcome != RuntimeRecoveryAdmissionDurable || released.RemovedFiles != 5 || released.ArchiveHash != cleanedArchiveHash {
+				t.Fatal("real admission release", released)
+			}
+			if l, err := BeginRuntimeMutation(e.receiptDir, resultTaskID, TaskKindVPNCoreService); err != ErrRuntimeMutationBlocked {
+				if l != nil {
+					l.Close()
+				}
+				t.Fatal("release dropped original flock")
+			}
+			final.Close()
+			if err := WithArchivedRecoveryCleanedCommit(ctx, e.receiptDir, authorization.OperationID, bound, func(h RuntimeRecoveryCleanedCommitArchivedHistory) error {
+				if h.ManifestHash != cleanedArchiveHash || h.Proof != cleanedProof || h.Receipt != cleanedReceipt {
+					t.Error("released real archive chain")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			l, err := BeginRuntimeMutation(e.receiptDir, resultTaskID, TaskKindVPNCoreService)
+			if err != nil {
+				t.Fatal("real admission remained fenced", err)
+			}
+			if err = l.Complete(); err != nil {
+				t.Fatal(err)
+			}
+			l.Close()
+			if removalTraffic(ctx, proxies[0], origin.URL) || removalTraffic(ctx, proxies[1], origin.URL) {
+				t.Fatal("release regranted removed credentials")
+			}
+			assertTerminalHistoryTree(t, copyPath, cleanupBackup)
+			assertTerminalHistoryTree(t, removalReceipts, beforeRemovalReceipts)
+			return
 		}
 		if cleanup {
 			final.Close()

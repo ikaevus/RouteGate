@@ -253,7 +253,12 @@ func (m *RuntimeRecoveryFinalization) WithPreparedReleaseSubmission(ctx context.
 	e := fn(g)
 	g.state.mu.Lock()
 	var final error
-	if m.sourceCleanup != nil {
+	if m.admissionRelease != nil {
+		if m.admissionRelease.result.Outcome != RuntimeRecoveryAdmissionDurable || !m.admissionReleaseCurrent(ctx) {
+			m.poisoned = true
+			final = ErrRuntimeMutationBlocked
+		}
+	} else if m.sourceCleanup != nil {
 		if !m.sourceCleanup.status().SourcesRemoved || !m.sourceCleanupCurrent(ctx) {
 			m.poisoned = true
 			final = ErrRuntimeMutationBlocked
