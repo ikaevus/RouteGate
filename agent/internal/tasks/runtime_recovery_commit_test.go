@@ -505,6 +505,25 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 											return nil
 										})
 									}
+									if err == nil && strings.Contains(mode, "_commit_proof_") {
+										p, e := g.pinCleanedCommitProof(context.Background(), func(step string) error {
+											if strings.HasSuffix(mode, "_commit_proof_"+step) {
+												return cut()
+											}
+											return nil
+										})
+										err = e
+										if err == nil && strings.Contains(mode, "_commit_ack_") {
+											wire, _ := json.Marshal(p)
+											h := markerDigest(wire)
+											err = g.recordCleanedCommitReceipt(context.Background(), RuntimeRecoveryCleanedCommitReceipt{1, true, p.OperationID, p.CleanedIntentHash, h, h}, func(step string) error {
+												if strings.HasSuffix(mode, "_commit_ack_"+step) {
+													return cut()
+												}
+												return nil
+											})
+										}
+									}
 									return err
 								}
 								return nil

@@ -19,14 +19,15 @@ type RuntimeRecoverySourceCleanupStatus struct {
 }
 
 type recoverySourceCleanupState struct {
-	dir, operation, hash    string
-	lock                    *os.File
-	files                   []recoveryHistoryCopyFile
-	root, archive, lockInfo os.FileInfo
-	sources, barriers       []releaseRetentionSource
-	removed                 int
-	archiveRemoved          bool
-	commitIntent            *releaseRetentionSource
+	dir, operation, hash            string
+	lock                            *os.File
+	files                           []recoveryHistoryCopyFile
+	root, archive, lockInfo         os.FileInfo
+	sources, barriers               []releaseRetentionSource
+	removed                         int
+	archiveRemoved                  bool
+	commitIntent                    *releaseRetentionSource
+	commitSubmission, commitReceipt *releaseRetentionSource
 }
 
 // Only validated fixed paths from the complete independent archive enter here.
@@ -126,6 +127,34 @@ func readRecoverySourceCleanup(dir, operation string, lock *os.File, files []rec
 		s.commitIntent = &releaseRetentionSource{intentPath, 8192, before, data}
 		rootNames[runtimeRecoveryCleanedCommitIntentFile] = true
 	}
+	for _, name := range []string{runtimeRecoveryCleanedCommitSubmissionFile, runtimeRecoveryCleanedCommitAcknowledgementFile} {
+		path := filepath.Join(dir, name)
+		if runtimeMarkerAbsent(path) {
+			continue
+		}
+		before, err := os.Lstat(path)
+		data, e := readTerminalConfirmationFile(path, 8192)
+		after, e2 := os.Lstat(path)
+		if err != nil || e != nil || e2 != nil || !os.SameFile(before, after) || s.commitIntent == nil {
+			return deny()
+		}
+		if name == runtimeRecoveryCleanedCommitSubmissionFile {
+			var p RuntimeRecoveryCleanedCommitProof
+			var intent RuntimeRecoveryCleanedCommitIntent
+			if !exactHistoricalJSON(data, &p) || !exactHistoricalJSON(s.commitIntent.data, &intent) || p != cleanedCommitProof(intent, s.commitIntent.data, p.ObservedAt) || p.ObservedAt.Before(intent.ObservedAt) || !p.ObservedAt.Before(intent.ExpiresAt) {
+				return deny()
+			}
+			s.commitSubmission = &releaseRetentionSource{path, 8192, before, data}
+		} else {
+			var r RuntimeRecoveryCleanedCommitReceipt
+			var p RuntimeRecoveryCleanedCommitProof
+			if s.commitSubmission == nil || !exactHistoricalJSON(s.commitSubmission.data, &p) || !exactHistoricalJSON(data, &r) || !cleanedCommitReceiptMatches(r, p, s.commitSubmission.data) {
+				return deny()
+			}
+			s.commitReceipt = &releaseRetentionSource{path, 8192, before, data}
+		}
+		rootNames[name] = true
+	}
 	exact := func(path string, names map[string]bool) bool {
 		entries, e := os.ReadDir(path)
 		if e != nil || len(entries) != len(names) {
@@ -150,12 +179,21 @@ func sameCleanupInfo(a, b os.FileInfo) bool {
 	}
 	return os.SameFile(a, b)
 }
+func sameCleanupRecord(a, b *releaseRetentionSource) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return os.SameFile(a.info, b.info) && bytes.Equal(a.data, b.data)
+}
 func (s *recoverySourceCleanupState) unchanged() bool {
 	n, e := readRecoverySourceCleanup(s.dir, s.operation, s.lock, s.files, s.hash)
 	if e != nil || n.removed != s.removed || n.archiveRemoved != s.archiveRemoved || !sameCleanupInfo(s.root, n.root) || !sameCleanupInfo(s.archive, n.archive) || !sameCleanupInfo(s.lockInfo, n.lockInfo) || len(s.sources) != len(n.sources) || len(s.barriers) != len(n.barriers) {
 		return false
 	}
 	if (s.commitIntent == nil) != (n.commitIntent == nil) || s.commitIntent != nil && (!os.SameFile(s.commitIntent.info, n.commitIntent.info) || !bytes.Equal(s.commitIntent.data, n.commitIntent.data)) {
+		return false
+	}
+	if !sameCleanupRecord(s.commitSubmission, n.commitSubmission) || !sameCleanupRecord(s.commitReceipt, n.commitReceipt) {
 		return false
 	}
 	for i, v := range s.sources {
@@ -216,6 +254,9 @@ func unlinkRecoverySource(source releaseRetentionSource, checkpoint func(string)
 
 func (m *RuntimeRecoveryFinalization) sourceCleanupCurrent(ctx context.Context) bool {
 	s := m.sourceCleanup
+	if s != nil && (!ownedCleanupRecord(s.commitSubmission, m.cleanedCommitSubmission) || !ownedCleanupRecord(s.commitReceipt, m.cleanedCommitReceipt)) {
+		return false
+	}
 	if m.self != m || s == nil || (s.commitIntent == nil) != (m.cleanedCommitIntent == nil) || s.commitIntent != nil && !bytes.Equal(s.commitIntent.data, m.cleanedCommitIntent) || !m.terminalAuthorityCurrent(ctx) || m.historyArchiveUnchanged == nil || !m.historyArchiveUnchanged() || !s.unchanged() {
 		return false
 	}

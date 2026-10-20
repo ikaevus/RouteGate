@@ -2354,3 +2354,60 @@ matrix job; the live shard retains the original prefix selector and skips that
 one exact test. Their union preserves present and future matching tests. All
 other race commands and the fail-closed aggregate gate remain unchanged; no
 safety/runtime/expiry check or assertion is removed or relaxed.
+
+### Forty-sixth slice: durable original-owner cleaned-commit submission
+
+The dormant Agent Client can now submit the public cleaned-commit statement
+to the existing Manager endpoint from the ORIGINAL live finalization owner.
+An already durable cleaned intent, complete removed-source state, immutable
+independent archive and both original admission barriers are prerequisites.
+The existing source-cleanup readiness protocol checks current authenticated
+identity/generation, prepared storage, original release authorization and
+retention storage under the original mutex/flock and authorization deadline.
+No new polling, Runner, operator or UI caller is connected.
+
+Derive all public fields from the owned private intent and independently
+validated archive chain, never a caller's candidate list. Reobserve the real
+runtime under the lock. Publish recovery-cleaned-commit-submission.json with
+no replacement, file fsync and parent fsync BEFORE HTTP. Freeze its exact typed
+wire and ObservedAt for retries; IntentAt remains the original intent time.
+Pin the writer inode across publication and compare it with the full new
+inventory to reject same-byte substitution/inode reuse. Private binding,
+inventory, paths and original authorization payload are not delivered.
+
+Reuse exchangePinnedRecoveryEvidence and the existing bounded authenticated
+no-store exchange: POST cleaned-commit, exact-body /verify after uncertainty,
+bounded retries, strict response validation and fresh local locked checks
+around every exchange. Record only the exact operation/intent/proof/request
+hash receipt using a separate no-replace durable acknowledgement. A receipt
+means Manager storage, never permission to release a fence. Every live retry
+still requires original current authority and unchanged runtime/inodes; no
+historical record can be adopted by a replacement owner. Publication ambiguity
+poisons the owner and preserves files, both barriers and independent archive.
+
+The exact cleanup inventory now recognizes the optional ordered proof/ack
+pair and validates the complete private intent-to-public-proof-to-ack chain.
+Either new filename independently blocks ordinary mutation, even malformed
+or orphaned. Historical reconciliation authenticates CURRENT Agent credentials,
+holds the original existing flock, checks the complete independent chain and
+reads only exact Manager storage. Expired history is readable without runtime
+capture. A missing local ack remains missing: no repair, new POST, owner resume,
+renewed deadline or authority. Unknown files, partial publication, contradictory
+receipt, changed bindings or callback-time inode/archive drift fail closed.
+
+Tests cover live repeated/concurrent submission, six incorrect receipt fields,
+publication failures and same-byte substitutions, runtime drift, cancellation,
+credential/authorization rejection, uncertain delivery/readback, immutable
+retry bytes, historical missing ack/expiry/identity/storage mismatch, admission
+blocking and 28 exit/SIGKILL cuts across proof and ack publication. Separate
+required race groups retain the existing120s watchdog and fail-closed gate.
+The existing disposable systemd/Reality cleaned-intent phase additionally pins
+proof and synthetic Manager ack, rejects live proof after external restart,
+allows historical readback and verifies both fences remain. Synthetic receipts
+are not coordinated Manager+Agent release/revocation E2E.
+
+Schema stays171; existing wire fixtures are unchanged. No fence release,
+Manager reservation completion, runtime/config apply, real-user revocation,
+production access/change, FI diagnostics, logos, merge or deploy. #545 stays
+open. Coordinated crash-safe release, orchestration and operator workflow
+remain future work; these APIs alone do not complete credential revocation.
