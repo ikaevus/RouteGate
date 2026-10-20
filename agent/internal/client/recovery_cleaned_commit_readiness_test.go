@@ -29,13 +29,22 @@ func TestAdmissionReleaseClientReadiness(t *testing.T) {
 func TestAdmissionReleaseClientAuthority(t *testing.T) {
 	testCleanedCommitReadinessClient(t, "release-authority")
 }
+func TestAdmissionProofClientReadiness(t *testing.T) {
+	testCleanedCommitReadinessClient(t, "release-proof-readiness")
+}
+func TestAdmissionProofClientAuthority(t *testing.T) {
+	testCleanedCommitReadinessClient(t, "release-proof-authority")
+}
 func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 	modes := []string{"ok", "concurrent", "unacknowledged", "credential", "prepared", "retention", "cleaned_missing", "wrong_ack", "duplicate_ack", "redirect", "denied_before", "denied_after", "credential_after", "prepared_after", "authorization_after", "runtime", "proof_inode", "ack_inode", "archive_inode", "cancelled", "missing_local_ack", "binding"}
-	if phase == "release-readiness" {
+	if strings.HasPrefix(phase, "release-") && strings.HasSuffix(phase, "readiness") {
 		modes = modes[:11]
 	}
-	if phase == "release-authority" {
+	if strings.HasPrefix(phase, "release-") && strings.HasSuffix(phase, "authority") {
 		modes = append(modes[11:], "after_final_cancelled")
+	}
+	if phase == "release-proof-authority" {
+		modes = append(modes, "existing_proof")
 	}
 	if phase == "history" {
 		modes = []string{"historical_missing_sources", "historical_identity", "historical_ack", "historical_copy"}
@@ -236,6 +245,13 @@ func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 				input.Binding.AgentCredentialGeneration++
 			}
 			if strings.HasPrefix(phase, "release-") {
+				withProof := strings.Contains(phase, "-proof-")
+				proofPath := dir + "-admission-proof-" + proof.OperationID + ".json"
+				if mode == "existing_proof" {
+					if e := os.WriteFile(proofPath, []byte("private existing record"), 0600); e != nil {
+						t.Fatal(e)
+					}
+				}
 				if mode == "after_final_cancelled" {
 					adapter.mu.Lock()
 					adapter.onObserve = func() {
@@ -252,12 +268,18 @@ func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 				}
 				type reply struct {
 					result tasks.RuntimeRecoveryAdmissionReleaseResult
+					proof  tasks.RuntimeRecoveryAdmissionReleaseProof
 					err    error
 				}
 				replies := make(chan reply, 2)
 				call := func() {
-					r, e := c.ReleaseRecoveryAdmission(ctx, "isolated-token", input, owner)
-					replies <- reply{r, e}
+					if withProof {
+						r, p, e := c.ReleaseRecoveryAdmissionWithProof(ctx, "isolated-token", input, owner)
+						replies <- reply{r, p, e}
+					} else {
+						r, e := c.ReleaseRecoveryAdmission(ctx, "isolated-token", input, owner)
+						replies <- reply{result: r, err: e}
+					}
 				}
 				calls := 1
 				if mode == "concurrent" {
@@ -275,12 +297,22 @@ func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 						if r.result.Outcome != tasks.RuntimeRecoveryAdmissionDurable || r.result.RemovedFiles != 5 || r.result.OperationID != proof.OperationID || len(r.result.ArchiveHash) != 64 {
 							t.Fatal("release result", r)
 						}
-					} else if mode == "after_final_cancelled" {
+						if withProof {
+							wire, _ := json.Marshal(r.proof)
+							data, e := os.ReadFile(proofPath)
+							if e != nil || !bytes.Equal(wire, data) || r.proof.CleanedArchiveHash != r.result.ArchiveHash || r.proof.CleanedProofHash != ack.ProofHash || r.proof.AuthorizationHash != input.AuthorizationHash || r.proof.Observation != proof.Observation {
+								t.Fatal("unbound durable admission proof", e)
+							}
+						}
+					} else if mode == "after_final_cancelled" || mode == "existing_proof" {
 						if r.err != ErrRecoveryCleanedCommitUnconfirmed || r.result.Outcome != tasks.RuntimeRecoveryAdmissionUncertain || r.result.RemovedFiles != 5 {
 							t.Fatal("lost final unlink uncertainty", r)
 						}
 					} else if r.err != ErrRecoveryCleanedCommitUnconfirmed || r.result.Outcome != tasks.RuntimeRecoveryAdmissionNotCommitted {
 						t.Fatal("unsafe release result", r)
+					}
+					if r.err != nil && r.proof != (tasks.RuntimeRecoveryAdmissionReleaseProof{}) {
+						t.Fatal("proof escaped failed release")
 					}
 				}
 				if mode == "ok" || mode == "concurrent" {
@@ -307,12 +339,18 @@ func testCleanedCommitReadinessClient(t *testing.T, phase string) {
 					}
 					lease.Complete()
 					lease.Close()
-				} else if mode == "after_final_cancelled" {
+				} else if mode == "after_final_cancelled" || mode == "existing_proof" {
 					if successes != 0 {
 						t.Fatal("uncertain release reported success")
 					}
 					if _, e := os.Lstat(filepath.Join(dir, "mutation-inflight.json")); !os.IsNotExist(e) {
 						t.Fatal("fixture missed last unlink")
+					}
+					if mode == "existing_proof" {
+						data, _ := os.ReadFile(proofPath)
+						if string(data) != "private existing record" {
+							t.Fatal("replaced existing proof")
+						}
 					}
 				} else if successes != 0 || !reflect.DeepEqual(before, preparedHistoryTree(t, dir)) {
 					t.Fatal("failed readiness removed sources")

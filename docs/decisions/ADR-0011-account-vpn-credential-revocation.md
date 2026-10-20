@@ -2599,3 +2599,67 @@ E2E, Manager reservation completion and operator workflow remain future work.
 Schema stays171, existing wire fixtures are unchanged, #545 stays open. No
 production access/change, real-user revocation, FI diagnostics, logos, merge or
 deploy is part of this slice.
+
+### Fiftieth slice: retained post-release Agent statement and shared contract
+
+Cleaned-commit evidence predates local admission release and cannot complete a
+Manager reservation. Add an explicit frozen Agent statement AFTER successful
+original-owner unlink/fsync and fresh runtime checks, while the original flock
+is still held. ReleaseRecoveryAdmissionWithProof uses the existing authenticated
+cleaned readiness, then ReleaseAdmission and PinAdmissionReleaseProof within ONE
+callback. The earlier release-only API retains its behavior. No automatic caller
+is connected, no statement is sent to Manager and no reservation is completed.
+
+The typed wire binds schema/purpose, operation, current credential generation,
+original authorization hash, exact cleaned proof/receipt digests, independent
+cleaned archive manifest digest, original release completion time, fresh observed
+time and measured observation. Observation retains its historical task/marker/
+receipt bindings; it does not claim the deleted root marker still exists. Times
+stay inside the original deadline. Only the SAME live owner may pin/retry, and
+retry freezes exact bytes and both times while rechecking current local state.
+An uncertain release cannot produce this statement. A proof is an Agent claim,
+not independently verified filesystem state, traffic proof or new authority.
+
+Publish a private fixed sibling <state>-admission-proof-<operation>.json, outside
+the admission root and both immutable archive directories. Use exclusive/no-replace
+publication, file and parent fsync, and pin the writer descriptor through original
+inode/byte validation to reject same-byte replacement. Existing/partial files are
+never adopted or repaired. The owned proof becomes part of subsequent original-
+owner current checks. An error poisons the owner, preserves retained audit and
+does NOT recreate a fence. Client failure after release preserves the explicit
+uncertain outcome and withholds the returned proof, even if a file was published.
+The original lock stays held until Close; the sibling does not block ordinary
+mutation after Close and cannot authorize or resume a replacement owner.
+
+The local historical reader holds the ORIGINAL existing flock, validates both
+complete archived parts and exact predecessor proof/receipt/manifest hashes,
+original timing and bindings, and pins the proof inode/bytes around its callback.
+It can read after authority expiry or runtime disappearance without observing
+current runtime/admission. Missing files, hardlinks, malformed data, foreign
+generation, missing predecessors and callback-time substitution fail closed.
+Readability after a crash is not proof of publication fsync or Manager acceptance.
+
+Manager receives only pure contract types, strict bounded decoding and predecessor
+matching in this slice, with a shared Manager/Agent golden wire/hash fixture.
+This adds no endpoint, SQL ledger, schema migration or reservation transition.
+Future acceptance MUST independently authenticate current Agent token/generation
+and exact operation/server bindings, validate the FULL stored cleaned predecessor
+chain and original authority/time/reservation conditions under the established
+lock order, preserve immutable exact request/proof evidence, and handle retries,
+cancellation, expiry and completion atomically. The archive hash is opaque to
+Manager; syntactic validation is not on-node verification. Historical readback
+alone must never release Manager guards or create completion authority. These
+remaining acceptance/transition rules require real PostgreSQL concurrency tests
+and coordinated Manager+Agent execution before a completion route is connected.
+
+Tests cover frozen same-owner retry, expired/runtime-free history, original
+lock retention and open admission after Close, publication failures and inode
+substitution, clock/context/runtime drift, current Manager readiness before the
+release, preserved uncertainty when proof publication fails, and fourteen new
+exit/SIGKILL publication cuts. New required race shards keep the existing120s
+watchdog, all inherited commands/assertions and aggregate gate. The disposable
+systemd/Reality admission-release phase also pins and reads the new statement;
+its Manager receipts remain synthetic. Schema stays171 and older wire fixtures
+remain unchanged. No production access/change, real-user revocation, FI diagnostics,
+logos, merge or deploy. #545 stays open; Manager storage/completion, orchestration
+and full credential-revocation E2E remain future work.

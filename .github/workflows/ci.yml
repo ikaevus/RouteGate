@@ -231,6 +231,27 @@ jobs:
           - suite: admission-release-crash-final
             packages: ./internal/tasks
             pattern: ^TestAdmissionReleaseCrashFinal$
+          - suite: admission-proof
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionProof(Complete|Publication)$
+          - suite: admission-proof-drift
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionProofDrift$
+          - suite: admission-proof-history
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionProofHistory$
+          - suite: admission-proof-client
+            packages: ./internal/client
+            pattern: ^TestAdmissionProofClientReadiness$
+          - suite: admission-proof-client-authority
+            packages: ./internal/client
+            pattern: ^TestAdmissionProofClientAuthority$
+          - suite: admission-proof-crash-before
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionProofCrashBefore$
+          - suite: admission-proof-crash-after
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionProofCrashAfter$
     defaults:
       run:
         working-directory: agent

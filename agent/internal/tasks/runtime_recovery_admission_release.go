@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 type RuntimeRecoveryAdmissionOutcome string
@@ -34,6 +35,9 @@ type runtimeRecoveryAdmissionRelease struct {
 	root, lockInfo os.FileInfo
 	removed        int
 	result         RuntimeRecoveryAdmissionReleaseResult
+	completedAt    time.Time
+	proof          *releaseRetentionSource
+	frozen         RuntimeRecoveryAdmissionReleaseProof
 }
 
 // Validate the exact deletion prefix against ORIGINAL inode snapshots. Never
@@ -85,7 +89,7 @@ func (m *RuntimeRecoveryFinalization) admissionReleaseCurrent(ctx context.Contex
 	check := func() bool {
 		return m.self == m && m.terminalAuthorityCurrent(ctx) && m.cleanedCommitArchive != nil &&
 			m.cleanedArchiveUnchanged != nil && m.cleanedArchiveUnchanged() &&
-			m.historyArchiveUnchanged != nil && m.historyArchiveUnchanged() && m.admissionReleaseFilesCurrent()
+			m.historyArchiveUnchanged != nil && m.historyArchiveUnchanged() && m.admissionReleaseFilesCurrent() && m.admissionProofUnchanged()
 	}
 	if !check() {
 		return false
@@ -183,5 +187,6 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) releaseAdmission(ctx context.Conte
 		return deny()
 	}
 	s.result.Outcome = RuntimeRecoveryAdmissionDurable
+	s.completedAt = m.lastChecked
 	return s.result, nil
 }
