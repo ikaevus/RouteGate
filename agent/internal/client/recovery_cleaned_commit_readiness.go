@@ -26,7 +26,19 @@ func (c *Client) readRecoveryCleanedCommitReceipt(ctx context.Context, token str
 // CURRENT original authorization while all HTTP shares the original lock.
 func (c *Client) PlanRecoveryCleanedCommit(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization) (tasks.RuntimeRecoveryCleanedCommitPlan, error) {
 	var zero, result tasks.RuntimeRecoveryCleanedCommitPlan
-	e := c.withRecoverySourceCleanupReadiness(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+	e := c.withRecoveryCleanedCommitReadiness(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
+		var e error
+		result, e = g.PlanCleanedCommit(bounded)
+		return e
+	})
+	if e != nil {
+		return zero, ErrRecoveryCleanedCommitUnconfirmed
+	}
+	return result, nil
+}
+
+func (c *Client) withRecoveryCleanedCommitReadiness(ctx context.Context, token string, v VerifiedRecoveryReleaseAuthorization, owner *tasks.RuntimeRecoveryFinalization, fn func(context.Context, *tasks.RuntimeRecoveryPreparedReleaseGuard) error) error {
+	return c.withRecoverySourceCleanupReadiness(ctx, token, v, owner, func(bounded context.Context, g *tasks.RuntimeRecoveryPreparedReleaseGuard) error {
 		p, local, e := g.AcknowledgedCleanedCommit(bounded)
 		if e != nil {
 			return e
@@ -48,11 +60,6 @@ func (c *Client) PlanRecoveryCleanedCommit(ctx context.Context, token string, v 
 		if _, e = c.checkRecoveryFenceReleaseReadiness(bounded, token, v, prepared, g.CleanupPreparedProof); e != nil {
 			return e
 		}
-		result, e = g.PlanCleanedCommit(bounded)
-		return e
+		return fn(bounded, g)
 	})
-	if e != nil {
-		return zero, ErrRecoveryCleanedCommitUnconfirmed
-	}
-	return result, nil
 }

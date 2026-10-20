@@ -186,6 +186,21 @@ jobs:
           - suite: cleaned-commit-plan
             packages: ./internal/tasks ./internal/client
             pattern: ^TestCleanedCommit(Plan|Readiness)
+          - suite: cleaned-archive
+            packages: ./internal/tasks
+            pattern: ^TestCleanedArchive(Complete|Refusals|OwnedDrift)$
+          - suite: cleaned-archive-client
+            packages: ./internal/client
+            pattern: ^TestCleanedArchiveClient$
+          - suite: cleaned-archive-history
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestCleanedArchive(History|ClientHistory)$
+          - suite: cleaned-archive-crash-before
+            packages: ./internal/tasks
+            pattern: ^TestCleanedArchiveCrashBeforeManifest$
+          - suite: cleaned-archive-crash-after
+            packages: ./internal/tasks
+            pattern: ^TestCleanedArchiveCrashAfterCopies$
           - suite: cleaned-commit-ack-crash
             packages: ./internal/tasks
             pattern: ^TestCleanedCommitAckCrash$

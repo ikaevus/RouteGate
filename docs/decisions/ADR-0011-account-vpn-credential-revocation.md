@@ -2470,3 +2470,69 @@ stays open; durable retention of the last cleaned records, crash-safe admission
 release and coordinated Manager reservation completion remain future work.
 No production access/change, real-user revocation, FI diagnostics, logos, merge
 or deploy is part of this slice.
+
+### Forty-eighth slice: independent final cleaned-commit audit retention
+
+The original live Agent owner can now retain the five remaining admission
+records before a future crash-safe release. ArchiveRecoveryCleanedCommitHistory
+reuses the complete cleaned-commit readiness callback: current identity,
+prepared/retention/cleaned storage and original human release authorization,
+including reauthentication AFTER historical cleaned readback. The original
+mutex/flock and deadline span every exchange, fresh runtime observation and
+copy publication. No caller-supplied plan or historical copy becomes authority.
+
+Create a private sibling directory <state>-cleaned-history-<operation> with
+exclusive mkdir, containing state/ and manifest.json. The state copy contains
+the fixed five owned records (mutation marker, release intent, cleaned intent,
+public proof and local acknowledgement) and a distinct read-only lock stub.
+Its manifest binds schema/purpose, operation/current identity generation,
+predecessor archive manifest, cleaned intent/proof/receipt digests and all five
+fixed names/hashes. The predecessor archive remains immutable and required:
+the pair preserves the complete authenticated chain without copying or
+weakening the already retained history. Manifest-supplied paths are never read.
+
+Reuse existing no-replace publication, file/parent fsync and original-owner
+runtime/inode validation. Pin each writer file descriptor through final copy
+validation so same-byte replacement/inode reuse cannot be adopted. Pin private
+directory/parent identities, check copied inodes/bytes between writes, and
+publish the manifest LAST. A partial/existing directory is never adopted or
+repaired by a live owner. Every failure preserves root records, both barriers,
+predecessor archive and any partial new copy, and poisons uncertain ownership.
+An identical retry requires the same live owner, unchanged complete archives,
+fresh Manager readiness and original unexpired authority; it returns the same
+manifest hash. A completed owned archive joins subsequent live readiness checks.
+
+The dedicated historical reader holds the ORIGINAL existing admission flock,
+validates the complete predecessor history, then reconstructs the copied
+cleaned chain and exact manifest. Its separate copy lock never becomes a live
+runtime lock. Stable validation reopens that stub read-only and compares the
+captured inode, allowing an owner's immutable checks to outlive a reader's
+descriptor without adopting a new lock. Original cleaned duplicates may be
+absent and runtime/history may be expired, but current Agent bindings and the
+full archived predecessor chain still have to match. Callback-time changes to
+either archive fail closed. Client reconciliation authenticates current
+credentials first and requires exact Manager cleaned-evidence readback equal
+to the archived acknowledgement. It never repairs files, captures runtime,
+renews authority or reconstructs an owner. A readable manifest is retained
+history, not proof that an interrupted owner completed all post-publication
+checks or that any fence was released.
+
+Tests cover fixed copied bytes, idempotent/concurrent original-owner calls,
+readiness failures before filesystem creation, private/partial/existing copies,
+publication/inode/runtime/context/clock failures, escaped guards, owned archive
+substitution and independent historical reads after root duplicate removal.
+Twenty-four exit/SIGKILL cuts cover directory/copy/manifest boundaries; partial
+copies cannot be read as complete history or reconstruct an owner, and all
+original admission records remain. Crash harness phases distinguish the new
+cleaned_archive suffix from the older archive phase, retaining the old cuts.
+The existing disposable systemd/Reality phase also creates this archive,
+checks original records unchanged, rejects live readiness after external
+restart and reads the complete archived chain afterward. Manager receipts
+there remain synthetic; coordinated release/revocation E2E is still future work.
+
+Schema stays171; existing endpoints and wire fixtures remain unchanged. Five
+additional required race groups retain the120s watchdog and aggregate gate.
+No source deletion, fence release, Manager reservation completion, automatic
+poller/Runner/operator/UI caller, production access/change, real-user revocation,
+FI diagnostics, logos, merge or deploy. #545 remains open; crash-safe admission
+release and coordinated reservation completion are the next protocol work.
