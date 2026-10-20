@@ -103,7 +103,7 @@ func (g *RuntimeRecoveryPreparedReleaseGuard) PlanCleanedCommit(ctx context.Cont
 	// Reobserve after constructing the inventory; retain the ORIGINAL snapshots
 	// so replacing any same-byte file between observations cannot be adopted.
 	fresh, ack, e := m.acknowledgedCleanedCommitLocked(ctx)
-	if e != nil || fresh != p || ack != r || !s.unchanged() {
+	if e != nil || fresh != p || ack != r || !s.unchanged() || !m.terminalAuthorityCurrent(ctx) {
 		return deny()
 	}
 	plan.ObservedAt = m.lastChecked

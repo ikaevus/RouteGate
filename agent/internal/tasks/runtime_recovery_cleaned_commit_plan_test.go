@@ -88,7 +88,7 @@ func TestCleanedCommitPlanReadOnly(t *testing.T) {
 }
 
 func TestCleanedCommitPlanRefusals(t *testing.T) {
-	for _, mode := range []string{"unacknowledged", "missing_proof", "missing_ack", "missing_intent", "generation", "manager", "authorization", "closed", "poisoned", "cancelled", "expired", "backward", "runtime", "proof_replaced", "ack_replaced", "barrier_replaced", "copy_replaced", "unknown", "proof_during_observation", "unknown_during_observation", "expiry_during_observation", "backward_during_observation"} {
+	for _, mode := range []string{"unacknowledged", "missing_proof", "missing_ack", "missing_intent", "generation", "manager", "authorization", "closed", "poisoned", "cancelled", "expired", "backward", "runtime", "proof_replaced", "ack_replaced", "barrier_replaced", "copy_replaced", "unknown", "proof_during_observation", "unknown_during_observation", "expiry_during_observation", "backward_during_observation", "expiry_at_return"} {
 		t.Run(mode, func(t *testing.T) {
 			e, _, b, m, path := cleanedCommitFixture(t)
 			if mode == "unacknowledged" {
@@ -140,10 +140,13 @@ func TestCleanedCommitPlanRefusals(t *testing.T) {
 				replaceHistoryFile(t, filepath.Join(path, "manifest.json"))
 			case "unknown":
 				os.WriteFile(filepath.Join(m.dir, "foreign"), []byte("private"), 0600)
-			case "proof_during_observation", "unknown_during_observation", "expiry_during_observation", "backward_during_observation":
+			case "proof_during_observation", "unknown_during_observation", "expiry_during_observation", "backward_during_observation", "expiry_at_return":
 				calls := 0
 				m.now = func() time.Time {
 					calls++
+					if mode == "expiry_at_return" && calls >= 10 {
+						return m.authorization.ExpiresAt
+					}
 					if calls == 7 {
 						switch mode {
 						case "proof_during_observation":
