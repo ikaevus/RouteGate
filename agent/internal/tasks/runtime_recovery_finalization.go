@@ -66,6 +66,9 @@ type RuntimeRecoveryFinalization struct {
 	historyArchiveUnchanged func() bool
 	sourceCleanup           *recoverySourceCleanupState
 	cleanedCommitIntent     []byte
+	cleanedCommitSubmission []byte
+	cleanedCommitReceipt    []byte
+	cleanedCommitFrozen     RuntimeRecoveryCleanedCommitProof
 	terminalFrozen          RuntimeRecoveryTerminalProof
 	now                     func() time.Time
 	lastChecked             time.Time

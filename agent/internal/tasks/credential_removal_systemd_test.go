@@ -328,6 +328,8 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		before := terminalHistoryTree(t, e.receiptDir)
 		var cleanupBackup map[string][]byte
 		var cleanedIntent RuntimeRecoveryCleanedCommitIntent
+		var cleanedProof RuntimeRecoveryCleanedCommitProof
+		var cleanedReceipt RuntimeRecoveryCleanedCommitReceipt
 		copyPath, _ := recoveryHistoryArchivePath(e.receiptDir, authorization.OperationID)
 		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
@@ -360,6 +362,16 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 					if err != nil || cleanedIntent.Observation != authorization.Expected {
 						t.Fatal("real cleaned commit intent", err)
 					}
+					cleanedProof, err = g.PinCleanedCommitProof(ctx)
+					if err != nil {
+						t.Fatal("real cleaned proof", err)
+					}
+					wire, _ := json.Marshal(cleanedProof)
+					h := markerDigest(wire)
+					cleanedReceipt = RuntimeRecoveryCleanedCommitReceipt{1, true, cleanedProof.OperationID, cleanedProof.CleanedIntentHash, h, h}
+					if err = g.RecordCleanedCommitReceipt(ctx, cleanedReceipt); err != nil {
+						t.Fatal("real cleaned storage acknowledgement", err)
+					}
 				}
 				if err := restartRuntime(); err != nil {
 					t.Fatal(err)
@@ -368,6 +380,9 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 					t.Fatal("cleaned owner accepted changed runtime", err)
 				}
 				if commitIntent {
+					if p, err := g.CleanedCommitProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryCleanedCommitProof{}) {
+						t.Fatal("cleaned proof accepted restarted runtime", err)
+					}
 					if p, err := g.PrepareCleanedCommit(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryCleanedCommitIntent{}) {
 						t.Fatal("intent accepted restarted runtime", err)
 					}
@@ -403,7 +418,15 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			remaining := terminalHistoryTree(t, e.receiptDir)
 			wantFiles := 4
 			if commitIntent {
-				wantFiles++
+				wantFiles += 3
+				if err := WithRecoveryCleanedCommitEvidenceHistory(ctx, e.receiptDir, authorization.OperationID, bound, func(p RuntimeRecoveryCleanedCommitProof, r RuntimeRecoveryCleanedCommitReceipt) error {
+					if p != cleanedProof || r != cleanedReceipt {
+						t.Error("real cleaned evidence history")
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
 				if err := WithRecoveryCleanedCommitHistory(ctx, e.receiptDir, authorization.OperationID, bound, func(p RuntimeRecoveryCleanedCommitIntent, h RuntimeRecoveryRetentionHistory) error {
 					if p != cleanedIntent || !h.LocalReceipt.Recorded {
 						t.Error("real cleaned intent history")

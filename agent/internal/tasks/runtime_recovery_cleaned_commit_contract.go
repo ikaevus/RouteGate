@@ -3,7 +3,7 @@ package tasks
 import "time"
 
 // Shared public wire only. Stored Agent statement, not filesystem evidence,
-// traffic proof or release authority. No delivery/dispatcher caller is added.
+// traffic proof or release authority. No dispatcher caller is added.
 const RuntimeRecoveryCleanedCommitPurpose = "runtime_mutation_cleaned_commit_evidence_v1"
 
 type RuntimeRecoveryCleanedCommitProof struct {

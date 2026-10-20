@@ -174,6 +174,18 @@ jobs:
           - suite: cleaned-commit-crash
             packages: ./internal/tasks
             pattern: ^TestCleanedCommitCrash$
+          - suite: cleaned-commit-submission
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestCleanedCommitSubmission
+          - suite: cleaned-commit-proof-crash
+            packages: ./internal/tasks
+            pattern: ^TestCleanedCommitProofCrash$
+          - suite: cleaned-commit-evidence-history
+            packages: ./internal/tasks
+            pattern: ^TestCleanedCommitEvidenceHistory
+          - suite: cleaned-commit-ack-crash
+            packages: ./internal/tasks
+            pattern: ^TestCleanedCommitAckCrash$
     defaults:
       run:
         working-directory: agent

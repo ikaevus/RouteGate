@@ -13,6 +13,9 @@ const runtimeRecoveryPreparedSubmissionFile = "recovery-prepared-release-submiss
 const runtimeRecoveryPreparedAcknowledgementFile = "recovery-prepared-release-acknowledgement.json"
 
 func preparedReleaseStateAbsent(dir string) bool {
+	if !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryCleanedCommitSubmissionFile)) || !runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryCleanedCommitAcknowledgementFile)) {
+		return false
+	}
 	return runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryCleanedCommitIntentFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryPreparedAcknowledgementFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryReleaseRetentionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionSubmissionFile)) && runtimeMarkerAbsent(filepath.Join(dir, runtimeRecoveryRetentionAcknowledgementFile))
 }
 func preparedReleaseReceiptMatches(r RuntimeRecoveryPreparedReleaseReceipt, p RuntimeRecoveryPreparedReleaseProof, wire []byte) bool {
