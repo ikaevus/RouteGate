@@ -56,12 +56,9 @@ func (c *Client) ReconcileRecoveryCleanedCommitEvidence(ctx context.Context, tok
 		return zero, ErrRecoveryCleanedCommitUnconfirmed
 	}
 	e = tasks.WithRecoveryCleanedCommitEvidenceHistory(ctx, dir, operation, b, func(p tasks.RuntimeRecoveryCleanedCommitProof, local RecoveryCleanedCommitReceipt) error {
-		wire, e := json.Marshal(p)
-		if e != nil {
-			return e
-		}
-		path := "/api/v1/agent/recovery-observations/" + url.PathEscape(operation) + "/cleaned-commit/verify"
-		if c.recoveryRead(ctx, path, token, wire, &result) != nil || !validCleanedCommitReceipt(result, p, recoveryReadHash(wire)) || local.SchemaVersion != 0 && local != result {
+		var e error
+		result, e = c.readRecoveryCleanedCommitReceipt(ctx, token, p)
+		if e != nil || local.SchemaVersion != 0 && local != result {
 			return ErrRecoveryCleanedCommitUnconfirmed
 		}
 		return nil

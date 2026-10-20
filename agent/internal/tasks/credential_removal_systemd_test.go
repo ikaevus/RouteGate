@@ -372,9 +372,25 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 					if err = g.RecordCleanedCommitReceipt(ctx, cleanedReceipt); err != nil {
 						t.Fatal("real cleaned storage acknowledgement", err)
 					}
+					beforePlan := terminalHistoryTree(t, e.receiptDir)
+					plan, err := g.PlanCleanedCommit(ctx)
+					if err != nil || plan.ProofHash != cleanedReceipt.ProofHash || plan.ManifestHash != cleanedProof.ManifestHash || plan.AdmissionLockName != "runtime.lock" || plan.ObservedAt.Before(cleanedProof.ObservedAt) {
+						t.Fatal("real cleaned commit plan", err)
+					}
+					for _, file := range plan.Files {
+						if file.Hash != markerDigest(beforePlan[file.Name]) || file.Name == "runtime.lock" {
+							t.Fatal("real plan inventory")
+						}
+					}
+					assertTerminalHistoryTree(t, e.receiptDir, beforePlan)
 				}
 				if err := restartRuntime(); err != nil {
 					t.Fatal(err)
+				}
+				if commitIntent {
+					if plan, err := g.PlanCleanedCommit(ctx); err != ErrRuntimeMutationBlocked || plan != (RuntimeRecoveryCleanedCommitPlan{}) {
+						t.Fatal("cleaned plan accepted restarted runtime", err)
+					}
 				}
 				if p, err := g.CleanupPreparedProof(ctx); err != ErrRuntimeMutationBlocked || p != (RuntimeRecoveryPreparedReleaseProof{}) {
 					t.Fatal("cleaned owner accepted changed runtime", err)

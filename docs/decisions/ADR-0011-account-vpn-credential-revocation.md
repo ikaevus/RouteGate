@@ -2411,3 +2411,62 @@ Manager reservation completion, runtime/config apply, real-user revocation,
 production access/change, FI diagnostics, logos, merge or deploy. #545 stays
 open. Coordinated crash-safe release, orchestration and operator workflow
 remain future work; these APIs alone do not complete credential revocation.
+
+### Forty-seventh slice: fresh cleaned-commit readiness and fixed local plan
+
+Before a future commit can consume the remaining admission state, the original
+live Agent owner must hold its durable cleaned proof AND exact local Manager
+acknowledgement, validate both against the complete independent predecessor
+chain and observe the actual runtime again. Historical storage alone remains
+readable after authority loss, so it cannot establish current commit readiness.
+
+PlanRecoveryCleanedCommit reuses source-cleanup readiness under the original
+mutex/flock and deadline: current Agent identity/generation, prepared storage,
+exact original release authorization and retention readback. It then reads
+cleaned-commit/verify for the exact frozen proof and compares the complete
+response with the owned local acknowledgement. Reobserve after that exchange,
+then repeat authenticated identity, prepared verification and exact original
+release-authorization delivery AFTER historical storage. Manager's existing
+delivery checks current reservation, credentials/generation, original human
+session/roles/permission, capabilities and authenticated heartbeat. Cancelled
+reservation or revoked human authority can therefore block planning even when
+historical cleaned evidence is still readable. No new endpoint, wire, ledger,
+nonce, receipt adoption or authorization lifetime is introduced.
+
+The scoped Agent guard derives a fixed read-only plan of the five remaining
+admission-blocking records: original mutation marker, release intent, cleaned
+intent, public cleaned proof and local acknowledgement. Each carries its exact
+owned digest. The plan identifies the protected original runtime.lock and
+independent archive/manifest, current bindings, proof/receipt hashes, fresh local
+observation time and ORIGINAL expiry. Inventory construction is bracketed by
+locked runtime/history checks using the original pinned inodes. Unknown files,
+missing acknowledgements, altered bytes or same-byte replacements, clock
+rollback, expiry and restart fail closed. Close serializes on the same mutex;
+escaped/copied callback guards cannot recover the owner.
+
+This value is a point-in-time inventory, never a transferable deletion grant.
+No API consumes caller-supplied plans as authority. A future crash-safe commit
+must derive its own live inventory and retain the new cleaned records before
+releasing admission; this slice neither archives nor removes those records.
+The read-only methods preserve all audit bytes, both original barriers and
+the flock inode, and never repair missing local acknowledgements. No poller,
+Runner, operator route or UI caller is connected.
+
+Focused race coverage includes all fixed bindings/digests, repeated and
+concurrent planning, guard escape and Close serialization, missing/changed
+records, expiry/backward clocks and inode/foreign-file changes between runtime
+observations. Client transport tests require the original flock across every
+authenticated read and exercise authority/identity loss AFTER cleaned storage,
+wrong/duplicate/missing receipts, redirects, cancellation and runtime/inode
+drift during HTTP. The existing real disposable systemd/Reality phase builds
+the exact plan read-only and calls its planner FIRST after external restart,
+before another readiness call can poison the owner. Historical proof/ack stays
+readable and the fence stays enforced. Its Manager receipts remain synthetic;
+this is not coordinated Manager+Agent release/revocation E2E.
+
+Schema stays171 and all existing wire fixtures remain unchanged. One additional
+required race group uses the existing120s watchdog and aggregate gate. #545
+stays open; durable retention of the last cleaned records, crash-safe admission
+release and coordinated Manager reservation completion remain future work.
+No production access/change, real-user revocation, FI diagnostics, logos, merge
+or deploy is part of this slice.
