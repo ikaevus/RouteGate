@@ -204,6 +204,33 @@ jobs:
           - suite: cleaned-commit-ack-crash
             packages: ./internal/tasks
             pattern: ^TestCleanedCommitAckCrash$
+          - suite: admission-release
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionRelease(Complete|Scope|RefusalsBefore)$
+          - suite: admission-release-drift
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionReleaseRefusalsDuring$
+          - suite: admission-release-cuts-early
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionReleaseCutsEarly$
+          - suite: admission-release-cuts-final
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionReleaseCutsFinal$
+          - suite: admission-release-client
+            packages: ./internal/client
+            pattern: ^TestAdmissionReleaseClientReadiness$
+          - suite: admission-release-client-authority
+            packages: ./internal/client
+            pattern: ^TestAdmissionReleaseClientAuthority$
+          - suite: admission-release-crash-early
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionReleaseCrashEarly$
+          - suite: admission-release-crash-middle
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionReleaseCrashMiddle$
+          - suite: admission-release-crash-final
+            packages: ./internal/tasks
+            pattern: ^TestAdmissionReleaseCrashFinal$
     defaults:
       run:
         working-directory: agent

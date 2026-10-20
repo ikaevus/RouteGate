@@ -253,6 +253,9 @@ func unlinkRecoverySource(source releaseRetentionSource, checkpoint func(string)
 }
 
 func (m *RuntimeRecoveryFinalization) sourceCleanupCurrent(ctx context.Context) bool {
+	if m.admissionRelease != nil {
+		return false
+	}
 	s := m.sourceCleanup
 	if m.cleanedCommitArchive != nil && (m.cleanedArchiveUnchanged == nil || !m.cleanedArchiveUnchanged()) {
 		return false
@@ -290,6 +293,11 @@ func (m *RuntimeRecoveryFinalization) WithSourceCleanupSubmission(ctx context.Co
 	if m.binding != b || m.authorizationHash != authorizationHash {
 		return ErrRuntimeMutationBlocked
 	}
+	// One-shot transition: neither a partial deletion nor completed admission
+	// release can be entered again through historical/source readiness.
+	if m.admissionRelease != nil {
+		return ErrRuntimeMutationBlocked
+	}
 	check := func() bool {
 		if m.sourceCleanup != nil {
 			return m.sourceCleanup.status().SourcesRemoved && m.sourceCleanupCurrent(ctx)
@@ -304,7 +312,12 @@ func (m *RuntimeRecoveryFinalization) WithSourceCleanupSubmission(ctx context.Co
 	defer func() { g.state.mu.Lock(); g.state.owner = nil; g.state.mu.Unlock() }()
 	err := fn(g)
 	g.state.mu.Lock()
-	current := check()
+	current := false
+	if m.admissionRelease != nil {
+		current = m.admissionRelease.result.Outcome == RuntimeRecoveryAdmissionDurable && m.admissionReleaseCurrent(ctx)
+	} else {
+		current = check()
+	}
 	g.state.mu.Unlock()
 	if !current {
 		m.poisoned = true

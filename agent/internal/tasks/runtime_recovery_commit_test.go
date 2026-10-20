@@ -526,7 +526,15 @@ func TestRuntimeMutationRecoveryCommitProcessExit(t *testing.T) {
 									}
 									if err == nil && strings.Contains(mode, "_cleaned_archive_") {
 										_, err = g.archiveCleanedCommitHistory(context.Background(), func(step string) error {
-											if strings.HasSuffix(mode, "_cleaned_archive_"+step) {
+											if !strings.Contains(mode, "_admission_") && strings.HasSuffix(mode, "_cleaned_archive_"+step) {
+												return cut()
+											}
+											return nil
+										})
+									}
+									if err == nil && strings.Contains(mode, "_admission_") {
+										_, err = g.releaseAdmission(context.Background(), func(step string) error {
+											if strings.HasSuffix(mode, "_admission_"+step) {
 												return cut()
 											}
 											return nil

@@ -24,6 +24,7 @@ type retentionTestAdapter struct {
 	mu         sync.Mutex
 	generation tasks.RuntimeGeneration
 	port       int
+	onObserve  func()
 }
 
 func (a *retentionTestAdapter) Descriptor() platform.VPNCoreAdapterDescriptor {
@@ -32,6 +33,9 @@ func (a *retentionTestAdapter) Descriptor() platform.VPNCoreAdapterDescriptor {
 func (a *retentionTestAdapter) ObserveGeneration(context.Context, string) (tasks.RuntimeGeneration, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.onObserve != nil {
+		a.onObserve()
+	}
 	return a.generation, nil
 }
 func (a *retentionTestAdapter) IsEnabled(context.Context) (tasks.ServiceResult, error) {

@@ -2536,3 +2536,66 @@ No source deletion, fence release, Manager reservation completion, automatic
 poller/Runner/operator/UI caller, production access/change, real-user revocation,
 FI diagnostics, logos, merge or deploy. #545 remains open; crash-safe admission
 release and coordinated reservation completion are the next protocol work.
+
+### Forty-ninth slice: one-shot original-owner local admission release
+
+ReleaseRecoveryAdmission is a dormant Client entry point through the existing
+cleaned-commit readiness protocol. It requires exact current Agent identity and
+generation, prepared/retention/cleaned storage and original release authority,
+reauthenticated AFTER historical cleaned readback. Both independent history
+archives must already be owned and complete. No caller plan, historical receipt
+or replacement process can authorize release. The original deadline, mutex and
+admission flock span all HTTP and local work. No automatic caller is connected.
+
+Derive a fresh fixed inventory from the original owner's pinned five records.
+Remove acknowledgement, public proof, cleaned intent and release intent in
+that order, then the legacy mutation marker LAST. Reuse original-inode pinned
+unlink, zero-link/byte checks and parent fsync for each file. Between steps,
+validate the exact allowed deletion prefix, private root and original lock
+identities, both immutable archives and a fresh actual runtime observation.
+Unknown/replaced files, changed runtime, cancellation, expiry and clock rollback
+stop the operation. The original runtime.lock is never removed or replaced;
+Close still releases only its descriptor. No archive is deleted or rewritten.
+
+Every prefix before the final marker unlink remains fenced. The final unlink
+is the local admission linearization point, while parent fsync establishes its
+durability. These are distinct: an error, cancellation or process death AFTER
+that unlink can leave admission open. The typed local result therefore has
+not_committed / uncertain / durable outcomes and an observed removed count.
+Mark uncertainty conservatively immediately before attempting the final remove;
+only successful fsync and subsequent local checks establish durable success.
+An error NEVER promises a retained fence. Outer Client readiness/context failure
+preserves uncertainty, including downgrading a previously durable local result.
+No compensating recreation of a barrier or automatic mutation retry is attempted.
+Even a zero-progress transition is one-shot for that owner; partial/uncertain or
+completed state cannot reenter source-readiness or reconstruct an owner.
+
+Manager reservation stays prepared; no completion event or new ledger/wire is
+added. Migration161 requires no pending/in-progress mutation jobs on preparation
+and guards new conflicting jobs while prepared. This local primitive does not
+provide atomic cross-machine cancellation/completion or an operator workflow.
+Fresh Manager authorization is checked before the bounded local transition;
+later Manager cancellation cannot undo a completed local unlink. Coordinated
+orchestration must handle that explicitly, rather than infer release from old
+cleaned evidence or silently resume a previously polled job. No poller/Runner
+uses this API in this slice. Archive readability alone still proves only history,
+not that a particular admission release was durable or Manager-completed.
+
+Tests cover admission before/after original Close, exact archive/lock retention,
+one-shot concurrency, escaped guards and Close serialization, current Manager
+readiness refusals, local identity/runtime/prefix drift and eighteen injected
+error cuts. Thirty-six process exit/SIGKILL cuts check every boundary, full audit
+readability and rejection of owner reconstruction. SIGKILL is a process-crash
+test, NOT proof of power-loss persistence before fsync. New required race shards
+keep the existing120s watchdog and aggregate gate; large new scenario sets are
+partitioned without dropping cases after initial combined local runs exhausted
+that package-wide budget during fixture preparation. All inherited gates remain.
+
+An additional disposable systemd/Reality phase performs the actual local release,
+keeps the original flock until Close, reads both archived parts and proves the
+previously removed cached credentials remain rejected. Its Manager receipts are
+synthetic. Coordinated Manager/PostgreSQL/Agent release and credential-revocation
+E2E, Manager reservation completion and operator workflow remain future work.
+Schema stays171, existing wire fixtures are unchanged, #545 stays open. No
+production access/change, real-user revocation, FI diagnostics, logos, merge or
+deploy is part of this slice.
