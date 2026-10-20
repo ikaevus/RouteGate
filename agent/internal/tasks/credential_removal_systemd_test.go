@@ -332,6 +332,7 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		var cleanedReceipt RuntimeRecoveryCleanedCommitReceipt
 		var cleanedArchiveHash string
 		var released RuntimeRecoveryAdmissionReleaseResult
+		var admissionProof RuntimeRecoveryAdmissionReleaseProof
 		copyPath, _ := recoveryHistoryArchivePath(e.receiptDir, authorization.OperationID)
 		if err := final.WithPreparedReleaseSubmission(ctx, bound, markerDigest(authorizationData), func(g *RuntimeRecoveryPreparedReleaseGuard) error {
 			if _, err := g.AcknowledgedProof(ctx); err != nil {
@@ -394,6 +395,9 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 				if release {
 					var err error
 					released, err = g.ReleaseAdmission(ctx)
+					if err == nil {
+						admissionProof, err = g.PinAdmissionReleaseProof(ctx)
+					}
 					return err
 				}
 				if err := restartRuntime(); err != nil {
@@ -447,6 +451,14 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 			if err := WithArchivedRecoveryCleanedCommit(ctx, e.receiptDir, authorization.OperationID, bound, func(h RuntimeRecoveryCleanedCommitArchivedHistory) error {
 				if h.ManifestHash != cleanedArchiveHash || h.Proof != cleanedProof || h.Receipt != cleanedReceipt {
 					t.Error("released real archive chain")
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := WithRecoveryAdmissionReleaseHistory(ctx, e.receiptDir, authorization.OperationID, bound, func(p RuntimeRecoveryAdmissionReleaseProof) error {
+				if p != admissionProof || p.CleanedArchiveHash != cleanedArchiveHash || p.Observation != authorization.Expected {
+					t.Error("real post-release proof")
 				}
 				return nil
 			}); err != nil {
