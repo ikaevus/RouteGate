@@ -183,6 +183,9 @@ jobs:
           - suite: cleaned-commit-evidence-history
             packages: ./internal/tasks
             pattern: ^TestCleanedCommitEvidenceHistory
+          - suite: cleaned-commit-plan
+            packages: ./internal/tasks ./internal/client
+            pattern: ^TestCleanedCommit(Plan|Readiness)
           - suite: cleaned-commit-ack-crash
             packages: ./internal/tasks
             pattern: ^TestCleanedCommitAckCrash$
