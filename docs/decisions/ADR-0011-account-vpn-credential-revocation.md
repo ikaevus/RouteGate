@@ -2934,3 +2934,34 @@ place of, existing preparation, Agent, race, systemd and Reality gates.
 credential-removal evidence, actual connection/session tests and full E2E
 security audit. No production US/FI/RU, real-user revocations, merge or
 deploy.
+
+### Sixtieth slice: immutable proposed apply/version IDs for a prepared removal
+
+An internal idempotent ReservePreparedRemovalJobIDs method now binds two
+stable UUIDv4 identifiers (a proposed config version ID and a proposed Agent
+apply job ID) to the previously checked prepared VLESS removal reservation.
+It first verifies the pinned one-account-only candidate and exact runtime
+digests via the read-only integrity inspector, then locks the original
+server and reservation transactionally, rechecks the original Agent identity,
+credential generation and pinned hashes, and persists one immutable binding.
+A PostgreSQL INSERT trigger independently enforces prepared state, original
+Agent generation, active applied baseline/config hash and unallocated IDs.
+Concurrent exact requests are idempotent; changes/deletes are rejected;
+cancellation leaves historical ID linkage intact but bars renewed allocation.
+
+These are ONLY **proposed identifiers**. There is NO corresponding config
+version, config apply job, Agent task, restart, runtime change or revocation
+state transition. Critically the old SQL guards on config_versions and
+config_apply_jobs remain unchanged: generic Apply still fails under the
+reservation. The dedicated eventual dispatch transaction must explicitly
+bind one operator authorization and protect the special mutation transition
+without introducing a globally accessible guard bypass. Neither this new
+schema nor the internal method grants that authority.
+
+Migration 173 is append-only; downgrade refuses to destroy any retained
+binding. Required PostgreSQL tests cover same-ID concurrent allocation,
+history immutability, normal Apply refusal, cancellation and raw SQL
+generation/hash forgery. No production US/FI/RU, real credentials,
+merge or deploy. #545 remains OPEN pending the genuinely authorized
+atomic dispatch, actual Agent + sing-box enforcement, connection teardown
+and independent E2E security audit.
