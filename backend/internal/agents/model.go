@@ -69,6 +69,20 @@ type Agent struct {
 	LastSeen time.Time `json:"lastSeen,omitempty"`
 }
 
+// AgentCredentialRemovalRequest is secret-bearing Agent-only task material.
+// Keep the independent Manager revocations and Agent tasks schemas in sync;
+// never include this payload in operator replies, audit events or logs.
+type AgentCredentialRemovalRequest struct {
+	SchemaVersion                    int    `json:"schemaVersion"`
+	OperationID                      string `json:"operationId"`
+	AccountID                        string `json:"accountId"`
+	BaselineVersionID                string `json:"baselineVersionId"`
+	BaselineRuntimeHash              string `json:"baselineRuntimeHash"`
+	CandidateRuntimeHash             string `json:"candidateRuntimeHash"`
+	VLESSUUID                        string `json:"vlessUuid"`
+	SharedProcessRestartAcknowledged bool   `json:"sharedProcessRestartAcknowledged"`
+}
+
 type AgentConfigTask struct {
 	ID              string          `json:"id"`
 	Kind            string          `json:"kind,omitempty"`
