@@ -38,11 +38,17 @@ func TestCredentialRemovalDispatchHumanApproval(t *testing.T) {
 	 SELECT r.id,p.id FROM roles r,permissions p WHERE r.code='admin' AND p.code='configs:apply'
 	 ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
 	authorized:=auth.ContextWithUser(ctx,actor)
+	withoutPermission:=actor
+	withoutPermission.Permissions=nil
+	withoutRole:=actor
+	withoutRole.Roles=[]string{"read_only"}
 	inp:=revocations.PreparedRemovalDispatchApprovalInput{OperationID:prepared.ID,ConfirmSharedProcessRestart:true}
 	for _,bad:=range []struct{name string; ctx context.Context; input revocations.PreparedRemovalDispatchApprovalInput}{
 		{"no_context",ctx,inp},
 		{"no_confirmation",authorized,revocations.PreparedRemovalDispatchApprovalInput{OperationID:prepared.ID}},
 		{"invalid_operation",authorized,revocations.PreparedRemovalDispatchApprovalInput{OperationID:"invalid",ConfirmSharedProcessRestart:true}},
+		{"no_permission",auth.ContextWithUser(ctx,withoutPermission),inp},
+		{"no_role",auth.ContextWithUser(ctx,withoutRole),inp},
 	}{
 		t.Run(bad.name,func(t *testing.T){
 			if _,err:=svc.IssuePreparedRemovalDispatchApproval(bad.ctx,bad.input); !errors.Is(err,revocations.ErrPreflight) {
