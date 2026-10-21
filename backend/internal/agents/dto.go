@@ -38,9 +38,17 @@ type AgentHeartbeatResponse struct {
 	ServerStatus                   string `json:"serverStatus"`
 }
 
+// AgentDeliveryTask is serialized exclusively for an authenticated Agent
+// next-task response. Its credentialRemoval payload is sensitive and must not
+// appear in shared operator/admin job DTOs.
+type AgentDeliveryTask struct {
+	AgentConfigTask
+	CredentialRemoval *AgentCredentialRemovalRequest `json:"credentialRemoval,omitempty"`
+}
+
 type AgentNextTaskResponse struct {
-	Task              *AgentConfigTask `json:"task,omitempty"`
-	RecoveryChallenge json.RawMessage  `json:"recoveryChallenge,omitempty"`
+	Task              *AgentDeliveryTask `json:"task,omitempty"`
+	RecoveryChallenge json.RawMessage   `json:"recoveryChallenge,omitempty"`
 }
 
 type CompleteAgentTaskRequest struct {

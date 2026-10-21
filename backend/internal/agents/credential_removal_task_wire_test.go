@@ -42,15 +42,22 @@ func TestAgentCredentialRemovalRequestWireParity(t *testing.T) {
   ConfigVersionID:"77777777-7777-4777-8777-777777777777",
   Kind:revocations.TaskKindCredentialRemoval,Action:"apply",
   Status:"in_progress",ConfigHash:strings.Repeat("c",64),
-  CredentialRemoval:&agent,
  }
- delivered,err:=json.Marshal(agents.AgentNextTaskResponse{Task:&task})
+ delivered,err:=json.Marshal(agents.AgentNextTaskResponse{Task:&agents.AgentDeliveryTask{
+  AgentConfigTask:task,
+  CredentialRemoval:&agent,
+ }})
  if err!=nil{t.Fatal(err)}
  var decoded agents.AgentNextTaskResponse
  if err=json.Unmarshal(delivered,&decoded);err!=nil||decoded.Task==nil||
   decoded.Task.Kind!=revocations.TaskKindCredentialRemoval||
   !reflect.DeepEqual(decoded.Task.CredentialRemoval,&agent){
   t.Fatal("Manager Agent-only delivery DTO lost the typed removal request",err)
+ }
+ adminWire,err:=json.Marshal(task)
+ if err!=nil || strings.Contains(string(adminWire),"credentialRemoval") ||
+  strings.Contains(string(adminWire),secret){
+  t.Fatal("shared operator-facing job DTO leaked a revocation credential",err)
  }
  // Generic config apply must NOT carry a stale or fabricated UUID by default.
  regular,err:=json.Marshal(agents.AgentConfigTask{Kind:agents.AgentTaskKindConfigApply})

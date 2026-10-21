@@ -307,11 +307,15 @@ func (h *Handler) NextTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var delivery *AgentDeliveryTask
 	if task != nil {
 		h.recordTaskClaimed(r, *task)
+		// Only the authenticated Agent response may grow a secret-bearing
+		// credentialRemoval payload. Ordinary admin job DTOs remain clean.
+		delivery = &AgentDeliveryTask{AgentConfigTask: *task}
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, AgentNextTaskResponse{Task: task})
+	httpx.WriteJSON(w, http.StatusOK, AgentNextTaskResponse{Task: delivery})
 }
 
 func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {

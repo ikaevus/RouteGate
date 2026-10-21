@@ -3095,9 +3095,12 @@ OPEN; no production US/FI/RU, real-user credentials, merge or deploy.
 ### Sixty-sixth slice: typed Manager-to-Agent revocation task wire
 
 The Agent already has a dedicated CredentialRemovalExecutor and a strict
-credentialRemoval request contract, but the Manager's AgentConfigTask DTO
-previously had no typed credentialRemoval field. A narrowly scoped,
-secret-bearing AgentCredentialRemovalRequest type now carries the same v1
+credentialRemoval request contract, but the Manager's authenticated task
+response previously had no typed credentialRemoval field. A dedicated
+AgentDeliveryTask wraps the shared (admin-visible) AgentConfigTask only
+inside the authenticated Agent next-task response: the secret-bearing
+AgentCredentialRemovalRequest is deliberately NOT a field in the shared job
+DTO. The typed Agent-only payload carries the same v1
 operation ID, account ID, pinned baseline version and runtime hashes,
 target VLESS UUID, and explicit shared-process restart acknowledgement
 through the authenticated Agent-only task serialization. The field is

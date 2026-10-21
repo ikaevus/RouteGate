@@ -94,7 +94,6 @@ type AgentConfigTask struct {
 	Status          string          `json:"status"`
 	RenderedConfig  json.RawMessage `json:"renderedConfig,omitempty"`
 	ConfigHash      string          `json:"configHash,omitempty"`
-	CredentialRemoval *AgentCredentialRemovalRequest `json:"credentialRemoval,omitempty"`
 	ResultPayload   map[string]any  `json:"resultPayload,omitempty"`
 	ErrorMessage    string          `json:"errorMessage,omitempty"`
 	CreatedAt       time.Time       `json:"createdAt"`
