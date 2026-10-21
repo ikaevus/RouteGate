@@ -3071,3 +3071,23 @@ of VPN credential revocation. Actual atomic guarded version/job creation,
 Agent dispatch and two-account runtime teardown remain outstanding.
 #545 stays OPEN. No US/FI/RU production activity, real-user revocations,
 merge, or deploy.
+
+### Sixty-fifth slice: original SQL fence cannot be bypassed by approved IDs
+
+A dedicated isolated PostgreSQL test now starts with an actually valid,
+short-lived human dispatch approval and the exact immutable candidate-version
+and Agent apply-job IDs. It attempts raw SQL insertion of the approved
+candidate config version, insertion of the approved job ID, a separate
+ordinary apply job, and a server next_config_version mutation. All four
+MUST receive the original P0141 reserved-node SQL error; even a legitimate
+human nonce is not by itself a release of this fence. It asserts that
+config version/job counts, the active config pointer, the next version
+number, the PREPARED reservation and the immutable human approval are
+unchanged. The dedicated mandatory CI check runs this regression in
+addition to the authorization gate and Agent recovery tests.
+
+The future atomic executor must implement and security-review a narrow,
+operation-bound write path. It cannot substitute unrestricted generic
+Apply, a forgeable session variable or disabled triggers. This test does
+not create an executable job or prove VPN credential revocation. #545 stays
+OPEN; no production US/FI/RU, real-user credentials, merge or deploy.
