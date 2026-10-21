@@ -2992,3 +2992,36 @@ session, consent, exact operation, nonce, Agent identity, job/version IDs and
 candidate/runtime hashes. Proof of actual sing-box credentials removal and
 connection teardown remains separate and mandatory. #545 stays OPEN.
 No US/FI/RU production activity, real-user revocations, merge or deploy.
+
+### Sixty-second slice: transaction-locked dispatch admission validation
+
+An internal CheckPreparedRemovalDispatchAdmission verifies the existing
+short-lived human nonce against the originally approved operation, exact
+proposed version/job IDs, frozen candidate and runtime hashes, Agent generation,
+current active applied baseline and account status. It requires the explicit
+shared-process-restart consent, original authenticated human admin session
+and current configs:apply permission, Agent online state and freshly
+authenticated heartbeat. The same original SQL lock order is preserved:
+server -> prepared reservation -> Agent -> human session/roles. An expired,
+revoked or substituted authorization, changed candidate or an already
+allocated candidate version/job is rejected. The nonce is compared in
+constant time.
+
+The reusable validatePreparedRemovalDispatchLocked helper is transaction
+scoped and deliberately private; future guarded dispatch must execute this
+validation within its OWN transaction that actually writes the exact
+candidate version and job. The public checker returns no authorization
+token or secret and cannot be used as a future dispatch permit: a positive
+answer can immediately become stale on transaction completion. PostgreSQL
+regressions check acceptance of one exact active consent, no new versions,
+jobs or sessions, refusal of wrong nonce/operation or absent human consent,
+and fail-closed behavior for cancelled preparation, revoked human session,
+offline Agent and expired Agent heartbeat.
+
+No schema change is needed in this slice. Existing reserved-node SQL guards,
+nonce immutability and human approval expiry are unchanged. Most importantly,
+there is STILL NO concrete version/job creation, Agent runner delivery, live
+VPN session teardown, observed credential revocation or PREPARED completion.
+A genuinely authorized atomic executor and coordinated isolated sing-box
+traffic tests are still required. #545 remains OPEN; no US/FI/RU production
+changes, real-user actions, merges or deploys.
