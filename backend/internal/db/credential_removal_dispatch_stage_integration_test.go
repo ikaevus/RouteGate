@@ -6,6 +6,9 @@ import (
  "os"
  "sync"
  "testing"
+ "time"
+
+ "github.com/jackc/pgx/v5/pgxpool"
 
  "github.com/ikaevus/routegate/backend/internal/revocations"
  "github.com/jackc/pgx/v5/pgconn"
@@ -132,6 +135,74 @@ func TestCredentialRemovalDispatchStageInvalidation(t *testing.T) {
    var count int
    if err=f.pool.QueryRow(f.ctx,`SELECT count(*) FROM vpn_credential_removal_dispatch_stages`).Scan(&count);
     err!=nil||count!=0{t.Fatal("invalid authorization wrote stage",err)}
+  })
+ }
+}
+
+// Stage admission is re-checked AFTER waiting for the original server lock.
+// A previously correct nonce must not be able to stage an intent once its
+// owner session or original Agent has been invalidated concurrently.
+func TestCredentialRemovalDispatchStageLockedInvalidation(t *testing.T) {
+ for _,mode:=range []string{"human_session_revoked","agent_offline"}{
+  t.Run(mode,func(t *testing.T){
+   f:=newDispatchGateFixture(t)
+   ctx,cancel:=context.WithTimeout(f.ctx,12*time.Second)
+   defer cancel()
+   var node string
+   if err:=f.pool.QueryRow(ctx,`SELECT server_id::text FROM vpn_credential_revocations
+    WHERE id=$1::uuid`,f.operation).Scan(&node);err!=nil{t.Fatal(err)}
+   blocker,err:=f.pool.Begin(ctx)
+   if err!=nil{t.Fatal(err)}
+   defer blocker.Rollback(ctx)
+   if _,err=blocker.Exec(ctx,`SELECT id FROM servers WHERE id=$1::uuid FOR UPDATE`,node);err!=nil{t.Fatal(err)}
+   cfg,err:=pgxpool.ParseConfig(os.Getenv("ROUTEGATE_TEST_DATABASE_URL"))
+   if err!=nil{t.Fatal(err)}
+   if cfg.ConnConfig.RuntimeParams==nil {cfg.ConnConfig.RuntimeParams=map[string]string{}}
+   cfg.ConnConfig.RuntimeParams["application_name"]="rg140-removal-stage-lock-wait"
+   contender,err:=pgxpool.NewWithConfig(ctx,cfg)
+   if err!=nil{t.Fatal(err)}
+   defer contender.Close()
+   results:=make(chan error,1)
+   go func(){
+    _,e:=revocations.NewService(contender).StagePreparedCredentialRemoval(ctx,f.operation,f.nonce,true)
+    results<-e
+   }()
+   waiting:=false
+   deadline:=time.Now().Add(5*time.Second)
+   for time.Now().Before(deadline){
+    var blocked bool
+    if err=f.pool.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+      WHERE application_name='rg140-removal-stage-lock-wait'
+       AND wait_event_type='Lock')`).Scan(&blocked);err!=nil{t.Fatal(err)}
+    if blocked{waiting=true;break}
+    select{
+    case e:=<-results:t.Fatalf("stage returned before server lock wait: %v",e)
+    case <-time.After(10*time.Millisecond):
+    }
+   }
+   if !waiting{t.Fatal("staging never waited for original server lock")}
+   switch mode{
+   case "human_session_revoked":
+    _,err=blocker.Exec(ctx,`UPDATE auth_sessions SET revoked_at=clock_timestamp()
+     WHERE id=$1::uuid`,f.session)
+   case "agent_offline":
+    _,err=blocker.Exec(ctx,`UPDATE agents SET status='offline'
+     WHERE id=$1::uuid`,f.agent)
+   }
+   if err!=nil{t.Fatal(err)}
+   if err=blocker.Commit(ctx);err!=nil{t.Fatal(err)}
+   select{
+   case e:=<-results:
+    if !errors.Is(e,revocations.ErrPreflight){
+     t.Fatal("stale approved staging succeeded after node-lock wait",mode,e)
+    }
+   case <-ctx.Done():t.Fatal("staging did not return after invalidation",ctx.Err())
+   }
+   var count int
+   if err=f.pool.QueryRow(ctx,`SELECT count(*) FROM vpn_credential_removal_dispatch_stages`).Scan(&count);
+    err!=nil||count!=0{
+    t.Fatal("staging inserted a record after original authority invalidation",err,count)
+   }
   })
  }
 }
