@@ -72,6 +72,9 @@ jobs:
       - name: Verify post-release evidence in PostgreSQL and immutable history
         run: go test ./internal/db -run '^TestRecoveryAdmissionRelease' -count=1 -timeout=120s -v
 
+      - name: Verify authenticated Manager HTTP to PostgreSQL admission release
+        run: go test ./internal/db -run '^TestRecoveryAdmissionReleaseHTTPPostgreSQL$' -count=1 -timeout=120s -v
+
       - name: Verify authenticated admission-release HTTP handlers
         run: go test ./internal/agents -run '^TestRecoveryAdmissionReleaseHandlers$' -count=1 -timeout=120s -v
 
