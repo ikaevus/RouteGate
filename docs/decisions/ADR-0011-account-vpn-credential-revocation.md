@@ -3121,3 +3121,32 @@ reservation completion is enabled here. Future work must connect the exact
 atomic operation-bound dispatcher to the dedicated Agent executor and
 verified evidence, keeping normal Apply protected. #545 stays OPEN.
 No production US/FI/RU activity, real-user credentials, merge or deploy.
+
+### Sixty-seventh slice: atomic, non-executable credential-removal dispatch intent
+
+Migration 175 creates an immutable, one-per-operation dispatch staging ledger
+linked to the original prepared VLESS-removal reservation and short-lived
+human administrator approval. StagePreparedCredentialRemoval uses the same
+transaction-locked original server/preparation/Agent/human authority gate as
+the future executor, then writes the exact proposed version/job IDs, Agent
+generation, candidate config hash and candidate sing-box runtime hash into
+one durable statement. Its SQL trigger independently rejects a cancelled
+reservation, changed IDs/generation/hashes, stale Agent or approval, forged
+operator session and any attempt to edit or erase the historical entry.
+Identical valid retries preserve the original stage.
+
+This stage intentionally creates NO actual config_versions row or
+config_apply_jobs row. No Agent task polling or runtime mutation can consume
+it, and no target credential/Reality key is copied into this new ledger.
+The original P0141 fence on ordinary Apply and server version-counter
+updates remains unchanged. The dedicated PostgreSQL CI gate checks atomic
+concurrent retries, direct SQL forgery, immutability, cancellation retention,
+zero new executable jobs, unchanged configuration versions and subscription
+credentials, denied unauthenticated requests and stale Agent/human authority.
+Migration 175 downgrade refuses to erase any retained stage.
+
+The next separately reviewed transition must create a real candidate
+version and Agent job, and later verify sing-box traffic/session termination
+with a non-target account still working. Stage metadata is NOT an Agent
+dispatch, applied VPN revocation or runtime proof. #545 stays OPEN; no
+US/FI/RU production changes, live credentials, merge or deploy.

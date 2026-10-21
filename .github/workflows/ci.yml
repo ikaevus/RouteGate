@@ -72,6 +72,9 @@ jobs:
       - name: Verify locked dispatch-admission gate and authority invalidation
         run: go test ./internal/db -run '^TestCredentialRemovalDispatchAdmission' -count=1 -timeout=120s -v
 
+      - name: Verify immutable non-executable credential-removal staging
+        run: go test ./internal/db -run '^TestCredentialRemovalDispatchStage' -count=1 -timeout=120s -v
+
 
       - name: Verify exact prepared-removal JSON semantics
         run: go test ./internal/revocations -run '^TestPreparedRemovalJSONExactNumericSemantics$' -count=1 -timeout=120s -v
