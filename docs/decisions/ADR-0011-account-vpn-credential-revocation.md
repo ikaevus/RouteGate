@@ -2725,3 +2725,32 @@ open pending Agent delivery, coordinated release and reservation completion,
 real disposable Manager/PostgreSQL/Agent/sing-box testing, and final security
 audit. Production, real VPN credentials, FI diagnostics, logos, merge and
 deploy remain outside scope.
+
+### Fifty-third slice: authenticated historical admission-release readback on Agent
+
+The Agent has a dormant, read-only ReconcileRecoveryAdmissionRelease API.
+It first verifies the current Agent token, identity and credential generation
+against Manager; then opens the original admission flock and validates the
+complete immutable two-part cleaned history and its pinned post-release
+statement. Only while those exact local bytes remain pinned does it POST the
+frozen statement to Manager's admission-release/verify endpoint. The strict
+response must bind schema, recorded status, operation and both exact canonical
+request/proof digests. Errors, missing local files, expired historical
+authorization, changed predecessors, unauthorized identity, substitution,
+redirect, altered receipt or transport uncertainty never become positive
+confirmation.
+
+The shared golden wire/hash is unchanged. This operation does not submit new
+evidence, reissue human authorization, recreate a missing original owner,
+mutate the filesystem, release fences, transition Manager reservations or
+probe current VPN connectivity. It deliberately permits historical readback
+after release/expiry, but neither archive readability nor Manager storage
+receipt proves actual VPN access revocation. Unit HTTP tests check exact wire,
+Agent bearer binding, no-store, strict response decoding, altered digests,
+rejection, cancellation and absence of locally retained history. The existing
+Agent systemd/Reality tests and race gates remain required unchanged.
+
+Agent live-owner submission of this statement, coordinated reservation
+completion and final credential-revocation E2E/security audit remain future
+work. #545 remains OPEN. No production changes, real-user credential revocation,
+FI diagnostics, logos, merge or deploy.
