@@ -3025,3 +3025,28 @@ VPN session teardown, observed credential revocation or PREPARED completion.
 A genuinely authorized atomic executor and coordinated isolated sing-box
 traffic tests are still required. #545 remains OPEN; no US/FI/RU production
 changes, real-user actions, merges or deploys.
+
+### Sixty-third slice: fail-closed dispatch under server-lock contention
+
+The isolated PostgreSQL dispatch-admission tests now exercise two concrete
+concurrent invalidation races. A legitimate human-approved attempt starts
+against the original prepared VLESS removal and waits for the server row's
+FOR UPDATE lock. While the attempt is blocked, the authoritative transaction
+either revokes the original human session or takes the pinned Agent offline,
+then commits. The same waiting request must re-read the authority/Agent under
+the original server -> preparation -> Agent -> human locks and fail closed.
+Neither a candidate config version nor the reserved apply job can appear.
+
+The test uses an independently configured database connection with explicit
+application_name to verify that the statement truly reached a PostgreSQL
+lock wait, rather than simply failing before contention. It runs within the
+mandatory credential-removal dispatch-admission integration CI gate alongside
+the immediate invalidation and no-side-effect cases. No lock ordering,
+production trigger, authority lifetime, assertion or timeout is relaxed.
+
+This is a concurrency regression, NOT the actual authorized version/job
+creation or enforcement proof. The subsequent dispatch transaction must
+reuse the same locked validator while making one narrowly scoped write under
+its own hard SQL guard. #545 remains OPEN pending that transition and
+isolated Agent/sing-box + traffic E2E. No production US/FI/RU, live
+credential revocations, merge or deployment.
