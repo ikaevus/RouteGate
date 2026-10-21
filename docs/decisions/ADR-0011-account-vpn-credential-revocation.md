@@ -2965,3 +2965,30 @@ generation/hash forgery. No production US/FI/RU, real credentials,
 merge or deploy. #545 remains OPEN pending the genuinely authorized
 atomic dispatch, actual Agent + sing-box enforcement, connection teardown
 and independent E2E security audit.
+
+### Sixty-first slice: explicit, expiring human dispatch approval only
+
+The original prepared candidate and proposed version/job IDs now support one
+additional, standalone human-approval ledger. An authenticated, active human
+admin or super-admin with configs:apply must explicitly acknowledge that the
+future scoped sing-box/VLESS removal requires a shared-process restart.
+The service first inspects the pinned candidate and checks original prepared
+operation, then locks the server/preparation/actor and role permissions.
+It stores a fresh random 256-bit nonce, a maximum two-minute window bounded
+by the human session, immutable candidate version/job IDs, original Agent
+generation and both candidate hashes in migration 174. Concurrent identical
+approvals are idempotent; a changed actor, expired/revoked session, cancelled
+preparation, or mismatched Agent generation must fail closed. PostgreSQL
+independently revalidates locked actor session, RBAC, current Agent heartbeat
+and all pinned identities. The approval ledger cannot be edited/deleted, and
+downgrade refuses to erase retained authorization history.
+
+This is *not* the execution transition. No config version or apply job is
+created; no task is delivered; no runtime action, VPN revocation claim or
+reservation state transition occurs. Critically, ordinary config version/job
+guards still reject generic apply under the reservation. A future
+single-transaction dispatch must independently recheck the current actor
+session, consent, exact operation, nonce, Agent identity, job/version IDs and
+candidate/runtime hashes. Proof of actual sing-box credentials removal and
+connection teardown remains separate and mandatory. #545 stays OPEN.
+No US/FI/RU production activity, real-user revocations, merge or deploy.

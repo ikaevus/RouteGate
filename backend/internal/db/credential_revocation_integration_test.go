@@ -307,6 +307,12 @@ func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
 	ctx, pool, in, _, done := removalPreparationFixture(t)
 	defer done()
 	// Downgrade in reverse order: remove newer dependent guards first.
+	// Version 174 references 173; its EMPTY table must be removed first.
+	dispatchAuthDown, err := os.ReadFile("../../migrations/000174_credential_removal_dispatch_authorizations.down.sql")
+	if err != nil { t.Fatal(err) }
+	if _, err = pool.Exec(ctx, string(dispatchAuthDown)); err != nil {
+		t.Fatal("empty dispatch authorization downgrade", err)
+	}
 	// The proposed-ID ledger (173) has an FK to the original reservation;
 	// remove its EMPTY table before attempting to downgrade migration 160.
 	bindingDown, err := os.ReadFile("../../migrations/000173_credential_removal_dispatch_bindings.down.sql")

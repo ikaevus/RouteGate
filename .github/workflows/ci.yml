@@ -55,6 +55,9 @@ jobs:
       - name: Verify immutable proposed credential-removal job IDs
         run: go test ./internal/db -run '^TestCredentialRemovalJobIDBinding' -count=1 -timeout=120s -v
 
+      - name: Verify explicit human credential-removal dispatch approval
+        run: go test ./internal/db -run '^TestCredentialRemovalDispatchHumanApproval$' -count=1 -timeout=120s -v
+
       - name: Verify exact prepared-removal JSON semantics
         run: go test ./internal/revocations -run '^TestPreparedRemovalJSONExactNumericSemantics$' -count=1 -timeout=120s -v
 
