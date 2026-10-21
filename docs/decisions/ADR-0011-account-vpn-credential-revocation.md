@@ -2816,3 +2816,33 @@ traffic cessation. No Manager reservation completion, agent runner/caller,
 operator route or automatic retry is introduced. #545 stays OPEN pending
 coordinated disposable Manager/PostgreSQL/Agent/sing-box E2E and the final
 security audit. No production US/FI/RU interaction, merge or deploy.
+
+### Fifty-sixth slice: authenticated Manager HTTP to isolated PostgreSQL
+
+An isolated Manager integration test now sends real HTTP POSTs through the
+Agent-facing recovery admission-release handlers and the actual PostgreSQL
+revocation service/ledger (schema 172), with a dedicated test-only transport
+adapter matching the application composition mapping. An authenticated Agent
+bearer is hashed at the HTTP boundary and matched against an isolated Agent
+database credential; operation path and canonical proof bytes are bound to
+the original prepared reservation and immutable cleaned predecessor chain.
+
+Before acceptance, missing/foreign credentials, mismatched operation ID,
+oversized/malformed JSON and premature historical verification fail closed
+without creating a release ledger row. Successful acceptance returns the
+exact immutable proof/request hashes; historical readback matches, same-wire
+retries are idempotent, a different canonical proof cannot replace the first
+row, and the reservation remains PREPARED. Revoking the original human
+authorization blocks further acceptance while permitting historical
+readback of the already retained evidence. Existing PostgreSQL race tests
+remain required. A dedicated CI step runs the isolated HTTP/SQL test in
+addition to the original PostgreSQL gate; no assertions or timeouts are
+relaxed.
+
+This test does NOT execute Agent local file release, production Manager
+routing, a live sing-box instance, or client data traffic. A Manager storage
+receipt is not a runtime enforcement or credential-revocation proof.
+Coordinated disposable Manager/PostgreSQL/Agent/sing-box execution, session
+termination testing, reservation completion design and full security audit
+are still mandatory; #545 remains OPEN. No US/FI/RU production changes,
+real-user credential revocation, merge or deploy.
