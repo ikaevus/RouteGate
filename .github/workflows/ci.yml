@@ -145,8 +145,34 @@ jobs:
       - name: Verify original-owner post-release Manager evidence submission
         run: go test -race ./internal/client -run '^TestRecoveryAdmissionReleaseOriginalOwnerSubmission$' -count=1 -timeout=120s -v
 
-      - name: Run tests
-        run: go test ./...
+      # Every discovered tasks test must run in one shard. Keep Go's
+      # original 10-minute per-process timeout: no assertion is suppressed.
+      - name: Run all Agent packages except tasks
+        run: |
+          go list ./... | grep -v '^github.com/ikaevus/routegate/agent/internal/tasks$' |
+            xargs -r go test -timeout=10m
+
+      - name: Verify all Agent task tests are assigned to shards
+        run: |
+          task_tests="$(go test ./internal/tasks -list . | grep -E '^(Test|Example|Fuzz)' || true)"
+          test -n "$task_tests"
+          unsharded="$(printf '%s\n' "$task_tests" | grep -Ev '^(Test[A-Z]|Example|Fuzz)' || true)"
+          if test -n "$unsharded"; then
+            printf 'Unsharded Agent task tests:\n%s\n' "$unsharded" >&2
+            exit 1
+          fi
+
+      - name: Agent tasks shard A-F plus examples/fuzz seeds
+        run: go test ./internal/tasks -run '^(Test[A-F]|Example|Fuzz)' -count=1 -timeout=10m
+
+      - name: Agent tasks shard G-M
+        run: go test ./internal/tasks -run '^Test[G-M]' -count=1 -timeout=10m
+
+      - name: Agent tasks shard N-R
+        run: go test ./internal/tasks -run '^Test[N-R]' -count=1 -timeout=10m
+
+      - name: Agent tasks shard S-Z
+        run: go test ./internal/tasks -run '^Test[S-Z]' -count=1 -timeout=10m
 
       - name: Test scoped Agent removal with systemd and real Reality traffic
         run: |
