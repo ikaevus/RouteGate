@@ -3050,3 +3050,24 @@ reuse the same locked validator while making one narrowly scoped write under
 its own hard SQL guard. #545 remains OPEN pending that transition and
 isolated Agent/sing-box + traffic E2E. No production US/FI/RU, live
 credential revocations, merge or deployment.
+
+### Sixty-fourth slice: CI isolation for complete Agent recovery crash coverage
+
+The full Agent suite had periodically failed its monolithic Go package
+deadline after spending most of ten minutes executing recovery crash and
+history fixtures. A narrower Agent race matrix had already passed the
+individual crash tests, indicating a suite-execution failure rather than a
+confirmed protocol defect. The required Agent full-suite CI job now runs
+every other Agent package and partitions all tests in internal/tasks across
+four disjoint prefixes (A-F, G-M, N-R, S-Z), with examples and fuzz seed
+tests included. A separate enumeration step rejects any discovered task
+test name outside this exhaustive partition; no tests may silently disappear.
+Every Go process retains the ORIGINAL 10-minute timeout, and all existing
+dedicated -race and disposable sing-box/Reality traffic steps remain intact.
+
+This change is only CI test isolation. It does NOT alter runtime locking,
+SQL admission, human permissions, any test's assertions, or the timeline
+of VPN credential revocation. Actual atomic guarded version/job creation,
+Agent dispatch and two-account runtime teardown remain outstanding.
+#545 stays OPEN. No US/FI/RU production activity, real-user revocations,
+merge, or deploy.
