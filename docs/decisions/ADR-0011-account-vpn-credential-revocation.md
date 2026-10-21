@@ -2794,3 +2794,25 @@ gates remain required; an additional Agent race test covers this new entry.
 Manager/PostgreSQL/Agent network and credential-revocation E2E, reservation
 completion semantics, cancellation/race design and full security audit remain
 mandatory before claiming VPN access has been revoked.
+
+### Fifty-fifth slice: Manager admission-release lock races and immutable proof conflict
+
+The isolated PostgreSQL integration suite now exercises two concurrent
+admission-release acceptance boundaries beyond same-wire idempotency.
+An acceptance request blocked on the original server row lock must reject
+after its human session is revoked or its Agent is taken offline in the
+intervening committed transaction; no post-release evidence row may appear.
+A second test submits two distinct, individually canonical release statements
+for one preparation simultaneously: exactly one immutable statement can be
+retained, and the conflicting statement must fail without changing the first
+writer or the PREPARED reservation state. The tests deliberately retain the
+existing production transaction lock order, original authority windows and
+SQL immutability triggers and run under the existing mandatory admission-
+release PostgreSQL CI gate.
+
+This stage tests Manager persistence and transaction ordering, NOT a physical
+power-loss durable Agent release, actual VPN credential removal or client
+traffic cessation. No Manager reservation completion, agent runner/caller,
+operator route or automatic retry is introduced. #545 stays OPEN pending
+coordinated disposable Manager/PostgreSQL/Agent/sing-box E2E and the final
+security audit. No production US/FI/RU interaction, merge or deploy.
