@@ -307,6 +307,11 @@ func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
 	ctx, pool, in, _, done := removalPreparationFixture(t)
 	defer done()
 	// Downgrade in reverse order: remove newer dependent guards first.
+	stageDown, err := os.ReadFile("../../migrations/000175_credential_removal_dispatch_stages.down.sql")
+	if err != nil { t.Fatal(err) }
+	if _, err = pool.Exec(ctx, string(stageDown)); err != nil {
+		t.Fatal("empty staged dispatch downgrade", err)
+	}
 	// Version 174 references 173; its EMPTY table must be removed first.
 	dispatchAuthDown, err := os.ReadFile("../../migrations/000174_credential_removal_dispatch_authorizations.down.sql")
 	if err != nil { t.Fatal(err) }
