@@ -129,57 +129,68 @@ func TestCredentialRemovalDispatchAdmissionInvalidated(t *testing.T) {
  }
 }
 
-// The session can become invalid while a dispatch gate waits on the original
-// server lock. The post-wait recheck must refuse it, with no executable job.
-// This also proves the lock order remains the original reservation order.
-func TestCredentialRemovalDispatchAdmissionSessionRevokedDuringLockWait(t *testing.T) {
- f:=newDispatchGateFixture(t)
- ctx,cancel:=context.WithTimeout(f.ctx,12*time.Second)
- defer cancel()
- var node string
- if err:=f.pool.QueryRow(ctx,`SELECT server_id::text FROM vpn_credential_revocations WHERE id=$1::uuid`,f.operation).Scan(&node);err!=nil{t.Fatal(err)}
- blocker,err:=f.pool.Begin(ctx)
- if err!=nil{t.Fatal(err)}
- defer blocker.Rollback(ctx)
- if _,err=blocker.Exec(ctx,`SELECT id FROM servers WHERE id=$1::uuid FOR UPDATE`,node);err!=nil{t.Fatal(err)}
- cfg,err:=pgxpool.ParseConfig(os.Getenv("ROUTEGATE_TEST_DATABASE_URL"))
- if err!=nil{t.Fatal(err)}
- if cfg.ConnConfig.RuntimeParams==nil{cfg.ConnConfig.RuntimeParams=map[string]string{}}
- cfg.ConnConfig.RuntimeParams["application_name"]="rg140-dispatch-admission-lock-wait"
- contender,err:=pgxpool.NewWithConfig(ctx,cfg)
- if err!=nil{t.Fatal(err)}
- defer contender.Close()
- outcomes:=make(chan error,1)
- go func(){outcomes<-revocations.NewService(contender).CheckPreparedRemovalDispatchAdmission(ctx,f.operation,f.nonce,true)}()
- locked:=false
- deadline:=time.Now().Add(5*time.Second)
- for time.Now().Before(deadline){
-  var active bool
-  if err=f.pool.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
-   WHERE application_name='rg140-dispatch-admission-lock-wait'
-   AND wait_event_type='Lock')`).Scan(&active);err!=nil{t.Fatal(err)}
-  if active{locked=true;break}
-  select{
-  case e:=<-outcomes:t.Fatalf("gate returned without original row lock: %v",e)
-  case <-time.After(10*time.Millisecond):
-  }
- }
- if !locked{t.Fatal("gate never waited for reserved server lock")}
- if _,err=blocker.Exec(ctx,`UPDATE auth_sessions SET revoked_at=clock_timestamp()
- WHERE id=$1::uuid`,f.session);err!=nil{t.Fatal(err)}
- if err=blocker.Commit(ctx);err!=nil{t.Fatal(err)}
- select{
- case e:=<-outcomes:
-  if !errors.Is(e,revocations.ErrPreflight){t.Fatal("revoked human accepted after lock wait",e)}
- case <-ctx.Done():
-  t.Fatal("blocked admission failed to return",ctx.Err())
- }
- var versions,jobs int
- if err=f.pool.QueryRow(ctx,`SELECT
- (SELECT count(*) FROM config_versions WHERE id IN
-   (SELECT candidate_version_id FROM vpn_credential_revocation_dispatch_bindings)),
- (SELECT count(*) FROM config_apply_jobs WHERE id IN
-   (SELECT apply_job_id FROM vpn_credential_revocation_dispatch_bindings))`).Scan(&versions,&jobs);err!=nil||versions!=0||jobs!=0{
-  t.Fatal("locked invalid authority created executable records",err)
+// Original Agent state and human authority may change while a dispatch
+// attempt waits for the server lock. Both must be RE-READ after the wait,
+// without allocating either proposed executable identifier.
+func TestCredentialRemovalDispatchAdmissionAuthorityInvalidatedDuringLockWait(t *testing.T) {
+ for _,mode:=range []string{"human_session_revoked","agent_offline"}{
+  t.Run(mode,func(t *testing.T){
+   f:=newDispatchGateFixture(t)
+   ctx,cancel:=context.WithTimeout(f.ctx,12*time.Second)
+   defer cancel()
+   var node string
+   if err:=f.pool.QueryRow(ctx,`SELECT server_id::text FROM vpn_credential_revocations WHERE id=$1::uuid`,f.operation).Scan(&node);err!=nil{t.Fatal(err)}
+   blocker,err:=f.pool.Begin(ctx)
+   if err!=nil{t.Fatal(err)}
+   defer blocker.Rollback(ctx)
+   if _,err=blocker.Exec(ctx,`SELECT id FROM servers WHERE id=$1::uuid FOR UPDATE`,node);err!=nil{t.Fatal(err)}
+   cfg,err:=pgxpool.ParseConfig(os.Getenv("ROUTEGATE_TEST_DATABASE_URL"))
+   if err!=nil{t.Fatal(err)}
+   if cfg.ConnConfig.RuntimeParams==nil{cfg.ConnConfig.RuntimeParams=map[string]string{}}
+   cfg.ConnConfig.RuntimeParams["application_name"]="rg140-dispatch-gate-lock-wait"
+   contender,err:=pgxpool.NewWithConfig(ctx,cfg)
+   if err!=nil{t.Fatal(err)}
+   defer contender.Close()
+   result:=make(chan error,1)
+   go func(){result<-revocations.NewService(contender).CheckPreparedRemovalDispatchAdmission(ctx,f.operation,f.nonce,true)}()
+   waiting:=false
+   deadline:=time.Now().Add(5*time.Second)
+   for time.Now().Before(deadline){
+    var blocked bool
+    if err=f.pool.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+      WHERE application_name='rg140-dispatch-gate-lock-wait'
+      AND wait_event_type='Lock')`).Scan(&blocked);err!=nil{t.Fatal(err)}
+    if blocked {waiting=true;break}
+    select{
+    case e:=<-result:t.Fatalf("gate returned before original server lock: %v",e)
+    case <-time.After(10*time.Millisecond):
+    }
+   }
+   if !waiting {t.Fatal("gate never waited for original server lock")}
+   switch mode{
+   case "human_session_revoked":
+    _,err=blocker.Exec(ctx,`UPDATE auth_sessions SET revoked_at=clock_timestamp()
+      WHERE id=$1::uuid`,f.session)
+   case "agent_offline":
+    _,err=blocker.Exec(ctx,`UPDATE agents SET status='offline'
+      WHERE id=$1::uuid`,f.agent)
+   }
+   if err!=nil{t.Fatal(err)}
+   if err=blocker.Commit(ctx);err!=nil{t.Fatal(err)}
+   select{
+   case e:=<-result:
+    if !errors.Is(e,revocations.ErrPreflight){t.Fatal("invalidated authority passed lock wait",mode,e)}
+   case <-ctx.Done():
+    t.Fatal("blocked dispatch gate failed to return",ctx.Err())
+   }
+   var version,job int
+   if err=f.pool.QueryRow(ctx,`SELECT
+     (SELECT count(*) FROM config_versions WHERE id IN
+       (SELECT candidate_version_id FROM vpn_credential_revocation_dispatch_bindings)),
+     (SELECT count(*) FROM config_apply_jobs WHERE id IN
+       (SELECT apply_job_id FROM vpn_credential_revocation_dispatch_bindings))`).Scan(&version,&job);err!=nil||version!=0||job!=0{
+    t.Fatal("invalidated authority created executable records",err)
+   }
+  })
  }
 }
