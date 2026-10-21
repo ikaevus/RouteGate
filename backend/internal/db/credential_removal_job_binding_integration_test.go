@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"os"
 	"sync"
 	"testing"
 
@@ -106,6 +107,14 @@ func TestCredentialRemovalJobIDBinding(t *testing.T) {
 	}
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM vpn_credential_revocation_dispatch_bindings`).Scan(&bound); err != nil || bound != 1 {
 		t.Fatal("cancellation rewrote immutable ID history", err)
+	}
+	// Retained proposed IDs make migration 173 downgrade fail closed.
+	down, err := os.ReadFile("../../migrations/000173_credential_removal_dispatch_bindings.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(down)); err == nil {
+		t.Fatal("downgrade discarded reserved job ID history")
 	}
 }
 
