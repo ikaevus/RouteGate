@@ -11,6 +11,30 @@ import (
 
 type recoveryTransport struct{ service *revocations.Service }
 
+// Recording a post-release Agent statement never confirms credential revocation
+// or completes a Manager reservation.
+func (t recoveryTransport) AcceptRecoveryAdmissionRelease(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
+	result, err := t.service.AcceptRecoveryAdmissionRelease(ctx, token, operation, data)
+	if errors.Is(err, revocations.ErrPreflight) {
+		return nil, agents.ErrObservationRejected
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+func (t recoveryTransport) VerifyRecoveryAdmissionRelease(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
+	result, err := t.service.VerifyRecoveryAdmissionRelease(ctx, token, operation, data)
+	if errors.Is(err, revocations.ErrPreflight) {
+		return nil, agents.ErrObservationRejected
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+
+
 func (t recoveryTransport) AcceptRecoveryCleanedCommit(ctx context.Context, token, operation string, data []byte) (json.RawMessage, error) {
 	result, err := t.service.AcceptRecoveryCleanedCommit(ctx, token, operation, data)
 	if errors.Is(err, revocations.ErrPreflight) {

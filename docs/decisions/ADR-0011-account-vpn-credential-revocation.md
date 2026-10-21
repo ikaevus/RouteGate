@@ -2702,3 +2702,26 @@ isolated PostgreSQL; they do not replace coordinated Manager+Agent+sing-box E2E.
 No production access/change, real-user revocation, FI diagnostics, logos,
 merge or deploy. #545 remains open. Full end-to-end security audit and
 reservation completion design/verification are still required.
+
+### Fifty-second slice: authenticated Manager post-release evidence transport
+
+Expose two explicitly scoped Agent-bearer POST endpoints for immutable
+admission-release evidence storage and historical verification. Both use the
+existing no-store, bounded-body, token hashing and generic fail-closed
+recovery-evidence handler. Requests pass the URL operation ID and exact body
+to the Manager's slice-51 service; rejected/stale evidence gets conflict rather
+than a storage acknowledgement, and internal errors cannot disclose secrets.
+
+The transport adapter only maps authenticated evidence to the pre-existing
+immutable Service ledger and formats its storage receipt. A successful HTTP
+reply is NOT authority to complete a Manager reservation or evidence that a
+cached VPN client lost connectivity. The historical verify endpoint does not
+rerun release, renew human authority or verify live runtime.
+
+No Agent HTTP caller, automatic Runner, user operator route or UI workflow is
+connected. No reservation state transition, Agent fence removal, configuration
+apply or credential-level revocation confirmation is introduced. #545 remains
+open pending Agent delivery, coordinated release and reservation completion,
+real disposable Manager/PostgreSQL/Agent/sing-box testing, and final security
+audit. Production, real VPN credentials, FI diagnostics, logos, merge and
+deploy remain outside scope.
