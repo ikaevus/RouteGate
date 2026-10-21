@@ -21,6 +21,12 @@ func TestCredentialRemovalDispatchHumanApproval(t *testing.T) {
 	if err!=nil { t.Fatal(err) }
 	ids, err := svc.ReservePreparedRemovalJobIDs(ctx,prepared.ID)
 	if err!=nil { t.Fatal(err) }
+	var initialVersions,initialJobs int
+	if err=pool.QueryRow(ctx,`SELECT
+	 (SELECT count(*) FROM config_versions),
+	 (SELECT count(*) FROM config_apply_jobs)`).Scan(&initialVersions,&initialJobs);err!=nil {
+		t.Fatal(err)
+	}
 
 	actor := auth.AuthenticatedUser{UserProfile:auth.UserProfile{
 		UserType:"human", Status:"active", Roles:[]string{"admin"}, Permissions:[]string{"configs:apply"},
@@ -83,12 +89,10 @@ func TestCredentialRemovalDispatchHumanApproval(t *testing.T) {
 	if err=pool.QueryRow(ctx,`SELECT
 	 (SELECT count(*) FROM vpn_credential_removal_dispatch_authorizations),
 	 (SELECT count(*) FROM config_versions),
-	 (SELECT count(*) FROM config_apply_jobs)`).Scan(&count,&versionCount,&jobCount); err!=nil || count!=1 || jobCount!=0 {
-		t.Fatal("authorization dispatched a job or duplicated authority",count,jobCount,err)
-	}
-	var previously int
-	if err=pool.QueryRow(ctx,`SELECT count(*) FROM config_versions`).Scan(&previously); err!=nil||previously!=versionCount {
-		t.Fatal("authorization changed candidate versions",err)
+	 (SELECT count(*) FROM config_apply_jobs)`).Scan(&count,&versionCount,&jobCount); err!=nil ||
+		count!=1 || versionCount!=initialVersions || jobCount!=initialJobs {
+		t.Fatal("authorization changed executable jobs/versions or duplicated authority",
+			count,versionCount,jobCount,initialVersions,initialJobs,err)
 	}
 	for _,sql:=range []string{
 		`UPDATE vpn_credential_removal_dispatch_authorizations SET expires_at=expires_at+interval '1 minute'`,
