@@ -114,6 +114,9 @@ jobs:
       - name: Verify post-release historical readback on Agent
         run: go test -race ./internal/client -run '^TestRecoveryAdmissionReleaseReadback' -count=1 -timeout=120s -v
 
+      - name: Verify original-owner post-release Manager evidence submission
+        run: go test -race ./internal/client -run '^TestRecoveryAdmissionReleaseOriginalOwnerSubmission$' -count=1 -timeout=120s -v
+
       - name: Run tests
         run: go test ./...
 
