@@ -46,8 +46,13 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Verify revocation preparation transactions and conflict guards
-        run: go test ./internal/db -run '^Test(CredentialRevocation|RuntimeMutationFencing)' -count=1 -timeout=120s -v
+      # Run the complete existing preflight suite in two isolated processes;
+      # each keeps the original 120-second deadline, no tests are excluded.
+      - name: Verify credential revocation preparation transactions
+        run: go test ./internal/db -run '^TestCredentialRevocation' -count=1 -timeout=120s -v
+
+      - name: Verify runtime mutation fencing and recovery conflicts
+        run: go test ./internal/db -run '^TestRuntimeMutationFencing' -count=1 -timeout=120s -v
 
       - name: Verify read-only prepared credential-removal integrity
         run: go test ./internal/db -run '^TestPreparedCredentialRemovalIntegrity$' -count=1 -timeout=120s -v
