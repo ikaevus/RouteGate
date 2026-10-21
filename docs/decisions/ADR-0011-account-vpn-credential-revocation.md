@@ -3091,3 +3091,30 @@ operation-bound write path. It cannot substitute unrestricted generic
 Apply, a forgeable session variable or disabled triggers. This test does
 not create an executable job or prove VPN credential revocation. #545 stays
 OPEN; no production US/FI/RU, real-user credentials, merge or deploy.
+
+### Sixty-sixth slice: typed Manager-to-Agent revocation task wire
+
+The Agent already has a dedicated CredentialRemovalExecutor and a strict
+credentialRemoval request contract, but the Manager's AgentConfigTask DTO
+previously had no typed credentialRemoval field. A narrowly scoped,
+secret-bearing AgentCredentialRemovalRequest type now carries the same v1
+operation ID, account ID, pinned baseline version and runtime hashes,
+target VLESS UUID, and explicit shared-process restart acknowledgement
+through the authenticated Agent-only task serialization. The field is
+omitted by default from all generic config tasks.
+
+Separate Manager and Agent Go-module tests compare the typed request to the
+existing revocations.CredentialRemovalRequest contract, exercise nested
+AgentNextTaskResponse serialization/deserialization and independently check
+that a credential-removal task is REFUSED by the ordinary config Stager.
+Required, named CI gates run in both modules and do not replace other
+tests. The UUID in test vectors is synthetic; task payloads containing real
+UUIDs are secret-bearing and must never be logged or returned in operator
+responses.
+
+This is a contract bridge, NOT a task producer. No Manager endpoint, job
+insertion, Agent claim path, runtime restart, credential revocation or
+reservation completion is enabled here. Future work must connect the exact
+atomic operation-bound dispatcher to the dedicated Agent executor and
+verified evidence, keeping normal Apply protected. #545 stays OPEN.
+No production US/FI/RU activity, real-user credentials, merge or deploy.
