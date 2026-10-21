@@ -93,6 +93,10 @@ func (s *Service) IssuePreparedRemovalDispatchApproval(ctx context.Context, in P
 		&result.CandidateHash,&result.CandidateRuntimeHash,&result.Nonce,&result.IssuedAt,&result.ExpiresAt,
 		&actor,&session)
 	if err == nil {
+		// PostgreSQL timestamptz may decode with a location pointer different
+		// from time.UTC; keep idempotent typed receipts representation-stable.
+		result.IssuedAt=result.IssuedAt.UTC()
+		result.ExpiresAt=result.ExpiresAt.UTC()
 		if actor!=u.ID || session!=u.SessionID || !now.Before(result.ExpiresAt) ||
 			result.ExpiresAt.After(sessionExpiry) ||
 			result.CandidateVersionID!=ids.CandidateVersionID || result.ApplyJobID!=ids.ApplyJobID ||
