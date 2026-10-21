@@ -307,6 +307,15 @@ func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
 	ctx, pool, in, _, done := removalPreparationFixture(t)
 	defer done()
 	// Downgrade in reverse order: remove newer dependent guards first.
+	// The proposed-ID ledger (173) has an FK to the original reservation;
+	// remove its EMPTY table before attempting to downgrade migration 160.
+	bindingDown, err := os.ReadFile("../../migrations/000173_credential_removal_dispatch_bindings.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(bindingDown)); err != nil {
+		t.Fatal("empty proposed-ID downgrade", err)
+	}
 	// Migration 172 references the cleaned-commit table by FK even without
 	// evidence rows. Drop that empty dependent table before 171; its down
 	// migration refuses to erase any retained post-release history.
