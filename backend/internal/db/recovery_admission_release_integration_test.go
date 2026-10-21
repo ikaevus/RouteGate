@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ikaevus/routegate/backend/internal/revocations"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type recoveryAdmissionReleaseFixture struct {
@@ -162,5 +164,49 @@ func TestRecoveryAdmissionReleaseRejects(t *testing.T) {
 				t.Fatal("rejected statement persisted", err)
 			}
 		})
+	}
+}
+
+func TestRecoveryAdmissionReleaseRawSQLWire(t *testing.T) {
+	f := newRecoveryAdmissionReleaseFixture(t)
+	wire, _ := json.Marshal(f.release)
+	base := string(wire)
+	insert := `INSERT INTO runtime_recovery_admission_release_evidence
+		(preparation_id,proof,proof_hash,observed_at)
+		VALUES($1::uuid,$2::text,$3,($2::text::jsonb->>'observedAt')::timestamptz)`
+	for _, bad := range []string{
+		`{"schemaVersion":2,` + base[1:],
+		`{"schemaVersion":1,` + base[1:],
+		" " + base,
+		strings.Replace(base, `"schemaVersion":1`, `"schemaVersion":1.0`, 1),
+		strings.Replace(base, `"operationId"`, `"operation\u0049d"`, 1),
+		strings.Replace(base, `"cleanedArchiveHash":`, `"unknownHash":`, 1),
+	} {
+		_, err := f.pool.Exec(f.ctx, insert, f.release.OperationID, bad, recoveryTestHash([]byte(bad)))
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "P0151" {
+			t.Fatal("raw SQL accepted noncanonical release", err)
+		}
+	}
+	for _, badQuery := range []string{
+		`INSERT INTO runtime_recovery_admission_release_evidence(preparation_id,proof,proof_hash,observed_at) VALUES($1::uuid,$2::text,repeat('0',64),($2::text::jsonb->>'observedAt')::timestamptz)`,
+		`INSERT INTO runtime_recovery_admission_release_evidence(preparation_id,proof,proof_hash,observed_at) VALUES($1::uuid,$2::text,encode(digest($2::text,'sha256'),'hex'),clock_timestamp()+interval '1 second')`,
+	} {
+		if _, err := f.pool.Exec(f.ctx, badQuery, f.release.OperationID, base); err == nil {
+			t.Fatal("SQL columns bypassed evidence binding")
+		}
+	}
+	if _, err := f.pool.Exec(f.ctx, insert, f.release.OperationID, base, recoveryTestHash(wire)); err != nil {
+		t.Fatal("valid direct SQL rejected", err)
+	}
+	if _, err := f.svc.VerifyRecoveryAdmissionRelease(f.ctx, f.token, f.release.OperationID, wire); err != nil {
+		t.Fatal("direct SQL history cannot be read", err)
+	}
+	f.exec(t, `UPDATE auth_sessions SET revoked_at=clock_timestamp() WHERE id=$1::uuid`, f.actor.SessionID)
+	if _, err := f.svc.AcceptRecoveryAdmissionRelease(f.ctx, f.token, f.release.OperationID, wire); err == nil {
+		t.Fatal("retry bypassed revoked human authority")
+	}
+	if _, err := f.svc.VerifyRecoveryAdmissionRelease(f.ctx, f.token, f.release.OperationID, wire); err != nil {
+		t.Fatal("historical readback lost after authority revocation", err)
 	}
 }
