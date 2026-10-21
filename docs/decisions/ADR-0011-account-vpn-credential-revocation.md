@@ -2754,3 +2754,43 @@ Agent live-owner submission of this statement, coordinated reservation
 completion and final credential-revocation E2E/security audit remain future
 work. #545 remains OPEN. No production changes, real-user credential revocation,
 FI diagnostics, logos, merge or deploy.
+
+### Fifty-fourth slice: one-shot live-owner Agent post-release submission
+
+Add dormant ReleaseRecoveryAdmissionAndSubmitEvidence as a single explicit
+original-owner operation. It executes the verified local admission release,
+pins the frozen post-release statement and exchanges the EXACT statement
+with Manager under ONE original bounded cleanup-readiness callback and
+original live admission flock. No independent caller-supplied proof or
+recovered owner is accepted, no Runner/poller/automatic call is added, and
+the previous release-only and release-with-proof APIs are unchanged.
+
+The Manager request is made only after successful local final unlink/fsync,
+archive retention and proof publication. Re-read the same frozen proof under
+the live owner before and after EVERY bounded HTTP attempt/readback and check
+current generation, original authorization hash, expected runtime observation,
+half-open time window, no clock rollback and exact bytes. Reuse strict
+authenticated Agent transport with no redirect, identical request retry and
+/verify fallback; require a typed receipt with both canonical proof and
+request hashes equal to the exact sent wire. Neither a pretty response nor
+a historical readback can become a new mutation/release authority.
+
+Any failure after local release, including ambiguous HTTP outcome, wrong
+receipt, context expiration, owner drift or callback failure, returns an
+explicit UNCERTAIN release result and ZERO Manager receipt. The actual local
+unlink is never compensated or repeated; historical readback from slice 53
+can later confirm only immutable Manager storage, not traffic cessation.
+Successful Manager acknowledgement leaves its recovery reservation PREPARED.
+
+An isolated Agent test performs the actual local five-file release, asserts
+the original flock stays held across network calls, checks the exact pinned
+local proof bytes and predecessor/identity bindings, and covers successful
+storage and post-release rejection/forged receipt without hiding uncertainty.
+Synthetic Manager responses in this test are NOT coordinated PostgreSQL
+acceptance or systemd/Reality VPN traffic proof. Existing race and Reality
+gates remain required; an additional Agent race test covers this new entry.
+
+#545 stays OPEN. No operator route or production deployment; independent
+Manager/PostgreSQL/Agent network and credential-revocation E2E, reservation
+completion semantics, cancellation/race design and full security audit remain
+mandatory before claiming VPN access has been revoked.
