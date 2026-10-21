@@ -2663,3 +2663,42 @@ its Manager receipts remain synthetic. Schema stays171 and older wire fixtures
 remain unchanged. No production access/change, real-user revocation, FI diagnostics,
 logos, merge or deploy. #545 stays open; Manager storage/completion, orchestration
 and full credential-revocation E2E remain future work.
+
+### Fifty-first slice: Manager post-release evidence retention (no completion)
+
+Manager can now retain the Agent's immutable admission-release statement under
+the original current Agent credential generation and a still-live human release
+authorization. AcceptRecoveryAdmissionRelease is a dormant Service method; no
+HTTP route, Agent sender, Runner/poller or operator caller is connected. The
+existing server -> preparation -> Agent -> roles -> actor lock order spans
+predecessor validation, ledger write, final authority check and commit.
+
+Acceptance requires exact canonical request bytes, a current prepared recovery
+reservation, the original authorization hash and observation, an unexpired
+half-open authorization interval, and a complete stored immutable chain from
+finalization through terminal, prepared-release, retention and cleaned commit.
+The release proof must bind the stored cleaned proof and its canonical receipt.
+ReleasedAt is after cleaned observation; ObservedAt is after release and inside
+the original authority window. The cleaned archive manifest hash remains an
+opaque Agent assertion; Manager cannot verify the remote archive filesystem.
+
+Migration 172 adds one immutable evidence row per preparation, preserving exact
+wire, hash, observation time and first acceptance time. Its SQL trigger checks
+canonical JSON member ordering (including nested observation), duplicate keys,
+hashes, original authorization/session/permissions and current Agent fencing
+readiness. Updates and deletes are rejected, including no-op updates; a down
+migration refuses to remove nonempty evidence. Same-wire Service retry does not
+renew accepted_at; changed-wire retry fails closed. Historical readback still
+requires current Agent token/generation and all retained predecessor hashes,
+but does not attest to current runtime, Agent ownership or release authority.
+
+This is only an authenticated-Agent storage acknowledgement. Neither the
+reservation nor any VPN account is marked completed/revoked; Manager admission
+guards remain active. The proof is NOT independent evidence of power-loss
+durability, client-session termination or blocked cached credentials. Tests
+exercise immutable/duplicate SQL, concurrent exact retry, refused stale and
+foreign identities, authority loss, history readback and downgrade refusal on
+isolated PostgreSQL; they do not replace coordinated Manager+Agent+sing-box E2E.
+No production access/change, real-user revocation, FI diagnostics, logos,
+merge or deploy. #545 remains open. Full end-to-end security audit and
+reservation completion design/verification are still required.

@@ -307,6 +307,16 @@ func TestCredentialRevocationDowngradePreservesHistory(t *testing.T) {
 	ctx, pool, in, _, done := removalPreparationFixture(t)
 	defer done()
 	// Downgrade in reverse order: remove newer dependent guards first.
+	// Migration 172 references the cleaned-commit table by FK even without
+	// evidence rows. Drop that empty dependent table before 171; its down
+	// migration refuses to erase any retained post-release history.
+	admissionDown, err := os.ReadFile("../../migrations/000172_recovery_admission_release_evidence.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, string(admissionDown)); err != nil {
+		t.Fatal(err)
+	}
 	cleanedDown, err := os.ReadFile("../../migrations/000171_recovery_cleaned_commit_evidence.down.sql")
 	if err != nil {
 		t.Fatal(err)
