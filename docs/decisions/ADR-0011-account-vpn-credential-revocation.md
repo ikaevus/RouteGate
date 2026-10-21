@@ -2901,3 +2901,36 @@ A stored POST receipt never declares VPN credential revocation. Complete
 live-owner Manager/Agent/sing-box end-to-end, old-client traffic disconnect
 and Manager reservation completion/cancellation remain outstanding. #545
 stays OPEN. No production US/FI/RU, real-user credentials, merge or deploy.
+
+### Fifty-ninth slice: read-only integrity of the pinned VLESS removal candidate
+
+Before any future coordinator may bind an apply job, it can inspect the
+durable prepared credential-removal reservation in a REPEATABLE READ,
+READ ONLY PostgreSQL transaction. The internal
+InspectPreparedRemovalIntegrity service method loads the original account,
+Agent generation, server's active applied version, prepared baseline and
+secret-bearing stored candidate into an isolated in-memory scope; rechecks
+that the reservation and all identities are coherent; recomputes the exact
+one-account-only VLESS/Reality removal delta from the pinned applied
+baseline; compares its entire JSON structure with the frozen stored candidate
+using lossless JSON number tokens; and independently recomputes both sing-box
+runtime digests. It also rejects changed desired settings and any mismatch in
+pinned baseline/config/runtime hashes.
+
+Only bounded secret-free identifiers, generation and digests are returned.
+The candidate configuration, VLESS UUID and Reality key are NEVER returned
+as inspection metadata. The function does not create a config version,
+Agent task, reservation, operator authority, credential side effect or runtime
+success state. Its repeatable-read snapshot is NOT execution authorization:
+a future dispatch must recheck all authorities and locks atomically with
+its own concrete job/version allocation. The test proves stable inspection
+for active/suspended/revoked account states, no job/version/token creation,
+rejection of unknown or cancelled preparations and SQL's existing immutable
+candidate guard; the number-preserving JSON test rejects 2^53+1 collisions.
+
+Two dedicated required CI steps run these checks in addition to, not in
+place of, existing preparation, Agent, race, systemd and Reality gates.
+#545 remains OPEN pending a durable authorized coordinator, independent
+credential-removal evidence, actual connection/session tests and full E2E
+security audit. No production US/FI/RU, real-user revocations, merge or
+deploy.
