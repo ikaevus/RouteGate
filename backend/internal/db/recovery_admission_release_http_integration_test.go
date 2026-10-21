@@ -56,10 +56,11 @@ func (t admissionReleaseHTTPDBTransport) VerifyRecoveryAdmissionRelease(ctx cont
 // committed by the Manager service in isolated PostgreSQL. This does not
 // exercise a live Agent owner, sing-box traffic, or reservation completion.
 func TestRecoveryAdmissionReleaseHTTPPostgreSQL(t *testing.T) {
-	f := newRecoveryAdmissionReleaseFixture(t)
 	const bearer = "rg_agent_isolated_manager_release_http_bearer"
-	tokenHash := agents.HashToken(bearer)
-	f.exec(t, `UPDATE agents SET token_hash=$1 WHERE id=$2::uuid`, tokenHash, f.release.Observation.AgentID)
+	// Seed the bearer before recovery reserves the node. Do not bypass its
+	// immutability trigger by rewriting an Agent after preparation.
+	t.Setenv("ROUTEGATE_TEST_RECOVERY_FIXTURE_AGENT_BEARER", bearer)
+	f := newRecoveryAdmissionReleaseFixture(t)
 
 	h := agents.NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), f.pool)
 	h.SetRecoveryTransport(admissionReleaseHTTPDBTransport{service: f.svc})

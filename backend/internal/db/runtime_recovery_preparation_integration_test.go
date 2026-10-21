@@ -15,6 +15,19 @@ import (
 func recoveryPreparationFixture(t *testing.T) (context.Context, *pgxpool.Pool, revocations.RuntimeRecoveryInput, revocations.PrepareInput, func()) {
 	t.Helper()
 	ctx, pool, removal, _, done := removalPreparationFixture(t)
+	// This fixture option is intentionally test-only. Bind a real Agent bearer
+	// before the recovery reservation is created; the protected token_hash
+	// cannot (and must not) be edited after the node enters recovery.
+	if bearer := os.Getenv("ROUTEGATE_TEST_RECOVERY_FIXTURE_AGENT_BEARER"); bearer != "" {
+		if !strings.HasPrefix(bearer, "rg_agent_") {
+			done()
+			t.Fatal("isolated Agent bearer must use the Agent prefix")
+		}
+		if _, err := pool.Exec(ctx, `UPDATE agents SET token_hash=$2 WHERE server_id=$1::uuid`, removal.ServerID, agents.HashToken(bearer)); err != nil {
+			done()
+			t.Fatal(err)
+		}
+	}
 	in := revocations.RuntimeRecoveryInput{ServerID: removal.ServerID, MarkerHash: strings.Repeat("a", 64), ReceiptHash: strings.Repeat("b", 64), Actor: "operator", Envelope: json.RawMessage(`{"status":"succeeded","resultPayload":{"value":9007199254740993}}`)}
 	if err := pool.QueryRow(ctx, `UPDATE agents SET capabilities=capabilities || '{"runtimeMutationFencingV1":true}'::jsonb WHERE server_id=$1::uuid RETURNING id::text`, in.ServerID).Scan(&in.AgentID); err != nil {
 		done()
