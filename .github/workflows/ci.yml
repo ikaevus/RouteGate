@@ -80,6 +80,11 @@ jobs:
           (cd ../agent && go mod download)
           ROUTEGATE_TEST_RG140_AGENT_NETWORK=1 go test ./internal/db -run '^TestRecoveryAdmissionReleaseAgentNetwork$' -count=1 -timeout=120s -v
 
+      - name: Verify isolated Agent submission through Manager HTTP and PostgreSQL
+        run: |
+          (cd ../agent && go mod download)
+          ROUTEGATE_TEST_RG140_AGENT_SUBMIT=1 go test ./internal/db -run '^TestRecoveryAdmissionReleaseAgentSubmissionNetwork$' -count=1 -timeout=120s -v
+
       - name: Verify authenticated admission-release HTTP handlers
         run: go test ./internal/agents -run '^TestRecoveryAdmissionReleaseHandlers$' -count=1 -timeout=120s -v
 
