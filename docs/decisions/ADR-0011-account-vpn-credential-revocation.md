@@ -2874,3 +2874,30 @@ cessation. Coordinated disposable live-owner Manager/PostgreSQL/Agent/sing-box
 release/revocation E2E, protocol session teardown, completion correctness
 and final security audit remain mandatory. #545 stays open and no production
 US/FI/RU, real-user, merge or deploy action is performed.
+
+### Fifty-eighth slice: real cross-module Agent POST into isolated PostgreSQL
+
+An explicit test-only Agent executable calls the genuine typed
+submitRecoveryAdmissionRelease client over loopback Manager HTTP to the
+actual immutable schema-172 PostgreSQL ledger. The parent fixture seeds a
+private Agent token BEFORE node reservation, retains the complete cleaned
+predecessor chain and original human authority, and passes only canonical
+proof/authorization wires to the separate Agent Go module process. Agent
+validates canonical wire, exact authorization SHA-256 and original runtime
+observation, live half-open time window, same frozen refresh callback and
+the exact Manager receipt. It then historically verifies the newly accepted
+proof, rejects substituted proof and foreign Agent bearer. Parent asserts
+immutable Manager evidence and still-PREPARED reservation.
+
+The test intentionally supplies its own frozen refresh callback. It is NOT
+evidence that a real original owner held flock or actually removed a local
+admission record. Those guarantees are covered by the separate Agent local
+release tests, but not yet coordinated with real Manager PostgreSQL and
+real disposable sing-box/Reality traffic. The CI step is explicit and
+required; existing credential fencing, revocation guards, race groups,
+timeouts, agent full suite and real sing-box checks are not weakened.
+
+A stored POST receipt never declares VPN credential revocation. Complete
+live-owner Manager/Agent/sing-box end-to-end, old-client traffic disconnect
+and Manager reservation completion/cancellation remain outstanding. #545
+stays OPEN. No production US/FI/RU, real-user credentials, merge or deploy.
