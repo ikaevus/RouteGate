@@ -108,6 +108,12 @@ func TestCredentialRemovalJobIDBinding(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM vpn_credential_revocation_dispatch_bindings`).Scan(&bound); err != nil || bound != 1 {
 		t.Fatal("cancellation rewrote immutable ID history", err)
 	}
+	// Remove empty dependent human-auth schema first, retaining all IDs.
+	humanDown, err := os.ReadFile("../../migrations/000174_credential_removal_dispatch_authorizations.down.sql")
+	if err != nil { t.Fatal(err) }
+	if _, err = pool.Exec(ctx, string(humanDown)); err != nil {
+		t.Fatal("empty human-approval downgrade", err)
+	}
 	// Retained proposed IDs make migration 173 downgrade fail closed.
 	down, err := os.ReadFile("../../migrations/000173_credential_removal_dispatch_bindings.down.sql")
 	if err != nil {

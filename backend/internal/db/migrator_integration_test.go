@@ -42,8 +42,8 @@ func TestMigrationsApplyFromScratchOnPostgreSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000173_credential_removal_dispatch_bindings" {
-		t.Fatalf("applied schema version = %q, want 000173_credential_removal_dispatch_bindings", version)
+	if version != "000174_credential_removal_dispatch_authorizations" {
+		t.Fatalf("applied schema version = %q, want 000174_credential_removal_dispatch_authorizations", version)
 	}
 	assertRawTrafficArchivalPreservesDailyRollup(t, ctx, pool)
 	assertAgentMaintenanceJobContract(t, ctx, pool)
@@ -530,8 +530,8 @@ func TestRuntimeMetricsBackfillMigrationRepairsAppliedSchemaDrift(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read applied schema version: %v", err)
 	}
-	if version != "000173_credential_removal_dispatch_bindings" {
-		t.Fatalf("applied schema version = %q, want 000173_credential_removal_dispatch_bindings", version)
+	if version != "000174_credential_removal_dispatch_authorizations" {
+		t.Fatalf("applied schema version = %q, want 000174_credential_removal_dispatch_authorizations", version)
 	}
 }
 
