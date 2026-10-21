@@ -2846,3 +2846,31 @@ Coordinated disposable Manager/PostgreSQL/Agent/sing-box execution, session
 termination testing, reservation completion design and full security audit
 are still mandatory; #545 remains OPEN. No US/FI/RU production changes,
 real-user credential revocation, merge or deploy.
+
+### Fifty-seventh slice: cross-module Agent client to Manager/PostgreSQL over loopback
+
+The isolated test harness now executes a real Agent Go client in its own
+module/process against a temporary Manager Agent-facing HTTP listener backed
+by real isolated PostgreSQL with the immutable schema-172 evidence ledger.
+The Manager test seeds an Agent bearer BEFORE recovery admission (never edits
+protected credentials after reservation), commits one canonical release
+statement through HTTP, and launches the Agent client with an exact frozen
+wire and a temporary loopback URL. The Agent uses its real strict typed
+admission-release historical readback client. It must accept an exact
+Manager ledger receipt, reject a different Agent bearer, and reject a
+substituted proof. Manager must retain exactly the first proof and leave its
+reservation PREPARED. The client test refuses non-loopback endpoints.
+
+An additional mandatory Backend CI step explicitly downloads Agent module
+dependencies and runs this bounded cross-module test. Ordinary test runs
+skip the child-process case unless the dedicated isolation switch is set;
+the existing HTTP/SQL and Agent unit/race/Reality gates remain unchanged.
+
+This phase does NOT perform local original-owner admission release, turn
+off live VPN sessions, run real sing-box, or complete the reservation. It
+verifies only cross-module historical HTTP readback on a retained statement
+and cannot independently prove Agent power-loss durability or VPN traffic
+cessation. Coordinated disposable live-owner Manager/PostgreSQL/Agent/sing-box
+release/revocation E2E, protocol session teardown, completion correctness
+and final security audit remain mandatory. #545 stays open and no production
+US/FI/RU, real-user, merge or deploy action is performed.
