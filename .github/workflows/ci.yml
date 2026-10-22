@@ -46,6 +46,14 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Verify external schema readiness with a non-owner login
+        run: go test ./internal/db -run '^TestSchemaReadiness' -count=1 -timeout=120s -v
+
+      - name: Verify migration-only command exits without serving HTTP
+        run: timeout 60s go run ./cmd/routegate-manager --migrate-only
+        env:
+          ROUTEGATE_DATABASE_URL: postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_ci?sslmode=disable
+
       - name: Verify Manager credential-removal Agent-only typed wire
         run: go test ./internal/agents -run '^TestAgentCredentialRemovalRequestWireParity$' -count=1 -timeout=120s -v
 

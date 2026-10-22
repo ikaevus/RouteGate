@@ -43,7 +43,8 @@ func (a *App) Start(ctx context.Context) error {
 
 	a.pool = pool
 
-	if err := db.Migrate(ctx, pool, "migrations", a.logger); err != nil {
+	if err := db.PrepareSchema(ctx, pool, "migrations", a.cfg.DatabaseMigrationMode, a.logger); err != nil {
+		pool.Close()
 		return err
 	}
 	a.backfillClientSettings(ctx, pool)
