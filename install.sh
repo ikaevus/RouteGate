@@ -1169,6 +1169,24 @@ extract_bundle() {
   fi
 }
 
+# The runtime identity must not own SQL later consumed by a privileged migrator.
+# Call only with services stopped and a trusted, verified release tree.
+secure_manager_migration_tree() {
+  local parent=$1
+  local migrations="$parent/migrations"
+  local unsafe
+  [[ -d "$parent" && ! -L "$parent" && -d "$migrations" && ! -L "$migrations" ]] || return 1
+  unsafe=$(find "$migrations" \( ! -type d -a ! -type f \) -print -quit) || return 1
+  [[ -z "$unsafe" ]] || return 1
+  unsafe=$(find "$migrations" -type f -links +1 -print -quit) || return 1
+  [[ -z "$unsafe" ]] || return 1
+  chown root:root "$parent" || return 1
+  chmod 0755 "$parent" || return 1
+  chown -R root:root "$migrations" || return 1
+  find "$migrations" -type d -exec chmod 0755 {} + || return 1
+  find "$migrations" -type f -exec chmod 0644 {} + || return 1
+}
+
 install_files() {
   local source_dir="$ROUTEGATE_WORK_DIR/extracted"
   log "Installing RouteGate binaries, migrations, frontend, and service definitions."
@@ -1180,7 +1198,7 @@ install_files() {
   fi
 
   install -d -m 0755 /etc/routegate
-  install -d -m 0755 -o routegate -g routegate /opt/routegate-manager
+  install -d -m 0755 -o root -g root /opt/routegate-manager
   install -d -m 0755 /var/www/routegate
   install -d -m 0700 /var/lib/routegate-agent
 	install -d -m 0700 /var/lib/routegate-agent/configs /var/lib/routegate-agent/backups /var/lib/routegate-agent/wireguard-configs /var/lib/routegate-agent/wireguard-backups /var/lib/routegate-agent/hysteria2-configs /var/lib/routegate-agent/hysteria2-backups /var/lib/routegate-agent/mtproto-configs /var/lib/routegate-agent/mtproto-backups
@@ -1192,7 +1210,7 @@ install_files() {
 
   rm -rf /opt/routegate-manager/migrations
   cp -a "$source_dir/manager/migrations" /opt/routegate-manager/migrations
-  chown -R routegate:routegate /opt/routegate-manager
+  secure_manager_migration_tree /opt/routegate-manager || die "Cannot protect Manager migrations."
 
   find /var/www/routegate -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
   cp -a "$source_dir/frontend/." /var/www/routegate/

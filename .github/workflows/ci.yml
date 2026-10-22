@@ -487,6 +487,7 @@ jobs:
 
       - name: Run installer and host-operation unit tests
         run: |
+          sudo bash scripts/test-manager-migration-ownership.sh
           bash scripts/test-agent-installer.sh
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh
