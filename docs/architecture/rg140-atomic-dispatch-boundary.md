@@ -1,0 +1,90 @@
+# RG-140 atomic dispatch boundary (design, not execution)
+
+Status: proposed; based on draft #630 at e921dfe6ce8bf0b034ff4ce67fa2500b22cc59d2.
+Issue #545 remains OPEN. This document does not authorize production execution.
+
+## Observed contracts
+
+- Migration 160's rg141_version, rg141_config_job and rg141_server call the
+  reserved-node fence. It rejects INSERT, UPDATE and DELETE as applicable,
+  including the version counter. An approval does not release that reservation.
+- Migration 173 allocates immutable candidate/version and job UUIDs, not rows.
+  Migration 174 records immutable human authorization, not a consumed dispatch.
+- config_versions has UNIQUE(server_id, version). configs/repository.go locks
+  the server, reads next_config_version and advances it in the insertion
+  transaction. The new path must retain that serialization.
+- config_apply_jobs.config_version_id is a foreign key. The old exact-ID test
+  used the baseline version to isolate the job-ID fence. The added case uses
+  BOTH proposed IDs and requires P0141, not a foreign-key error (23503).
+- agents/repository.go ClaimNextConfigTask changes pending to in_progress;
+  CompleteConfigTask changes the job again. Those writes also encounter rg141.
+  A special INSERT exception alone cannot implement the lifecycle.
+- The current claim RETURNING projection supplies rendered_config and
+  config_hash but does not itself return request_payload. A marker stored only
+  in request_payload cannot establish the Agent's scoped removal contract.
+- install.sh configures routegate as database owner. There is no migration
+  establishing a separate least-privilege dispatch executor. SECURITY DEFINER
+  alone is not a security boundary against the same database owner.
+
+## Minimum proposed transaction
+
+1. Inspect and recompute the exact one-account removal candidate, then acquire
+   server, preparation, Agent, human session and RBAC locks in the established
+   order. Invoke validatePreparedRemovalDispatchLocked in the writer transaction.
+   Re-read all mutable facts after waits; recheck the deadline at the final
+   SQL write boundary. A successful earlier Check call is never authority.
+2. Enter a dedicated SQL operation that consumes the bound human authorization
+   once. Preserve the approval row as history; record consumption separately.
+   Bind operation, actor/session, Agent generation, both UUIDs, both candidate
+   hashes, original baseline and the exact next version number.
+3. Insert the exact immutable candidate, advance the counter once and create
+   the exact job in that same transaction. Any error rolls back all three
+   effects and consumption. A repeat may read a matching receipt, but must
+   never issue another job or silently regenerate IDs.
+4. Preserve the node reservation through dispatch and evidence collection.
+   Cancelling preparation or temporarily removing the fence to use ordinary
+   Apply is not a permissible transition.
+5. Keep executable rows unavailable to generic polling until the scoped claim,
+   completion and Agent task contract are implemented. An implementation that
+   emits a generic pending apply job before this boundary exists is incomplete.
+
+## Unresolved implementation boundary
+
+Before changing migration 160 guards, choose and test an unforgeable entry to
+the dedicated SQL transition under the actual Manager database privileges.
+Neither a caller-set GUC, knowledge of the UUIDs/nonce, an unrestricted
+consumption-table INSERT nor pg_trigger_depth alone establishes this entry.
+
+A dedicated executor role/function with protected consumption records is a
+candidate, but requires explicit privilege provisioning, migration ownership,
+REVOKE/GRANT and upgrade tests under a non-owner application role. Do not claim
+that this separation already exists or apply it to production in this slice.
+Alternatively, a constrained trigger transition needs an explicit threat
+boundary and proof that direct SQL cannot manufacture its execution context.
+This decision blocks a safe executable dispatch change; it does not justify
+a broad bypass of P0141.
+
+The claim/completion transitions must separately bind the original Agent
+generation and operation, constrain changed columns and status edges, retain
+ordinary Apply denial, and serialize consistently with server-first admission.
+The deadline must be specified at each authority-consuming boundary; expired
+human approval must not become a reusable execution lease.
+
+## Required tests before enabling the writer
+
+- Existing generic SQL cases keep returning P0141 with valid approval and
+  exact IDs; complete durable rows remain unchanged after each rejection.
+- Wrong actor/session/generation/nonce/hash/ID, expired approval and lock-wait
+  invalidation fail without allocating rows or advancing the counter.
+- Concurrent dispatch, retry after commit, and lost response create at most
+  one version/job/consumption. Inject failures between each write and verify
+  complete rollback, including the version counter.
+- Generic claim/completion cannot execute or forge the scoped operation.
+  A scoped claim returns the complete validated Agent removal contract.
+- Disposable sing-box proves old UUID rejection, termination of its existing
+  sessions, and another account's continued usability. Shared-process restart
+  can interrupt both accounts; distinguish successful reconnection from
+  uninterrupted existing sessions instead of claiming zero downtime.
+
+PostgreSQL acceptance, HTTP receipt, IDs, and post-release evidence are not
+proof of VPN access termination. No US/FI/RU activity or real credentials.
