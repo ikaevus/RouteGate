@@ -441,6 +441,7 @@ jobs:
             scripts/test-agent-installer.sh \
             scripts/test-attestation-verifier-runtime.sh \
             scripts/test-clean-vps-installer.sh \
+            scripts/test-manager-migration-ownership.sh \
             scripts/test-grafana-installer.sh \
             scripts/test-production-like-preflight.sh \
             scripts/test-production-like-update-manager.sh \
@@ -482,11 +483,13 @@ jobs:
             scripts/validate-production-like-deploy.sh
           # These contract tests intentionally grep literal shell source containing "$helper".
           shellcheck -x -e SC2016 \
+            scripts/test-manager-migration-ownership.sh \
             scripts/test-agent-installer.sh \
             scripts/test-clean-vps-installer.sh
 
       - name: Run installer and host-operation unit tests
         run: |
+          sudo bash scripts/test-manager-migration-ownership.sh
           bash scripts/test-agent-installer.sh
           scripts/test-clean-vps-installer.sh
           bash scripts/test-grafana-installer.sh

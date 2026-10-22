@@ -13,7 +13,6 @@ RG_UPDATE_ROOT=${RG_UPDATE_ROOT:-}
 RG_UPDATE_MANAGER_SERVICE=${RG_UPDATE_MANAGER_SERVICE:-routegate-manager}
 RG_UPDATE_AGENT_SERVICE=${RG_UPDATE_AGENT_SERVICE:-routegate-agent}
 RG_UPDATE_HEALTH_URL=${RG_UPDATE_HEALTH_URL:-http://127.0.0.1:8080/api/admin/health}
-RG_UPDATE_MANAGER_OWNER=${RG_UPDATE_MANAGER_OWNER:-routegate:routegate}
 RG_UPDATE_TOOLCHAIN_DIR=/usr/local/lib/routegate/update
 RG_UPDATE_ENTRYPOINT=/usr/local/sbin/routegate-update
 
@@ -46,6 +45,24 @@ rg_update_path() {
 
 rg_update_require_root() {
   [[ ${EUID:-$(id -u)} -eq 0 ]] || rg_update_die "host update operations must run as root"
+}
+
+# The caller has stopped services and installed/restored a trusted tree. Never
+# restore runtime ownership, even from a legacy backup or an environment override.
+rg_update_secure_manager_migrations() {
+  local migrations parent unsafe
+  migrations=$(rg_update_path /opt/routegate-manager/migrations) || return 1
+  parent=$(dirname "$migrations")
+  [[ -d "$parent" && ! -L "$parent" && -d "$migrations" && ! -L "$migrations" ]] || return 1
+  unsafe=$(find "$migrations" \( ! -type d -a ! -type f \) -print -quit) || return 1
+  [[ -z "$unsafe" ]] || return 1
+  unsafe=$(find "$migrations" -type f -links +1 -print -quit) || return 1
+  [[ -z "$unsafe" ]] || return 1
+  chown root:root "$parent" || return 1
+  chmod 0755 "$parent" || return 1
+  chown -R root:root "$migrations" || return 1
+  find "$migrations" -type d -exec chmod 0755 {} + || return 1
+  find "$migrations" -type f -exec chmod 0644 {} + || return 1
 }
 
 rg_update_require_commands() {
@@ -535,7 +552,7 @@ rg_update_apply_platform_files() {
 
   rm -rf "$migrations_dir" || return 1
   cp -a "$work_dir/manager/migrations" "$migrations_dir" || return 1
-  chown -R "$RG_UPDATE_MANAGER_OWNER" "$(dirname "$migrations_dir")" || return 1
+  rg_update_secure_manager_migrations || return 1
 
   install -d -m 0755 "$frontend_dir" || return 1
   if [[ -e "$bootstrap_dir" || -L "$bootstrap_dir" ]]; then
@@ -696,7 +713,7 @@ rg_update_restore_backup() {
   rm -rf "$migrations_dir" || rollback_rc=1
   install -d -m 0755 "$migrations_parent" || rollback_rc=1
   tar -xzf "$backup_dir/manager-migrations.tar.gz" -C "$migrations_parent" || rollback_rc=1
-  chown -R "$RG_UPDATE_MANAGER_OWNER" "$migrations_parent" || rollback_rc=1
+  rg_update_secure_manager_migrations || rollback_rc=1
 
   rm -rf "$frontend_dir" || rollback_rc=1
   install -d -m 0755 "$frontend_parent" || rollback_rc=1

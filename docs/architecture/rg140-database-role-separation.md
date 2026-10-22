@@ -31,6 +31,30 @@ application role.
 
 ## Following slices, required before enabling scoped dispatch
 
+### Migration file ownership prerequisite
+
+The next slice makes `/opt/routegate-manager` and its migrations root-owned
+(directories 0755, SQL files 0644) on clean installation, both Manager update
+paths, and both backup-restore paths. Legacy archive ownership and permissive
+modes are normalized. The former `RG_UPDATE_MANAGER_OWNER` override no longer
+controls migration ownership. Symlinks, non-regular entries and hard-linked
+files are rejected before recursive ownership changes.
+
+An isolated root-only filesystem test uses a real unprivileged identity to
+prove readable SQL but denied modification, creation, chmod and directory
+replacement, including after restoring an old archive. It also checks linked
+entries fail without changing an outside fixture. The existing update suites
+remain unchanged. This does not provision SQL roles or enable external mode.
+
+These helpers assume stopped services and a trusted release/backup tree, as do
+their existing callers. They are post-install normalization, not an atomic
+defence against a concurrently compromised host. Before privileged migration
+execution is enabled, staging, path ancestry, credentials, service confinement
+and backup trust must be reviewed together. No privileged migration execution
+is introduced by this ownership slice.
+
+### Remaining work
+
 1. Provision separate owner/migrator and runtime roles; never grant owner
    membership or schema CREATE to runtime. Determine explicit DML/function
    grants, including trigger-written audit rows and sequences. Do not broadly
