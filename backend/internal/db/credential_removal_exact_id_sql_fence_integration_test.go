@@ -12,7 +12,23 @@ import (
 // stays protected by the original P0141 trigger until a separately reviewed,
 // narrowly scoped atomic dispatch path has been implemented.
 func TestCredentialRemovalApprovedIDsStillBlockGenericApply(t *testing.T) {
+ for _, staged := range []bool{false, true} {
+  name := "approved"
+  if staged { name = "staged" }
+  t.Run(name, func(t *testing.T) {
+   testCredentialRemovalGenericApplyFence(t, staged)
+  })
+ }
+}
+
+func testCredentialRemovalGenericApplyFence(t *testing.T, staged bool) {
+ t.Helper()
  f:=newDispatchGateFixture(t)
+ if staged {
+  if _, err := f.svc.StagePreparedCredentialRemoval(f.ctx, f.operation, f.nonce, true); err != nil {
+   t.Fatal("test must start with a valid non-executable dispatch stage", err)
+  }
+ }
  if err:=f.svc.CheckPreparedRemovalDispatchAdmission(f.ctx,f.operation,f.nonce,true);err!=nil{
   t.Fatal("test must start with a genuinely valid human approval",err)
  }
@@ -25,6 +41,25 @@ func TestCredentialRemovalApprovedIDsStillBlockGenericApply(t *testing.T) {
  FROM servers s JOIN vpn_credential_revocations r ON r.server_id=s.id
  WHERE r.id=$1::uuid`,f.operation).Scan(
  &beforeVersions,&beforeJobs,&beforeNext,&activeVersion);err!=nil{t.Fatal(err)}
+ // Compare complete durable rows, not just counts: a rejected statement must
+ // not change authorization, bindings, events, account data or executable rows.
+ snapshot := func() string {
+  t.Helper()
+  var state string
+  if err := f.pool.QueryRow(f.ctx, `SELECT jsonb_build_object(
+   'operation',to_jsonb(r),
+   'binding',(SELECT to_jsonb(b) FROM vpn_credential_revocation_dispatch_bindings b WHERE b.operation_id=r.id),
+   'stage',(SELECT to_jsonb(st) FROM vpn_credential_removal_dispatch_stages st WHERE st.operation_id=r.id),
+   'approval',(SELECT to_jsonb(a) FROM vpn_credential_removal_dispatch_authorizations a WHERE a.operation_id=r.id),
+   'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY sequence) FROM vpn_credential_revocation_events e WHERE e.operation_id=r.id),
+   'server',(SELECT to_jsonb(s) FROM servers s WHERE s.id=r.server_id),
+   'account',(SELECT to_jsonb(a) FROM vpn_accounts a WHERE a.id=r.vpn_account_id),
+   'versions',(SELECT jsonb_agg(to_jsonb(v) ORDER BY id) FROM config_versions v),
+   'jobs',(SELECT jsonb_agg(to_jsonb(j) ORDER BY id) FROM config_apply_jobs j)
+  )::text FROM vpn_credential_revocations r WHERE r.id=$1::uuid`,f.operation).Scan(&state); err != nil { t.Fatal(err) }
+  return state
+ }
+ beforeState := snapshot()
  cases:=[]struct{name,query string}{
   {"exact_prepared_candidate_version",`
 INSERT INTO config_versions(id,server_id,version,config_hash,status,rendered_config)
@@ -36,6 +71,15 @@ JOIN servers s ON s.id=r.server_id WHERE b.operation_id=$1::uuid`},
   {"exact_prepared_apply_job",`
 INSERT INTO config_apply_jobs(id,server_id,agent_id,config_version_id,action,status,request_payload)
 SELECT b.apply_job_id,r.server_id,r.agent_id,r.baseline_version_id,
+ 'apply','pending','{"kind":"vless_credential_removal_v1"}'::jsonb
+FROM vpn_credential_revocation_dispatch_bindings b
+JOIN vpn_credential_revocations r ON r.id=b.operation_id
+WHERE b.operation_id=$1::uuid`},
+  // The candidate version deliberately does not exist. P0141 must win
+  // over a foreign-key violation; 23503 is not evidence of the node fence.
+  {"exact_prepared_job_and_candidate_version",`
+INSERT INTO config_apply_jobs(id,server_id,agent_id,config_version_id,action,status,request_payload)
+SELECT b.apply_job_id,r.server_id,r.agent_id,b.candidate_version_id,
  'apply','pending','{"kind":"vless_credential_removal_v1"}'::jsonb
 FROM vpn_credential_revocation_dispatch_bindings b
 JOIN vpn_credential_revocations r ON r.id=b.operation_id
@@ -54,6 +98,12 @@ WHERE id=(SELECT server_id FROM vpn_credential_revocations WHERE id=$1::uuid)`},
    var pgerr *pgconn.PgError
    if !errors.As(err,&pgerr) || pgerr.Code!="P0141"{
     t.Fatalf("generic mutation bypassed reserved-node P0141 fence: %v",err)
+   }
+   if snapshot() != beforeState {
+    t.Fatal("rejected generic mutation changed durable state")
+   }
+   if err:=f.svc.CheckPreparedRemovalDispatchAdmission(f.ctx,f.operation,f.nonce,true);err!=nil{
+    t.Fatal("rejected mutation invalidated the original approval",err)
    }
   })
  }
