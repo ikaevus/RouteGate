@@ -3150,3 +3150,24 @@ version and Agent job, and later verify sing-box traffic/session termination
 with a non-target account still working. Stage metadata is NOT an Agent
 dispatch, applied VPN revocation or runtime proof. #545 stays OPEN; no
 US/FI/RU production changes, live credentials, merge or deploy.
+
+### Sixty-eighth slice: integrated baseline and lifecycle completion contract
+
+The #632 branch (including #631) and #633 regression are combined in one
+candidate. The required PostgreSQL fence test now runs all five direct SQL
+mutations against both a valid human approval and a valid immutable stage,
+comparing complete durable state including the stage. No executable rows or
+runtime permissions are introduced, and no existing guard is relaxed.
+
+The [lifecycle completion contract](rg140-lifecycle-completion-contract.md)
+defines the remaining work as one operation-owned state machine: scoped
+dispatch, verification, recovery, irreversible retirement of the old credential
+and atomic terminal release. It records the current recovery incompatibility
+with an existing revocation reservation, succeeded-only recovery entry and
+missing fresh-attempt path after expiry. These are unresolved implementation
+gates, not fixes delivered by this slice. A new approval must never renew an
+old nonce or bypass proof that a former mutation owner is quiescent.
+
+Further implementation must follow the vertical acceptance matrix rather than
+extend disconnected evidence stages. CI success for this slice establishes
+integrated regression coverage only. #545, #509 and #538 remain open.
