@@ -222,7 +222,6 @@ test_platform_apply_preserves_bootstrap_artifacts() {
 
   PATH="$stub_dir:$PATH"
   RG_UPDATE_ROOT="$fake_root"
-  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
 
   rg_update_apply_platform_files "$stage"
 
@@ -244,7 +243,6 @@ test_backup_restore_round_trip() {
 
   PATH="$stub_dir:$PATH"
   RG_UPDATE_ROOT="$fake_root"
-  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
 
   rg_update_create_backup "$backup" "postgres://example/test"
   [[ -s "$backup/routegate.pgdump" ]] || fail "database backup was not created"
@@ -275,7 +273,6 @@ test_restore_reports_systemd_failure_after_restoring_files() {
   install_command_stubs "$stub_dir"
   PATH="$stub_dir:$PATH"
   RG_UPDATE_ROOT="$fake_root"
-  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
 
   rg_update_create_backup "$backup" "postgres://example/test"
   mutate_fake_host "$fake_root"
@@ -303,7 +300,6 @@ test_restore_reports_database_failure_after_restoring_files() {
   install_command_stubs "$stub_dir"
   PATH="$stub_dir:$PATH"
   RG_UPDATE_ROOT="$fake_root"
-  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
 
   rg_update_create_backup "$backup" "postgres://example/test"
   mutate_fake_host "$fake_root"
@@ -332,7 +328,6 @@ test_restore_reports_manager_readiness_failure() {
   install_command_stubs "$stub_dir"
   PATH="$stub_dir:$PATH"
   RG_UPDATE_ROOT="$fake_root"
-  RG_UPDATE_MANAGER_OWNER="routegate:routegate"
 
   rg_update_create_backup "$backup" "postgres://example/test"
   mutate_fake_host "$fake_root"
