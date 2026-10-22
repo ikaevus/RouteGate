@@ -100,9 +100,6 @@
 .vpn-account-next-action .small-button { display: inline-flex; text-decoration: none; }
 .vpn-account-overview-protocols { justify-self: start; }
 
-:root[data-theme='light'] .vpn-account-workspace-context { background: #f7f9fc; }
-:root[data-theme='light'] .vpn-account-next-action { background: rgba(37, 99, 235, 0.06); }
-
 .vpn-account-management-list,
 .vpn-account-management-panel {
   min-width: 0;

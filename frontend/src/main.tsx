@@ -21,9 +21,6 @@ import './shared/rg80-auth.css';
 import './shared/rg80-locale.css';
 import './shared/rg-spacing-audit.css';
 import './shared/rg101-security.css';
-import './shared/rg80-light.css';
-import './shared/rg80-light-canvas-trial.css';
-import './shared/rg80-light-polish.css';
 import './shared/rg-shell-cleanup.css';
 import './shared/rg-status-glass.css';
 import './shared/rg130-mobile-safe-area.css';
@@ -31,9 +28,6 @@ import './shared/rg131-portal-mobile.css';
 import './shared/rg114-ui-acceptance.css';
 import './shared/rg-dashboard-live.css';
 import './shared/rg-brand.css';
-
-const storedTheme = window.localStorage.getItem('routegate.admin.theme');
-document.documentElement.dataset.theme = storedTheme === 'light' ? 'light' : 'dark';
 
 const queryClient = new QueryClient();
 const rootElement = document.getElementById('root');

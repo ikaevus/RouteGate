@@ -67,13 +67,8 @@
   }
 
   .routegate-admin-shell.sidebar-collapsed .routegate-nav .nav-link > span:last-child,
-  .routegate-admin-shell.sidebar-collapsed .sidebar-theme-control > span,
   .routegate-admin-shell.sidebar-collapsed .sidebar-collapse-control > span {
     display: inline;
-  }
-
-  .routegate-admin-shell.sidebar-collapsed .sidebar-theme-control > i {
-    display: block;
   }
 
   .routegate-admin-shell.sidebar-collapsed .routegate-nav .nav-link,
@@ -153,4 +148,14 @@
   .routegate-sidebar {
     transition: none;
   }
+}
+/* Shared portal layout, retained from the retired light-theme stylesheet. */
+.portal-profiles-table-row {
+  box-sizing: border-box;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.portal-app-shell .portal-topnav a[href='/portal'] {
+  display: none;
 }

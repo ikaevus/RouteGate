@@ -7,8 +7,7 @@
   gap: 10px;
 }
 
-.brand-mark,
-:root[data-theme='light'] .brand-mark {
+.brand-mark {
   align-self: flex-start;
   background: none;
   border-radius: 0;
@@ -26,8 +25,7 @@
 }
 
 .brand-title,
-.routegate-brand .brand-title,
-:root[data-theme='light'] .portal-app-shell .brand-title {
+.routegate-brand .brand-title {
   align-items: center;
   color: #f8fafc;
   display: flex;
@@ -41,28 +39,13 @@
   white-space: nowrap;
 }
 
-/* The website's white mark stays unchanged on light surfaces too. Provide
- * contrast behind the complete brand, never a coloured tile behind its symbol. */
-:root[data-theme='light'] .brand,
-:root[data-theme='light'] .portal-brand {
-  background: #06101e;
-  border-radius: 8px;
-  padding: 8px;
-}
-
-:root[data-theme='light'] .brand-subtitle {
-  color: #94a3b8;
-}
-
 @media (max-width: 560px) {
-  .brand-mark,
-  :root[data-theme='light'] .brand-mark {
+  .brand-mark {
     width: 33px;
   }
 
   .brand-title,
-  .routegate-brand .brand-title,
-  :root[data-theme='light'] .portal-app-shell .brand-title {
+  .routegate-brand .brand-title {
     font-size: 18px;
   }
 }
@@ -73,15 +56,13 @@
     gap: 7px;
   }
 
-  .brand-mark,
-  :root[data-theme='light'] .brand-mark {
+  .brand-mark {
     height: 26px;
     width: 30px;
   }
 
   .brand-title,
-  .routegate-brand .brand-title,
-  :root[data-theme='light'] .portal-app-shell .brand-title {
+  .routegate-brand .brand-title {
     font-size: 17px;
     height: 26px;
   }

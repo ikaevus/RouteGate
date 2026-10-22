@@ -199,11 +199,9 @@ try {
   await page.waitForFunction(() => document.querySelector('.routing-workspace-header h2')?.textContent === 'Persisted routing profile');
   await page.reload();
   await page.getByRole('heading', { name: 'Persisted routing profile', exact: true }).waitFor();
-  for (const theme of ['dark', 'light']) {
-    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-    await page.setViewportSize({ width: 390, height: 844 });
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${theme} routing mobile overflow`);
-  }
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'dark routing mobile overflow');
   await page.setViewportSize({ width: 1440, height: 1000 });
   const workspace = `${origin}/vpn-accounts/${account.id}`;
   await page.goto(workspace);
@@ -558,11 +556,11 @@ try {
   }
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
-    for (const theme of ['dark', 'light']) {
+    for (const theme of ['dark']) {
       for (const target of workspaces) {
         await page.goto(`${origin}${target.path}/overview`);
         await page.locator(target.header).getByText(target.name, { exact: true }).waitFor();
-        await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+        assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
         for (const section of target.sections) {
           await page.locator(`.workspace-nav-link[href="${target.path}/${section}"]`).click();
           await page.waitForURL(`${origin}${target.path}/${section}`);
@@ -584,7 +582,7 @@ try {
       }
     }
   }
-  assert.equal(layoutChecks, 68, '60 domain layouts plus 8 rule editor layouts');
+  assert.equal(layoutChecks, 34, '30 domain layouts plus 4 rule editor layouts');
 
   // Isolated CI account only: changing DB status cannot be presented as
   // a proven runtime credential removal. All dialogs describe the distinction.
@@ -637,7 +635,7 @@ try {
   assert.equal((await api(`/api/v1/vpn-accounts/${account.id}`, { token })).status, 'active');
 
   assert.deepEqual(errors, []);
-  console.log(`PASS: Manager CRUD, account/traffic draft isolation and retry, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark/light)`);
+  console.log(`PASS: Manager CRUD, account/traffic draft isolation and retry, routing matchers, 8 read-only summary links, and ${layoutChecks} workspace/editor layouts (390/1440px, dark only)`);
 } finally {
   await browser?.close();
   await vite?.close();

@@ -85,8 +85,8 @@ implicitly install, apply, rotate or revoke anything.
 The current account/server summary layouts are intentionally retained; they do
 not need a generic card wrapper solely to share markup. Integration checks click
 all seven overview cards plus the routing overview action, verify their domain
-destinations, and reject API writes during that navigation. The 68-layout matrix
-covers the shared badges in both themes and viewport sizes.
+destinations, and reject API writes during that navigation. The 34-layout matrix
+covers the shared badges in the supported dark theme at both viewport sizes.
 
 ### Contextual actions decision
 
@@ -103,7 +103,7 @@ disabled/pending behavior with that real consumer before generalizing it.
 Use native links and buttons, visible keyboard focus and associated form labels.
 Allow navigation and dense tables to scroll within their own container where
 necessary; avoid horizontal page overflow. Check mobile and desktop layouts in
-both themes, as well as empty/error states and unusually long names.
+the dark theme, as well as empty/error states and unusually long names.
 
 ## Reference implementations
 
@@ -120,7 +120,7 @@ Shared-pattern adoption remains gradual; this does not claim full UI migration.
 `Workspace integration` runs Chromium against the real Manager and a disposable
 PostgreSQL 16 database in GitHub Actions. It covers login, Dashboard navigation,
 all account workspace routes, persisted account edits, device creation and mobile
-layout in both themes. Run `npm run test:workspace-integration` from `frontend`
+layout in the dark theme. Run `npm run test:workspace-integration` from `frontend`
 with the same isolated environment defined in the workflow. The script requires
 `ROUTEGATE_E2E_ISOLATED=1`, a loopback database named `routegate_workspace_e2e`,
 `ROUTEGATE_DATABASE_URL` and `ROUTEGATE_E2E_MANAGER` (the compiled binary path).
@@ -178,15 +178,26 @@ navigation and mobile layout against Manager and PostgreSQL.
 ## Responsive regression matrix
 
 The permanent browser script checks all six server domains, all six account
-domains and all three routing-profile domains at 390px and 1440px widths in dark
-and light themes (60 layouts). It also opens and cancels the routing-rule editor,
-with additional conditions collapsed and expanded (8 more layouts). Each case
+domains and all three routing-profile domains at 390px and 1440px widths in the
+dark theme (30 layouts). It also opens and cancels the routing-rule editor,
+with additional conditions collapsed and expanded (4 more layouts). Each case
 checks document/body horizontal overflow and visibility of the active domain in
 the navigation strip. Domain checks retain the selected entity's header.
 
 These are geometry/navigation regressions against isolated test data, not pixel
 snapshots or proof of Safari behavior. Real-device visual acceptance, long-name
 stress cases and full loading/error-state coverage remain separate checks.
+
+### Dark-only appearance
+
+The Manager UI, login and user portal support only dark appearance. The HTML
+document declares it before React starts, and native controls use `color-scheme:
+dark`. There is no theme toggle, OS-theme listener or stored theme preference
+reader. Legacy `routegate.admin.theme` values are ignored, not migrated into any
+account setting. Light-only styles and translations have been removed; shared
+portal layout rules from those files are retained in `rg-shell-cleanup.css`.
+The admin-session browser suite checks an existing light preference with a light
+OS scheme at 390px and 1440px, including reload, portal and login navigation.
 
 Account settings draft regressions also cover tab navigation, changed remote
 identity/notes followed by a lifecycle-triggered refetch, successful persistence,

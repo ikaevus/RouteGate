@@ -126,29 +126,6 @@
   top: 22px;
 }
 
-:root[data-theme='light'] .analytics-map-navigation-controls {
-  background: rgba(248, 250, 252, 0.94);
-  border-color: rgba(37, 99, 235, 0.24);
-}
-
-:root[data-theme='light'] .analytics-map-navigation-button:hover:not(:disabled) {
-  background: rgba(37, 99, 235, 0.09);
-  color: #1e3a8a;
-}
-
-:root[data-theme='light'] .analytics-map-navigation-button[aria-pressed='true'] {
-  background: rgba(37, 99, 235, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.28);
-  color: #1e3a8a;
-}
-
-:root[data-theme='light'] .analytics-world-map:fullscreen {
-  background:
-    radial-gradient(circle at 68% 30%, rgba(37, 99, 235, 0.09), transparent 34%),
-    radial-gradient(circle at 28% 62%, rgba(16, 185, 129, 0.06), transparent 30%),
-    #f8fafc;
-}
-
 @media (max-width: 720px) {
   .analytics-map-navigation-controls {
     right: 8px;

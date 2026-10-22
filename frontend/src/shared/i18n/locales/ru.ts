@@ -156,7 +156,6 @@ export const ru: Record<TranslationKey, string> = {
   'dashboard.total': 'Всего',
   'dashboard.systemsOperational': 'Все системы работают',
   'dashboard.nodesUsage': 'Узлы: 24 / 100',
-  'dashboard.darkTheme': 'Темная тема',
   'dashboard.serverTime': 'Время сервера: {time}',
   'dashboard.live': 'В реальном времени',
   'dashboard.liveUpdatedNow': 'обновлено только что',
