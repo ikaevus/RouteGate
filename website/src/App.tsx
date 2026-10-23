@@ -246,9 +246,9 @@ function AppHeader({ locale, setLocale, t }: { locale: Locale; setLocale: (value
         <div className="header-actions">
           <a className="github-link" href={githubUrl} target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
           <button className="locale" type="button" onClick={() => setLocale(locale === 'ru' ? 'en' : 'ru')} aria-label={locale === 'ru' ? 'Switch to English' : 'Переключить на русский'}>
-            <span className={locale === 'ru' ? 'is-active' : ''}>RU</span>
-            <i>/</i>
             <span className={locale === 'en' ? 'is-active' : ''}>EN</span>
+            <i>/</i>
+            <span className={locale === 'ru' ? 'is-active' : ''}>RU</span>
           </button>
           <a className="button button--small button--primary header-start" href="#install">{t.action.start}</a>
         </div>
