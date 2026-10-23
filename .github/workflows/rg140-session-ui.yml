@@ -14,7 +14,7 @@ jobs:
     environment: production-like
     timeout-minutes: 10
     env:
-      CANDIDATE: 7e601fa6cf9fe56792b269f7f45406566c9fe24e
+      CANDIDATE: 8a6fc14158383c2f8c8c4b062dc0717c1dec29ae
     steps:
       - name: Checkout publication helper
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           git merge-base --is-ancestor "$CANDIDATE" HEAD
           git diff --exit-code "$CANDIDATE" HEAD -- frontend
-          for run in 39929334949 39929334902; do
+          for run in 39929603202 39929603393; do
             result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
             [[ "$result" == "$CANDIDATE|completed|success" ]]
           done
@@ -37,7 +37,7 @@ jobs:
       - name: Checkout pinned frontend
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: 7e601fa6cf9fe56792b269f7f45406566c9fe24e
+          ref: 8a6fc14158383c2f8c8c4b062dc0717c1dec29ae
           path: candidate
       - name: Setup Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
