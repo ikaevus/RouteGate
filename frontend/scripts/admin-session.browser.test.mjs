@@ -57,10 +57,11 @@ for (const width of [390, 1440]) {
         assert.equal(await page.getByRole('button', { name: /dark theme|light theme/i }).count(), 0);
       };
       await page.goto(`${origin}/servers`);
-      await page.locator('.routegate-sidebar').waitFor();
+      // Mobile navigation is intentionally hidden until the menu is opened.
+      await page.locator('.routegate-sidebar').waitFor({ state: 'attached' });
       await checkDark();
       await page.reload();
-      await page.locator('.routegate-sidebar').waitFor();
+      await page.locator('.routegate-sidebar').waitFor({ state: 'attached' });
       await checkDark();
       await page.goto(`${origin}/portal`);
       await checkDark();
