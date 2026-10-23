@@ -12,7 +12,7 @@ import tarfile
 import tempfile
 import urllib.request
 
-CANDIDATE = '6e7670fc6f582cb157606eccb5e7e0d513151b4d'
+CANDIDATE = '7e601fa6cf9fe56792b269f7f45406566c9fe24e'
 ROOT = Path('/var/www/routegate')
 PROTECTED = ['/etc/routegate', '/etc/sing-box', '/etc/nginx', '/etc/wireguard',
              '/etc/hysteria', '/etc/routegate-mtproto', '/usr/local/bin/routegate-manager',
