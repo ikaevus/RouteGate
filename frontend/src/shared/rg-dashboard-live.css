@@ -20,7 +20,8 @@
     radial-gradient(34% 30% at 82% 22%, rgba(168, 85, 247, 0.1), transparent 70%),
     radial-gradient(40% 30% at 60% 88%, rgba(6, 182, 212, 0.08), transparent 70%);
   content: '';
-  inset: -40px;
+  /* Decorative light must never enlarge the document's scrollable area. */
+  inset: 0;
   pointer-events: none;
   position: absolute;
   z-index: -1;
@@ -438,8 +439,8 @@
 }
 
 @keyframes rg-aurora {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(4%, 3%, 0) scale(1.08); }
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
 }
 
 @keyframes rg-dashboard-rise {
@@ -508,6 +509,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .dashboard-page::before,
   .dashboard-page *,
   .dashboard-page *::before,
   .dashboard-page *::after {

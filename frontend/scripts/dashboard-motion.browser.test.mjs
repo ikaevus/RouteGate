@@ -21,6 +21,66 @@ before(async () => {
 });
 after(async () => { await browser?.close(); });
 
+for (const width of [390, 1440, 1680]) {
+  test(`ambient animation keeps scroll bounds stable at ${width}px`, async () => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    try {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.setContent(`<style>${css}</style>
+        <style>body { margin: 0; } main { padding: 16px; }
+          .dashboard-page { height: 1200px; }</style>
+        <main><div class="dashboard-page"><button>Dashboard action</button></div></main>`);
+      const sample = () => page.evaluate(() => {
+        const dashboard = document.querySelector('.dashboard-page');
+        const animation = dashboard.getAnimations({ subtree: true }).find(a => a.animationName === 'rg-aurora');
+        if (!animation) throw new Error('Expected ambient animation');
+        animation.pause();
+        return [0, 4500, 9000, 13500, 17999].map(time => {
+          animation.currentTime = time;
+          const rect = dashboard.getBoundingClientRect();
+          const style = getComputedStyle(dashboard, '::before');
+          return {
+            width: document.documentElement.scrollWidth,
+            height: document.documentElement.scrollHeight,
+            viewport: document.documentElement.clientWidth,
+            x: rect.x, y: rect.y, panelWidth: rect.width, panelHeight: rect.height,
+            opacity: style.opacity,
+          };
+        });
+      });
+      const frames = await sample();
+      const { opacity: _, ...expected } = frames[0];
+      for (const { opacity, ...frame } of frames) {
+        assert.deepEqual(frame, expected, 'Animation must not change scroll bounds or panel geometry');
+        assert.ok(frame.width <= frame.viewport, 'No horizontal document overflow');
+        assert.equal(frame.height, 1232, 'No extra vertical scroll area from the background');
+      }
+      assert.notEqual(frames[0].opacity, frames[2].opacity, 'Ambient feedback remains animated');
+      await page.getByRole('button', { name: 'Dashboard action' }).focus();
+      assert.equal(await page.getByRole('button').evaluate(el => document.activeElement === el), true);
+
+      // Negative control: the shipped oversized/translated background reproduces
+      // the screenshot's moving scrollbar even with entirely static content.
+      const old = await page.addStyleTag({ content: `
+        .dashboard-page::before { inset: -40px; }
+        @keyframes rg-aurora {
+          0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+          50% { transform: translate3d(4%, 3%, 0) scale(1.08); }
+        }` });
+      const broken = await sample();
+      assert.ok(broken.some(frame => frame.width > frame.viewport));
+      assert.ok(new Set(broken.map(frame => `${frame.width}/${frame.height}`)).size > 1,
+        'Old background must reproduce moving document bounds');
+      await old.evaluate(el => el.remove());
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      assert.equal(await page.locator('.dashboard-page').evaluate(el =>
+        getComputedStyle(el, '::before').animationName), 'none');
+    } finally {
+      await page.close();
+    }
+  });
+}
+
 for (const width of [390, 1440]) {
   test('server and VPN online dots render and pulse identically at ' + width + 'px', async () => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
