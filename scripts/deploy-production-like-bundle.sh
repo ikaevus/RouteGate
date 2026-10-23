@@ -910,7 +910,7 @@ rollback() {
     fi
 
     restore_maintenance_dispatch "$BACKUP_DIR" || rollback_rc=$?
-    rg_update_restore_backup "$BACKUP_DIR" "$DB_URL" 0 || rollback_rc=$?
+    rg_update_restore_backup "$BACKUP_DIR" "$DB_URL" 0 "$db_rollback_rc" || rollback_rc=$?
     set +e
     if [[ "$NGINX_MUTATED" == "1" && -n "$NGINX_BACKUP" && -f "$NGINX_BACKUP" ]]; then
       cp -a -- "$NGINX_BACKUP" "$NGINX_SITE" || rollback_rc=1
