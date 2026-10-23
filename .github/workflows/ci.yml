@@ -49,8 +49,13 @@ jobs:
       - name: Verify external schema readiness with a non-owner login
         run: go test ./internal/db -run '^TestSchemaReadiness' -count=1 -timeout=120s -v
 
-      - name: Verify migration-only command exits without serving HTTP
-        run: timeout 60s go run ./cmd/routegate-manager --migrate-only
+      - name: Verify explicit runtime role privileges and unchanged SQL fences
+        run: go test ./internal/db -run '^TestRuntimeRole' -count=1 -timeout=120s -v
+
+      - name: Verify migration and role provisioning commands exit without serving HTTP
+        run: |
+          timeout 60s go run ./cmd/routegate-manager --migrate-only
+          timeout 60s go run ./cmd/routegate-manager --create-runtime-role rg140_ci_runtime
         env:
           ROUTEGATE_DATABASE_URL: postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_ci?sslmode=disable
 

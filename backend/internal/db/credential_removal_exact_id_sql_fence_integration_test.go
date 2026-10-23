@@ -4,6 +4,8 @@ import (
  "errors"
  "testing"
 
+ "github.com/ikaevus/routegate/backend/internal/revocations"
+
  "github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -22,8 +24,17 @@ func TestCredentialRemovalApprovedIDsStillBlockGenericApply(t *testing.T) {
 }
 
 func testCredentialRemovalGenericApplyFence(t *testing.T, staged bool) {
+ testCredentialRemovalGenericApplyFenceWithRole(t, staged, false)
+}
+
+func testCredentialRemovalGenericApplyFenceWithRole(t *testing.T, staged, restricted bool) {
  t.Helper()
  f:=newDispatchGateFixture(t)
+ if restricted {
+  runtime, _ := runtimeRoleFixture(t, f.ctx, f.pool)
+  f.pool = runtime
+  f.svc = revocations.NewService(runtime)
+ }
  if staged {
   if _, err := f.svc.StagePreparedCredentialRemoval(f.ctx, f.operation, f.nonce, true); err != nil {
    t.Fatal("test must start with a valid non-executable dispatch stage", err)

@@ -16,8 +16,15 @@ import (
 
 func main() {
 	migrateOnly := flag.Bool("migrate-only", false, "apply database migrations and exit without starting Manager")
+	runtimeRole := flag.String("create-runtime-role", "", "create a new NOLOGIN runtime role using explicit schema privileges, then exit")
 	flag.Parse()
-	if flag.NArg() != 0 {
+	runtimeRoleRequested := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "create-runtime-role" {
+			runtimeRoleRequested = true
+		}
+	})
+	if flag.NArg() != 0 || (runtimeRoleRequested && (*migrateOnly || *runtimeRole == "")) {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -31,6 +38,24 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *runtimeRole != "" {
+		pool, err := db.Connect(ctx, cfg.DatabaseURL, logger)
+		if err != nil {
+			logger.Error("provisioning database connection failed", "error", err)
+			os.Exit(1)
+		}
+		err = db.CheckSchema(ctx, pool, "migrations")
+		if err == nil {
+			err = db.ProvisionRuntimeRole(ctx, pool, *runtimeRole)
+		}
+		pool.Close()
+		if err != nil {
+			logger.Error("runtime role provisioning failed", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("created NOLOGIN runtime role; authentication is not enabled")
+		return
+	}
 	if *migrateOnly {
 		pool, err := db.Connect(ctx, cfg.DatabaseURL, logger)
 		if err != nil {

@@ -55,6 +55,43 @@ is introduced by this ownership slice.
 
 ### Remaining work
 
+### Explicit SQL runtime policy (schema 175)
+
+`routegate-manager --create-runtime-role NAME` is a separate administrative
+command. It checks the migration manifest, then creates a **new NOLOGIN role**
+and its grants in one transaction. It does not migrate, serve HTTP, configure
+authentication, demote the legacy owner or change the service environment.
+Its database connection needs role-creation and grant authority. Never supply
+those credentials to the serving Manager process.
+
+The fixed policy names all 76 current application tables. It grants ordinary
+SELECT/INSERT/UPDATE/DELETE and USAGE/SELECT on their owned sequences; migration
+history is SELECT-only. There is no TRUNCATE, TRIGGER, sequence UPDATE/setval,
+schema/database CREATE, role membership or default grant on future objects.
+Existing immutable SQL guards continue to constrain granted DML. Current
+PUBLIC function permissions are not rewritten by this command.
+
+Provisioning refuses existing roles, unexpected/missing public relations,
+unsupported migration versions and unsafe PUBLIC CREATE/history-write grants.
+This slice does not silently repair ambient ACLs or implement reconciliation
+of an existing runtime role. Added tables require an explicit policy review;
+future dispatch-consumption records must not receive ordinary runtime DML.
+
+Disposable fixtures alone enable LOGIN with generated test credentials. They
+exercise built-in RBAC initialization, schema readiness, approved and staged
+revocation admission under a real runtime connection, all ten unchanged P0141
+mutation denials and their complete durable snapshots. They also deny privilege
+escalation, DDL, trigger disabling, TRUNCATE, ledger writes, sequence rewind and
+writes to a newly created table, and check failed provisioning leaves no role.
+
+This ordinary DML role is **not a dispatch executor** and is not protection
+against all malicious application SQL: it can still write ordinary application
+data, including RBAC tables. Protected dispatch authority needs its own reviewed
+execution boundary. Installer credential provisioning, role upgrades, full
+Manager/browser operation under restricted credentials, restore semantics and
+switching the service to external mode remain required. No production role is
+created or altered by this repository change alone.
+
 1. Provision separate owner/migrator and runtime roles; never grant owner
    membership or schema CREATE to runtime. Determine explicit DML/function
    grants, including trigger-written audit rows and sequences. Do not broadly
