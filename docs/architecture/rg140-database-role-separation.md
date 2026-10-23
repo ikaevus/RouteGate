@@ -53,8 +53,6 @@ execution is enabled, staging, path ancestry, credentials, service confinement
 and backup trust must be reviewed together. No privileged migration execution
 is introduced by this ownership slice.
 
-### Remaining work
-
 ### Explicit SQL runtime policy (schema 175)
 
 `routegate-manager --create-runtime-role NAME` is a separate administrative
@@ -91,6 +89,25 @@ execution boundary. Installer credential provisioning, role upgrades, full
 Manager/browser operation under restricted credentials, restore semantics and
 switching the service to external mode remain required. No production role is
 created or altered by this repository change alone.
+
+### Full Manager runtime-login rehearsal
+
+Workspace integration now runs two independent disposable PostgreSQL services:
+the existing legacy startup, and external migration followed by a real runtime
+login. Only the preparation step holds the fixture owner URL. Before launching
+the Manager, the workflow replaces its database environment with the restricted
+login and sets external migration mode. The existing full browser suite runs
+unchanged in each leg, including bootstrap, authentication, server/account CRUD,
+routing writes and account lifecycle UI checks. Each leg keeps its 15-minute
+limit; no browser assertions are removed.
+
+After the runtime leg, SQL readback through that same login checks persisted
+application writes, role attributes, ownership and denied ledger modification,
+trigger disabling and owner impersonation. Fixture LOGIN activation and its
+test password exist only inside the disposable CI service. This rehearsal does
+not yet provision credentials on installed hosts or prove VPN revocation E2E.
+
+### Remaining work
 
 1. Provision separate owner/migrator and runtime roles; never grant owner
    membership or schema CREATE to runtime. Determine explicit DML/function

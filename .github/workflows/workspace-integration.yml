@@ -10,9 +10,13 @@ permissions:
 
 jobs:
   workspace:
-    name: Browser with Manager and PostgreSQL
+    name: Browser with Manager and PostgreSQL (${{ matrix.database_role }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        database_role: [legacy, runtime]
     services:
       postgres:
         image: postgres:16
@@ -43,6 +47,15 @@ jobs:
       - name: Build Manager
         working-directory: backend
         run: go build -o "$RUNNER_TEMP/routegate-manager" ./cmd/routegate-manager
+      - name: Prepare isolated runtime login after external migrations
+        if: matrix.database_role == 'runtime'
+        working-directory: backend
+        run: |
+          timeout 60s "$RUNNER_TEMP/routegate-manager" --migrate-only
+          timeout 60s "$RUNNER_TEMP/routegate-manager" --create-runtime-role rg140_workspace_runtime
+          psql "$ROUTEGATE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "ALTER ROLE rg140_workspace_runtime LOGIN PASSWORD 'runtime_ci_only_password'"
+          printf '%s\n' 'ROUTEGATE_DATABASE_URL=postgres://rg140_workspace_runtime:runtime_ci_only_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable' >> "$GITHUB_ENV"
+          printf '%s\n' 'ROUTEGATE_DATABASE_MIGRATION_MODE=external' 'ROUTEGATE_E2E_RUNTIME_ROLE=1' >> "$GITHUB_ENV"
       - name: Install browser dependencies
         working-directory: frontend
         run: |
@@ -51,3 +64,6 @@ jobs:
       - name: Exercise workspace against Manager
         working-directory: frontend
         run: ROUTEGATE_E2E_MANAGER="$RUNNER_TEMP/routegate-manager" npm run test:workspace-integration
+      - name: Verify runtime privilege boundary after full Manager execution
+        if: matrix.database_role == 'runtime'
+        run: psql "$ROUTEGATE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f scripts/rg140-runtime-workspace-check.sql
