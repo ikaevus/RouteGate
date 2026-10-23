@@ -399,9 +399,14 @@ PY
       export RG_TEST_SYSTEMCTL_LOG="$TMP_DIR/outer-$scenario-systemctl.log"
       [[ "$scenario" != not-required ]] || DB_MAY_BE_MUTATED=0
       [[ "$scenario" != restore-failed ]] || export RG_TEST_PG_RESTORE_FAIL=1
+      # Invoked by the production functions sourced below.
+      # shellcheck disable=SC2317
       log() { :; }
+      # shellcheck disable=SC2317
       cleanup() { :; }
+      # shellcheck disable=SC2317
       restore_maintenance_dispatch() { :; }
+      # shellcheck disable=SC2317
       psql() { printf '000133_old\n'; }
       # shellcheck source=/dev/null
       source "$wrapper"
