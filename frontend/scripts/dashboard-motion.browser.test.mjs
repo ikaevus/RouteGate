@@ -32,7 +32,7 @@ for (const width of [390, 1440, 1680]) {
         <main><div class="dashboard-page"><button>Dashboard action</button></div></main>`);
       const sample = () => page.evaluate(() => {
         const dashboard = document.querySelector('.dashboard-page');
-        const animation = dashboard.getAnimations().find(a => a.animationName === 'rg-aurora');
+        const animation = dashboard.getAnimations({ subtree: true }).find(a => a.animationName === 'rg-aurora');
         if (!animation) throw new Error('Expected ambient animation');
         animation.pause();
         return [0, 4500, 9000, 13500, 17999].map(time => {
