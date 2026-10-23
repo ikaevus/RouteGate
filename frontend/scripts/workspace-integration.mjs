@@ -9,6 +9,10 @@ assert.equal(process.env.ROUTEGATE_E2E_ISOLATED, '1', 'Use the isolated workspac
 const database = new URL(process.env.ROUTEGATE_DATABASE_URL);
 assert.equal(database.pathname, '/routegate_workspace_e2e');
 assert.ok(['127.0.0.1', 'localhost'].includes(database.hostname));
+if (process.env.ROUTEGATE_E2E_RUNTIME_ROLE === '1') {
+  assert.equal(database.username, 'rg140_workspace_runtime');
+  assert.equal(process.env.ROUTEGATE_DATABASE_MIGRATION_MODE, 'external');
+}
 const managerUrl = 'http://127.0.0.1:18080';
 const frontendRoot = fileURLToPath(new URL('../', import.meta.url));
 const email = 'workspace@example.invalid';
