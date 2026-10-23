@@ -648,9 +648,19 @@ rg_update_restore_backup() {
   local backup_dir=$1
   local db_url=$2
   local restore_database=${3:-0}
+  # A caller that restored the database separately must carry its outcome
+  # through file recovery. Do not infer it from mutable global helper state.
+  local prior_database_restore_rc=${4:-0}
   local manager_bin agent_bin migrations_dir frontend_dir manager_unit agent_unit manager_env
   local migrations_parent frontend_parent
   local restore_rc=0 rollback_rc=0
+
+  if [[ ! "$prior_database_restore_rc" =~ ^(0|[1-9][0-9]{0,2})$ ]] ||
+     ((prior_database_restore_rc > 255)) ||
+     [[ "$restore_database" != 0 && "$prior_database_restore_rc" != 0 ]]; then
+    rg_update_die "invalid prior database restore outcome"
+    return 1
+  fi
 
   [[ -d "$backup_dir" && ! -L "$backup_dir" ]] || {
     rg_update_die "backup directory is missing or unsafe: $backup_dir"
@@ -683,7 +693,7 @@ rg_update_restore_backup() {
 
   systemctl stop "$RG_UPDATE_AGENT_SERVICE" "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || true
 
-  RG_UPDATE_DB_RESTORE_RC=0
+  RG_UPDATE_DB_RESTORE_RC=$prior_database_restore_rc
   if [[ "$restore_database" == "1" ]]; then
     if [[ -z "$db_url" || ! -s "$backup_dir/routegate.pgdump" ]]; then
       RG_UPDATE_DB_RESTORE_RC=1

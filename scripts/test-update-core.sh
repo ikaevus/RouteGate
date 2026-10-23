@@ -355,6 +355,89 @@ test_restore_reports_manager_readiness_failure() {
   RG_UPDATE_ROOT=""
 }
 
+test_outer_database_rollback_controls_startup() {
+  local scenario fake_root backup stub_dir wrapper rc expected_db_rc
+  local old_path=$PATH
+  wrapper="$TMP_DIR/outer-rollback-functions.sh"
+  # Load only the actual rollback functions, never the deployment entry point.
+  python3 - "$ROOT_DIR/scripts/deploy-production-like-bundle.sh" "$wrapper" <<'PY'
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+functions = []
+for name in ("rollback_database_to_backup", "rollback"):
+    matches = re.findall(r"^" + name + r"\(\) \{\n.*?^\}", source, re.M | re.S)
+    if len(matches) != 1:
+        raise SystemExit("expected one rollback function: " + name)
+    functions.append(matches[0])
+pathlib.Path(sys.argv[2]).write_text("\n".join(functions) + "\n")
+PY
+  for scenario in restore-failed missing-dump missing-schema restored not-required; do
+    fake_root="$TMP_DIR/outer-$scenario"
+    backup="$TMP_DIR/backups/outer-$scenario"
+    stub_dir="$TMP_DIR/stubs-outer-$scenario"
+    populate_fake_host "$fake_root"
+    install_command_stubs "$stub_dir"
+    PATH="$stub_dir:$old_path"
+    RG_UPDATE_ROOT="$fake_root"
+    rg_update_create_backup "$backup" "postgres://example/test"
+    printf 'DATABASE_SCHEMA=000133_old\n' >"$backup/backup.meta"
+    mutate_fake_host "$fake_root"
+    expected_db_rc=0
+    case "$scenario" in
+      restore-failed) expected_db_rc=75 ;;
+      missing-dump) rm "$backup/routegate.pgdump"; expected_db_rc=1 ;;
+      missing-schema) : >"$backup/backup.meta"; expected_db_rc=1 ;;
+    esac
+    rc=0
+    if (
+      # These variables are inputs of the extracted production functions.
+      export MUTATED=1 BACKUP_DIR="$backup" DB_URL=postgres://example/test
+      export DB_MAY_BE_MUTATED=1 NGINX_MUTATED=0 STAGE=fixture
+      export RG_TEST_SYSTEMCTL_LOG="$TMP_DIR/outer-$scenario-systemctl.log"
+      [[ "$scenario" != not-required ]] || DB_MAY_BE_MUTATED=0
+      [[ "$scenario" != restore-failed ]] || export RG_TEST_PG_RESTORE_FAIL=1
+      log() { :; }
+      cleanup() { :; }
+      restore_maintenance_dispatch() { :; }
+      psql() { printf '000133_old\n'; }
+      # shellcheck source=/dev/null
+      source "$wrapper"
+      trap 'printf "db-result=%s\n" "$RG_UPDATE_DB_RESTORE_RC"' EXIT
+      set +e
+      false # Preserve the original deployment failure through rollback.
+      rollback
+    ) >"$TMP_DIR/outer-$scenario-output" 2>&1; then
+      fail "outer rollback lost original failure ($scenario)"
+    else
+      rc=$?
+    fi
+    assert_eq "$rc" "1" "outer rollback exit ($scenario)"
+    grep -Fxq "db-result=$expected_db_rc" "$TMP_DIR/outer-$scenario-output" \
+      || fail "outer rollback lost database outcome ($scenario)"
+    assert_file_content "$fake_root/usr/local/bin/routegate-manager" "manager-old"
+    assert_file_content "$fake_root/usr/local/bin/routegate-agent" "agent-old"
+    assert_file_content "$fake_root/opt/routegate-manager/migrations/000133_old.up.sql" "migration-old"
+    assert_file_content "$fake_root/var/www/routegate/index.html" "frontend-old"
+    [[ -f "$backup/routegate-manager" ]] || fail "outer rollback removed backup"
+    if ((expected_db_rc != 0)); then
+      if grep -Eq '^(start|restart|enable|daemon-reload)( |$)' "$TMP_DIR/outer-$scenario-systemctl.log"; then
+        fail "outer rollback started services after database failure ($scenario)"
+      fi
+    else
+      grep -Fxq 'start routegate-manager' "$TMP_DIR/outer-$scenario-systemctl.log" \
+        || fail "successful rollback did not start Manager ($scenario)"
+      grep -Fxq 'start routegate-agent' "$TMP_DIR/outer-$scenario-systemctl.log" \
+        || fail "successful rollback did not start Agent ($scenario)"
+    fi
+  done
+  PATH=$old_path
+  RG_UPDATE_ROOT=""
+}
+
+test_outer_database_rollback_controls_startup
 test_bundle_verification
 test_metadata_is_never_evaluated
 test_unsafe_archive_is_rejected
