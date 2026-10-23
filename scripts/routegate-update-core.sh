@@ -723,6 +723,10 @@ rg_update_restore_backup() {
   install -m 0644 "$backup_dir/routegate-agent.service" "$agent_unit" || rollback_rc=1
   install -m 0600 "$backup_dir/manager.env" "$manager_env" || rollback_rc=1
 
+  if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
+    rg_update_log "database restore incomplete; service restart withheld; backup retained at $backup_dir"
+    return 1
+  fi
   systemctl daemon-reload || rollback_rc=1
   if ! rg_update_wait_manager 45; then
     rollback_rc=1

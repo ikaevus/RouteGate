@@ -458,6 +458,10 @@ rg_update_restore_management_backup() {
   tar -xzf "$backup_dir/frontend.tar.gz" -C "$frontend_parent" || rollback_rc=1
   install -m 0644 "$backup_dir/routegate-manager.service" "$manager_unit" || rollback_rc=1
   install -m 0600 "$backup_dir/manager.env" "$manager_env" || rollback_rc=1
+  if ((RG_UPDATE_DB_RESTORE_RC != 0)); then
+    rg_update_log "Management database restore incomplete; service restart withheld; backup retained at $backup_dir"
+    return 1
+  fi
   systemctl daemon-reload || rollback_rc=1
   systemctl start "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || rollback_rc=1
   rg_update_log "Management rollback attempt completed; backup retained at $backup_dir"

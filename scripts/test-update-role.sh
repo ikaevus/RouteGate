@@ -40,6 +40,9 @@ install_stubs() {
 #!/usr/bin/env bash
 set -euo pipefail
 action=${1:-}
+if [[ -n ${RG_TEST_SYSTEMCTL_LOG:-} ]]; then
+  printf '%s\n' "$*" >>"$RG_TEST_SYSTEMCTL_LOG"
+fi
 if [[ -n ${RG_TEST_SYSTEMCTL_FAIL_ACTION:-} && "$action" == "$RG_TEST_SYSTEMCTL_FAIL_ACTION" ]]; then
   exit 73
 fi
@@ -264,6 +267,37 @@ test_rollback_failure_is_reported_after_best_effort_restore() {
   RG_UPDATE_ROOT=""
 }
 
+test_management_database_failure_withholds_restart() {
+  local scenario root backup
+  for scenario in command-failure missing-dump missing-url; do
+    root="$TMP_DIR/restore-db-$scenario"
+    backup="$TMP_DIR/restore-db-backups-$scenario/one"
+    populate_management "$root"
+    RG_UPDATE_ROOT=$root
+    rg_update_create_management_backup "$backup" "postgres://example/test"
+    printf 'manager-new\n' >"$root/usr/local/bin/routegate-manager"
+    export RG_TEST_SYSTEMCTL_LOG="$TMP_DIR/restore-db-$scenario.log"
+    local db_url="postgres://example/test" expected=1
+    case "$scenario" in
+      command-failure) export RG_TEST_PG_RESTORE_FAIL=1; expected=75 ;;
+      missing-dump) mv "$backup/routegate.pgdump" "$backup/retained.pgdump" ;;
+      missing-url) db_url="" ;;
+    esac
+    if rg_update_restore_management_backup "$backup" "$db_url" 1 >/dev/null 2>&1; then
+      fail "Management restore accepted $scenario"
+    fi
+    unset RG_TEST_PG_RESTORE_FAIL
+    assert_eq "$RG_UPDATE_DB_RESTORE_RC" "$expected" "database restore result for $scenario"
+    assert_file_content "$root/usr/local/bin/routegate-manager" manager-old
+    [[ -d "$backup" ]] || fail "failed restore removed backup"
+    if grep -Eq '^(start|restart|enable|daemon-reload)( |$)' "$RG_TEST_SYSTEMCTL_LOG"; then
+      fail "$scenario allowed service restart/reload"
+    fi
+    unset RG_TEST_SYSTEMCTL_LOG
+    RG_UPDATE_ROOT=""
+  done
+}
+
 test_management_apply_preserves_bootstrap() {
   local root="$TMP_DIR/management-bootstrap"
   local work="$TMP_DIR/management-bootstrap-work"
@@ -300,5 +334,6 @@ test_management_apply_preserves_bootstrap
 test_vpn_round_trip
 test_backup_failure_propagates
 test_rollback_failure_is_reported_after_best_effort_restore
+test_management_database_failure_withholds_restart
 
 printf 'RouteGate role-aware update tests passed.\n'

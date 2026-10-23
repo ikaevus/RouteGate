@@ -124,6 +124,9 @@ install_command_stubs() {
 #!/usr/bin/env bash
 set -euo pipefail
 action=${1:-}
+if [[ -n ${RG_TEST_SYSTEMCTL_LOG:-} ]]; then
+  printf '%s\n' "$*" >>"$RG_TEST_SYSTEMCTL_LOG"
+fi
 if [[ -n ${RG_TEST_SYSTEMCTL_FAIL_ACTION:-} && "$action" == "$RG_TEST_SYSTEMCTL_FAIL_ACTION" ]]; then
   exit 73
 fi
@@ -305,6 +308,7 @@ test_restore_reports_database_failure_after_restoring_files() {
   mutate_fake_host "$fake_root"
 
   export RG_TEST_PG_RESTORE_FAIL=1
+  export RG_TEST_SYSTEMCTL_LOG="$TMP_DIR/db-failure-systemctl.log"
   if rg_update_restore_backup "$backup" "postgres://example/test" 1 >/dev/null 2>&1; then
     fail "shared rollback with failed database restore unexpectedly returned success"
   fi
@@ -313,6 +317,11 @@ test_restore_reports_database_failure_after_restoring_files() {
   assert_eq "$RG_UPDATE_DB_RESTORE_RC" "75" "database restore failure result"
   assert_file_content "$fake_root/usr/local/bin/routegate-manager" "manager-old"
   assert_file_content "$fake_root/usr/local/bin/routegate-agent" "agent-old"
+  if grep -Eq '^(start|restart|enable|daemon-reload)( |$)' "$RG_TEST_SYSTEMCTL_LOG"; then
+    fail "database restore failure allowed service restart/reload"
+  fi
+  [[ -s "$backup/routegate.pgdump" ]] || fail "failed restore removed recovery backup"
+  unset RG_TEST_SYSTEMCTL_LOG
 
   PATH=$old_path
   RG_UPDATE_ROOT=""
