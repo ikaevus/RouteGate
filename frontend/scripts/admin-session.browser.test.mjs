@@ -41,6 +41,42 @@ async function fixture(initialResponse) {
   return { page, state };
 }
 const token = page => page.evaluate(() => localStorage.getItem('routegate.auth.token'));
+
+for (const width of [390, 1440]) {
+  test(`dark-only UI ignores legacy light preference and OS theme at ${width}px`, async () => {
+    const { page, state } = await fixture(200);
+    try {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.addInitScript(() => localStorage.setItem('routegate.admin.theme', 'light'));
+      const checkDark = async () => {
+        await page.locator('#root > *').first().waitFor();
+        assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+        assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).colorScheme), 'dark');
+        assert.equal(await page.locator('.sidebar-theme-control').count(), 0);
+        assert.equal(await page.getByRole('button', { name: /dark theme|light theme/i }).count(), 0);
+      };
+      await page.goto(`${origin}/servers`);
+      // Mobile navigation is intentionally hidden until the menu is opened.
+      await page.locator('.routegate-sidebar').waitFor({ state: 'attached' });
+      await checkDark();
+      await page.reload();
+      await page.locator('.routegate-sidebar').waitFor({ state: 'attached' });
+      await checkDark();
+      await page.goto(`${origin}/portal`);
+      await checkDark();
+      state.response = 401;
+      await page.goto(`${origin}/servers`);
+      await page.waitForURL(`${origin}/login`);
+      await page.locator('input[type="password"]').waitFor();
+      await checkDark();
+      assert.deepEqual(state.writes, [], 'Theme handling must not write to the API');
+    } finally {
+      await page.close();
+    }
+  });
+}
+
 async function refocus(page) {
   // Drive the real Query focus listener through a hidden -> visible transition.
   for (const visibility of ['hidden', 'visible']) {

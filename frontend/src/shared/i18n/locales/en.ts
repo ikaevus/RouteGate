@@ -154,7 +154,6 @@ export const en = {
   'dashboard.total': 'Total',
   'dashboard.systemsOperational': 'All systems operational',
   'dashboard.nodesUsage': 'Nodes: 24 / 100',
-  'dashboard.darkTheme': 'Dark theme',
   'dashboard.serverTime': 'Server time: {time}',
   'dashboard.live': 'Live',
   'dashboard.liveUpdatedNow': 'updated just now',

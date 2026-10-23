@@ -423,49 +423,7 @@
 
 /* ---- Light theme ---- */
 
-:root[data-theme='light'] .dashboard-page::before { opacity: 0.5; }
-
-:root[data-theme='light'] .dashboard-live-bar--live .dashboard-live-indicator {
-  background: rgba(22, 143, 75, 0.1);
-  border-color: rgba(22, 143, 75, 0.35);
-  color: #168f4b;
-}
-
-:root[data-theme='light'] .dashboard-page .dashboard-widget:hover {
-  border-color: color-mix(in srgb, #94a3b8 70%, #2563eb 30%);
-}
-
-:root[data-theme='light'] .dashboard-page a.kpi-widget::before { opacity: 0.45; }
-:root[data-theme='light'] .dashboard-page a.kpi-widget:hover::before { opacity: 0.6; }
-
-:root[data-theme='light'] .dashboard-page a.kpi-widget:hover,
-:root[data-theme='light'] .dashboard-page a.kpi-widget:focus-visible {
-  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--kpi-tone) 60%, transparent);
-}
-
-:root[data-theme='light'] .dashboard-page .kpi-value-changed {
-  color: color-mix(in srgb, var(--kpi-tone) 80%, #07111f);
-  text-shadow: none;
-}
-
-:root[data-theme='light'] .dashboard-page .online-users-table .online-user-state--online { color: #168f4b; }
-:root[data-theme='light'] .dashboard-page .online-users-table .online-user-state--recent { color: #b56b0a; }
-
-:root[data-theme='light'] .dashboard-page .health-pulse--healthy { --pulse-color: #16a34a; }
-:root[data-theme='light'] .dashboard-page .health-pulse-trace {
-  stroke: color-mix(in srgb, var(--pulse-color) 16%, transparent);
-  stroke-width: 1.5;
-}
-
 .dashboard-page .health-pulse-line { filter: none; }
-
-:root[data-theme='light'] .dashboard-page .node-distribution-map::after {
-  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.06) 45%, rgba(37, 99, 235, 0.1) 50%, transparent 55%);
-}
-
-:root[data-theme='light'] .dashboard-page .traffic-empty-wave span {
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.18), rgba(37, 99, 235, 0.02));
-}
 
 /* ---- Keyframes ---- */
 

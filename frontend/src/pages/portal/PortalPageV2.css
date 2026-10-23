@@ -84,16 +84,6 @@
 .portal-v2-metric .badge { vertical-align: middle; }
 .portal-v2-traffic-split { white-space: normal; }
 
-:root[data-theme='light'] .portal-v2-hero {
-  background: radial-gradient(circle at 84% 12%, rgba(37, 99, 235, .13), transparent 38%), linear-gradient(135deg, var(--rg-light-surface-raised), var(--rg-light-surface));
-  box-shadow: 0 18px 48px rgba(15, 23, 42, .08);
-}
-
-:root[data-theme='light'] .portal-v2-next {
-  border-color: color-mix(in srgb, #2563eb 24%, var(--rg-light-line) 76%);
-  background: color-mix(in srgb, var(--rg-light-surface-raised) 92%, #2563eb 8%);
-}
-
 @media (max-width: 1080px) {
   .portal-v2-hero { grid-template-columns: 1fr; }
   .portal-v2-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
