@@ -110,13 +110,14 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		removalStartSingBox(t, ctx, binary, client, proxies[i])
 		removalWaitTraffic(t, ctx, proxies[i], origin.URL)
 	}
-	streams := []io.ReadCloser{}
+	streams := []removalObservedStream{}
 	for _, port := range proxies {
 		proxy := &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", port)}
 		transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
 		defer transport.CloseIdleConnections()
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, origin.URL+"/stream", nil)
-		response, err := (&http.Client{Transport: transport, Timeout: 12 * time.Second}).Do(request)
+		started := time.Now()
+		response, err := (&http.Client{Transport: transport, Timeout: removalStreamClientTimeout}).Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,10 +126,23 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		if _, err = io.ReadFull(response.Body, first); err != nil || string(first) != "open" {
 			t.Fatal("stream did not open", err)
 		}
-		streams = append(streams, response.Body)
+		done := make(chan removalStreamTermination, 1)
+		go func(body io.Reader) {
+			_, readErr := io.ReadAll(body)
+			done <- removalStreamTermination{err: readErr, contextErr: ctx.Err(), finished: time.Now()}
+		}(response.Body)
+		streams = append(streams, removalObservedStream{started: started, done: done})
 	}
 	inbound["users"] = users[1:]
 	bindRemovalCandidate(t, &task, object)
+	for _, stream := range streams {
+		select {
+		case <-stream.done:
+			t.Fatal("old session closed before credential removal began")
+		default:
+		}
+	}
+	mutationStarted := time.Now()
 	report, err := e.Execute(ctx, task)
 	if err != nil {
 		t.Fatal(report, err)
@@ -139,10 +153,11 @@ func testCredentialRemovalSystemdRealityTraffic(t *testing.T, binary string, pre
 		t.Fatal("lost-ack replay", replay, err)
 	}
 	for _, stream := range streams {
-		done := make(chan error, 1)
-		go func(body io.Reader) { _, err := io.ReadAll(body); done <- err }(stream)
 		select {
-		case <-done:
+		case result := <-stream.done:
+			if err := result.validate(stream.started, mutationStarted); err != nil {
+				t.Fatal(err)
+			}
 		case <-time.After(3 * time.Second):
 			t.Fatal("shared-process old session remained open")
 		}

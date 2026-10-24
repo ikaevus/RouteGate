@@ -72,6 +72,28 @@ boundary and proof that direct SQL cannot manufacture its execution context.
 This decision blocks a safe executable dispatch change; it does not justify
 a broad bypass of P0141.
 
+### Authority boundary clarified after #645
+
+The restricted runtime role in #639/#642 is an ordinary application role:
+it still has DML on users, auth_sessions and RBAC relations. It prevents owner
+DDL, but does not independently attest a human decision against malicious SQL
+under that role. A SECURITY DEFINER function that trusts only those writable
+rows cannot provide that stronger guarantee. Issuing another immutable receipt
+would not resolve this boundary.
+
+Before enabling the writer, specify and test which principal may originate
+human approval and which may consume it. Ordinary runtime SQL must not be able
+to manufacture the protected authorization/consumption context. Credential
+separation and privilege reconciliation across install/update/restore remain
+prerequisites; the current owner-login installer is not that boundary.
+Do not silently narrow the threat model to make an implementation pass.
+
+Use the existing lifecycle completion contract to define dispatch, claim,
+result acceptance and terminal release together. Recovery attempts must retain
+the original operation/reservation and prove old-owner quiescence; the separate
+succeeded-job recovery preparation is not a replacement. No new ledger is
+introduced by this clarification, and executable dispatch remains blocked.
+
 The claim/completion transitions must separately bind the original Agent
 generation and operation, constrain changed columns and status edges, retain
 ordinary Apply denial, and serialize consistently with server-first admission.
