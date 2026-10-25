@@ -208,6 +208,38 @@ test_maintenance_database_channel() {
   RG_UPDATE_ROOT=""
 }
 
+test_role_restore_stop_failure() {
+  local role root backup binary before after
+  for role in management vpn; do
+    root="$TMP_DIR/stop-$role"
+    backup="$TMP_DIR/stop-backups/$role"
+    if [[ "$role" == management ]]; then
+      populate_management "$root"
+      binary=routegate-manager
+    else
+      populate_vpn "$root"
+      binary=routegate-agent
+    fi
+    RG_UPDATE_ROOT=$root
+    rg_update_create_role_backup "$role" "$backup" "postgres://example/test"
+    printf 'current-binary\n' >"$root/usr/local/bin/$binary"
+    before=$(find "$root" -type f -exec sha256sum {} + | sort)
+    export RG_TEST_SYSTEMCTL_LOG="$TMP_DIR/stop-$role.log"
+    export RG_TEST_SYSTEMCTL_FAIL_ACTION=stop
+    if rg_update_restore_role_backup "$role" "$backup" "postgres://example/test" 0; then
+      fail "$role restore accepted failed stop"
+    fi
+    unset RG_TEST_SYSTEMCTL_FAIL_ACTION
+    after=$(find "$root" -type f -exec sha256sum {} + | sort)
+    assert_eq "$after" "$before" "$role failed stop changed host files"
+    if grep -Eq '^(start|restart|daemon-reload) ' "$RG_TEST_SYSTEMCTL_LOG"; then
+      fail "$role failed stop continued service changes"
+    fi
+    unset RG_TEST_SYSTEMCTL_LOG
+  done
+  RG_UPDATE_ROOT=""
+}
+
 test_management_round_trip() {
   local root="$TMP_DIR/management-root"
   local work="$TMP_DIR/management-work"
@@ -361,6 +393,7 @@ test_role_inference
 test_marker_policy
 test_manager_env_is_data
 test_maintenance_database_channel
+test_role_restore_stop_failure
 test_management_round_trip
 test_management_apply_preserves_bootstrap
 test_vpn_round_trip

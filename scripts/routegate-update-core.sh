@@ -691,7 +691,10 @@ rg_update_restore_backup() {
   migrations_parent=$(dirname "$migrations_dir")
   frontend_parent=$(dirname "$frontend_dir")
 
-  systemctl stop "$RG_UPDATE_AGENT_SERVICE" "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || true
+  systemctl stop "$RG_UPDATE_AGENT_SERVICE" "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || {
+    rg_update_die "service stop failed; restore withheld; backup retained at $backup_dir"
+    return 1
+  }
 
   RG_UPDATE_DB_RESTORE_RC=$prior_database_restore_rc
   if [[ "$restore_database" == "1" ]]; then

@@ -266,6 +266,37 @@ test_backup_restore_round_trip() {
   RG_UPDATE_ROOT=""
 }
 
+test_restore_stop_failure_preserves_host() {
+  local fake_root="$TMP_DIR/root-stop-failure" backup="$TMP_DIR/backups/stop-failure"
+  local stub_dir="$TMP_DIR/stubs-stop-failure" old_path=$PATH before after
+  populate_fake_host "$fake_root"
+  install_command_stubs "$stub_dir"
+  PATH="$stub_dir:$PATH"
+  RG_UPDATE_ROOT="$fake_root"
+  rg_update_create_backup "$backup" "postgres://example/test"
+  mutate_fake_host "$fake_root"
+  before=$(find "$fake_root" -type f -exec sha256sum {} + | sort)
+  cat >"$stub_dir/pg_restore" <<'EOF_STOP_RESTORE'
+#!/usr/bin/env bash
+printf 'unexpected restore\n' >"$RG_TEST_RESTORE_MARKER"
+exit 0
+EOF_STOP_RESTORE
+  chmod +x "$stub_dir/pg_restore"
+  export RG_TEST_RESTORE_MARKER="$TMP_DIR/unexpected-stop-restore"
+  export RG_TEST_SYSTEMCTL_FAIL_ACTION=stop
+  if rg_update_restore_backup "$backup" "postgres://example/test" 1; then
+    fail "restore accepted failed service stop"
+  fi
+  unset RG_TEST_SYSTEMCTL_FAIL_ACTION
+  after=$(find "$fake_root" -type f -exec sha256sum {} + | sort)
+  assert_eq "$after" "$before" "failed stop changed host files"
+  [[ ! -e "$RG_TEST_RESTORE_MARKER" ]] || fail "failed stop invoked database restore"
+  [[ -s "$backup/routegate.pgdump" ]] || fail "failed stop lost backup"
+  unset RG_TEST_RESTORE_MARKER
+  PATH=$old_path
+  RG_UPDATE_ROOT=""
+}
+
 test_restore_reports_systemd_failure_after_restoring_files() {
   local fake_root="$TMP_DIR/root-systemd-failure"
   local backup="$TMP_DIR/backups/systemd-failure"
@@ -448,6 +479,7 @@ test_metadata_is_never_evaluated
 test_unsafe_archive_is_rejected
 test_platform_apply_preserves_bootstrap_artifacts
 test_backup_restore_round_trip
+test_restore_stop_failure_preserves_host
 test_restore_reports_systemd_failure_after_restoring_files
 test_restore_reports_database_failure_after_restoring_files
 test_restore_reports_manager_readiness_failure
