@@ -200,7 +200,7 @@ test_maintenance_database_channel() {
   ln "$file" "$file.link"
   if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "hardlinked credentials accepted"; fi
   rm "$file.link"
-  printf 'ROUTEGATE_MAINTENANCE_DATABASE_URL=\n' >>"$file"
+  printf 'ROUTEGATE_MAINTENANCE_DATABASE_URL=postgres://fixture/duplicate\n' >>"$file"
   if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "duplicate credentials accepted"; fi
   rm "$file"
   ln -s manager.env "$file"
