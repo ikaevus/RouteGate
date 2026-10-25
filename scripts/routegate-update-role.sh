@@ -467,7 +467,10 @@ rg_update_restore_management_backup() {
   migrations_parent=$(dirname "$migrations_dir")
   frontend_parent=$(dirname "$frontend_dir")
 
-  systemctl stop "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || true
+  systemctl stop "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || {
+    rg_update_die "Manager stop failed; restore withheld; backup retained at $backup_dir"
+    return 1
+  }
   RG_UPDATE_DB_RESTORE_RC=0
   if [[ "$restore_database" == "1" ]]; then
     if [[ -z "$db_url" || ! -s "$backup_dir/routegate.pgdump" ]]; then
@@ -517,7 +520,10 @@ rg_update_restore_vpn_backup() {
 
   agent_bin=$(rg_update_path /usr/local/bin/routegate-agent) || return 1
   agent_unit=$(rg_update_path /etc/systemd/system/routegate-agent.service) || return 1
-  systemctl stop "$RG_UPDATE_AGENT_SERVICE" >/dev/null 2>&1 || true
+  systemctl stop "$RG_UPDATE_AGENT_SERVICE" >/dev/null 2>&1 || {
+    rg_update_die "Agent stop failed; restore withheld; backup retained at $backup_dir"
+    return 1
+  }
   install -m 0755 "$backup_dir/routegate-agent" "$agent_bin" || rollback_rc=1
   install -m 0644 "$backup_dir/routegate-agent.service" "$agent_unit" || rollback_rc=1
   systemctl daemon-reload || rollback_rc=1
