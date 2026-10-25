@@ -221,6 +221,41 @@ rg_update_read_manager_database_url() {
   printf '%s\n' "$value"
 }
 
+# Dedicated administrative channel. Deliberately not wired into update callers
+# until install/update/restore provisioning is complete. Never fall back to the
+# serving Manager environment. Caller must provide a trusted root path.
+rg_update_read_maintenance_database_url() {
+  local file line value="" count=0 metadata
+  file=$(rg_update_path /etc/routegate/database-maintenance.env) || return 1
+  [[ -f "$file" && ! -L "$file" ]] || {
+    rg_update_die "Database maintenance environment is unavailable"
+    return 1
+  }
+  metadata=$(stat -c '%u:%a:%h' "$file") || return 1
+  [[ "$metadata" == "0:600:1" ]] || {
+    rg_update_die "Database maintenance environment must be root-owned, mode 0600, and unlinked"
+    return 1
+  }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      ROUTEGATE_MAINTENANCE_DATABASE_URL=*)
+        count=$((count + 1))
+        value=${line#ROUTEGATE_MAINTENANCE_DATABASE_URL=}
+        if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+          value=${value:1:${#value}-2}
+        fi
+        ;;
+      ""|\#*) ;;
+      *) rg_update_die "Unexpected database maintenance environment entry"; return 1 ;;
+    esac
+  done <"$file"
+  [[ "$count" == 1 && -n "$value" && "$value" != *$'\r'* ]] || {
+    rg_update_die "Database maintenance URL is missing or ambiguous"
+    return 1
+  }
+  printf '%s\n' "$value"
+}
+
 rg_update_write_role_backup_meta() {
   local backup_dir=$1 role=$2
   cat >"$backup_dir/role.meta" <<EOF_ROLE_META
