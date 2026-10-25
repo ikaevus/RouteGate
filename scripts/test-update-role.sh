@@ -177,6 +177,37 @@ test_manager_env_is_data() {
   RG_UPDATE_ROOT=""
 }
 
+test_maintenance_database_channel() {
+  local root="$TMP_DIR/maintenance-channel" file value marker="$TMP_DIR/maintenance-executed"
+  [[ "$EUID" == 0 ]] || fail "maintenance credential fixtures require root"
+  populate_management "$root"
+  RG_UPDATE_ROOT=$root
+  file="$root/etc/routegate/database-maintenance.env"
+  if rg_update_read_maintenance_database_url >/dev/null 2>&1; then
+    fail "missing maintenance credentials fell back to Manager"
+  fi
+  printf 'ROUTEGATE_MAINTENANCE_DATABASE_URL="%s"\n' "\$(touch $marker)" >"$file"
+  chmod 0600 "$file"
+  value=$(rg_update_read_maintenance_database_url)
+  assert_eq "$value" "\$(touch $marker)" "maintenance URL data parsing"
+  [[ ! -e "$marker" ]] || fail "maintenance environment executed"
+  /usr/bin/chown 65534:65534 "$file"
+  if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "non-root credentials accepted"; fi
+  /usr/bin/chown 0:0 "$file"
+  chmod 0644 "$file"
+  if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "public credential file accepted"; fi
+  chmod 0600 "$file"
+  ln "$file" "$file.link"
+  if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "hardlinked credentials accepted"; fi
+  rm "$file.link"
+  printf 'ROUTEGATE_MAINTENANCE_DATABASE_URL=\n' >>"$file"
+  if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "duplicate credentials accepted"; fi
+  rm "$file"
+  ln -s manager.env "$file"
+  if rg_update_read_maintenance_database_url >/dev/null 2>&1; then fail "symlink credentials accepted"; fi
+  RG_UPDATE_ROOT=""
+}
+
 test_management_round_trip() {
   local root="$TMP_DIR/management-root"
   local work="$TMP_DIR/management-work"
@@ -329,6 +360,7 @@ PATH="$STUB_DIR:$PATH"
 test_role_inference
 test_marker_policy
 test_manager_env_is_data
+test_maintenance_database_channel
 test_management_round_trip
 test_management_apply_preserves_bootstrap
 test_vpn_round_trip
