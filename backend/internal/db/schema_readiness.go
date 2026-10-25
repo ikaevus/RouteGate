@@ -18,6 +18,9 @@ func PrepareSchema(ctx context.Context, pool *pgxpool.Pool, dir, mode string, lo
 	case "", "auto": // Empty preserves existing programmatic Config callers.
 		return Migrate(ctx, pool, dir, logger)
 	case "external":
+		if err := CheckRuntimeOwnership(ctx, pool); err != nil {
+			return err
+		}
 		return CheckSchema(ctx, pool, dir)
 	default:
 		return fmt.Errorf("invalid database migration mode: expected auto or external")
@@ -56,6 +59,29 @@ func CheckSchema(ctx context.Context, pool *pgxpool.Pool, dir string) error {
 	}
 	if len(expected) != 0 {
 		return fmt.Errorf("schema readiness: database is missing required migrations")
+	}
+	return nil
+}
+
+// CheckRuntimeOwnership refuses privileged serving credentials in external mode.
+// Membership is checked even for NOINHERIT roles: SET ROLE must not recover
+// owner authority. This is a startup prerequisite, not a complete ACL audit.
+func CheckRuntimeOwnership(ctx context.Context, pool *pgxpool.Pool) error {
+	var unsafe bool
+	err := pool.QueryRow(ctx, `SELECT EXISTS (
+ SELECT 1 FROM pg_catalog.pg_roles r
+ WHERE pg_catalog.pg_has_role(session_user, r.oid, 'MEMBER')
+ AND (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
+ OR r.oid IN (SELECT datdba FROM pg_catalog.pg_database WHERE datname=current_database())
+ OR r.oid IN (SELECT nspowner FROM pg_catalog.pg_namespace WHERE nspname='public')
+ OR r.oid IN (SELECT c.relowner FROM pg_catalog.pg_class c
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'))
+ )`).Scan(&unsafe)
+	if err != nil {
+		return fmt.Errorf("runtime ownership check: %w", err)
+	}
+	if unsafe {
+		return fmt.Errorf("external migration mode refuses privileged runtime credentials")
 	}
 	return nil
 }

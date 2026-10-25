@@ -90,6 +90,25 @@ func TestSchemaReadinessWithReadOnlyLogin(t *testing.T) {
 			t.Fatalf("expected permission denial for %q, got %v", query, err)
 		}
 	}
+	// External startup must refuse an otherwise current database when the
+	// serving connection retains owner authority.
+	if err := PrepareSchema(ctx, owner, "../../migrations", "external", logger); err == nil {
+		t.Fatal("external startup accepted owner credentials")
+	}
+	// NOINHERIT does not prevent SET ROLE. A privileged membership must also
+	// be refused, then revocation must restore readiness on the same pool.
+	if _, err := owner.Exec(ctx, "GRANT "+pgx.Identifier{ownerRole}.Sanitize()+" TO "+ident); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareSchema(ctx, runtime, "../../migrations", "external", logger); err == nil {
+		t.Fatal("external startup accepted owner membership")
+	}
+	if _, err := owner.Exec(ctx, "REVOKE "+pgx.Identifier{ownerRole}.Sanitize()+" FROM "+ident); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareSchema(ctx, runtime, "../../migrations", "external", logger); err != nil {
+		t.Fatalf("readiness after membership revocation: %v", err)
+	}
 	// A hole below the maximum must fail, and the check must not repair it.
 	var removed string
 	if err := owner.QueryRow(ctx, `DELETE FROM schema_migrations WHERE version=(SELECT min(version) FROM schema_migrations) RETURNING version`).Scan(&removed); err != nil {
