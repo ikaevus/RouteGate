@@ -127,3 +127,19 @@ not yet provision credentials on installed hosts or prove VPN revocation E2E.
 
 This slice changes no SQL trigger, installer provisioning, service credential,
 or production host. It creates no executable removal job or new evidence ledger.
+
+### External-startup ownership guard
+
+External startup now refuses a session identity that owns the current database,
+public schema or any public relation, or can become such an owner through role
+membership (including NOINHERIT membership). Superuser, role/database creation,
+replication and RLS-bypass roles reachable through membership are also refused.
+This SELECT-only check runs before schema readiness and application startup;
+errors fail closed. Legacy auto mode and explicit administrative commands retain
+separate behavior. A disposable login regression checks owner rejection,
+NOINHERIT owner-membership rejection and readiness after membership revocation.
+
+This is not complete effective-privilege validation: explicit ACLs, executable
+SECURITY DEFINER functions, later privilege changes and application-writable
+RBAC remain separate concerns. Installer credentials, upgrade/restore role
+reconciliation and protected dispatch authority are still outstanding.
