@@ -903,6 +903,12 @@ rollback() {
   if [[ "$MUTATED" == "1" && -n "$BACKUP_DIR" ]]; then
     log "Failure at stage=${STAGE}; restoring production-like baseline."
 
+    if ! systemctl stop "$RG_UPDATE_AGENT_SERVICE" "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1; then
+      log "ROLLBACK INCOMPLETE: service stop failed; restore withheld; backup retained at ${BACKUP_DIR}"
+      cleanup
+      exit "$rc"
+    fi
+
     if [[ "$DB_MAY_BE_MUTATED" == "1" ]]; then
       rollback_database_to_backup "$BACKUP_DIR" "$DB_URL" || db_rollback_rc=$?
     else

@@ -189,7 +189,11 @@ on_error() {
   log "FAILED at stage=${STAGE} status=${rc}"
   if ((MUTATED == 1)); then
     log "restoring the previous Manager from ${BACKUP_DIR}"
-    systemctl stop "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1
+    if ! systemctl stop "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1; then
+      log "ROLLBACK INCOMPLETE: Manager stop failed; restore withheld; backup retained at ${BACKUP_DIR}"
+      log "RESULT=failed stage=${STAGE}"
+      exit 1
+    fi
     if ((DB_MAY_BE_MUTATED == 1)); then
       rollback_database || restore_rc=1
     fi
