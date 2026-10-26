@@ -57,6 +57,68 @@ rg_update_restore_management_backup() { printf 'files\n' >> "$trace"; exit 78; }
                                 self.assertEqual(lines[1:], ['database'] if db_mutated else
                                                  (['maintenance', 'files'] if handler == 'rollback' else ['files']))
 
+    def test_manager_database_outcome_reaches_real_helper(self):
+        source = (ROOT / 'production-like-update-manager.sh').read_text()
+        functions = []
+        for name in ('rollback_database', 'on_error'):
+            match = re.search(r'^' + name + r'\(\) \{\n.*?^\}', source, re.M | re.S)
+            self.assertIsNotNone(match)
+            functions.append(match.group(0))
+        for db_mutated, restore_rc in ((1, 75), (1, 0), (0, 0)):
+            with self.subTest(db_mutated=db_mutated, restore_rc=restore_rc):
+                with tempfile.TemporaryDirectory() as tmp:
+                    script = r'''
+set -u
+source "$1/routegate-update-core.sh"
+source "$1/routegate-update-role.sh"
+RG_UPDATE_ROOT=$2/host
+BACKUP_DIR=$2/backup
+trace=$2/trace
+DB_MAY_BE_MUTATED=$3
+fixture_restore_rc=$4
+DB_URL=fixture
+CURRENT_SCHEMA=000133_old
+STAGE=fixture
+MUTATED=1
+mkdir -p "$BACKUP_DIR" "$2/archive/migrations" "$2/frontend"
+printf 'old migration' >"$2/archive/migrations/000133_old.up.sql"
+printf 'old frontend' >"$2/frontend/index.html"
+tar -czf "$BACKUP_DIR/manager-migrations.tar.gz" -C "$2/archive" migrations
+tar -czf "$BACKUP_DIR/frontend.tar.gz" -C "$2/frontend" .
+printf 'ROLE=management\n' >"$BACKUP_DIR/role.meta"
+for file in routegate-manager routegate-manager.service manager.env routegate.pgdump; do
+  printf 'old' >"$BACKUP_DIR/$file"
+done
+mkdir -p "$RG_UPDATE_ROOT/usr/local/bin" "$RG_UPDATE_ROOT/etc/systemd/system" "$RG_UPDATE_ROOT/etc/routegate"
+printf 'new' >"$RG_UPDATE_ROOT/usr/local/bin/routegate-manager"
+# Host boundaries are stubbed; real handler, DB rollback and file helper run.
+systemctl() { printf 'systemctl %s\n' "$*" >>"$trace"; }
+pg_restore() { printf 'pg_restore\n' >>"$trace"; return "$fixture_restore_rc"; }
+psql() { if [[ "$*" == *'count(*)'* ]]; then printf '0\n'; else printf '%s\n' "$CURRENT_SCHEMA"; fi; }
+log() { printf '%s\n' "$*"; }
+manager_healthy() { printf 'health\n' >>"$trace"; }
+rg_update_secure_manager_migrations() { return 0; }
+''' + '\n'.join(functions) + '\ntrap on_error ERR\nfalse\n'
+                    result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp,
+                                             str(db_mutated), str(restore_rc)],
+                                            capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual((pathlib.Path(tmp) / 'host/usr/local/bin/routegate-manager').read_text(), 'old')
+                    self.assertTrue((pathlib.Path(tmp) / 'backup/routegate.pgdump').is_file())
+                    trace = (pathlib.Path(tmp) / 'trace').read_text()
+                    failed = db_mutated and restore_rc
+                    if failed:
+                        self.assertNotIn('systemctl start', trace)
+                        self.assertNotIn('systemctl daemon-reload', trace)
+                        self.assertNotIn('health', trace)
+                        self.assertIn('ROLLBACK INCOMPLETE', result.stdout)
+                        self.assertNotIn('ROLLBACK COMPLETE', result.stdout)
+                    else:
+                        self.assertIn('systemctl start', trace)
+                        self.assertIn('health', trace)
+                        self.assertIn('ROLLBACK COMPLETE', result.stdout)
+                    self.assertEqual(trace.count('pg_restore'), db_mutated)
+
 
 if __name__ == '__main__':
     unittest.main()

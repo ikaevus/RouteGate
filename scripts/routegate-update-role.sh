@@ -448,8 +448,16 @@ rg_update_require_role_backup() {
 
 rg_update_restore_management_backup() {
   local backup_dir=$1 db_url=$2 restore_database=${3:-0}
+  local prior_database_restore_rc=${4:-0}
   local manager_bin migrations_dir frontend_dir manager_unit manager_env
   local migrations_parent frontend_parent restore_rc=0 rollback_rc=0
+
+  if [[ ! "$prior_database_restore_rc" =~ ^(0|[1-9][0-9]{0,2})$ ]] ||
+     ((prior_database_restore_rc > 255)) ||
+     [[ "$restore_database" != 0 && "$prior_database_restore_rc" != 0 ]]; then
+    rg_update_die "invalid prior Management database restore outcome"
+    return 1
+  fi
 
   rg_update_require_role_backup "$backup_dir" management || return 1
   for required in routegate-manager routegate-manager.service manager.env manager-migrations.tar.gz frontend.tar.gz; do
@@ -471,7 +479,7 @@ rg_update_restore_management_backup() {
     rg_update_die "Manager stop failed; restore withheld; backup retained at $backup_dir"
     return 1
   }
-  RG_UPDATE_DB_RESTORE_RC=0
+  RG_UPDATE_DB_RESTORE_RC=$prior_database_restore_rc
   if [[ "$restore_database" == "1" ]]; then
     if [[ -z "$db_url" || ! -s "$backup_dir/routegate.pgdump" ]]; then
       RG_UPDATE_DB_RESTORE_RC=1

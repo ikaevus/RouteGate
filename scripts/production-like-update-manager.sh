@@ -183,7 +183,7 @@ manager_healthy() { # attempts
 }
 
 on_error() {
-  local rc=$? restore_rc=0 schema newer migrations_dir
+  local rc=$? restore_rc=0 db_restore_rc=0 schema newer migrations_dir
   trap - ERR
   set +e
   log "FAILED at stage=${STAGE} status=${rc}"
@@ -195,12 +195,15 @@ on_error() {
       exit 1
     fi
     if ((DB_MAY_BE_MUTATED == 1)); then
-      rollback_database || restore_rc=1
+      rollback_database || db_restore_rc=$?
     fi
     # Restores binary, the previous migrations directory (so the old build can
     # never apply 000156+ again), frontend, unit and env, then starts Manager.
-    rg_update_restore_management_backup "$BACKUP_DIR" "$DB_URL" 0 || restore_rc=1
-    if manager_healthy 45; then log "rollback manager health=ok"; else log "rollback manager health=FAILED"; restore_rc=1; fi
+    rg_update_restore_management_backup "$BACKUP_DIR" "$DB_URL" 0 "$db_restore_rc" || restore_rc=1
+    if ((db_restore_rc != 0)); then
+      restore_rc=1
+      log "database rollback failed; Manager restart and health confirmation withheld"
+    elif manager_healthy 45; then log "rollback manager health=ok"; else log "rollback manager health=FAILED"; restore_rc=1; fi
     schema=$(psql "$DB_URL" -X -qAtc "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1" 2>/dev/null)
     newer=$(psql "$DB_URL" -X -qAtc "SELECT count(*) FROM schema_migrations WHERE version > '${CURRENT_SCHEMA}'" 2>/dev/null)
     migrations_dir=$(rg_update_path /opt/routegate-manager/migrations)
