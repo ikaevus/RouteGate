@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,12 +100,13 @@ func TestSchemaReadinessWithReadOnlyLogin(t *testing.T) {
 		t.Fatal("external startup accepted owner credentials")
 	}
 	// NOINHERIT does not prevent SET ROLE. A privileged membership must also
-	// be refused, then revocation must restore readiness on the same pool.
+	// be refused by external startup even though this login also lacks DML.
+	// Revocation must restore safe ownership on the same pool.
 	if _, err := owner.Exec(ctx, "GRANT "+pgx.Identifier{ownerRole}.Sanitize()+" TO "+ident); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckRuntimeOwnership(ctx, runtime); err == nil {
-		t.Fatal("runtime ownership check accepted owner membership")
+	if err := PrepareSchema(ctx, runtime, "../../migrations", "external", logger); err == nil || !strings.Contains(err.Error(), "refuses privileged runtime credentials") {
+		t.Fatalf("external startup did not reject owner membership at the ownership gate: %v", err)
 	}
 	if _, err := owner.Exec(ctx, "REVOKE "+pgx.Identifier{ownerRole}.Sanitize()+" FROM "+ident); err != nil {
 		t.Fatal(err)
