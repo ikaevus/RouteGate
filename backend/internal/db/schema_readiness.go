@@ -21,7 +21,10 @@ func PrepareSchema(ctx context.Context, pool *pgxpool.Pool, dir, mode string, lo
 		if err := CheckRuntimeOwnership(ctx, pool); err != nil {
 			return err
 		}
-		return CheckSchema(ctx, pool, dir)
+		if err := CheckSchema(ctx, pool, dir); err != nil {
+			return err
+		}
+		return CheckRuntimeRequiredPrivileges(ctx, pool)
 	default:
 		return fmt.Errorf("invalid database migration mode: expected auto or external")
 	}
