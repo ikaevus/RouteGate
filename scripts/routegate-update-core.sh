@@ -644,6 +644,30 @@ rg_update_wait_agent() {
   rg_update_die "agent did not become active within ${attempts}s"
 }
 
+# Conservative preflight for installations with any explicit migration-mode
+# declaration. Compare bytes rather than interpreting systemd environment syntax.
+# This protects the currently installed env/unit, not a durable conversion record.
+rg_update_check_manager_restore_environment() {
+  local backup_dir=$1 current_env current_unit match_rc=0
+  current_env=$(rg_update_path /etc/routegate/manager.env) || return 1
+  current_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service) || return 1
+  [[ -e "$current_env" || -L "$current_env" ]] || return 0
+  [[ -f "$current_env" && ! -L "$current_env" ]] || return 1
+  grep -q 'ROUTEGATE_DATABASE_MIGRATION_MODE' "$current_env" || match_rc=$?
+  if ((match_rc == 1)); then
+    return 0
+  elif ((match_rc != 0)); then
+    return 1
+  fi
+  # Explicit auto, comments and unusual quoting deliberately take the strict path.
+  if [[ ! -f "$current_unit" || -L "$current_unit" ]] ||
+    ! cmp -s -- "$current_env" "$backup_dir/manager.env" ||
+    ! cmp -s -- "$current_unit" "$backup_dir/routegate-manager.service"; then
+    rg_update_die "explicit database mode: environment/unit rollback differs; restore withheld; backup retained at $backup_dir"
+    return 1
+  fi
+}
+
 rg_update_restore_backup() {
   local backup_dir=$1
   local db_url=$2
@@ -696,6 +720,7 @@ rg_update_restore_backup() {
     return 1
   }
 
+  rg_update_check_manager_restore_environment "$backup_dir" || return 1
   RG_UPDATE_DB_RESTORE_RC=$prior_database_restore_rc
   if [[ "$restore_database" == "1" ]]; then
     if [[ -z "$db_url" || ! -s "$backup_dir/routegate.pgdump" ]]; then

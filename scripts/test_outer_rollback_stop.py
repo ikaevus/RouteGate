@@ -127,7 +127,7 @@ if __name__ == '__main__':
 class FileRollbackStartupTests(unittest.TestCase):
     def test_real_file_failures_withhold_startup(self):
         for role in ('core', 'management'):
-            for damage in ('none', 'archive', 'environment', 'reload'):
+            for damage in ('none', 'archive', 'environment', 'reload', 'mode_equal', 'mode_env', 'mode_unit'):
                 with self.subTest(role=role, damage=damage), tempfile.TemporaryDirectory() as tmp:
                     script = r'''source "$1/routegate-update-core.sh"
 source "$1/routegate-update-role.sh"
@@ -145,7 +145,14 @@ for file in routegate-manager routegate-agent routegate-manager.service routegat
   printf old > "$backup/$file"
 done
 mkdir -p "$RG_UPDATE_ROOT/usr/local/bin" "$RG_UPDATE_ROOT/etc/systemd/system" "$RG_UPDATE_ROOT/etc/routegate"
+if [[ "$4" == mode_* ]]; then
+  printf 'ROUTEGATE_DATABASE_MIGRATION_MODE="external"\n' > "$RG_UPDATE_ROOT/etc/routegate/manager.env"
+  cp "$RG_UPDATE_ROOT/etc/routegate/manager.env" "$backup/manager.env"
+  cp "$backup/routegate-manager.service" "$RG_UPDATE_ROOT/etc/systemd/system/routegate-manager.service"
+fi
 case "$4" in
+  mode_env) printf 'ROUTEGATE_DATABASE_URL=owner\n' > "$backup/manager.env" ;;
+  mode_unit) printf 'other unit' > "$backup/routegate-manager.service" ;;
   archive) printf corrupt > "$backup/frontend.tar.gz" ;;
   environment) rm "$backup/manager.env"; mkdir "$backup/manager.env" ;;
 esac
@@ -165,13 +172,18 @@ fi
                     result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp, role, damage],
                                             capture_output=True, text=True, timeout=5)
                     trace = (pathlib.Path(tmp) / 'trace').read_text()
-                    self.assertEqual(result.returncode, 0 if damage == 'none' else 1, result.stderr)
+                    self.assertEqual(result.returncode, 0 if damage in ('none', 'mode_equal') else 1, result.stderr)
                     self.assertTrue((pathlib.Path(tmp) / 'backup/routegate-manager').is_file())
-                    if damage == 'none':
+                    if damage in ('none', 'mode_equal'):
                         self.assertIn('start routegate-manager', trace)
                     else:
                         self.assertNotIn('start ', trace)
-                        if damage == 'reload':
+                        if damage in ('mode_env', 'mode_unit'):
+                            self.assertNotIn('daemon-reload', trace)
+                            self.assertIn('restore withheld', result.stderr)
+                            self.assertIn('external', (pathlib.Path(tmp) / 'host/etc/routegate/manager.env').read_text())
+                            self.assertFalse((pathlib.Path(tmp) / 'host/usr/local/bin/routegate-manager').exists())
+                        elif damage == 'reload':
                             self.assertIn('daemon-reload', trace)
                             self.assertIn('systemd reload failed', result.stdout)
                             self.assertEqual((pathlib.Path(tmp) / 'host/etc/routegate/manager.env').read_text(), 'old')
