@@ -740,6 +740,10 @@ rg_update_restore_backup() {
     rg_update_log "database restore incomplete; service restart withheld; backup retained at $backup_dir"
     return 1
   fi
+  if ((rollback_rc != 0)); then
+    rg_update_log "file restore incomplete; service restart withheld; backup retained at $backup_dir"
+    return 1
+  fi
   systemctl daemon-reload || rollback_rc=1
   if ! rg_update_wait_manager 45; then
     rollback_rc=1
