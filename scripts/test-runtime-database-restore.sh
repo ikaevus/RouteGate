@@ -11,13 +11,14 @@ umask 077
 identity_file="$RUNNER_TEMP/rg140-restored-role-identity"
 sql() { psql "$ROUTEGATE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -qAtc "$1"; }
 identity() {
-  sql "SELECT row_to_json(r)::text FROM pg_authid r WHERE rolname='rg140_workspace_runtime';
-       SELECT row_to_json(s)::text FROM pg_db_role_setting s
-       WHERE setrole=(SELECT oid FROM pg_roles WHERE rolname='rg140_workspace_runtime') ORDER BY setdatabase"
+  sql "SELECT json_build_object('role', row_to_json(r), 'settings',
+       (SELECT COALESCE(json_agg(s ORDER BY setdatabase), '[]'::json)
+        FROM pg_db_role_setting s WHERE setrole=r.oid))::text
+       FROM pg_authid r WHERE rolname='rg140_workspace_runtime'"
 }
 runtime_url='postgres://rg140_workspace_runtime:runtime_ci_only_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable'
 verify_identity() {
-  [[ -s $identity_file && $(identity) == $(cat "$identity_file") ]]
+  [[ -s $identity_file && $(identity) == "$(cat "$identity_file")" ]]
   [[ $(psql "$runtime_url" -X -v ON_ERROR_STOP=1 -qAtc 'SELECT current_user') == rg140_workspace_runtime ]]
   # A successful connection alone proves nothing if host authentication is trust.
   if psql 'postgres://rg140_workspace_runtime:wrong_ci_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable' \
@@ -73,7 +74,7 @@ docker cp "$work/acl.list" "$RG140_POSTGRES_CONTAINER:/tmp/rg140-fixture-acl.lis
 docker exec -i "$RG140_POSTGRES_CONTAINER" pg_restore -U routegate -d routegate_workspace_e2e \
   --no-owner --single-transaction --exit-on-error --use-list=/tmp/rg140-fixture-acl.list < "$work/database.dump"
 docker exec "$RG140_POSTGRES_CONTAINER" rm /tmp/rg140-fixture-acl.list
-[[ $(acls) == $(cat "$work/acls.before") ]]
+[[ $(acls) == "$(cat "$work/acls.before")" ]]
 [[ $(sql 'SELECT string_agg(version, chr(10) ORDER BY version) FROM schema_migrations') == "$ledger" ]]
 verify_identity
 echo 'fixture ACLs restored with unchanged runtime identity and authentication'
