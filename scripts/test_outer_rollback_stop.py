@@ -127,13 +127,14 @@ if __name__ == '__main__':
 class FileRollbackStartupTests(unittest.TestCase):
     def test_real_file_failures_withhold_startup(self):
         for role in ('core', 'management'):
-            for damage in ('none', 'archive', 'environment'):
+            for damage in ('none', 'archive', 'environment', 'reload'):
                 with self.subTest(role=role, damage=damage), tempfile.TemporaryDirectory() as tmp:
                     script = r'''source "$1/routegate-update-core.sh"
 source "$1/routegate-update-role.sh"
 RG_UPDATE_ROOT=$2/host
 backup=$2/backup
 trace=$2/trace
+fixture_damage=$4
 mkdir -p "$backup" "$2/archive/migrations" "$2/frontend"
 printf 'migration' > "$2/archive/migrations/000133_old.up.sql"
 printf 'frontend' > "$2/frontend/index.html"
@@ -148,7 +149,10 @@ case "$4" in
   archive) printf corrupt > "$backup/frontend.tar.gz" ;;
   environment) rm "$backup/manager.env"; mkdir "$backup/manager.env" ;;
 esac
-systemctl() { printf '%s\n' "$*" >> "$trace"; }
+systemctl() {
+  printf '%s\n' "$*" >> "$trace"
+  [[ "$fixture_damage" != reload || "$1" != daemon-reload ]]
+}
 rg_update_secure_manager_migrations() { return 0; }
 rg_update_wait_manager() { systemctl start routegate-manager; }
 rg_update_wait_agent() { systemctl start routegate-agent; }
@@ -167,5 +171,10 @@ fi
                         self.assertIn('start routegate-manager', trace)
                     else:
                         self.assertNotIn('start ', trace)
-                        self.assertNotIn('daemon-reload', trace)
-                        self.assertIn('file restore incomplete', result.stdout)
+                        if damage == 'reload':
+                            self.assertIn('daemon-reload', trace)
+                            self.assertIn('systemd reload failed', result.stdout)
+                            self.assertEqual((pathlib.Path(tmp) / 'host/etc/routegate/manager.env').read_text(), 'old')
+                        else:
+                            self.assertNotIn('daemon-reload', trace)
+                            self.assertIn('file restore incomplete', result.stdout)
