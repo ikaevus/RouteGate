@@ -512,7 +512,10 @@ rg_update_restore_management_backup() {
     rg_update_log "file restore incomplete; service restart withheld; backup retained at $backup_dir"
     return 1
   fi
-  systemctl daemon-reload || rollback_rc=1
+  systemctl daemon-reload || {
+    rg_update_log "systemd reload failed; service restart withheld; backup retained at $backup_dir"
+    return 1
+  }
   systemctl start "$RG_UPDATE_MANAGER_SERVICE" >/dev/null 2>&1 || rollback_rc=1
   rg_update_log "Management rollback attempt completed; backup retained at $backup_dir"
   return "$rollback_rc"

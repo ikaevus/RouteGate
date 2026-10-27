@@ -744,7 +744,10 @@ rg_update_restore_backup() {
     rg_update_log "file restore incomplete; service restart withheld; backup retained at $backup_dir"
     return 1
   fi
-  systemctl daemon-reload || rollback_rc=1
+  systemctl daemon-reload || {
+    rg_update_log "systemd reload failed; service restart withheld; backup retained at $backup_dir"
+    return 1
+  }
   if ! rg_update_wait_manager 45; then
     rollback_rc=1
     rg_update_log "rollback readiness manager=failed"
