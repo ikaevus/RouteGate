@@ -55,10 +55,10 @@ jobs:
         run: |
           timeout 60s "$RUNNER_TEMP/routegate-manager" --migrate-only
           timeout 60s "$RUNNER_TEMP/routegate-manager" --create-runtime-role rg140_workspace_runtime
+          psql "$ROUTEGATE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "ALTER ROLE rg140_workspace_runtime LOGIN PASSWORD 'runtime_ci_only_password'"
           if [[ '${{ matrix.database_role }}' == 'restored' ]]; then
             bash ../scripts/test-runtime-database-restore.sh
           fi
-          psql "$ROUTEGATE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "ALTER ROLE rg140_workspace_runtime LOGIN PASSWORD 'runtime_ci_only_password'"
           printf '%s\n' 'ROUTEGATE_DATABASE_URL=postgres://rg140_workspace_runtime:runtime_ci_only_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable' >> "$GITHUB_ENV"
           printf '%s\n' 'ROUTEGATE_DATABASE_MIGRATION_MODE=external' 'ROUTEGATE_E2E_RUNTIME_ROLE=1' >> "$GITHUB_ENV"
       - name: Install browser dependencies
@@ -72,3 +72,9 @@ jobs:
       - name: Verify runtime privilege boundary after full Manager execution
         if: matrix.database_role != 'legacy'
         run: psql "$ROUTEGATE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f scripts/rg140-runtime-workspace-check.sql
+      - name: Verify restored role identity and authentication after browser execution
+        if: matrix.database_role == 'restored'
+        env:
+          ROUTEGATE_DATABASE_URL: postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable
+          RG140_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: bash scripts/test-runtime-database-restore.sh --verify-identity

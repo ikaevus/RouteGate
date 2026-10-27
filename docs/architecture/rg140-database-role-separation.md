@@ -182,3 +182,27 @@ privilege availability check, not a complete effective-privilege audit: excessiv
 ACLs, SECURITY DEFINER functions, RLS and later grant changes remain separate
 concerns. Administrative reconciliation, credential provisioning and restore
 rehearsal remain required before enabling the installed runtime role.
+
+### Preserved-role restore rehearsal (CI only)
+
+The restored Workspace fixture now enables its disposable runtime LOGIN once,
+**before** dumping the database. After `pg_restore --no-privileges`, missing DML
+still refuses external startup without repairing grants. The fixture replays
+only ACL TOC entries from the custom dump it just created, in one transaction,
+then compares public relation/schema ACLs and the migration ledger with their
+pre-restore values. It never drops/recreates the role or resets its password.
+
+An owner-only, mode-0600 temporary snapshot compares the complete pg_authid row
+(including OID, attributes and password verifier) and role settings before and
+after restore and again after the unchanged full browser suite and runtime SQL
+readback. Real TCP connections require the original password and reject a wrong
+password, avoiding a false proof under trust authentication. The verifier is
+never printed or uploaded. ProvisionRuntimeRole retains its new-role-only API.
+
+This rehearses same-cluster identity preservation using a trusted, freshly made
+disposable fixture archive. ACL TOC selection is not validation of arbitrary SQL
+or backups; it is not an administrative reconciler, excessive-privilege audit,
+cross-cluster identity contract or installed-host recovery procedure. A permanent
+credential-mode record, binary rollback compatibility, serialized administrative
+reconciliation and connected VPN revocation E2E remain outstanding. #545 stays
+open.
