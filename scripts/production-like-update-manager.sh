@@ -194,6 +194,11 @@ on_error() {
       log "RESULT=failed stage=${STAGE}"
       exit 1
     fi
+    if ! rg_update_check_manager_restore_environment "$BACKUP_DIR"; then
+      log "ROLLBACK INCOMPLETE: environment/unit preflight failed; database and file restore withheld; backup retained at ${BACKUP_DIR}"
+      log "RESULT=failed stage=${STAGE}"
+      exit 1
+    fi
     if ((DB_MAY_BE_MUTATED == 1)); then
       rollback_database || db_restore_rc=$?
     fi

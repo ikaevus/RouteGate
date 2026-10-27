@@ -36,12 +36,13 @@ RG_UPDATE_MANAGER_SERVICE=manager
 log() { :; }
 cleanup() { printf 'cleanup\n' >> "$trace"; }
 systemctl() { printf '%s\n' "$*" >> "$trace"; [[ "$stop_ok" == 1 ]]; }
+rg_update_check_manager_restore_environment() { return 0; }
 rollback_database_to_backup() { printf 'database\n' >> "$trace"; exit 77; }
 rollback_database() { printf 'database\n' >> "$trace"; exit 77; }
 restore_maintenance_dispatch() { printf 'maintenance\n' >> "$trace"; }
 rg_update_restore_backup() { printf 'files\n' >> "$trace"; exit 78; }
 rg_update_restore_management_backup() { printf 'files\n' >> "$trace"; exit 78; }
-''' + match.group(0) + '\nfalse\n' + handler + '\n'
+''' + match.group(0) + '\nset +e\nfalse\n' + handler + '\n'
                             result = subprocess.run(
                                 ['bash', '-c', script, 'fixture', str(trace), str(stop_ok), str(db_mutated)],
                                 capture_output=True, text=True, timeout=5,
@@ -190,3 +191,62 @@ fi
                         else:
                             self.assertNotIn('daemon-reload', trace)
                             self.assertIn('file restore incomplete', result.stdout)
+
+
+class OuterModePreflightTests(unittest.TestCase):
+    def test_mode_refusal_precedes_database_and_files(self):
+        for filename, handler, services in (
+            ('deploy-production-like-bundle.sh', 'rollback', 'agent manager'),
+            ('production-like-update-manager.sh', 'on_error', 'manager'),
+        ):
+            source = (ROOT / filename).read_text()
+            match = re.search(r'^' + handler + r'\(\) \{\n.*?^\}', source, re.M | re.S)
+            self.assertIsNotNone(match)
+            for mode in ('equal', 'environment', 'unit'):
+                for db_mutated in (0, 1):
+                    with self.subTest(handler=handler, mode=mode, db=db_mutated), tempfile.TemporaryDirectory() as tmp:
+                        script = r'''
+set -u
+source "$1/routegate-update-core.sh"
+RG_UPDATE_ROOT=$2/host
+BACKUP_DIR=$2/backup
+trace=$2/trace
+DB_MAY_BE_MUTATED=$3
+MUTATED=1
+DB_URL=fixture
+STAGE=fixture
+RG_UPDATE_AGENT_SERVICE=agent
+RG_UPDATE_MANAGER_SERVICE=manager
+mkdir -p "$BACKUP_DIR" "$RG_UPDATE_ROOT/etc/routegate" "$RG_UPDATE_ROOT/etc/systemd/system"
+printf 'ROUTEGATE_DATABASE_MIGRATION_MODE=external\n' > "$RG_UPDATE_ROOT/etc/routegate/manager.env"
+printf 'current unit' > "$RG_UPDATE_ROOT/etc/systemd/system/routegate-manager.service"
+cp "$RG_UPDATE_ROOT/etc/routegate/manager.env" "$BACKUP_DIR/manager.env"
+cp "$RG_UPDATE_ROOT/etc/systemd/system/routegate-manager.service" "$BACKUP_DIR/routegate-manager.service"
+case "$4" in
+  environment) printf 'old owner env' > "$BACKUP_DIR/manager.env" ;;
+  unit) printf 'old unit' > "$BACKUP_DIR/routegate-manager.service" ;;
+esac
+log() { printf '%s\n' "$*"; }
+cleanup() { printf 'cleanup\n' >> "$trace"; }
+systemctl() { printf '%s\n' "$*" >> "$trace"; }
+# Stop at the first mutation boundary. The actual preflight and outer handler run.
+rollback_database_to_backup() { printf 'database\n' >> "$trace"; exit 77; }
+rollback_database() { printf 'database\n' >> "$trace"; exit 77; }
+restore_maintenance_dispatch() { printf 'maintenance\n' >> "$trace"; }
+rg_update_restore_backup() { printf 'files\n' >> "$trace"; exit 78; }
+rg_update_restore_management_backup() { printf 'files\n' >> "$trace"; exit 78; }
+''' + match.group(0) + '\nset +e\nfalse\n' + handler + '\n'
+                        result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp,
+                                                 str(db_mutated), mode], capture_output=True, text=True, timeout=5)
+                        lines = (pathlib.Path(tmp) / 'trace').read_text().splitlines()
+                        self.assertEqual(lines[0], 'stop ' + services)
+                        if mode == 'equal':
+                            self.assertEqual(result.returncode, 77 if db_mutated else 78, result.stderr)
+                            self.assertEqual(lines[1:], ['database'] if db_mutated else
+                                             (['maintenance', 'files'] if handler == 'rollback' else ['files']))
+                        else:
+                            self.assertEqual(result.returncode, 1, result.stderr)
+                            self.assertEqual(lines[1:], ['cleanup'] if handler == 'rollback' else [])
+                            self.assertIn('database and file restore withheld', result.stdout)
+                            self.assertIn('external', (pathlib.Path(tmp) / 'host/etc/routegate/manager.env').read_text())
+                            self.assertTrue((pathlib.Path(tmp) / 'backup/manager.env').is_file())

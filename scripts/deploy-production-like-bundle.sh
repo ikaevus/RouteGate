@@ -909,6 +909,12 @@ rollback() {
       exit "$rc"
     fi
 
+    if ! rg_update_check_manager_restore_environment "$BACKUP_DIR"; then
+      log "ROLLBACK INCOMPLETE: environment/unit preflight failed; database and file restore withheld; backup retained at ${BACKUP_DIR}"
+      cleanup
+      exit "$rc"
+    fi
+
     if [[ "$DB_MAY_BE_MUTATED" == "1" ]]; then
       rollback_database_to_backup "$BACKUP_DIR" "$DB_URL" || db_rollback_rc=$?
     else
