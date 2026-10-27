@@ -479,6 +479,7 @@ rg_update_restore_management_backup() {
     rg_update_die "Manager stop failed; restore withheld; backup retained at $backup_dir"
     return 1
   }
+  rg_update_check_manager_restore_environment "$backup_dir" || return 1
   RG_UPDATE_DB_RESTORE_RC=$prior_database_restore_rc
   if [[ "$restore_database" == "1" ]]; then
     if [[ -z "$db_url" || ! -s "$backup_dir/routegate.pgdump" ]]; then
