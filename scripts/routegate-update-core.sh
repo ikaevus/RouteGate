@@ -644,11 +644,69 @@ rg_update_wait_agent() {
   rg_update_die "agent did not become active within ${attempts}s"
 }
 
+# Optional, fail-closed restore pin. This directory is outside ordinary backups;
+# no installer/update path creates or rotates it yet. Its presence is a latch:
+# an empty/partial directory must never silently become legacy mode.
+rg_update_check_manager_restore_record() {
+  local backup_dir=$1 directory path item metadata permissions actual fragment dropins base override
+  local -a record=() paths=(
+    /etc/routegate/manager.env
+    /etc/systemd/system/routegate-manager.service
+    /usr/local/bin/routegate-manager
+  ) names=(manager.env routegate-manager.service routegate-manager)
+  directory=$(rg_update_path /var/lib/routegate-credential-mode) || return 1
+  [[ -e "$directory" || -L "$directory" ]] || return 0
+  # Check each fixed ancestor without following a symlink. RG_UPDATE_ROOT is a
+  # trusted test root, not input accepted from the runtime Manager.
+  for item in / /var /var/lib /var/lib/routegate-credential-mode; do
+    path=$(rg_update_path "$item") || return 1
+    [[ -d "$path" && ! -L "$path" ]] || return 1
+    metadata=$(stat -c '%u' -- "$path") || return 1
+    permissions=$(stat -c '%A' -- "$path") || return 1
+    [[ "$metadata" == 0 && "${permissions:5:1}" != w && "${permissions:8:1}" != w ]] || return 1
+  done
+  path=$directory/restore.pin
+  [[ -f "$path" && ! -L "$path" ]] || return 1
+  [[ $(stat -c '%u:%a:%h' -- "$path") == 0:600:1 ]] || return 1
+  mapfile -t record < "$path" || return 1
+  [[ ${#record[@]} == 5 && ${record[0]} == FORMAT_VERSION=1 && ${record[1]} == MODE=external ]] || return 1
+  [[ ${record[2]} =~ ^ENV_SHA256=[a-f0-9]{64}$ &&
+     ${record[3]} =~ ^UNIT_SHA256=[a-f0-9]{64}$ &&
+     ${record[4]} =~ ^BINARY_SHA256=[a-f0-9]{64}$ ]] || return 1
+  # The v1 pin does not attest systemd overrides or alternate unit fragments.
+  # Refuse them rather than infer compatibility from just the main unit file.
+  # Also reject on-disk overrides not yet visible in systemd's loaded graph.
+  for base in /etc/systemd/system /run/systemd/system /usr/local/lib/systemd/system \
+    /usr/lib/systemd/system /lib/systemd/system /etc/systemd/system.control \
+    /run/systemd/system.control /run/systemd/transient /run/systemd/generator \
+    /run/systemd/generator.early /run/systemd/generator.late; do
+    for override in service.d routegate-.service.d routegate-manager.service.d; do
+      path=$(rg_update_path "$base/$override") || return 1
+      [[ ! -e "$path" && ! -L "$path" ]] || return 1
+    done
+  done
+  fragment=$(systemctl show --property=FragmentPath --value "$RG_UPDATE_MANAGER_SERVICE") || return 1
+  dropins=$(systemctl show --property=DropInPaths --value "$RG_UPDATE_MANAGER_SERVICE") || return 1
+  [[ "$fragment" == /etc/systemd/system/routegate-manager.service && -z "$dropins" ]] || return 1
+  for ((item=0; item<3; item++)); do
+    for path in "$(rg_update_path "${paths[item]}")" "$backup_dir/${names[item]}"; do
+      [[ -f "$path" && ! -L "$path" ]] || return 1
+      [[ $(stat -c '%h' -- "$path") == 1 ]] || return 1
+      actual=$(sha256sum -- "$path") || return 1
+      [[ ${actual%% *} == "${record[item+2]#*=}" ]] || return 1
+    done
+  done
+}
+
 # Conservative preflight for installations with any explicit migration-mode
 # declaration. Compare bytes rather than interpreting systemd environment syntax.
 # This protects the currently installed env/unit, not a durable conversion record.
 rg_update_check_manager_restore_environment() {
   local backup_dir=$1 current_env current_unit match_rc=0
+  rg_update_check_manager_restore_record "$backup_dir" || {
+    rg_update_die "credential-mode restore pin refused rollback; database and file restore withheld; backup retained at $backup_dir"
+    return 1
+  }
   current_env=$(rg_update_path /etc/routegate/manager.env) || return 1
   current_unit=$(rg_update_path /etc/systemd/system/routegate-manager.service) || return 1
   [[ -e "$current_env" || -L "$current_env" ]] || return 0

@@ -206,3 +206,41 @@ cross-cluster identity contract or installed-host recovery procedure. A permanen
 credential-mode record, binary rollback compatibility, serialized administrative
 reconciliation and connected VPN revocation E2E remain outstanding. #545 stays
 open.
+
+### Optional durable restore pin: reader and rollback gate only
+
+The rollback preflight now checks `/var/lib/routegate-credential-mode/restore.pin`
+when its containing directory exists. Ordinary bundle/Manager backups do not
+include this directory. A missing, partial or invalid pin inside an existing
+directory refuses recovery rather than falling back to environment detection.
+The fixed record contains exactly five ordered lines: `FORMAT_VERSION=1`,
+`MODE=external`, and `ENV_SHA256`, `UNIT_SHA256`, `BINARY_SHA256` with lowercase
+64-digit hashes. It is parsed as data, never sourced. The record must be a
+root-owned 0600 regular file with one link; fixed directory ancestry must be
+root-owned, non-symlink and not group/world writable.
+
+Both current and backup env/unit/binary must match the pin byte-for-byte by
+SHA-256. Alternate loaded unit fragments, loaded drop-ins and standard on-disk
+service/global/prefix drop-in directories are refused (including not-yet-loaded
+ones). This is intentionally stricter than a version compatibility range: even
+a legitimate changed binary blocks recovery until an administrative transition
+protocol is implemented. Existing explicit-mode comparisons remain in place.
+Both outer rollback handlers and both file helpers use this preflight after
+stopping services and before PostgreSQL/file restoration.
+
+**No writer, installer activation or pin rotation is implemented.** Test fixtures
+alone create records. A pin is a trusted administrator's exact-file assertion,
+not proof that those files actually implement secure external mode. Activation
+must validate runtime credentials, binary behavior, effective systemd execution,
+trusted path ancestry and schema/role policy together. It must define atomic
+write/fsync and interrupted-conversion behavior, serialized upgrade/rotation and
+recovery to a different release. Do not manually activate this experimental pin
+on installed hosts as a substitute for that protocol.
+
+This gate assumes the existing privileged caller's trusted host/backup and
+serialization boundary. It is not race-free against concurrent privileged file
+or unit changes; it does not protect direct startup or older restore tools that
+do not contain this gate. Complete removal of the directory by a privileged
+actor is not detected. It neither restores ACLs nor executes removal dispatch.
+The legacy path remains unchanged when the directory has never been created.
+These limitations keep installed credential separation and #545 incomplete.
