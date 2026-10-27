@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # CI-only rehearsal; never a host restore or existing-role repair procedure.
-set -euo pipefail
+set -Eeuo pipefail
+# Report location only: xtrace would expose the private identity snapshot.
+trap 'echo "runtime restore fixture failed at line $LINENO" >&2' ERR
 [[ ${GITHUB_ACTIONS:-} == true && ${ROUTEGATE_E2E_ISOLATED:-} == 1 ]]
 [[ ${ROUTEGATE_DATABASE_URL:-} == 'postgres://routegate:routegate_ci_password@127.0.0.1:5432/routegate_workspace_e2e?sslmode=disable' ]]
 [[ ${RG140_POSTGRES_CONTAINER:-} =~ ^[a-f0-9]{64}$ ]]
