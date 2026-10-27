@@ -660,12 +660,12 @@ rg_update_check_manager_restore_environment() {
     return 1
   fi
   # Explicit auto, comments and unusual quoting deliberately take the strict path.
-  [[ -f "$current_unit" && ! -L "$current_unit" ]] &&
-    cmp -s -- "$current_env" "$backup_dir/manager.env" &&
-    cmp -s -- "$current_unit" "$backup_dir/routegate-manager.service" || {
-      rg_update_die "explicit database mode: environment/unit rollback differs; restore withheld; backup retained at $backup_dir"
-      return 1
-    }
+  if [[ ! -f "$current_unit" || -L "$current_unit" ]] ||
+    ! cmp -s -- "$current_env" "$backup_dir/manager.env" ||
+    ! cmp -s -- "$current_unit" "$backup_dir/routegate-manager.service"; then
+    rg_update_die "explicit database mode: environment/unit rollback differs; restore withheld; backup retained at $backup_dir"
+    return 1
+  fi
 }
 
 rg_update_restore_backup() {
