@@ -122,3 +122,50 @@ rg_update_secure_manager_migrations() { return 0; }
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class FileRollbackStartupTests(unittest.TestCase):
+    def test_real_file_failures_withhold_startup(self):
+        for role in ('core', 'management'):
+            for damage in ('none', 'archive', 'environment'):
+                with self.subTest(role=role, damage=damage), tempfile.TemporaryDirectory() as tmp:
+                    script = r'''source "$1/routegate-update-core.sh"
+source "$1/routegate-update-role.sh"
+RG_UPDATE_ROOT=$2/host
+backup=$2/backup
+trace=$2/trace
+mkdir -p "$backup" "$2/archive/migrations" "$2/frontend"
+printf 'migration' > "$2/archive/migrations/000133_old.up.sql"
+printf 'frontend' > "$2/frontend/index.html"
+tar -czf "$backup/manager-migrations.tar.gz" -C "$2/archive" migrations
+tar -czf "$backup/frontend.tar.gz" -C "$2/frontend" .
+printf 'ROLE=management\n' > "$backup/role.meta"
+for file in routegate-manager routegate-agent routegate-manager.service routegate-agent.service manager.env; do
+  printf old > "$backup/$file"
+done
+mkdir -p "$RG_UPDATE_ROOT/usr/local/bin" "$RG_UPDATE_ROOT/etc/systemd/system" "$RG_UPDATE_ROOT/etc/routegate"
+case "$4" in
+  archive) printf corrupt > "$backup/frontend.tar.gz" ;;
+  environment) rm "$backup/manager.env"; mkdir "$backup/manager.env" ;;
+esac
+systemctl() { printf '%s\n' "$*" >> "$trace"; }
+rg_update_secure_manager_migrations() { return 0; }
+rg_update_wait_manager() { systemctl start routegate-manager; }
+rg_update_wait_agent() { systemctl start routegate-agent; }
+if [[ "$3" == core ]]; then
+  rg_update_restore_backup "$backup" fixture 0
+else
+  rg_update_restore_management_backup "$backup" fixture 0
+fi
+'''
+                    result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp, role, damage],
+                                            capture_output=True, text=True, timeout=5)
+                    trace = (pathlib.Path(tmp) / 'trace').read_text()
+                    self.assertEqual(result.returncode, 0 if damage == 'none' else 1, result.stderr)
+                    self.assertTrue((pathlib.Path(tmp) / 'backup/routegate-manager').is_file())
+                    if damage == 'none':
+                        self.assertIn('start routegate-manager', trace)
+                    else:
+                        self.assertNotIn('start ', trace)
+                        self.assertNotIn('daemon-reload', trace)
+                        self.assertIn('file restore incomplete', result.stdout)
