@@ -268,3 +268,25 @@ transaction lock. This primitive only arbitrates first publication, not competin
 updates/restores or privileged path replacement. It does not establish the
 conversion protocol or authorize pinning arbitrary hashes. Rotation and safe
 recovery remain unimplemented; #545 remains open.
+
+### Composed publication/rollback evidence
+
+The real first writer now feeds the real reader and both extracted outer rollback
+handlers in 24 isolated scenarios (six outcomes, two handlers, database-mutated
+and file-only branches). Success reaches the expected stubbed mutation endpoint.
+Failures at parent/file fsync or rename retain the latch and refuse before any
+mutation. Missing current env also refuses after successful publication. Every
+case preserves the publication snapshot and refuses a second publication.
+
+A final directory-fsync error is deliberately tested differently: it returns an
+error from the writer but leaves a complete visible pin which the rollback reader
+accepts. **Pin validity cannot recover the writer's completion/durability result.**
+The test exposes this limit; it does not authorize continuing after that error.
+Before activation, the conversion orchestrator must retain the failed/uncertain
+operation outcome and withhold automatic rollback/startup, including across
+restart, until explicit recovery resolves it. Blindly calling the existing outer
+rollback handler on every publication error would violate that requirement.
+
+Mutation endpoints and systemctl are stubbed; these are composed filesystem/control
+flow tests, not power-loss, full systemd conversion, PostgreSQL restoration or VPN
+revocation E2E. No writer activation is introduced by this test slice.
