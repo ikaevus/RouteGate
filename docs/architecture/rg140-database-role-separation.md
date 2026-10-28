@@ -244,3 +244,27 @@ do not contain this gate. Complete removal of the directory by a privileged
 actor is not detected. It neither restores ACLs nor executes removal dispatch.
 The legacy path remains unchanged when the directory has never been created.
 These limitations keep installed credential separation and #545 incomplete.
+
+### First-publication primitive (unwired)
+
+`scripts/rg140_pin_writer.py` now provides `publish_first_pin(parent_fd, payload)`.
+It requires root and a root-owned, non-group/world-writable directory descriptor;
+the future administrative caller must open and validate the intended `/var/lib`
+ancestry. Tests pass disposable directories. There is no CLI, host invocation,
+installer activation, automatic hash generation, adoption or rotation.
+
+After strict byte-format validation, exclusive mkdir creates the mode latch;
+fsync of its parent precedes writing. A private 0600 pending file is written and
+fsynced, renamed within the new directory, then the directory is fsynced. The
+latch is never removed on errors. Concurrent first publishers have one winner;
+existing partial directories and symlinks refuse publication. A failure of the
+last fsync can leave a complete visible pin with uncertain durability: return an
+error, keep services stopped and require administrative recovery. Never erase
+the latch to retry. These tests inject syscall failures, not physical power loss.
+
+The caller still must validate credentials/schema, binary behavior, effective
+systemd configuration and trusted paths, stop services and hold the host update
+transaction lock. This primitive only arbitrates first publication, not competing
+updates/restores or privileged path replacement. It does not establish the
+conversion protocol or authorize pinning arbitrary hashes. Rotation and safe
+recovery remain unimplemented; #545 remains open.
