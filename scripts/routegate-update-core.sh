@@ -673,6 +673,9 @@ rg_update_check_manager_restore_record() {
   [[ ${record[2]} =~ ^ENV_SHA256=[a-f0-9]{64}$ &&
      ${record[3]} =~ ^UNIT_SHA256=[a-f0-9]{64}$ &&
      ${record[4]} =~ ^BINARY_SHA256=[a-f0-9]{64}$ ]] || return 1
+  # Require the exact LF-terminated byte representation, not a normalized
+  # mapfile view (which also accepts a truncated final line).
+  cmp -s -- "$path" <(printf '%s\n' "${record[@]}") || return 1
   # The v1 pin does not attest systemd overrides or alternate unit fragments.
   # Refuse them rather than infer compatibility from just the main unit file.
   # Also reject on-disk overrides not yet visible in systemd's loaded graph.
