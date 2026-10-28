@@ -45,6 +45,9 @@ case "$SCENARIO" in
   pending_dropin) mkdir -p "$RG_UPDATE_ROOT/etc/systemd/system/routegate-manager.service.d" ;;
   global_dropin) mkdir -p "$RG_UPDATE_ROOT/run/systemd/system/service.d" ;;
   prefix_dropin) mkdir -p "$RG_UPDATE_ROOT/usr/lib/systemd/system/routegate-.service.d" ;;
+  nul) printf '\0' >> "$pin" ;;
+  no_newline) truncate -s -1 "$pin" ;;
+  extra_newline) printf '\n' >> "$pin" ;;
   missing_env) rm "$RG_UPDATE_ROOT/etc/routegate/manager.env" ;;
   unmarked_env) printf 'owner' > "$RG_UPDATE_ROOT/etc/routegate/manager.env" ;;
   current_binary) printf 'other' > "$RG_UPDATE_ROOT/usr/local/bin/routegate-manager" ;;
@@ -80,7 +83,7 @@ class RestoreModeRecordTests(unittest.TestCase):
                  'backup_unit', 'backup_env', 'missing_pin', 'malformed', 'unknown', 'duplicate',
                  'injection', 'mode', 'owner', 'parent_mode', 'ancestor_mode', 'parent_link',
                  'pin_link', 'pin_hardlink', 'backup_link', 'backup_hardlink', 'dropin',
-                 'fragment', 'systemctl_failure', 'pending_dropin', 'global_dropin', 'prefix_dropin')
+                 'nul', 'no_newline', 'extra_newline', 'fragment', 'systemctl_failure', 'pending_dropin', 'global_dropin', 'prefix_dropin')
         for case in cases:
             with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
                 result = subprocess.run(['bash', '-c', FIXTURE + '\nrg_update_check_manager_restore_environment "$BACKUP_DIR"',
