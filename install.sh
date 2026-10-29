@@ -37,6 +37,7 @@ ROUTEGATE_RESUME_INSTALL=0
 ROUTEGATE_SETUP_URL=""
 ROUTEGATE_SETUP_EXPIRES_AT=""
 ROUTEGATE_LOCK_FILE="/run/lock/routegate-installer.lock"
+ROUTEGATE_UPDATE_LOCK_FILE=${RG_UPDATE_LOCK_FILE:-/run/lock/routegate-update.lock}
 ROUTEGATE_PROMETHEUS_CONFIG="/etc/prometheus/routegate.yml"
 ROUTEGATE_PROMETHEUS_TOKEN_FILE="/etc/prometheus/routegate.token"
 ROUTEGATE_PROMETHEUS_STORAGE="/var/lib/prometheus/routegate"
@@ -126,9 +127,13 @@ cleanup() {
 }
 
 acquire_install_lock() {
-  install -d -m 0755 "$(dirname "$ROUTEGATE_LOCK_FILE")"
-  exec 9>"$ROUTEGATE_LOCK_FILE"
-  flock -n 9 || die "Another RouteGate installer process is already running."
+  # Same order as recovery: shared host lock, then the legacy operation lock.
+  # Keep both descriptors open through installation and error/cleanup handling.
+  install -d -m 0755 "$(dirname "$ROUTEGATE_UPDATE_LOCK_FILE")" "$(dirname "$ROUTEGATE_LOCK_FILE")"
+  exec 8>>"$ROUTEGATE_UPDATE_LOCK_FILE"
+  flock -n 8 || { printf 'Another RouteGate host update, recovery or installation is running.\n' >&2; exit 1; }
+  exec 9>>"$ROUTEGATE_LOCK_FILE"
+  flock -n 9 || { printf 'Another RouteGate installer process is already running.\n' >&2; exit 1; }
 }
 
 parse_args() {
@@ -1787,8 +1792,8 @@ main() {
   parse_args "$@"
   set_install_stage host_preflight
   require_root
-  initialize_logging
   acquire_install_lock
+  initialize_logging
   set_install_stage input_preflight
   prompt_for_inputs
   validate_inputs
