@@ -75,5 +75,5 @@ deployment operation or a replacement for an Agent-confirmed apply.
   this preview feature; do not equate successful import with a working
   tunnel.
 
-Related: [RG-140 #538](https://github.com/ikaevus/RouteGate/issues/538);
-[FI reliability #541](https://github.com/ikaevus/RouteGate/issues/541).
+Related: [RG-140 #538](https://github.com/routegate/RouteGate/issues/538);
+[FI reliability #541](https://github.com/routegate/RouteGate/issues/541).

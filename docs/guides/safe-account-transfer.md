@@ -8,7 +8,7 @@ Supported first slice: active, applied VLESS/Reality accounts on
 any eligible Hybrid/VPN node pair. Other protocols fail preflight; no geography,
 fixed port, node ID or relative config counter is special.
 
-The Manager-only publication is recorded in [run 37339500807](https://github.com/ikaevus/RouteGate/actions/runs/37339500807): schema159, all six previously served accounts and subscription/device identities preserved. Both architecture bootstrap packages were published with public hash verification in [run 37342306383](https://github.com/ikaevus/RouteGate/actions/runs/37342306383). All three VPS remain; US stays Hybrid. Manager relocation is not planned.
+The Manager-only publication is recorded in [run 37339500807](https://github.com/routegate/RouteGate/actions/runs/37339500807): schema159, all six previously served accounts and subscription/device identities preserved. Both architecture bootstrap packages were published with public hash verification in [run 37342306383](https://github.com/routegate/RouteGate/actions/runs/37342306383). All three VPS remain; US stays Hybrid. Manager relocation is not planned.
 
 RG-140 remains open for broader protocol, security/recovery UX acceptance and the recurring workspace account-switch test instability.
 
@@ -128,7 +128,7 @@ Do not close RG-140 until this matrix is observed and the rollout is approved.
   verification **before** source cleanup.
 - Post-cutover FI → US rollback reached `Source restored`, with placement back
   on FI and target cleanup verified.
-- [Scoped cleanup failure run](https://github.com/ikaevus/RouteGate/actions/runs/37274642964)
+- [Scoped cleanup failure run](https://github.com/routegate/RouteGate/actions/runs/37274642964)
   induced a real US Agent staging failure for fi-test rollback. Its live SSH step
   verified unchanged running configs/services and removed the exact temporary
   fault. Manager refused completion of the failed job; the user retried normally
@@ -143,7 +143,7 @@ Do not close RG-140 until this matrix is observed and the rollout is approved.
   a background failure preserves the mounted workspace. This is a confirmed code
   defect, but the user's specific lost-login request was not captured.
 - Seven controlled session-recovery browser tests and both candidate CI runs
-  passed on `ebd94d87`. The [frontend-only US publication](https://github.com/ikaevus/RouteGate/actions/runs/37324231784)
+  passed on `ebd94d87`. The [frontend-only US publication](https://github.com/routegate/RouteGate/actions/runs/37324231784)
   verified the public index and unchanged protected files/service identities.
   The user reloaded Manager to load the repair. The live Manager binary remains
   `d2a0990e`; publishing this frontend did not upgrade the backend or schema.

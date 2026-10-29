@@ -57,7 +57,7 @@ the installer, inspect it, and then execute it:
 ```bash
 VERSION=v0.1.0
 curl -fL --proto '=https' --tlsv1.2 \
-  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \
+  "https://raw.githubusercontent.com/routegate/RouteGate/${VERSION}/install.sh" \
   -o routegate-install.sh
 less routegate-install.sh
 sudo bash routegate-install.sh \
@@ -190,7 +190,7 @@ The release workflow builds and verifies both bundle architectures. The **suppor
 For contributors and local development only:
 
 ```bash
-git clone https://github.com/ikaevus/RouteGate.git
+git clone https://github.com/routegate/RouteGate.git
 cd RouteGate
 make dev
 ```

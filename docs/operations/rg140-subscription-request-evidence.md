@@ -51,5 +51,5 @@ production deployment, and no FI instability experiment. Transfer safety,
 rotation/revocation, and fail-closed public subscription delivery retain
 their existing behavior.
 
-Tracking: [RG-140 subscription continuity #509](https://github.com/ikaevus/RouteGate/issues/509)
-and [RG-140 readiness #538](https://github.com/ikaevus/RouteGate/issues/538).
+Tracking: [RG-140 subscription continuity #509](https://github.com/routegate/RouteGate/issues/509)
+and [RG-140 readiness #538](https://github.com/routegate/RouteGate/issues/538).

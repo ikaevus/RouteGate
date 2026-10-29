@@ -56,7 +56,7 @@ it with privileges:
 ```bash
 VERSION=v0.1.0
 curl -fL --proto '=https' --tlsv1.2 \
-  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install-grafana.sh" \
+  "https://raw.githubusercontent.com/routegate/RouteGate/${VERSION}/install-grafana.sh" \
   -o routegate-install-grafana.sh
 less routegate-install-grafana.sh
 sudo bash routegate-install-grafana.sh

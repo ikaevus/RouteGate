@@ -1,5 +1,13 @@
 # Verified Host Update Trust Boundary
 
+> Repository transfer: the canonical repository is now
+> [routegate/RouteGate](https://github.com/routegate/RouteGate). The old repository
+> identity and URLs below describe the current update implementation. Migrating
+> release discovery, artifact allowlists and attestation verification requires
+> a separate tested change; a redirect or a documentation edit does not migrate
+> that trust policy. Do not substitute a new signer identity for an old release
+> without verifying its provenance.
+
 Status: complete through the RG-96A-E boundary. See the [RG-96 closeout record](rg-96-closeout.md).
 
 This document records the RG-96B host-update security boundary that sits between RouteGate release artifacts and privileged host mutation.

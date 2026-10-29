@@ -24,11 +24,11 @@ The detailed contracts remain authoritative in [Updates, Releases, and Versionin
 
 ## Acceptance evidence
 
-- exact-head and [post-merge repository CI](https://github.com/ikaevus/RouteGate/actions/runs/33718535040) passed for the RG-96E4 implementation, and the [closeout baseline CI](https://github.com/ikaevus/RouteGate/actions/runs/33721156702) remained green after the deployment-workflow correction;
-- the production-like deployment workflow built and deployed exact `main` commit `66415bcf2d5b91077d5020b9e9e454c7a5aa5507` successfully in [Production-like Deploy #963](https://github.com/ikaevus/RouteGate/actions/runs/33721250891);
+- exact-head and [post-merge repository CI](https://github.com/routegate/RouteGate/actions/runs/33718535040) passed for the RG-96E4 implementation, and the [closeout baseline CI](https://github.com/routegate/RouteGate/actions/runs/33721156702) remained green after the deployment-workflow correction;
+- the production-like deployment workflow built and deployed exact `main` commit `66415bcf2d5b91077d5020b9e9e454c7a5aa5507` successfully in [Production-like Deploy #963](https://github.com/routegate/RouteGate/actions/runs/33721250891);
 - deployment validation confirmed the Manager and Agent control plane active, managed VPN runtimes stable, the sing-box configuration valid, the public HTTPS surface healthy, and required database invariants present;
 - the deployed RG-96E4 Settings presentation was manually accepted on the mobile production-like surface, including its expected fail-closed `production-like` version state and exact VPN-role-only inventory boundary;
-- the canonical workflow failure discovered during acceptance was fixed in [PR #333](https://github.com/ikaevus/RouteGate/pull/333) by replacing a `tar | grep -q` pipeline that could fail under `pipefail` with a complete archive listing check.
+- the canonical workflow failure discovered during acceptance was fixed in [PR #333](https://github.com/routegate/RouteGate/pull/333) by replacing a `tar | grep -q` pipeline that could fail under `pipefail` with a complete archive listing check.
 
 ## Deferred operational validation
 

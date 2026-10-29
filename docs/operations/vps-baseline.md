@@ -135,10 +135,10 @@ default-deny inbound; avoid remote SSH lockout.
 
 ## Follow-up product/operations debt from RG-139
 
-- [RG-140 subscription continuity and safe migration](https://github.com/ikaevus/RouteGate/issues/509):
+- [RG-140 subscription continuity and safe migration](https://github.com/routegate/RouteGate/issues/509):
   moving US ↔ FI must preserve issued links, but manual assignment and
   deployment are not yet a zero-interruption migration operation.
-- [RG-139 technical closeout / remaining debt](https://github.com/ikaevus/RouteGate/issues/510):
+- [RG-139 technical closeout / remaining debt](https://github.com/routegate/RouteGate/issues/510):
   node deployment action guards, topology-aware protocol warnings, redacted
   config review, secure link rotation UX, patch policy and extra external tests.
 

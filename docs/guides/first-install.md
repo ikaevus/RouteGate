@@ -26,7 +26,7 @@ Choose the RouteGate release you intend to install. Download the installer to a 
 ```bash
 VERSION=<release-tag>
 curl -fL --proto '=https' --tlsv1.2 \
-  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \
+  "https://raw.githubusercontent.com/routegate/RouteGate/${VERSION}/install.sh" \
   -o routegate-install.sh
 less routegate-install.sh
 ```
