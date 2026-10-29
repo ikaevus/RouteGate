@@ -455,7 +455,8 @@ rollback() {
 
 acquire_lock() {
   install -d -m 0755 "$(dirname "$LOCK_FILE")"
-  exec 9>"$LOCK_FILE"
+  # A contender must not truncate the shared inode before acquiring its lock.
+  exec 9>>"$LOCK_FILE"
   flock -n 9 || die "another RouteGate host update transaction is already running"
 }
 
