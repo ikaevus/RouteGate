@@ -43,28 +43,33 @@ class HostLockTests(unittest.TestCase):
             self.assertEqual(lock.read_bytes(), b'fixture sentinel\n')
             self.assertEqual(lock.stat().st_ino, inode)
 
-class RecoveryLockTests(unittest.TestCase):
+class AdministrativeLockTests(unittest.TestCase):
     def test_default_lock_identity_matches_updater(self):
         source = (ROOT / 'routegate-update-transaction.sh').read_text()
         assignment = re.search(r'^LOCK_FILE=.*$', source, re.M).group(0)
         result = subprocess.run(['bash', '-c',
             'unset RG_UPDATE_LOCK_FILE; source "$1/routegate-recovery"; '
             'recovery_update=$UPDATE_LOCK_FILE; ' + assignment +
-            '; [[ "$recovery_update" == "$LOCK_FILE" ]]', 'fixture', str(ROOT)],
+            '; [[ "$recovery_update" == "$LOCK_FILE" ]]; '
+            'source "$1/../install.sh"; [[ "$ROUTEGATE_UPDATE_LOCK_FILE" == "$LOCK_FILE" ]]', 'fixture', str(ROOT)],
             capture_output=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_update_recovery_and_legacy_contention(self):
+    def test_update_recovery_installer_and_legacy_contention(self):
         source = (ROOT / 'routegate-update-transaction.sh').read_text()
         acquire = re.search(r'^acquire_lock\(\) \{\n.*?^\}', source, re.M | re.S).group(0)
         for holder_kind, contender_kind in (
             ('update', 'recovery'), ('recovery', 'update'),
             ('legacy', 'recovery'), ('recovery', 'legacy'),
             ('recovery', 'recovery'),
+            ('update', 'installer'), ('installer', 'update'),
+            ('recovery', 'installer'), ('installer', 'recovery'),
+            ('legacy-installer', 'installer'), ('installer', 'legacy-installer'),
+            ('installer', 'installer'),
         ):
             with self.subTest(holder=holder_kind, contender=contender_kind), tempfile.TemporaryDirectory() as tmp:
                 directory = pathlib.Path(tmp)
-                locks = [directory / name for name in ('update.lock', 'recovery.lock')]
+                locks = [directory / name for name in ('update.lock', 'recovery.lock', 'installer.lock')]
                 for lock in locks:
                     lock.write_bytes(b'fixture sentinel\n')
                 inodes = [lock.stat().st_ino for lock in locks]
@@ -81,11 +86,22 @@ require_root() { :; }
 LOCK_FILE="$PWD/recovery.lock"
 LOG_FILE="$PWD/$3.log"
 restart_services() { ''' + action + '; }\nmain restart-services'
+                    elif kind == 'installer':
+                        # Execute the real main through its first input step.
+                        # Mock privileged logging and stop before any host work.
+                        script = prefix + '''RG_UPDATE_LOCK_FILE="$PWD/update.lock"
+source "$2/../install.sh"
+require_root() { :; }
+ROUTEGATE_LOCK_FILE="$PWD/installer.lock"
+ROUTEGATE_LOG_FILE="$PWD/$3.log"
+initialize_logging() { : > "$ROUTEGATE_LOG_FILE"; }
+prompt_for_inputs() { ''' + action + '; exit 0; }\nmain'
                     elif kind == 'update':
                         script = prefix + 'LOCK_FILE="$PWD/update.lock"\ndie() { exit 1; }\n' + acquire + '\nacquire_lock\n' + action
                     else:
                         # Original recovery lock identity, with a real flock.
-                        script = prefix + 'exec 9>>recovery.lock\nflock -n 9 || exit 1\n' + action
+                        legacy_lock = 'installer.lock' if kind == 'legacy-installer' else 'recovery.lock'
+                        script = prefix + f'exec 9>>{legacy_lock}\nflock -n 9 || exit 1\n' + action
                     return ['bash', '-c', script, 'fixture', tmp, str(ROOT), label]
 
                 holder = subprocess.Popen(command(holder_kind, True, 'holder'),
@@ -100,6 +116,13 @@ restart_services() { ''' + action + '; }\nmain restart-services'
                     self.assertEqual(contender.returncode, 1, contender.stderr)
                     self.assertEqual(contender.stdout, b'')
                     self.assertFalse((directory / 'contender.log').exists())
+                    log = directory / 'contender.log'
+                    log.write_bytes(b'existing log sentinel\n')
+                    repeated = subprocess.run(command(contender_kind, False, 'contender'),
+                                              capture_output=True, timeout=5)
+                    self.assertEqual(repeated.returncode, 1, repeated.stderr)
+                    self.assertEqual(repeated.stdout, b'')
+                    self.assertEqual(log.read_bytes(), b'existing log sentinel\n')
                     for lock, inode in zip(locks, inodes):
                         self.assertEqual(lock.read_bytes(), b'fixture sentinel\n')
                         self.assertEqual(lock.stat().st_ino, inode)
