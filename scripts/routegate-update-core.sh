@@ -665,6 +665,10 @@ rg_update_check_manager_restore_record() {
     permissions=$(stat -c '%A' -- "$path") || return 1
     [[ "$metadata" == 0 && "${permissions:5:1}" != w && "${permissions:8:1}" != w ]] || return 1
   done
+  # Publication alone cannot complete a conversion. Any pending entry, even a
+  # dangling symlink, withholds recovery before database/file writes.
+  path=$directory/conversion.pending
+  [[ ! -e "$path" && ! -L "$path" ]] || return 1
   path=$directory/restore.pin
   [[ -f "$path" && ! -L "$path" ]] || return 1
   [[ $(stat -c '%u:%a:%h' -- "$path") == 0:600:1 ]] || return 1

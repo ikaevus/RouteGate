@@ -42,6 +42,9 @@ systemctl() {
 }
 SCENARIO=$3
 case "$SCENARIO" in
+  conversion_pending) mkdir "${pin%/*}/conversion.pending" ;;
+  pending_file) touch "${pin%/*}/conversion.pending" ;;
+  pending_link) ln -s "$2/absent" "${pin%/*}/conversion.pending" ;;
   pending_dropin) mkdir -p "$RG_UPDATE_ROOT/etc/systemd/system/routegate-manager.service.d" ;;
   global_dropin) mkdir -p "$RG_UPDATE_ROOT/run/systemd/system/service.d" ;;
   prefix_dropin) mkdir -p "$RG_UPDATE_ROOT/usr/lib/systemd/system/routegate-.service.d" ;;
@@ -79,7 +82,7 @@ class RestoreModeRecordTests(unittest.TestCase):
             raise RuntimeError('run this filesystem fixture as root (sudo python3 -m unittest scripts/test_restore_mode_record.py)')
 
     def test_record_is_strict_and_never_evaluated(self):
-        cases = ('equal', 'missing_env', 'unmarked_env', 'current_binary', 'backup_binary',
+        cases = ('conversion_pending', 'pending_file', 'pending_link', 'equal', 'missing_env', 'unmarked_env', 'current_binary', 'backup_binary',
                  'backup_unit', 'backup_env', 'missing_pin', 'malformed', 'unknown', 'duplicate',
                  'injection', 'mode', 'owner', 'parent_mode', 'ancestor_mode', 'parent_link',
                  'pin_link', 'pin_hardlink', 'backup_link', 'backup_hardlink', 'dropin',
@@ -101,7 +104,7 @@ class RestoreModeRecordTests(unittest.TestCase):
         ):
             match = re.search(r'^' + handler + r'\(\) \{\n.*?^\}', (ROOT / filename).read_text(), re.M | re.S)
             self.assertIsNotNone(match)
-            for case in ('equal', 'missing_env', 'unmarked_env', 'backup_binary', 'missing_pin', 'dropin'):
+            for case in ('conversion_pending', 'equal', 'missing_env', 'unmarked_env', 'backup_binary', 'missing_pin', 'dropin'):
                 for db_mutated in (0, 1):
                     with self.subTest(handler=handler, case=case, db=db_mutated), tempfile.TemporaryDirectory() as tmp:
                         script = FIXTURE + r'''
@@ -135,8 +138,9 @@ rg_update_restore_management_backup() { printf 'files\n' >> "$trace"; exit 78; }
 
     def test_file_helpers_refuse_before_database_and_files(self):
         for helper in ('rg_update_restore_backup', 'rg_update_restore_management_backup'):
-            with self.subTest(helper=helper), tempfile.TemporaryDirectory() as tmp:
-                script = FIXTURE + r'''
+            for case in ('missing_env', 'conversion_pending'):
+                with self.subTest(helper=helper, case=case), tempfile.TemporaryDirectory() as tmp:
+                    script = FIXTURE + r'''
 source "$1/routegate-update-role.sh"
 # Backup metadata validation is outside this record test. File existence and
 # the actual stop/preflight/restore ordering remain exercised.
@@ -150,9 +154,9 @@ RG_UPDATE_AGENT_SERVICE=agent
 RG_UPDATE_MANAGER_SERVICE=manager
 "$4" "$BACKUP_DIR" fixture 1
 '''
-                result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp, 'missing_env', helper],
-                                        capture_output=True, text=True, timeout=5)
-                self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertIn('credential-mode restore pin refused', result.stderr)
-                self.assertEqual((pathlib.Path(tmp) / 'trace').read_text().splitlines(),
-                                 ['stop agent manager'] if helper == 'rg_update_restore_backup' else ['stop manager'])
+                    result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp, case, helper],
+                                            capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn('credential-mode restore pin refused', result.stderr)
+                    self.assertEqual((pathlib.Path(tmp) / 'trace').read_text().splitlines(),
+                                     ['stop agent manager'] if helper == 'rg_update_restore_backup' else ['stop manager'])
