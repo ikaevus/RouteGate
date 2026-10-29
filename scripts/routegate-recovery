@@ -9,6 +9,7 @@ ACTIVE_CONFIG="/etc/sing-box/config.json"
 BACKUP_DIR="/var/lib/routegate-agent/backups"
 LOG_FILE="/var/log/routegate-recovery.log"
 LOCK_FILE="/run/lock/routegate-recovery.lock"
+UPDATE_LOCK_FILE=${RG_UPDATE_LOCK_FILE:-/run/lock/routegate-update.lock}
 
 log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"
@@ -178,14 +179,19 @@ main() {
   esac
 
   require_root
-  install -d -m 0755 "$(dirname "$LOCK_FILE")"
+  # Acquire in this order everywhere: host update, then legacy recovery.
+  # Keep the legacy lock so already-installed recovery tools still serialize.
+  # Hold both descriptors through the operation and its failure handling.
+  install -d -m 0755 "$(dirname "$UPDATE_LOCK_FILE")" "$(dirname "$LOCK_FILE")"
+  exec 8>>"$UPDATE_LOCK_FILE"
+  flock -n 8 || { printf 'Another RouteGate host update or recovery operation is running.\n' >&2; exit 1; }
+  exec 9>>"$LOCK_FILE"
+  flock -n 9 || { printf 'Another RouteGate recovery operation is running.\n' >&2; exit 1; }
   if [[ ! -e "$LOG_FILE" ]]; then
     install -m 0600 /dev/null "$LOG_FILE"
   else
     chmod 0600 "$LOG_FILE"
   fi
-  exec 9>"$LOCK_FILE"
-  flock -n 9 || die "Another RouteGate recovery operation is running."
 
   case "$command" in
     status)
