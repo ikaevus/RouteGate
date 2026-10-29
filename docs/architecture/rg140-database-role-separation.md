@@ -228,8 +228,8 @@ protocol is implemented. Existing explicit-mode comparisons remain in place.
 Both outer rollback handlers and both file helpers use this preflight after
 stopping services and before PostgreSQL/file restoration.
 
-**No writer, installer activation or pin rotation is implemented.** Test fixtures
-alone create records. A pin is a trusted administrator's exact-file assertion,
+**Installer activation and pin rotation are not implemented.** The unwired
+first-publication primitive described below is exercised only by test fixtures. A pin is a trusted administrator's exact-file assertion,
 not proof that those files actually implement secure external mode. Activation
 must validate runtime credentials, binary behavior, effective systemd execution,
 trusted path ancestry and schema/role policy together. It must define atomic
@@ -254,7 +254,8 @@ ancestry. Tests pass disposable directories. There is no CLI, host invocation,
 installer activation, automatic hash generation, adoption or rotation.
 
 After strict byte-format validation, exclusive mkdir creates the mode latch;
-fsync of its parent precedes writing. A private 0600 pending file is written and
+fsync of its parent precedes writing. The conversion-pending directory described
+below is then created and its parent fsynced. A private 0600 pending file is written and
 fsynced, renamed within the new directory, then the directory is fsynced. The
 latch is never removed on errors. Concurrent first publishers have one winner;
 existing partial directories and symlinks refuse publication. A failure of the
@@ -271,22 +272,35 @@ recovery remain unimplemented; #545 remains open.
 
 ### Composed publication/rollback evidence
 
-The real first writer now feeds the real reader and both extracted outer rollback
-handlers in 24 isolated scenarios (six outcomes, two handlers, database-mutated
-and file-only branches). Success reaches the expected stubbed mutation endpoint.
-Failures at parent/file fsync or rename retain the latch and refuse before any
-mutation. Missing current env also refuses after successful publication. Every
-case preserves the publication snapshot and refuses a second publication.
+The real first writer feeds the real reader and both extracted outer rollback
+handlers in 28 isolated scenarios (seven outcomes, two handlers, database-mutated
+and file-only branches). Parent/intent/file fsync and rename failures retain the
+latch and refuse before any mutation. Missing current env also refuses after
+successful publication. Every case preserves the publication snapshot and refuses
+a second publication. Existing reader/outer-handler positive controls still admit
+a matching pin without pending state.
 
-A final directory-fsync error is deliberately tested differently: it returns an
-error from the writer but leaves a complete visible pin which the rollback reader
-accepts. **Pin validity cannot recover the writer's completion/durability result.**
-The test exposes this limit; it does not authorize continuing after that error.
-Before activation, the conversion orchestrator must retain the failed/uncertain
-operation outcome and withhold automatic rollback/startup, including across
-restart, until explicit recovery resolves it. Blindly calling the existing outer
-rollback handler on every publication error would violate that requirement.
+The earlier #662 fixture exposed a gap: a final directory-fsync error returned
+an error from the writer but left a complete visible pin accepted by the reader.
+The writer now creates `conversion.pending` inside the latch directory and fsyncs
+its containing directory **before writing the pin**. Any entry at that name
+(including a file or dangling symlink) makes the common rollback gate refuse.
+The pending directory remains on success as well as error: publication of hashes
+is not completion of credential conversion. A fresh rollback process therefore
+refuses even a complete visible pin after the final fsync failure.
+
+There is deliberately no operation that removes this pending marker, no installer
+activation and no automatic recovery. Explicit administrative completion/recovery
+must be designed with stopped services, the host transaction lock, fresh validation
+of credentials/schema/binary/effective systemd and a restart-safe outcome protocol.
+Removing a marker after apparent success would create another uncertainty window;
+this slice does not solve that protocol. A pre-existing v1 pin without the marker
+retains its previous behavior; this does not attest completion of older operations.
 
 Mutation endpoints and systemctl are stubbed; these are composed filesystem/control
-flow tests, not power-loss, full systemd conversion, PostgreSQL restoration or VPN
-revocation E2E. No writer activation is introduced by this test slice.
+flow tests, not physical power-loss, full systemd conversion, PostgreSQL restoration
+or VPN revocation E2E. If the initial parent fsync fails, persistence of the latch
+itself is uncertain; callers must perform no credential/configuration mutations
+before establishing durable intent. Privileged deletion, concurrent host mutation,
+direct startup and old rollback tools remain outside this gate's protection.
+#545 remains open.

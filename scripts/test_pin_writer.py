@@ -29,10 +29,23 @@ class PinWriterTests(unittest.TestCase):
         self.assertEqual(pin.stat().st_mode & 0o777, 0o600)
         self.assertEqual(pin.stat().st_nlink, 1)
         self.assertEqual(pin.stat().st_uid, 0)
-        self.assertEqual(list(self.directory.iterdir()), [pin])
+        self.assertEqual({p.name for p in self.directory.iterdir()}, {'restore.pin', writer.PENDING})
+        self.assertTrue((self.directory / writer.PENDING).is_dir())
         with self.assertRaises(FileExistsError):
             writer.publish_first_pin(self.fd, PAYLOAD.replace(b'a'*64, b'd'*64))
         self.assertEqual(pin.read_bytes(), PAYLOAD)
+
+    def test_pending_intent_precedes_pin_publication(self):
+        real_fsync = os.fsync
+        seen = []
+        def checkpoint(fd):
+            seen.append({p.name for p in self.directory.iterdir()})
+            real_fsync(fd)
+        with mock.patch.object(writer.os, 'fsync', side_effect=checkpoint):
+            writer.publish_first_pin(self.fd, PAYLOAD)
+        self.assertEqual(seen, [set(), {writer.PENDING},
+                               {writer.PENDING, 'pending.pin'},
+                               {writer.PENDING, 'restore.pin'}])
 
     def test_invalid_payload_does_not_create_latch(self):
         for payload in (PAYLOAD[:-1], PAYLOAD+b'\0', PAYLOAD+b'\n', b''):
@@ -62,7 +75,7 @@ class PinWriterTests(unittest.TestCase):
 
     def test_failure_at_each_durability_boundary_retains_latch(self):
         real_fsync = os.fsync
-        for fail_at in (1, 2, 3):
+        for fail_at in (1, 2, 3, 4):
             with self.subTest(fail_at=fail_at), tempfile.TemporaryDirectory() as tmp:
                 fd = os.open(tmp, os.O_RDONLY | os.O_DIRECTORY)
                 calls = 0
@@ -79,7 +92,7 @@ class PinWriterTests(unittest.TestCase):
                     directory = pathlib.Path(tmp) / writer.DIRECTORY
                     self.assertTrue(directory.is_dir())
                     pin = directory / 'restore.pin'
-                    if fail_at == 3:
+                    if fail_at == 4:
                         self.assertEqual(pin.read_bytes(), PAYLOAD)
                     else:
                         self.assertFalse(pin.exists())

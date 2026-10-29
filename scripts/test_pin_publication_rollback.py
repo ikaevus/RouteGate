@@ -24,7 +24,7 @@ class PinPublicationRollbackTests(unittest.TestCase):
         ):
             match = re.search(r'^' + handler + r'\(\) \{\n.*?^\}', (ROOT / filename).read_text(), re.M | re.S)
             self.assertIsNotNone(match)
-            for outcome in ('success', 'parent_fsync', 'file_fsync', 'rename', 'directory_fsync', 'missing_env'):
+            for outcome in ('success', 'parent_fsync', 'intent_fsync', 'file_fsync', 'rename', 'directory_fsync', 'missing_env'):
                 for db_mutated in (0, 1):
                     with self.subTest(handler=handler, outcome=outcome, db=db_mutated), tempfile.TemporaryDirectory() as tmp:
                         root = pathlib.Path(tmp)
@@ -46,7 +46,7 @@ class PinPublicationRollbackTests(unittest.TestCase):
                         fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
                         real_fsync = os.fsync
                         calls = 0
-                        fail_at = {'parent_fsync': 1, 'file_fsync': 2, 'directory_fsync': 3}.get(outcome)
+                        fail_at = {'parent_fsync': 1, 'intent_fsync': 2, 'file_fsync': 3, 'directory_fsync': 4}.get(outcome)
                         def fsync(descriptor):
                             nonlocal calls
                             calls += 1
@@ -68,7 +68,7 @@ class PinPublicationRollbackTests(unittest.TestCase):
                             os.close(fd)
                         directory = parent / writer.DIRECTORY
                         self.assertTrue(directory.is_dir())
-                        snapshot = {p.name: p.read_bytes() for p in directory.iterdir()}
+                        snapshot = {p.name: (None if p.is_dir() else p.read_bytes()) for p in directory.iterdir()}
                         if outcome == 'missing_env':
                             (host / 'etc/routegate/manager.env').unlink()
                         script = r'''
@@ -101,19 +101,15 @@ rg_update_restore_management_backup() { printf 'files\n' >> "$trace"; exit 78; }
                         result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT), tmp, str(db_mutated)],
                                                 capture_output=True, text=True, timeout=5)
                         trace = (root / 'trace').read_text().splitlines()
-                        # A final directory-fsync failure leaves a complete visible
-                        # pin: the reader cannot infer the writer's failed outcome.
-                        # This is a documented orchestration blocker, not success.
-                        admitted = outcome in ('success', 'directory_fsync')
-                        if admitted:
-                            self.assertEqual(result.returncode, 77 if db_mutated else 78, result.stderr)
-                            self.assertEqual(trace, [stop] + (['database'] if db_mutated else
-                                             (['maintenance', 'files'] if handler == 'rollback' else ['files'])))
-                        else:
-                            self.assertEqual(result.returncode, 1, result.stderr)
-                            self.assertEqual(trace, [stop])
-                            self.assertIn('credential-mode restore pin refused', result.stderr)
-                        self.assertEqual({p.name: p.read_bytes() for p in directory.iterdir()}, snapshot)
+                        # A fresh shell has no in-memory writer outcome. Even
+                        # successful publication leaves conversion unresolved.
+                        self.assertEqual(result.returncode, 1, result.stderr)
+                        self.assertEqual(trace, [stop])
+                        self.assertIn('credential-mode restore pin refused', result.stderr)
+                        if outcome in ('success', 'directory_fsync', 'missing_env'):
+                            self.assertEqual((directory / 'restore.pin').read_bytes(), payload)
+                            self.assertTrue((directory / writer.PENDING).is_dir())
+                        self.assertEqual({p.name: (None if p.is_dir() else p.read_bytes()) for p in directory.iterdir()}, snapshot)
                         retry_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
                         try:
                             with self.assertRaises(FileExistsError):
