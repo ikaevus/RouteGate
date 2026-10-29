@@ -1,5 +1,13 @@
 # Updates, Releases, and Versioning
 
+> Repository transfer: the canonical repository is now
+> [routegate/RouteGate](https://github.com/routegate/RouteGate). The old repository
+> identity and URLs below describe the current update implementation. Migrating
+> release discovery, artifact allowlists and attestation verification requires
+> a separate tested change; a redirect or a documentation edit does not migrate
+> that trust policy. Do not substitute a new signer identity for an old release
+> without verifying its provenance.
+
 Status: closed through RG-96E. See the [RG-96 closeout record](rg-96-closeout.md). RG-96F remains a separate future evolution.
 
 RouteGate separates software delivery from installation updates. CI/CD produces and validates release artifacts; the update subsystem consumes those artifacts only through explicit administrator-approved jobs and the verified host-mutation boundary.

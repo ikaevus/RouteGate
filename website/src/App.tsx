@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { content, type CardIcon, type Locale, type SiteContent } from './content'
 
-const githubUrl = 'https://github.com/ikaevus/RouteGate'
+const githubUrl = 'https://github.com/routegate/RouteGate'
 const docsUrl = `${githubUrl}/tree/main/docs`
 const installGuideUrl = `${githubUrl}/blob/main/docs/guides/first-install.md`
 const releasesUrl = `${githubUrl}/releases`
@@ -13,7 +13,7 @@ const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^
 const installCommand = [
   'VERSION=v0.1.0',
   'curl -fL --proto \'=https\' --tlsv1.2 \\',
-  '  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \\',
+  '  "https://raw.githubusercontent.com/routegate/RouteGate/${VERSION}/install.sh" \\',
   '  -o routegate-install.sh',
   'less routegate-install.sh',
   'sudo bash routegate-install.sh --version "${VERSION}"',

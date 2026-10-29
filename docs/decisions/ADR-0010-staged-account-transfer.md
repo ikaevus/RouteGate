@@ -2,7 +2,7 @@
 
 - **Status:** Implemented first VLESS/Reality slice in draft PR #511; live acceptance pending
 - **Date:** 2026-10-05
-- **Related:** [RG-140](https://github.com/ikaevus/RouteGate/issues/509), [RG-139](https://github.com/ikaevus/RouteGate/issues/510), ADR-0009
+- **Related:** [RG-140](https://github.com/routegate/RouteGate/issues/509), [RG-139](https://github.com/routegate/RouteGate/issues/510), ADR-0009
 
 ## Problem
 

@@ -124,7 +124,7 @@ bytes that will run as root, then execute it:
 ```bash
 VERSION=v0.1.0
 curl -fL --proto '=https' --tlsv1.2 \
-  "https://raw.githubusercontent.com/ikaevus/RouteGate/${VERSION}/install.sh" \
+  "https://raw.githubusercontent.com/routegate/RouteGate/${VERSION}/install.sh" \
   -o routegate-install.sh
 less routegate-install.sh
 sudo bash routegate-install.sh --version "${VERSION}"
@@ -152,7 +152,7 @@ By default, the installer resolves the latest published RouteGate release and ve
 
 ```bash
 curl -fL --proto '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/ikaevus/RouteGate/v0.1.0/install.sh \
+  https://raw.githubusercontent.com/routegate/RouteGate/v0.1.0/install.sh \
   -o routegate-install-v0.1.0.sh
 less routegate-install-v0.1.0.sh
 sudo bash routegate-install-v0.1.0.sh \
@@ -169,7 +169,7 @@ interactive confirmation and does not weaken the bootstrap checks:
 
 ```bash
 curl -fL --proto '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/ikaevus/RouteGate/v0.1.0/install.sh \
+  https://raw.githubusercontent.com/routegate/RouteGate/v0.1.0/install.sh \
   -o routegate-install-v0.1.0.sh
 less routegate-install-v0.1.0.sh
 sudo bash routegate-install-v0.1.0.sh \

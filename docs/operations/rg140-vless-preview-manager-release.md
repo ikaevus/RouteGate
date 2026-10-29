@@ -2,13 +2,13 @@
 
 **Status: prepared, not executed.** The next manual US Manager-only release
 pins `f3089e1d684a2ae227ee18e559130620048cd59d` on `main`
-([PR #586](https://github.com/ikaevus/RouteGate/pull/586), consistent online-status
+([PR #586](https://github.com/routegate/RouteGate/pull/586), consistent online-status
 dots in Dashboard). The last successful release installed
 `6054bf960da868ff0034492759573cafb0a4d4a7`
-([Actions #38618080101](https://github.com/ikaevus/RouteGate/actions/runs/38618080101)).
+([Actions #38618080101](https://github.com/routegate/RouteGate/actions/runs/38618080101)).
 Independent Ops diagnostics afterward confirmed healthy Manager, Agent and VPN
 runtimes, HTTP 200 and schema159
-([Actions #38618514548](https://github.com/ikaevus/RouteGate/actions/runs/38618514548)).
+([Actions #38618514548](https://github.com/routegate/RouteGate/actions/runs/38618514548)).
 The release remains manually approved, pinned, same-schema and rollback-guarded.
 The release workflow in `.github/workflows/rg140-vless-preview-manager-release.yml`
 is manual only; merging workflow changes is not deployment.
@@ -20,8 +20,8 @@ is manual only; merging workflow changes is not deployment.
   restart, protocol apply, client subscription or token rotation.
 - **Exact candidate:** `f3089e1d684a2ae227ee18e559130620048cd59d`.
   Two candidate **push** checks already completed successfully on `main`:
-  [RouteGate CI #38620356113](https://github.com/ikaevus/RouteGate/actions/runs/38620356113),
-  [Workspace integration #38620356229](https://github.com/ikaevus/RouteGate/actions/runs/38620356229).
+  [RouteGate CI #38620356113](https://github.com/routegate/RouteGate/actions/runs/38620356113),
+  [Workspace integration #38620356229](https://github.com/routegate/RouteGate/actions/runs/38620356229).
   The workflow verifies their SHA, event, branch, name and successful result
   before SSH; it also tests its backup/rollback runner with a fake host.
 - **Database:** existing schema
@@ -111,11 +111,11 @@ expectation, **not** a zero-downtime guarantee or proof of end-user connectivity
    one existing US VPN data-plane connection; don't mistake a healthy
    Manager for verified client tunnel traffic.
 4. Do not treat a successful import of a preliminary VLESS URI as proof of
-   a working tunnel. The old intermittent FI issue [#541](https://github.com/ikaevus/RouteGate/issues/541)
+   a working tunnel. The old intermittent FI issue [#541](https://github.com/routegate/RouteGate/issues/541)
    remains independent and paused. Normal subscriptions stay applied-only.
 5. Record exact release SHA, time, runner result, backup directory reference,
    health checks, and any incomplete acceptance item in
-   [RG-140 #538](https://github.com/ikaevus/RouteGate/issues/538).
+   [RG-140 #538](https://github.com/routegate/RouteGate/issues/538).
 
 ## Rollback boundaries
 
@@ -134,5 +134,5 @@ expectation, **not** a zero-downtime guarantee or proof of end-user connectivity
 PR #540 fixed guided readiness and PR #542 provides **static, direct VLESS**
 pre-import. A long-lived pre-apply subscription that auto-updates is **not**
 implemented and requires a distinct access/revocation lifecycle and design
-review. Do not close [#538](https://github.com/ikaevus/RouteGate/issues/538)
+review. Do not close [#538](https://github.com/routegate/RouteGate/issues/538)
 solely because this Manager-only release is prepared or even deployed.

@@ -2,8 +2,8 @@
 
 - **Status:** Proposed / design gate; no runtime revocation engine implemented.
 - **Date:** 2026-10-09
-- **Tracking:** [RG-140 credential revocation #545](https://github.com/ikaevus/RouteGate/issues/545);
-  [subscription continuity #509](https://github.com/ikaevus/RouteGate/issues/509).
+- **Tracking:** [RG-140 credential revocation #545](https://github.com/routegate/RouteGate/issues/545);
+  [subscription continuity #509](https://github.com/routegate/RouteGate/issues/509).
 
 ## Current confirmed behavior
 

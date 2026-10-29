@@ -40,7 +40,7 @@ production build.
 
 Repository owner steps:
 
-1. Open **Settings → Pages** in `ikaevus/RouteGate`.
+1. Open **Settings → Pages** in `routegate/RouteGate`.
 2. Under **Build and deployment**, select **GitHub Actions** as the source.
 3. Merge the website deployment PR or manually run the `RouteGate Website`
    workflow.
@@ -59,7 +59,7 @@ remove existing mail or verification records while changing website DNS.
 Before switching DNS, verify:
 
 ```bash
-curl -I https://ikaevus.github.io/RouteGate/
+curl -I https://routegate.github.io/RouteGate/
 dig routegate.org
 dig www.routegate.org
 ```
