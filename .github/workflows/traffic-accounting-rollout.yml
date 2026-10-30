@@ -110,10 +110,10 @@ jobs:
           set -euo pipefail
           SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
           SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
-          remote="/tmp/routegate-traffic-${GITHUB_RUN_ID}"
+          remote=$("${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "umask 077; mktemp -d '/tmp/routegate-traffic-${GITHUB_RUN_ID}.XXXXXX'")
+          [[ "$remote" =~ ^/tmp/routegate-traffic-[0-9]+\.[A-Za-z0-9]+$ ]]
           cleanup() { "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -rf -- '$remote'" || true; }
           trap cleanup EXIT
-          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "test ! -L '$remote' && mkdir -p -m 700 '$remote'"
           "${SCP[@]}" scripts/traffic-accounting-rollout.py "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote/runner.py"
           if [[ "$MODE" != inspect ]]; then
             "${SCP[@]}" payload/* "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote/"

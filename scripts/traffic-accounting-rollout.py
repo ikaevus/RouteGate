@@ -150,6 +150,8 @@ def inspect():
     values = config_values(CONFIG.read_bytes())
     agent_id = str(uuid.UUID(values['agent_id']))
     server_id = str(uuid.UUID(values['server_id']))
+    if sql("SELECT count(*) FROM agents a JOIN servers s ON s.id=a.server_id WHERE a.id='" + agent_id + "'::uuid AND s.id='" + server_id + "'::uuid AND (lower(s.hostname)='us.routegate.org' OR lower(s.name)='us.routegate.org')") != '1':
+        raise Stop('local_agent_us_server_binding_not_verified')
     schema = sql('SELECT max(version) FROM schema_migrations')
     if schema not in (OLD_SCHEMA, SCHEMA):
         raise Stop('unexpected_database_schema')
@@ -229,6 +231,8 @@ def install(stage, run_id):
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise Stop('candidate_digest_mismatch')
         contents[name] = path.read_bytes()
+    if MIGRATION.exists() and MIGRATION.read_bytes() != contents[SCHEMA + '.up.sql']:
+        raise Stop('existing_checkpoint_migration_differs_from_candidate')
     files = {MANAGER: contents['routegate-manager'], AGENT: contents['routegate-agent'],
              MIGRATION: contents[SCHEMA + '.up.sql'], CONFIG: enabled_config(CONFIG.read_bytes())}
     backup = Path('/root/routegate-backups') / ('traffic-' + CANDIDATE + '-' + run_id)
