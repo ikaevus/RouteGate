@@ -89,6 +89,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Test scoped traffic rollout and recovery
+        run: python3 -m unittest scripts/test_traffic_accounting_rollout.py
+
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
