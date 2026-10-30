@@ -20,6 +20,10 @@ disabled collection. An online VPN session does not imply traffic accounting.
 
 ## Validation
 
+The Agent now requires Go 1.26, matching the repository's CI/release toolchain,
+to use the current fixed gRPC/HTTP2 dependencies. Dependency vulnerability checks
+for the changed Agent paths pass with Go 1.26.10.
+
 Run Agent traffic tests, plus the disposable runtime integration test:
 
 ```sh
