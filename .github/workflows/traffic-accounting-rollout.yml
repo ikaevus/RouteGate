@@ -1,0 +1,114 @@
+name: Traffic accounting scoped US rollout
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: inspect is read-only; install updates control plane; apply enables verified statistics-only runtime config
+        type: choice
+        required: true
+        default: inspect
+        options: [inspect, install, apply]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: routegate-production-like-deploy
+  cancel-in-progress: false
+jobs:
+  traffic:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production-like
+    timeout-minutes: 20
+    env:
+      CANDIDATE: 58485650c42a394ae1305fdff1a7896e2f3c1b93
+      MODE: ${{ inputs.mode }}
+    steps:
+      - name: Checkout trusted rollout helper
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify candidate and exact successful CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == inspect || "$MODE" == install || "$MODE" == apply ]]
+          git merge-base --is-ancestor "$CANDIDATE" HEAD
+          for run in 41137852704 41137852705; do
+            result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
+            [[ "$result" == "$CANDIDATE|completed|success" ]]
+          done
+          python3 -m unittest scripts/test_traffic_accounting_rollout.py
+      - name: Checkout exact candidate
+        if: inputs.mode != 'inspect'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: 58485650c42a394ae1305fdff1a7896e2f3c1b93
+          path: candidate
+      - name: Setup patched Go
+        if: inputs.mode != 'inspect'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: |
+            candidate/backend/go.sum
+            candidate/agent/go.sum
+      - name: Build reproducible control-plane payload
+        if: inputs.mode != 'inspect'
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+          mkdir -m 700 payload
+          (cd candidate/backend && go build -trimpath -buildvcs=false -ldflags "-X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=$CANDIDATE -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=traffic-accounting" -o ../../payload/routegate-manager ./cmd/routegate-manager)
+          (cd candidate/agent && go build -trimpath -buildvcs=false -ldflags "-X github.com/ikaevus/routegate/agent/internal/buildinfo.GitCommit=$CANDIDATE -X github.com/ikaevus/routegate/agent/internal/buildinfo.Version=traffic-accounting" -o ../../payload/routegate-agent ./cmd/routegate-agent)
+          cp candidate/backend/migrations/000160_traffic_report_checkpoints.up.sql payload/
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path('payload')
+          files={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
+          (root/'manifest.json').write_text(json.dumps({'commit':os.environ['CANDIDATE'],'files':files},sort_keys=True))
+          PY
+      - name: Configure existing SSH identity
+        env:
+          ROUTEGATE_SSH_KEY: ${{ secrets.ROUTEGATE_SSH_KEY }}
+          ROUTEGATE_KNOWN_HOSTS: ${{ vars.ROUTEGATE_KNOWN_HOSTS || secrets.ROUTEGATE_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$ROUTEGATE_SSH_KEY"
+          test -n "$ROUTEGATE_KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ROUTEGATE_SSH_KEY" > ~/.ssh/routegate_ci
+          printf '%s\n' "$ROUTEGATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/routegate_ci ~/.ssh/known_hosts
+      - name: Run scoped US operation
+        env:
+          ROUTEGATE_HOST: ${{ vars.ROUTEGATE_HOST || secrets.ROUTEGATE_HOST }}
+          ROUTEGATE_USER: ${{ vars.ROUTEGATE_USER || secrets.ROUTEGATE_USER }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          SCP=(scp -i ~/.ssh/routegate_ci -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10)
+          remote="/tmp/routegate-traffic-${GITHUB_RUN_ID}"
+          cleanup() { "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "rm -rf -- '$remote'" || true; }
+          trap cleanup EXIT
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "test ! -L '$remote' && mkdir -p -m 700 '$remote'"
+          "${SCP[@]}" scripts/traffic-accounting-rollout.py "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote/runner.py"
+          if [[ "$MODE" != inspect ]]; then
+            "${SCP[@]}" payload/* "$ROUTEGATE_USER@$ROUTEGATE_HOST:$remote/"
+          fi
+          "${SSH[@]}" "$ROUTEGATE_USER@$ROUTEGATE_HOST" "sudo -n flock -w 60 /run/lock/routegate-production-like.lock bash -s -- '$remote' '$MODE' '$GITHUB_RUN_ID'" <<'REMOTE'
+          set -euo pipefail
+          set +x
+          set -a
+          source /etc/routegate/manager.env >/dev/null 2>&1
+          set +a
+          exec python3 "$1/runner.py" "$2" "$1" "$3"
+          REMOTE
+      - name: Remove runner credentials
+        if: always()
+        run: rm -f ~/.ssh/routegate_ci ~/.ssh/known_hosts
