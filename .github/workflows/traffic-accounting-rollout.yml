@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: inspect is read-only; install updates control plane; apply enables verified statistics-only runtime config
+        description: Read-only compatibility inspection; installation/apply are disabled pending bootstrap identity repair
         type: choice
         required: true
         default: inspect
-        options: [inspect, install, apply]
+        options: [inspect]
       bootstrap_base_url:
         description: install/apply - exact public AgentBundleBaseURL reported by inspect
         type: string
