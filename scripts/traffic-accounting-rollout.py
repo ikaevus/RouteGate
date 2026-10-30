@@ -345,6 +345,8 @@ def main():
     if os.geteuid() != 0:
         raise Stop('root_required')
     mode = sys.argv[1]
+    if mode != 'inspect':
+        raise Stop('install_and_apply_disabled_pending_bootstrap_identity_repair')
     if mode == 'inspect':
         inspect()
     elif mode == 'install' and len(sys.argv) == 4 and re.fullmatch(r'[0-9]+', sys.argv[3]):
