@@ -53,3 +53,20 @@ contract across all participating entry points, validate authority under that
 lock, and test nested invocation and process death with inherited children.
 Credential preservation, retired UUID rejection, full linked E2E and the final
 security/race/failure audit remain separate requirements.
+
+## Inherited helper lifetime checkpoint
+
+An isolated process test extracts the real updater acquire_lock function, starts
+an external child with the lock descriptor inherited, kills the parent, and
+verifies that another updater is still refused. After the child is killed, a new
+updater can acquire the lock. Closing descriptor 9 in the child breaks this test.
+This establishes one descriptor-lifetime case, not arbitrary descendant cleanup.
+
+Production-like Manager rollback invokes deploy-production-like-bundle.sh with
+--run-down-migration in a separate Bash process. That mode runs before the deploy
+script loads the shared core library. A future lock integration must explicitly
+cover direct invocation and inherited invocation, without trusting a boolean
+"already locked" environment flag. Reopening and locking the same path in the
+child uses a different open file description and can refuse its own parent.
+The production-like wrappers retain their separate lock for now. No runtime
+locking changes or conversion activation are made by this checkpoint.

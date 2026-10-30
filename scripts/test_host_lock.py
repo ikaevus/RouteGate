@@ -136,3 +136,53 @@ prompt_for_inputs() { ''' + action + '; exit 0; }\nmain'
                                            capture_output=True, timeout=5)
                 self.assertEqual(successor.returncode, 0, successor.stderr)
                 self.assertEqual(successor.stdout, b'admitted')
+
+class InheritedLockTests(unittest.TestCase):
+    def test_child_retains_lock_after_parent_death(self):
+        import os
+        import signal
+        source = (ROOT / 'routegate-update-transaction.sh').read_text()
+        acquire = re.search(r'^acquire_lock\(\) \{\n.*?^\}', source, re.M | re.S).group(0)
+        prefix = 'set -eu\nLOCK_FILE=$1\ndie() { exit 73; }\n' + acquire
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = str(pathlib.Path(tmp) / 'update.lock')
+            # The child inherits descriptor 9, like an external rollback helper.
+            parent = subprocess.Popen(['bash', '-c', prefix + '''
+acquire_lock
+exec 7<&0
+bash -c 'printf "%s\\n" "$BASHPID"; read -r finish' <&7 &
+wait
+''', 'fixture', lock], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+            child = None
+            try:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(parent.stdout, selectors.EVENT_READ)
+                    self.assertTrue(selector.select(5), 'child did not start')
+                child = int(parent.stdout.readline())
+                parent.kill()
+                parent.wait(timeout=5)
+                denied = subprocess.run(['bash', '-c', prefix + '\nacquire_lock', 'fixture', lock],
+                                        capture_output=True, timeout=5)
+                self.assertEqual(denied.returncode, 73, denied.stderr)
+                os.kill(child, signal.SIGKILL)
+                child = None
+                with selectors.DefaultSelector() as selector:
+                    selector.register(parent.stdout, selectors.EVENT_READ)
+                    self.assertTrue(selector.select(5), 'child retained output descriptor')
+                self.assertEqual(parent.stdout.read(), b'')
+                admitted = subprocess.run(['bash', '-c', prefix + '\nacquire_lock', 'fixture', lock],
+                                          capture_output=True, timeout=5)
+                self.assertEqual(admitted.returncode, 0, admitted.stderr)
+            finally:
+                if child is not None:
+                    try:
+                        os.kill(child, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                if parent.poll() is None:
+                    parent.kill()
+                parent.wait(timeout=5)
+                parent.stdin.close()
+                parent.stdout.close()
+                parent.stderr.close()
