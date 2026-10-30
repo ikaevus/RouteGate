@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ikaevus/routegate/backend/internal/dashboard"
 	"github.com/ikaevus/routegate/backend/internal/traffic"
 )
 
@@ -71,6 +72,13 @@ func TestTrafficBatchCheckpointPreventsDuplicateRollups(t *testing.T) {
 		}
 	}
 	assertTotals(100, 200)
+	snapshot, err := dashboard.NewRepository(pool).GetTrafficSnapshot(ctx, time.Now().UTC(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snapshot.DailyAvailable || !snapshot.MonthlyAvailable || snapshot.Monthly.TotalBytes != 300 {
+		t.Fatalf("Dashboard did not receive usage: %+v", snapshot)
+	}
 	event[0].RxBytes = 999
 	if _, err := repo.ReportUsageBatch(ctx, "traffic-checkpoint-token", event, stream, 1); !errors.Is(err, traffic.ErrReportSequenceConflict) {
 		t.Fatalf("changed replay accepted: %v", err)
