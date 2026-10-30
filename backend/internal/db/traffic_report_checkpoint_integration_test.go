@@ -37,7 +37,7 @@ func TestTrafficBatchCheckpointPreventsDuplicateRollups(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO agents(server_id,agent_version,token_hash,status) VALUES($1::uuid,'test','traffic-checkpoint-token','online')`, serverID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO vpn_accounts(server_id,username,protocol,status) VALUES($1::uuid,'checkpoint-account','vless','active') RETURNING id::text`, serverID).Scan(&accountID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO vpn_accounts(server_id,username,display_name,protocol,status) VALUES($1::uuid,'checkpoint-account','Checkpoint account','sing-box','active') RETURNING id::text`, serverID).Scan(&accountID); err != nil {
 		t.Fatal(err)
 	}
 	repo := traffic.NewRepository(pool)
