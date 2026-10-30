@@ -22,7 +22,7 @@ type Runner struct {
 	client             *client.Client
 	logger             *slog.Logger
 	trafficCollector   traffic.Collector
-	trafficTracker     *traffic.DeltaTracker
+	trafficOutbox      *traffic.Outbox
 	lastTrafficReport  time.Time
 	presenceCollector  presence.Collector
 	lastPresenceReport time.Time
@@ -41,7 +41,6 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 		client:            client.New(cfg.ManagerURL),
 		logger:            logger,
 		trafficCollector:  traffic.NoopCollector{},
-		trafficTracker:    traffic.NewDeltaTracker(),
 		presenceCollector: presence.NoopCollector{},
 		vpnCoreAdapter: tasks.NewSingBoxVLESSAdapter(
 			cfg.ConfigStagingDir,
@@ -208,18 +207,34 @@ func (r *Runner) reportTrafficUsage(ctx context.Context) error {
 	}
 	r.lastTrafficReport = now
 
-	snapshots, err := r.trafficCollector.Collect(ctx)
+	if r.trafficOutbox == nil {
+		box, err := traffic.OpenOutbox(r.configPath+".traffic-state.json", r.cfg.AgentID)
+		if err != nil {
+			return err
+		}
+		r.trafficOutbox = box
+	}
+	box := r.trafficOutbox
+	if len(box.Pending) == 0 {
+		snapshots, err := r.trafficCollector.Collect(ctx)
+		if err != nil {
+			return err
+		}
+		if err := box.Prepare(snapshots); err != nil {
+			return err
+		}
+	}
+	if len(box.Pending) == 0 {
+		return nil
+	}
+	res, err := r.client.ReportTrafficBatch(ctx, r.cfg.AgentToken, box)
 	if err != nil {
 		return err
 	}
-	usageEvents := r.trafficTracker.BuildUsageEvents(snapshots)
-	if len(usageEvents) == 0 {
-		r.logger.Debug("no traffic usage delta available", "snapshots", len(snapshots))
-		return nil
+	if !res.OK || res.Accepted != len(box.Pending) {
+		return fmt.Errorf("traffic batch was not fully acknowledged")
 	}
-
-	res, err := r.client.ReportTrafficUsage(ctx, r.cfg.AgentToken, usageEvents)
-	if err != nil {
+	if err := box.Acknowledge(); err != nil {
 		return err
 	}
 	r.logger.Info("traffic usage report accepted", "agent_id", res.AgentID, "server_id", res.ServerID, "accepted", res.Accepted)

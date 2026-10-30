@@ -88,7 +88,9 @@ type completeTaskRequest struct {
 }
 
 type reportTrafficUsageRequest struct {
-	Events []traffic.UsageEvent `json:"events"`
+	StreamID string               `json:"streamId,omitempty"`
+	Sequence int64                `json:"sequence,omitempty"`
+	Events   []traffic.UsageEvent `json:"events"`
 }
 
 type ReportTrafficUsageResponse struct {
@@ -244,6 +246,12 @@ func (c *Client) ReportTrafficUsage(ctx context.Context, agentToken string, even
 		return ReportTrafficUsageResponse{}, err
 	}
 	return res, nil
+}
+
+func (c *Client) ReportTrafficBatch(ctx context.Context, agentToken string, box *traffic.Outbox) (ReportTrafficUsageResponse, error) {
+	var res ReportTrafficUsageResponse
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/agent/traffic-batches", agentToken, reportTrafficUsageRequest{Events: box.Pending, StreamID: box.StreamID, Sequence: box.Sequence}, &res)
+	return res, err
 }
 
 func (c *Client) ReportClientPresence(ctx context.Context, agentToken string, snapshot presence.Snapshot) (ReportPresenceResponse, error) {

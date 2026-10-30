@@ -536,4 +536,3 @@ func file_experimental_v2rayapi_stats_proto_init() {
 	file_experimental_v2rayapi_stats_proto_goTypes = nil
 	file_experimental_v2rayapi_stats_proto_depIdxs = nil
 }
-

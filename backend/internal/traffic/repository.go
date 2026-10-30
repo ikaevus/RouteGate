@@ -1,7 +1,9 @@
 package traffic
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -12,9 +14,10 @@ import (
 )
 
 var (
-	ErrUnauthorizedAgent   = errors.New("unauthorized agent")
-	ErrAgentServerRequired = errors.New("agent must be bound to a server")
-	ErrVPNAccountNotFound  = errors.New("vpn account not found")
+	ErrUnauthorizedAgent      = errors.New("unauthorized agent")
+	ErrAgentServerRequired    = errors.New("agent must be bound to a server")
+	ErrVPNAccountNotFound     = errors.New("vpn account not found")
+	ErrReportSequenceConflict = errors.New("traffic report sequence conflict")
 )
 
 type Repository struct {
@@ -31,6 +34,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) ReportUsage(ctx context.Context, tokenHash string, events []CreateUsageEventInput) (TrafficUsageReport, error) {
+	return r.ReportUsageBatch(ctx, tokenHash, events, "", 0)
+}
+
+func (r *Repository) ReportUsageBatch(ctx context.Context, tokenHash string, events []CreateUsageEventInput, streamID string, sequence int64) (TrafficUsageReport, error) {
 	agent, err := r.reportingAgentByTokenHash(ctx, tokenHash)
 	if err != nil {
 		return TrafficUsageReport{}, err
@@ -41,6 +48,28 @@ func (r *Repository) ReportUsage(ctx context.Context, tokenHash string, events [
 		return TrafficUsageReport{}, err
 	}
 	defer tx.Rollback(ctx)
+	var digest [32]byte
+	if streamID != "" {
+		payload, err := json.Marshal(events)
+		if err != nil {
+			return TrafficUsageReport{}, err
+		}
+		digest = sha256.Sum256(payload)
+		if _, err := tx.Exec(ctx, `INSERT INTO traffic_report_checkpoints(agent_id,stream_id) VALUES($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, agent.ID, streamID); err != nil {
+			return TrafficUsageReport{}, err
+		}
+		var previous int64
+		var previousHash []byte
+		if err := tx.QueryRow(ctx, `SELECT sequence,payload_hash FROM traffic_report_checkpoints WHERE agent_id=$1::uuid AND stream_id=$2::uuid FOR UPDATE`, agent.ID, streamID).Scan(&previous, &previousHash); err != nil {
+			return TrafficUsageReport{}, err
+		}
+		if sequence == previous && bytes.Equal(previousHash, digest[:]) {
+			return TrafficUsageReport{OK: true, AgentID: agent.ID, ServerID: agent.ServerID, Accepted: len(events)}, nil
+		}
+		if sequence != previous+1 || sequence < 1 {
+			return TrafficUsageReport{}, ErrReportSequenceConflict
+		}
+	}
 
 	affectedAccounts := map[string]struct{}{}
 	for _, event := range events {
@@ -98,6 +127,11 @@ func (r *Repository) ReportUsage(ctx context.Context, tokenHash string, events [
 		return TrafficUsageReport{}, err
 	}
 
+	if streamID != "" {
+		if _, err := tx.Exec(ctx, `UPDATE traffic_report_checkpoints SET sequence=$3,payload_hash=$4,updated_at=now() WHERE agent_id=$1::uuid AND stream_id=$2::uuid`, agent.ID, streamID, sequence, digest[:]); err != nil {
+			return TrafficUsageReport{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return TrafficUsageReport{}, err
 	}

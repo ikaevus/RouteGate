@@ -54,6 +54,10 @@ func (h *Handler) ReportUsage(w http.ResponseWriter, r *http.Request) {
 		writeInvalidRequest(w, "events must contain at least one usage event")
 		return
 	}
+	if r.URL.Path == "/api/v1/agent/traffic-batches" && request.StreamID == "" {
+		writeInvalidRequest(w, "streamId is required for traffic batches")
+		return
+	}
 	if len(request.Events) > MaxUsageReportEvents {
 		writeInvalidRequest(w, "too many usage events in one report")
 		return
@@ -86,7 +90,34 @@ func (h *Handler) ReportUsage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	result, err := h.traffic.ReportUsage(r.Context(), agents.HashToken(token), inputs)
+	var result TrafficUsageReport
+	var err error
+	if request.StreamID != "" || request.Sequence != 0 {
+		if !validReportStream(request.StreamID) || request.Sequence < 1 {
+			writeInvalidRequest(w, "streamId must be a UUID and sequence must be positive")
+			return
+		}
+		for _, event := range request.Events {
+			if event.ObservedAt == nil || event.ObservedAt.IsZero() {
+				writeInvalidRequest(w, "observedAt is required for sequenced reports")
+				return
+			}
+		}
+		repository, ok := h.traffic.(interface {
+			ReportUsageBatch(context.Context, string, []CreateUsageEventInput, string, int64) (TrafficUsageReport, error)
+		})
+		if !ok {
+			httpx.WriteJSON(w, http.StatusServiceUnavailable, httpx.Error("traffic_batch_unavailable", "Sequenced traffic reports are unavailable."))
+			return
+		}
+		result, err = repository.ReportUsageBatch(r.Context(), agents.HashToken(token), inputs, request.StreamID, request.Sequence)
+	} else {
+		result, err = h.traffic.ReportUsage(r.Context(), agents.HashToken(token), inputs)
+	}
+	if errors.Is(err, ErrReportSequenceConflict) {
+		httpx.WriteJSON(w, http.StatusConflict, httpx.Error("traffic_sequence_conflict", "Traffic report sequence or payload conflicts with the acknowledged checkpoint."))
+		return
+	}
 	if errors.Is(err, ErrUnauthorizedAgent) {
 		writeUnauthorized(w)
 		return

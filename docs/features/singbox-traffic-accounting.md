@@ -45,9 +45,20 @@ reports, database daily rollup growth, and Dashboard values from the API.
 The optional local runtime test can fail in restricted sandboxes where
 sing-box cannot initialize its network monitor; CI runs it on an Ubuntu host.
 
-Accounting reliability remains a rollout blocker: the existing delta tracker
-is in memory, establishes a baseline on its first observation, skips a runtime
-counter reset, and currently advances before Manager acknowledges a report.
-Durable retry/idempotency and restart semantics must be implemented and tested
-before treating the resulting totals as billing-grade or complete accounting.
+Agent persists its baseline and immutable pending batch to a root-readable
+outbox beside its config file before sending. It retries pending reports before
+collecting new counters, including after Agent restarts. An acknowledgement
+advances a durable stream sequence. Manager serializes each stream checkpoint
+in the same transaction as the usage events and daily rollup. Identical retries
+are acknowledged without inserting usage; changed payloads, sequence gaps, and
+old sequences fail closed. Checkpoints survive raw traffic retention.
+
+The new `/api/v1/agent/traffic-batches` endpoint is intentional: an older
+Manager returns 404 without inserting usage, rather than silently ignoring
+idempotency fields on the legacy endpoint. Deploy Manager and migration 160
+before enabling new Agents. Existing legacy producers remain supported.
+
+Initial observations establish a baseline; a sing-box counter reset also
+establishes a new baseline. Traffic before these observations is not recovered.
+This is operational usage telemetry, not complete billing-grade accounting.
 Native Hysteria2 and WireGuard collection are separate follow-up work.

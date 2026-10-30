@@ -3,7 +3,9 @@ package traffic
 import "time"
 
 type ReportUsageRequest struct {
-	Events []ReportUsageEventRequest `json:"events"`
+	StreamID string                    `json:"streamId"`
+	Sequence int64                     `json:"sequence"`
+	Events   []ReportUsageEventRequest `json:"events"`
 }
 
 type ReportUsageEventRequest struct {
