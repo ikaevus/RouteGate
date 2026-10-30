@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import tempfile
 import unittest
+import os
 from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location('traffic_rollout', pathlib.Path(__file__).with_name('traffic-accounting-rollout.py'))
@@ -9,6 +10,23 @@ rollout = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(rollout)
 
 class TrafficRolloutTests(unittest.TestCase):
+    def test_database_uri_becomes_decoded_libpq_parameters_not_database_name(self):
+        env = rollout.database_environment('postgres://test-user:p%40%3Ass@127.0.0.1:5432/traffic%2Dtest?sslmode=disable')
+        self.assertEqual(env['PGHOST'], '127.0.0.1')
+        self.assertEqual(env['PGPORT'], '5432')
+        self.assertEqual(env['PGUSER'], 'test-user')
+        self.assertEqual(env['PGPASSWORD'], 'p@:ss')
+        self.assertEqual(env['PGDATABASE'], 'traffic-test')
+        self.assertEqual(env['PGSSLMODE'], 'disable')
+        self.assertIn('default_transaction_read_only=on', env['PGOPTIONS'])
+        with self.assertRaises(rollout.Stop):
+            rollout.database_environment('postgres://user:password@localhost/db?options=unsafe')
+
+    @unittest.skipUnless(os.environ.get('ROUTEGATE_TEST_DATABASE_URL'), 'requires test PostgreSQL')
+    def test_database_connection_with_real_postgresql_is_read_only(self):
+        with mock.patch.dict(os.environ, {'ROUTEGATE_DATABASE_URL': os.environ['ROUTEGATE_TEST_DATABASE_URL']}):
+            self.assertEqual(rollout.sql('SELECT 1'), '1')
+            self.assertEqual(rollout.sql('SHOW default_transaction_read_only'), 'on')
     def test_preserve_existing_onboarding_metadata_without_guessing(self):
         base = 'https://us.routegate.org/bootstrap/' + 'a' * 40
         digest = 'b' * 64

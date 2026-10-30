@@ -13,6 +13,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 import uuid
 
 CANDIDATE = '58485650c42a394ae1305fdff1a7896e2f3c1b93'
@@ -33,13 +34,33 @@ class Stop(Exception):
 def run(args, env=None):
     result = subprocess.run(args, capture_output=True, text=True, timeout=120, env=env)
     if result.returncode:
-        raise Stop('command_failed_private_output_suppressed')
+        raise Stop('command_failed_' + Path(args[0]).name + '_private_output_suppressed')
     return result.stdout.strip()
 
-def sql(query):
-    env = os.environ.copy()
-    env['PGDATABASE'] = os.environ['ROUTEGATE_DATABASE_URL']
+def database_environment(value):
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in ('postgres', 'postgresql') or not parsed.hostname or not parsed.username or not parsed.path.strip('/'):
+        raise Stop('unsupported_manager_database_url')
+    query = urllib.parse.parse_qs(parsed.query, strict_parsing=True)
+    ssl = {'sslmode': 'PGSSLMODE', 'sslrootcert': 'PGSSLROOTCERT', 'sslcert': 'PGSSLCERT', 'sslkey': 'PGSSLKEY'}
+    if set(query) - set(ssl) - {'connect_timeout', 'application_name'} or any(len(values) != 1 for values in query.values()):
+        raise Stop('unsupported_manager_database_url_options')
+    env = {key: value for key, value in os.environ.items() if key in ('PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ')}
+    env.update(PGHOST=urllib.parse.unquote(parsed.hostname), PGPORT=str(parsed.port or 5432),
+               PGUSER=urllib.parse.unquote(parsed.username), PGDATABASE=urllib.parse.unquote(parsed.path[1:]),
+               PGCONNECT_TIMEOUT='10', PGAPPNAME='routegate-traffic-rollout')
+    if parsed.password is not None:
+        env['PGPASSWORD'] = urllib.parse.unquote(parsed.password)
+    for option, name in ssl.items():
+        if option in query:
+            env[name] = query[option][0]
     env['PGOPTIONS'] = '-c default_transaction_read_only=on -c statement_timeout=10s -c lock_timeout=3s'
+    return env
+
+def sql(query):
+    # libpq does not expand a URI stored in the PGDATABASE environment value.
+    # Supply decoded parameters separately, keeping credentials out of argv.
+    env = database_environment(os.environ['ROUTEGATE_DATABASE_URL'])
     return run(['psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-c', query], env)
 
 def config_values(data):
@@ -123,6 +144,8 @@ def api(path, payload=None, token=None):
     try:
         with opener.open(request, timeout=20) as response:
             return json.load(response)
+    except urllib.error.HTTPError as error:
+        raise Stop('manager_api_http_' + str(error.code)) from None
     except (urllib.error.URLError, json.JSONDecodeError):
         raise Stop('manager_api_request_failed_private_response_suppressed') from None
 
@@ -131,7 +154,12 @@ def login():
     password = os.environ.get('ROUTEGATE_BOOTSTRAP_ADMIN_PASSWORD')
     if not name or not password:
         raise Stop('admin_credentials_unavailable_use_authenticated_UI_for_config_apply')
-    response = api('/api/v1/auth/login', {'login': name, 'password': password})
+    try:
+        response = api('/api/v1/auth/login', {'login': name, 'password': password})
+    except Stop as error:
+        if str(error) == 'manager_api_http_401':
+            raise Stop('admin_authentication_failed_use_authenticated_UI') from None
+        raise
     token = response.get('token')
     if not token:
         raise Stop('admin_authentication_failed_use_authenticated_UI')

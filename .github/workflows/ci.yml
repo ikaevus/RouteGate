@@ -49,6 +49,9 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Test rollout PostgreSQL connection in read-only mode
+        run: python3 -m unittest discover -s ../scripts -p test_traffic_accounting_rollout.py
+
   agent:
     name: Agent tests
     runs-on: ubuntu-latest
