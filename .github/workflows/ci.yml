@@ -73,6 +73,12 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Build disposable sing-box statistics runtime
+        run: go install -tags with_v2ray_api github.com/sagernet/sing-box/cmd/sing-box@v1.12.12
+
+      - name: Verify real VLESS traffic counters on loopback
+        run: ROUTEGATE_TEST_SINGBOX="$(go env GOPATH)/bin/sing-box" go test -race -v ./internal/traffic -run TestSingBoxRuntimeTraffic -count=1
+
   installer:
     name: Clean VPS installer checks
     runs-on: ubuntu-24.04

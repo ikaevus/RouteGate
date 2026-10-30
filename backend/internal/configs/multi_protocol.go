@@ -196,6 +196,7 @@ func renderSelectedVPNCoreAdapters(config *RenderedConfig, info ServerConfigInfo
 		adapter.Render(config, info)
 	}
 	mergeRenderedVPNAccounts(config)
+	configureSingBoxTraffic(config, info)
 }
 
 func configuredVPNCoreAdapters(config RenderedConfig) ([]vpnCoreAdapter, bool) {

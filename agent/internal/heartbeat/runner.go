@@ -74,7 +74,7 @@ func NewRunner(cfg config.Config, configPath string, logger *slog.Logger) *Runne
 		runtimeCleaner: runtimecleanup.New(cfg),
 	}
 	if cfg.TrafficCollectionEnabled {
-		runner.trafficCollector = traffic.NewFileCollector(cfg.TrafficUsageFilePath)
+		runner.trafficCollector = traffic.NewRuntimeCollector(cfg.ActiveConfigPath, cfg.TrafficUsageFilePath)
 	}
 	if cfg.ClientPresenceEnabled {
 		runner.presenceCollector = presence.NewRuntimeCollectorWithWireGuard(
@@ -189,6 +189,7 @@ func (r *Runner) ensureRegistered(ctx context.Context) error {
 
 func (r *Runner) sendHeartbeat(ctx context.Context) error {
 	info := systeminfo.Collect()
+	info.Capabilities["trafficAccounting"] = map[string]any{"enabled": r.cfg.TrafficCollectionEnabled, "source": "sing-box-v2ray-api"}
 	res, err := r.client.Heartbeat(ctx, r.cfg.AgentToken, info)
 	if err != nil {
 		return err

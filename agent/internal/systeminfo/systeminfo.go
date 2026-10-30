@@ -390,6 +390,9 @@ func detectVPNCore() map[string]any {
 	status["binaryPath"] = binaryPath
 	status["state"] = "installed"
 	if output, commandErr, timedOut := runCommand(binaryPath, "version"); commandErr == nil {
+		for _, tag := range strings.FieldsFunc(string(output), func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == '\r' }) {
+			if tag == "with_v2ray_api" { status["v2rayAPI"] = true }
+		}
 		if version := firstNonEmptyLine(string(output)); version != "" {
 			status["version"] = version
 		}
