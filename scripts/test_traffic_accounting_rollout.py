@@ -9,6 +9,16 @@ rollout = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(rollout)
 
 class TrafficRolloutTests(unittest.TestCase):
+    def test_preserve_existing_onboarding_metadata_without_guessing(self):
+        base = 'https://us.routegate.org/bootstrap/' + 'a' * 40
+        digest = 'b' * 64
+        prefix = 'github.com/ikaevus/routegate/backend/internal/buildinfo.'
+        sample = ('build\t-ldflags="-X ' + prefix + 'AgentBundleBaseURL=' + base + ' -X ' + prefix + 'AgentInstallerSHA256=' + digest + '"\n').encode()
+        self.assertEqual(rollout.bootstrap_metadata(sample), {'AgentBundleBaseURL': base, 'AgentInstallerSHA256': digest})
+        with self.assertRaises(rollout.Stop):
+            rollout.bootstrap_metadata(sample.replace(b'https://us.routegate.org', b'https://other.example'))
+        with self.assertRaises(rollout.Stop):
+            rollout.bootstrap_metadata(b'no metadata')
     def test_enable_only_changes_collection_flag(self):
         old = b'agent_token: "private-token"\ntraffic_collection_enabled: false\nserver_id: "unchanged"\n'
         new = rollout.enabled_config(old)

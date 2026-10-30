@@ -12,6 +12,11 @@ It does not target FI or RU and does not publish bootstrap artifacts.
    installed sing-box build-tag verification, active-config statistics flags,
    and availability of the loopback statistics port. Output contains booleans
    and schema version, never tokens, credentials, or runtime config contents.
+   It also reports the existing public bootstrap base URL and installer SHA256
+   from Manager build metadata. Supply these exact public values as the
+   `bootstrap_base_url` and `installer_sha256` inputs for install/apply. The new
+   Manager preserves them, and installation refuses any mismatch, so onboarding
+   is not redirected to unpublished artifacts or changed by this repair.
 2. `install`: reproducibly build the pinned Manager and Agent with Go 1.26.10;
    retain root-only backups of their previous binaries and Agent config;
    add migration 160; enable Agent collection; restart only Manager and Agent.

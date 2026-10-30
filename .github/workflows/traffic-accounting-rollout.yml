@@ -8,6 +8,16 @@ on:
         required: true
         default: inspect
         options: [inspect, install, apply]
+      bootstrap_base_url:
+        description: install/apply - exact public AgentBundleBaseURL reported by inspect
+        type: string
+        required: false
+        default: ''
+      installer_sha256:
+        description: install/apply - exact public AgentInstallerSHA256 reported by inspect
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
   actions: read
@@ -23,6 +33,8 @@ jobs:
     env:
       CANDIDATE: 58485650c42a394ae1305fdff1a7896e2f3c1b93
       MODE: ${{ inputs.mode }}
+      BOOTSTRAP_BASE_URL: ${{ inputs.bootstrap_base_url }}
+      INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
     steps:
       - name: Checkout trusted rollout helper
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -35,6 +47,10 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$MODE" == inspect || "$MODE" == install || "$MODE" == apply ]]
+          if [[ "$MODE" != inspect ]]; then
+            [[ "$BOOTSTRAP_BASE_URL" =~ ^https://us\.routegate\.org/bootstrap/[0-9a-f]{40}$ ]]
+            [[ "$INSTALLER_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          fi
           git merge-base --is-ancestor "$CANDIDATE" HEAD
           for run in 41137852704 41137852705; do
             result=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '.head_sha + "|" + .status + "|" + .conclusion')
@@ -64,14 +80,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -m 700 payload
-          (cd candidate/backend && go build -trimpath -buildvcs=false -ldflags "-X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=$CANDIDATE -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=traffic-accounting" -o ../../payload/routegate-manager ./cmd/routegate-manager)
+          (cd candidate/backend && go build -trimpath -buildvcs=false -ldflags "-X github.com/ikaevus/routegate/backend/internal/buildinfo.GitCommit=$CANDIDATE -X github.com/ikaevus/routegate/backend/internal/buildinfo.Version=traffic-accounting -X github.com/ikaevus/routegate/backend/internal/buildinfo.AgentBundleBaseURL=$BOOTSTRAP_BASE_URL -X github.com/ikaevus/routegate/backend/internal/buildinfo.AgentInstallerSHA256=$INSTALLER_SHA256" -o ../../payload/routegate-manager ./cmd/routegate-manager)
           (cd candidate/agent && go build -trimpath -buildvcs=false -ldflags "-X github.com/ikaevus/routegate/agent/internal/buildinfo.GitCommit=$CANDIDATE -X github.com/ikaevus/routegate/agent/internal/buildinfo.Version=traffic-accounting" -o ../../payload/routegate-agent ./cmd/routegate-agent)
           cp candidate/backend/migrations/000160_traffic_report_checkpoints.up.sql payload/
           python3 - <<'PY'
           import hashlib,json,os,pathlib
           root=pathlib.Path('payload')
           files={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()}
-          (root/'manifest.json').write_text(json.dumps({'commit':os.environ['CANDIDATE'],'files':files},sort_keys=True))
+          metadata={'AgentBundleBaseURL':os.environ['BOOTSTRAP_BASE_URL'],'AgentInstallerSHA256':os.environ['INSTALLER_SHA256']}
+          (root/'manifest.json').write_text(json.dumps({'commit':os.environ['CANDIDATE'],'files':files,'bootstrapMetadata':metadata},sort_keys=True))
           PY
       - name: Configure existing SSH identity
         env:

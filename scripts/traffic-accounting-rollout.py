@@ -58,6 +58,19 @@ def config_values(data):
         result[key.strip()] = value
     return result
 
+def bootstrap_metadata(data):
+    values = {}
+    for field in ('AgentBundleBaseURL', 'AgentInstallerSHA256'):
+        matches = re.findall(rb'github\.com/ikaevus/routegate/backend/internal/buildinfo\.' + field.encode() + rb'=([^\s"\x00]+)', data)
+        if len(set(matches)) != 1:
+            raise Stop('existing_bootstrap_build_metadata_unavailable')
+        values[field] = matches[0].decode('ascii')
+    if not re.fullmatch(r'https://us\.routegate\.org/bootstrap/[0-9a-f]{40}', values['AgentBundleBaseURL']):
+        raise Stop('unexpected_existing_bootstrap_base_url')
+    if not re.fullmatch(r'[0-9a-f]{64}', values['AgentInstallerSHA256']):
+        raise Stop('unexpected_existing_installer_digest')
+    return values
+
 def enabled_config(data):
     config_values(data)  # Refuse ambiguous input before modifying it.
     text = data.decode()
@@ -153,6 +166,7 @@ def inspect():
     print(json.dumps({'schema': schema, 'runtime_stats_supported': supported,
                       'agent_collection_enabled': values.get('traffic_collection_enabled') == 'true',
                       'runtime_stats_enabled': configured.get('stats', {}).get('enabled') is True}), flush=True)
+    print(json.dumps({'preserve_bootstrap_metadata': bootstrap_metadata(MANAGER.read_bytes())}), flush=True)
     if not supported:
         raise Stop('installed_sing_box_missing_v2ray_api_support')
     if configured.get('listen') != '127.0.0.1:18085':
@@ -204,6 +218,8 @@ def install(stage, run_id):
     manifest = json.loads((stage / 'manifest.json').read_bytes())
     if manifest.get('commit') != CANDIDATE:
         raise Stop('candidate_mismatch')
+    if manifest.get('bootstrapMetadata') != bootstrap_metadata(MANAGER.read_bytes()):
+        raise Stop('bootstrap_metadata_change_refused')
     expected = {'routegate-manager', 'routegate-agent', SCHEMA + '.up.sql'}
     if set(manifest.get('files', {})) != expected:
         raise Stop('unexpected_payload_files')
