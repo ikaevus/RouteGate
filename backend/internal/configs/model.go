@@ -235,6 +235,7 @@ type ConfigVPNCore struct {
 }
 
 type SingBoxConfig struct {
+	Experimental map[string]any `json:"experimental,omitempty"`
 	Log       SingBoxLog        `json:"log"`
 	Inbounds  []map[string]any  `json:"inbounds"`
 	Outbounds []SingBoxOutbound `json:"outbounds"`
